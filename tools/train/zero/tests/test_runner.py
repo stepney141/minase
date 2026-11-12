@@ -102,6 +102,9 @@ class FakeRemote:
         self.hashes.append(relative)
         return digest(self.root / relative)
 
+    def size(self, relative):
+        return (self.root / relative).stat().st_size
+
     def missing(self, files):
         return [name for name in files if not (self.root / name).is_file()]
 
@@ -123,7 +126,7 @@ class FakeRemote:
             self.uploads.append(relative)
             write(self.root / relative, b"corrupt" if self.corrupt else (root / relative).read_bytes())
 
-    def download(self, relative, target):
+    def download(self, relative, target, timeout):
         self.downloads.append(relative)
         if self.on_download is not None:
             self.on_download(relative, target)
@@ -425,6 +428,51 @@ class StorageTests(RunnerCase):
         self.assertEqual(self.remote.removals, [snapshot])
         self.assertFalse((self.remote_root / snapshot).exists())
         self.assertEqual((self.remote_root / relative).read_bytes(), b"new checkpoint")
+
+    def test_receive_timeout_assumes_one_megabyte_per_second(self):
+        for size, timeout in ((300_000_000, 420), (0, 120), (1_250_000, 121.25)):
+            with self.subTest(size=size):
+                relative = f"train/checkpoint-{size}.pt"
+                write(self.remote_root / relative, b"checkpoint" if size else b"")
+                with patch.object(self.remote, "size", return_value=size) as remote_size, \
+                        patch.object(self.remote, "download", wraps=self.remote.download) as download:
+                    self.assertTrue(receive(self.remote, self.root, relative, False))
+                self.assertEqual(download.call_args.args[2:], (timeout,))
+                remote_size.assert_called_once_with(relative)
+
+    def test_receive_replacement_timeout_uses_snapshot_size(self):
+        relative = "train/checkpoint.pt"
+        write(self.remote_root / relative, b"a" * 1_000_000)
+        copy = self.remote.copy
+
+        def copy_then_replace(source, target):
+            copy(source, target)
+            write(self.remote_root / relative, b"b" * 2_000_000)
+
+        with patch.object(self.remote, "copy", side_effect=copy_then_replace), \
+                patch.object(self.remote, "size", wraps=self.remote.size) as remote_size, \
+                patch.object(self.remote, "download", wraps=self.remote.download) as download:
+            self.assertTrue(receive(self.remote, self.root, relative, True))
+        snapshot = self.remote.copies[0][1]
+        remote_size.assert_called_once_with(snapshot)
+        self.assertEqual(download.call_args.args[2:], (121,))
+        self.assertEqual((self.root / relative).read_bytes(), b"a" * 1_000_000)
+        self.assertFalse((self.remote_root / snapshot).exists())
+
+    def test_invalid_remote_size_does_not_commit_a_received_file(self):
+        relative = "train/checkpoint.pt"
+        write(self.remote_root / relative, b"checkpoint")
+        remote = colab_remote("local")
+        for replace in (False, True):
+            with self.subTest(replace=replace):
+                with patch.object(remote, "shell", return_value="not-an-integer\n"), \
+                        patch.object(self.remote, "size", side_effect=remote.size), \
+                        self.assertRaises(ValueError):
+                    receive(self.remote, self.root, relative, replace)
+                self.assertFalse((self.root / relative).exists())
+                self.assertFalse((self.root / relative).with_name(".checkpoint.pt.tmp").exists())
+                self.assertEqual(self.remote.downloads, [])
+                self.assertTrue(all(not (self.remote_root / name).exists() for _, name in self.remote.copies))
 
     def test_checkpoint_is_replaced_only_after_download_and_checksum(self):
         relative = "cycles/cycle-0001/train/checkpoint.pt"
@@ -848,7 +896,7 @@ class RemoteTests(unittest.TestCase):
                 remote.connect("vast", 12345)
                 self.assertTrue(remote.exists("model.onnx"))
                 remote.upload(Path("/NAS"), ["checkpoint.pt", "data.mnsd"], 121)
-                remote.download("model.onnx", Path("/tmp/model.onnx"))
+                remote.download("model.onnx", Path("/tmp/model.onnx"), 420)
                 self.assertTrue(remote.exists("checkpoint.pt"))
                 address.assert_called_once_with(12345, 600)
                 ssh = run.call_args_list[0].args[0]
@@ -1008,6 +1056,33 @@ class RemoteTests(unittest.TestCase):
             remote.upload(Path("/NAS"), ["file.mnsd"], 121)
         self.assertFalse(manifests[0].exists())
 
+    def test_remote_size_reads_decimal_bytes_with_stat(self):
+        remote = colab_remote("local")
+        relative = "-train output/checkpoint 'one'.pt"
+        for output, expected in (("0\n", 0), ("300000000\n", 300_000_000)):
+            with self.subTest(output=output), patch.object(remote, "shell", return_value=output) as shell:
+                self.assertEqual(remote.size(relative), expected)
+                shell.assert_called_once()
+                self.assertEqual(shlex.split(shell.call_args.args[0]), ["stat", "-c", "%s", "--", relative])
+                self.assertEqual(shell.call_args.args[1], 120)
+
+    def test_remote_size_rejects_invalid_responses(self):
+        remote = colab_remote("local")
+        for output in ("", "\n", "-1\n", "+1\n", "1.5\n", "1_000\n", "0x10\n", "１２\n",
+                       "not-an-integer\n", "12 bytes\n", "12\n34\n"):
+            with self.subTest(output=output), patch.object(remote, "shell", return_value=output), \
+                    self.assertRaises(ValueError):
+                remote.size("checkpoint.pt")
+
+    def test_download_passes_the_supplied_timeout_to_rsync(self):
+        remote = colab_remote("local")
+        for timeout in (120, 420, 121.25):
+            with self.subTest(timeout=timeout), patch.object(remote, "_call", return_value="") as call:
+                remote.download("checkpoint.pt", Path("/tmp/local-checkpoint"), timeout)
+                call.assert_called_once()
+                self.assertEqual(call.call_args.args[0][0], "rsync")
+                self.assertEqual(call.call_args.args[1], timeout)
+
     def test_remote_copy_is_independent_of_original_and_can_be_removed(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -1049,7 +1124,7 @@ class RemoteTests(unittest.TestCase):
         remote = colab_remote("l4-one")
         with patch("minase_zero.runner.subprocess.run", return_value=subprocess.CompletedProcess([], 0, "yes\n", "")) as run:
             self.assertTrue(remote.exists("cycles/cycle-0001/train/checkpoint.pt"))
-            remote.download("cycles/cycle-0001/train/checkpoint.pt", Path("/tmp/local-checkpoint"))
+            remote.download("cycles/cycle-0001/train/checkpoint.pt", Path("/tmp/local-checkpoint"), 420)
         ssh_call, rsync_call = run.call_args_list
         ssh = ssh_call.args[0]
         self.assertIn("ProxyCommand=colab ssh --proxy-mode -s l4-one", ssh)
@@ -1058,7 +1133,8 @@ class RemoteTests(unittest.TestCase):
         self.assertIn("ControlPersist=900", ssh)
         rsync = rsync_call.args[0]
         self.assertEqual(shlex.split(rsync[rsync.index("-e") + 1]), ssh[:ssh.index("root@colab")])
-        self.assertTrue(all(call.kwargs["timeout"] == 120 for call in run.call_args_list))
+        self.assertEqual(ssh_call.kwargs["timeout"], 120)
+        self.assertEqual(rsync_call.kwargs["timeout"], 420)
 
     def test_transient_connections_are_retried_at_most_five_times(self):
         for code, error in ((255, "connection lost"), (1, "HTTP 429 Too Many Requests"),
@@ -1068,7 +1144,7 @@ class RemoteTests(unittest.TestCase):
                 with patch("minase_zero.runner.subprocess.run", return_value=subprocess.CompletedProcess([], code, "", error)) as run:
                     with self.assertRaises(RuntimeError):
                         if code == 12:
-                            remote.download("model.onnx", Path("/tmp/unused"))
+                            remote.download("model.onnx", Path("/tmp/unused"), 420)
                         else:
                             remote.usage()
                 self.assertEqual(run.call_count, 6)

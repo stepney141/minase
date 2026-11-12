@@ -1,0 +1,7 @@
+# These five inputs must match those compared by tools/train/zero/check-env-inputs.sh.
+*
+!tools/train/zero/setup.sh
+!tools/train/zero/env.sh
+!tools/train/zero/pyproject.toml
+!tools/train/zero/uv.lock
+!tools/train/zero/.python-version

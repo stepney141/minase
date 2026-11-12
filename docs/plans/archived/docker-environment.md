@@ -13,15 +13,24 @@ Google Colabで借りる機械（以下、Colab機）は、Colabの規約がコ�
 ネットを学ぶPythonのプログラムを学習器、自己対局で作った学習データのファイルを教師ファイルと呼ぶ。
 minase本体と、学習器が教師ファイルを読むための拡張モジュール`mnsd_reader`はイメージに入れず、動かす機械で、対象のコミットのソースからビルドする。
 イメージはGitHubのコンテナレジストリ（GitHub Container Registry、以下GHCR）に非公開で置き、vast.aiの機械は読み取り専用のトークンで取得する。
-完了条件は、作業機の開発用のコンテナ、vast.aiの機械、およびColab機で「検証」の節の確認がすべて通り、手引きと設計判断の記録（ADR、[docs/adr/](../adr/README.md)）が新しい手順に改まることである。
-強化学習の[2回目の実行](alphazero-rl-2.md)は、20ブロック256チャネルのネットでやり直す2回目の学習であり、自己対局の生成と学習の1回分をサイクルと呼ぶ。
+完了条件は、作業機の開発用のコンテナ、vast.aiの機械、およびColab機で「検証」の節の確認がすべて通り、手引きと設計判断の記録（ADR、[docs/adr/](../../adr/README.md)）が新しい手順に改まることである。
+強化学習の[2回目の実行](../alphazero-rl-2.md)は、20ブロック256チャネルのネットでやり直す2回目の学習であり、自己対局の生成と学習の1回分をサイクルと呼ぶ。
 2回目の実行をvast.aiで回すなら、そのサイクル1は本書の完了を待つ。
 
 ## 状態
 
-起案。本書は2026年11月11日に書いた。
-利用者は同日、composeとvast.aiの両方で同じイメージを使うこと、GHCRに非公開で置くこと、および作業機に残っていた古いイメージ`minase-zero:dev`を削除することを決め、古いイメージはその日のうちに削除した。
-次の一手は、利用者の承認と着手の指示を待つことである。
+> 本書は完了時点で凍結した記録であり、以後の変更を反映しない。現行の仕様はコードのdocコメントに、設計判断は[docs/adr/](../../adr/README.md)にある。
+
+完了（一部不採用）。本書は2026年11月11日に書き、11月12日に着手して、11月13日に完了した。
+作業機の開発用のコンテナ、vast.aiの機械、およびColab機で「検証」の節の11項目は通った。
+採用したのは、導入先を環境のディレクトリに閉じた`setup.sh`と`env.sh`、環境の入力を検査するスクリプトと仮想環境を同期するスクリプト、および作業機の開発用のコンテナである。
+vast.aiの機械をイメージで借りる方式と、そのためのGHCRへの登録は、エンジンの開発者が2026年11月13日に不採用と決めた。
+6回借りて起動できたのは1回であり、起動できた機械でも作成から準備の完了までに40分37秒かかって、今までの方式より速くなることを示せなかったからである。
+vast.aiの機械は、今までどおりベースのイメージで借りて`setup.sh`で導入する。そのため、実行器の`RemotePaths`、`scripts/vast/common.py`の`create`、および`Dockerfile`の層の分割は元へ戻し、本書のために書いた起動スクリプトと準備スクリプトは削除した。
+本書の以下の節は、vast.aiでもイメージを使う前提で書いた計画のままである。
+結果は、[作業機での確認](../../measurements/docker-environment/docker-environment-workstation.md)、[vast.aiの機械での確認](../../measurements/docker-environment/docker-environment-vast.md)、および[Colab機での確認](../../measurements/docker-environment/docker-environment-colab.md)の記録にある。
+決定は[実行環境のADR](../../adr/install-the-zero-toolchain-with-setup-sh-on-rented-machines-and-build-the-workstation-image-from-it.md)に、手順は[開発用のコンテナの手引き](../../guides/dev-container.md)と[借りる機械の操作の手引き](../../guides/alphazero-machines.md)にある。
+vast.aiの確認では、実行器がチェックポイントの受け取りを一律120秒で打ち切る問題も見つかり、上限をファイルの大きさから決める形に直した（[教訓](../../lessons/derive-transfer-time-limits-from-size.md)）。
 
 ## 目的
 
@@ -32,7 +41,7 @@ minase本体と、学習器が教師ファイルを読むための拡張モジ�
 aptの10個のパッケージは版を固定していないので、借りた日によって中身が変わり得る。
 イメージにすれば、容量の大きい実行時の依存はイメージに入り、aptのパッケージを含むユーザーランド全体がイメージのダイジェスト（イメージの内容から計算するSHA-256の値）で固定される。
 ただし、`mnsd_reader`とminaseを初めてビルドするときには、PyPIが配布するmaturinと、crates.ioが配布するRustのクレートの取得が残る。これらはソースのコミットごとに変わり得るので、イメージには入れない。
-[複数GPU化のvast.aiの測定](../measurements/alphazero-multi-gpu/alphazero-multi-gpu-vast.md)では、RTX 4090を4枚積んだ2台の機械（測定記録の機械Hと機械B）で、導入（パッケージ、学習器の環境、およびminaseのビルド）に3分52秒と11分50秒かかった。
+[複数GPU化のvast.aiの測定](../../measurements/alphazero-multi-gpu/alphazero-multi-gpu-vast.md)では、RTX 4090を4枚積んだ2台の機械（測定記録の機械Hと機械B）で、導入（パッケージ、学習器の環境、およびminaseのビルド）に3分52秒と11分50秒かかった。
 イメージにしたときの導入の時間は、イメージの取得に加え、ビルドのときに残るパッケージの取得とビルドの時間も含めて、本書の測定で記録する。
 
 2つ目は、作業機でも、借りた機械と同じユーザーランドで開発と確認をできるようにすることである。
@@ -68,7 +77,7 @@ aptの10個のパッケージは版を固定していないので、借りた日
 - 実行器の`RemotePaths`。機械の種類ごとに、読み込む`env.sh`の場所を決める。
 - `scripts/vast/common.py`の`create`と、その試験。非公開のレジストリへのログインの引数を加え、失敗したときの例外にトークンが入らないようにする。
 - 本書の測定記録のディレクトリ`docs/measurements/docker-environment/`に置く、起動スクリプトの写しと新しい準備スクリプト。
-- 手引き（[借りる機械の操作の手引き](../guides/alphazero-machines.md)の3節と7.1節、および開発用のコンテナの新しい手引き）とADR。
+- 手引き（[借りる機械の操作の手引き](../../guides/alphazero-machines.md)の3節と7.1節、および開発用のコンテナの新しい手引き）とADR。
 
 次のものは対象外とする。
 
@@ -82,12 +91,12 @@ aptの10個のパッケージは版を固定していないので、借りた日
 
 ## 依存関係
 
-本書は、[複数GPU化](archived/alphazero-multi-gpu.md)とONNX Runtime 1.31.1への更新の後のmasterから始める。
-[推論の転送の削減](archived/alphazero-inference-transfer.md)とは変えるファイルが重ならない。
+本書は、[複数GPU化](alphazero-multi-gpu.md)とONNX Runtime 1.31.1への更新の後のmasterから始める。
+[推論の転送の削減](alphazero-inference-transfer.md)とは変えるファイルが重ならない。
 どちらかが環境の入力を変えた場合は、変えた後のコミットでイメージを作り直す。
 2回目の実行をvast.aiで回すなら、そのサイクル1は本書の完了を待つ。
 
-本書の完了時に、[実行環境の導入のADR](../adr/install-the-zero-toolchain-from-one-lock-on-every-machine.md)を新しいADRで置き換える。
+本書の完了時に、[実行環境の導入のADR](../../adr/archive/install-the-zero-toolchain-from-one-lock-on-every-machine.md)を新しいADRで置き換える。
 このADRは、vast.aiとRunpodの機械でも事業者が公開するUbuntuとCUDAのイメージの上で`setup.sh`を実行すると決めており、独自のコンテナイメージを作る案は、Colab機で使えないことを理由に棄却していた。
 本書は、Colab機では今と同じく`setup.sh`を使い、vast.aiの機械と作業機では独自のイメージを使うので、vast.aiの機械についての決定が変わる。
 
@@ -118,7 +127,13 @@ Dockerfileは、ベースのイメージの上で次の順に処理する。
 1. aptで、今の準備スクリプトが入れている10個のパッケージ（ca-certificates、curl、rsync、python3、build-essential、pkg-config、git、xz-utils、procps、time）を入れる。
 2. 環境の入力を`/opt/minase-zero/`へ写す。
 3. `/opt/minase-zero/setup.sh`を実行する。
-4. uvのキャッシュとONNX Runtimeの書庫を消し、開発用のコンテナの利用者が環境のディレクトリへ書き込めるように権限を与える。
+4. uvのキャッシュを消し、開発用のコンテナの利用者が環境のディレクトリへ書き込めるように権限を与える。ONNX Runtimeの書庫は、`setup.sh`が展開の後に消す。
+5. 環境のディレクトリのファイルを、大きさのほぼ等しい8つの層に分ける。
+
+5の処理は、フェーズ3で加えた。
+1〜4だけでは、環境のディレクトリの全体が圧縮後6.8 GBの1つの層になる。GHCRからの取得は1接続あたり毎秒約15 MBで頭打ちになり、vast.aiの機械では、接続が切れるたびにこの層の取得が最初からやり直しになって、起動待ちの時間内に終わらなかった。
+Dockerは複数の層を並行して取得し、取得を終えた層は取得をやり直しても残すので、層を分けると、取得が速くなり、やり直しで失う量も減る。
+Dockerfileは多段ビルドにし、3と4を行った段でファイルをパスの順に8つの部分へ分け、最終の段が部分ごとに`COPY`する。分け方はファイルの大きさだけで決まり、パッケージの名前には依存しない。
 
 ベースのイメージには、今vast.aiで使っている`nvidia/cuda:13.0.3-base-ubuntu24.04`を使い、タグではなくダイジェストで指定する。
 CUDAのランタイム、cuDNN、およびTensorRTの共有ライブラリは、PyPIの配布形式であるwheelから入る。具体的には、uvのロックファイルが固定する`tensorrt-cu13-libs`と、PyTorchが依存するNVIDIAのパッケージから入り、`env.sh`の`LD_LIBRARY_PATH`がそれらを指す。
@@ -142,11 +157,12 @@ uvの実行ファイルは`.runtime/bin`、rustupの`RUSTUP_HOME`と`CARGO_HOME`
 uvの公式のインストーラには`UV_UNMANAGED_INSTALL`で導入先を指定し、シェルの設定ファイルを書き換えさせない。
 今の`setup.sh`は`command -v uv`と`command -v rustup`で既存の導入を見つけると導入を省くので、別の場所の既存のツールを使ってしまう。改めた`setup.sh`は、環境のディレクトリの中の決まったパスにある実行ファイルとその版を確かめ、なければ入れる。
 `env.sh`は、これらの変数と`PATH`を設定し、加えて`UV_PROJECT_ENVIRONMENT`を環境のディレクトリの`.venv`に設定する。
+`env.sh`は、さらに2つの変数を設定する。`RUSTUP_TOOLCHAIN`は固定した版とし、版を指定しない`cargo`と、`mnsd_reader`をビルドするときにmaturinが起動するcargoが、同じツールチェーンを使うようにする。`UV_MANAGED_PYTHON`は1とし、uvが機械にもとからあるPythonを使わず、`.runtime/python`に入れたPythonだけを使うようにする。
 `UV_PROJECT_ENVIRONMENT`を設定すると、`uv run --project <ソース>`はソースの中の`.venv`ではなく、環境のディレクトリの仮想環境を使う。
 Colab機では環境のディレクトリがソースの中にあるので、今の`uv run`と同じ仮想環境を指す。
 これで、`env.sh`を読み込んだシェルは、利用者と`$HOME`によらず同じツールを使う。
 
-Rustのツールチェーンには、開発用のコンテナでマージ前のローカル検査（[テストの手引き](../guides/testing-minase-rules.md)）を実行するために、clippyとrustfmtを加える。
+Rustのツールチェーンには、開発用のコンテナでマージ前のローカル検査（[テストの手引き](../../guides/testing-minase-rules.md)）を実行するために、clippyとrustfmtを加える。
 Colab機とvast.aiの機械でも同じものが入るが、追加で取得する容量は小さい。
 作業機のホストで`setup.sh`を実行し直すと、ホストのrustupとは別のツールチェーンが`.runtime`に入る。ホストの`~/.rustup`は変わらない。
 
@@ -161,20 +177,20 @@ minase本体をイメージに入れないのは、`.cargo/config.toml`が`targe
 `mnsd_reader`は、動かす機械で作業ツリーを指定した`uv sync --frozen --project <作業ツリー>/tools/train/zero`を実行し、そのコミットのソースからビルドして入れる。
 vast.aiの準備スクリプトとColab機の手順は、導入の直後にこの同期を実行し、ビルドの失敗を最初のサイクルの前に検出する。
 
-イメージを作る時点では`mnsd_reader/`をイメージへ写さない。uv 0.13.4が、`tools/train/zero/pyproject.toml`からパスで参照している`mnsd_reader/`のディレクトリがない状態で`--no-install-local`の同期を受け付けるかは、まだ確かめていない。
-受け付けない場合は、`mnsd_reader/pyproject.toml`だけをイメージへ写し、環境の入力に加える。
-フェーズ1では、ディレクトリがない構成と`pyproject.toml`だけを置いた構成の両方で同期を実行し、受け付ける構成を採る。
+イメージを作る時点では`mnsd_reader/`をイメージへ写さない。
+uv 0.13.4は、`tools/train/zero/pyproject.toml`からパスで参照している`mnsd_reader/`のディレクトリがない状態でも、`--no-install-local`の同期を受け付ける。2026年11月12日に作業機で、`pyproject.toml`、`uv.lock`、および`.python-version`だけを置いたディレクトリで同期を実行して確かめた。
 
 ### 環境の入力の検査
 
 イメージは、作ったときの環境の入力の写しを`/opt/minase-zero/`に持つ。
-検査のスクリプトは、作業ツリーの絶対パスを受け取り、環境の入力の各ファイルを写しとバイト列で比べ、違うファイルがあればその名前を出して異常で終わる。
+検査のスクリプト`check-env-inputs.sh`は作業ツリーの`tools/train/zero/`に置き、`env.sh`を読み込んだシェルから引数なしで実行する。
+スクリプトは、自分と同じディレクトリにある環境の入力の各ファイルを、環境のディレクトリの写しとバイト列で比べ、違うファイルがあればそのパスを出して異常で終わる。環境のディレクトリは、`env.sh`が設定した`UV_PROJECT_ENVIRONMENT`の親のディレクトリとする。
 検査を置くのは、作業ツリーの`uv.lock`がイメージのものと違うまま同期すると、uvが作業ツリーの`uv.lock`に合わせてイメージの仮想環境のパッケージを入れ替え、イメージで固定したはずの版が知らないうちに変わるからである。
 検査に失敗したら、そのコミットでイメージを作り直す。
 
 vast.aiの機械では、ソースは起動時に送った1つのコミットから変わらないので、準備スクリプトが最初に1回検査すればよい。
 開発用のコンテナでは、作業ツリーはホストから書き換えられ、コンテナは常駐するので、起動時の検査だけでは足りない。
-そこで、開発用のコンテナでは`UV_NO_SYNC=1`を設定して`uv run`の自動の同期を止め、仮想環境を変える操作を、検査してから`uv sync --frozen`を実行する同期のスクリプトだけに限る。
+そこで、開発用のコンテナでは`UV_NO_SYNC=1`を設定して`uv run`の自動の同期を止め、仮想環境を変える操作を、検査してから`uv sync --frozen`を実行する同期のスクリプト`sync-env.sh`だけに限る。`sync-env.sh`も作業ツリーの`tools/train/zero/`に置く。
 `mnsd_reader`のソースやminaseのクレートを変えたときも、開発者はこの同期のスクリプトで`mnsd_reader`をビルドし直す。
 起動時の検査は、開発用のサービスを起動するときにも行い、失敗したらサービスを起動しない。
 
@@ -188,9 +204,10 @@ vast.aiの機械には、タグではなく`ghcr.io/stepney141/minase-dev@sha256
 
 vast.aiは、`vastai create instance`の`--login`に`'-u <GitHubの利用者名> -p <トークン> ghcr.io'`の形で渡したログインの情報で、非公開のイメージを取得する。
 トークンは読み取りの権限だけを持つものとし、リポジトリの外のファイル（権限600）に置き、起動スクリプトは必須の引数でそのファイルの場所を受け取る。
-`scripts/vast/common.py`の`create`にログインの引数を加え、ログインの要らない公開のイメージを使う既存のスクリプトは、ログインなしを明示して呼ぶ。
-今の`create`は、`vastai`が失敗すると、コマンドの全体を含む`CalledProcessError`か`TimeoutExpired`を投げ、起動スクリプトはその文字列を表示する。
-`--login`を加えたままでは、この表示にトークンが入るので、`create`はこれらの例外を、ログインの情報を含まない例外へ変換して投げる。
+`scripts/vast/common.py`の`create`に、レジストリ、利用者名、およびトークンを持つログインの引数を加え、ログインの要らない公開のイメージを使う既存のスクリプトは、ログインなしを明示して呼ぶ。
+ログインなしの`create`は、`vastai`が失敗すると、コマンドの全体を含む`CalledProcessError`か`TimeoutExpired`を投げ、呼び出し元はその文字列を表示する。
+`--login`を加えたままでは、この表示にトークンが入る。そこで、ログインつきの`create`はこれらの例外を、ログインの情報を含まない例外へ変換して投げ、`vastai`の標準エラーも、トークンを置き換えてから表示する。
+ログインなしの`create`の例外は変えない。探索の係数の調整のスクリプトなどが、この例外から終了コードを決めているからである。
 トークンはvast.aiにも渡るが、読み取りの権限だけなので、漏れても書き換えや削除はできない。
 
 公開にしない理由は、イメージに入るTensorRTとcuDNNの再配布の条件を、NVIDIAのライセンスでまだ確かめていないからである。
@@ -199,8 +216,9 @@ vast.aiは、`vastai create instance`の`--login`に`'-u <GitHubの利用者名>
 
 起動スクリプトは、複数GPU化の測定で使った`launch-vast.py`を本書の測定記録のディレクトリへ写して改め、`--image`でイメージのダイジェストを、新しい必須の引数`--registry-token-file`でトークンのファイルのパスを受け取る。
 SSHの接続には今と同じく、vast.aiがコンテナにSSHのサーバを用意する起動方式と、機械の公開IPへ直接つなぐ方式を使う。
+起動スクリプトは、機械の作成から起動の確認までを45分待つ。イメージは圧縮後で約7 GBあり、0.57 GBのベースのイメージで借りていたときの15分では、取得が終わらないからである。
 ベースのイメージが今と同じなので、vast.aiのSSHの用意も今と同じく働く見込みだが、実際に借りて確かめる。
-これは、起動の経路は設定を読むだけで済ませず、配備と同じ環境で実際に起動して確かめるという教訓（[ブリッジ経由の起動の教訓](../lessons/verify-bridge-launch-path.md)）に従うためである。
+これは、起動の経路は設定を読むだけで済ませず、配備と同じ環境で実際に起動して確かめるという教訓（[ブリッジ経由の起動の教訓](../../lessons/verify-bridge-launch-path.md)）に従うためである。
 
 新しい準備スクリプトは、次の順に処理し、最後に今と同じく完了を示す`setup-done`の行を標準出力へ出す。起動スクリプトは、この行が記録に現れるのを待つ。
 
@@ -221,7 +239,7 @@ vast.aiの機械は、このイメージで借りることを前提にする。�
 
 `compose.yml`は、1回だけ動く準備のサービス`dev-init`と、開発用のサービス`dev`の2つを持つ。
 `dev`は、Dockerfileからビルドしたイメージに`minase-dev:local`と名付けて使い、起動したら`sleep infinity`で待つ。
-開発者は作業ツリーの直下で`docker compose up -d dev`を実行して起動し、`docker compose exec dev bash`でシェルに入る。シェルは起動時に`/opt/minase-zero/env.sh`を読み込む。
+開発者は作業ツリーの直下で`docker compose up -d dev`を実行して起動し、`docker compose exec dev bash`でシェルに入る。イメージの`/etc/bash.bashrc`に1行を足してあるので、対話シェルは起動時に`/opt/minase-zero/env.sh`を読み込む。
 GHCRへ登録するときは、`minase-dev:local`にコミットのタグを付けて送る。
 
 1つのコンテナは、1つの作業ツリーだけを扱う。
@@ -243,14 +261,15 @@ worktreeの作成、削除、および`git worktree prune`はホストだけで�
 
 `compose.yml`は、作業ツリーの直下の`.env`（git管理外）から、次の変数を`${変数:?}`の形で読み、変数がなければ起動を拒む。
 
-- ホストの利用者のUIDとGID。
-- 扱う作業ツリーの絶対パスと、リポジトリの本体の`.git`の絶対パス。
-- composeのプロジェクトの名前。トップレベルの`name`に使う。
+- ホストの利用者のUIDとGID（`MINASE_UID`、`MINASE_GID`）。
+- 扱う作業ツリーの絶対パス（`MINASE_TREE`）と、リポジトリの本体の`.git`の絶対パス（`MINASE_GIT_DIR`）。
+- composeのプロジェクトの名前（`COMPOSE_PROJECT_NAME`）。トップレベルの`name`に使う。
 
 リポジトリの本体の`.env`には、2026年10月の試みで書いた`GHCR_IO_TOKEN`がすでにある。composeはこのファイル全体を読むので、既存の行は残したまま上の変数を書き足す。
 
 `dev-init`はrootで動き、新しく作られたボリューム（`target/`、`mnsd_reader/target/`、ホームのディレクトリ、およびcargoのレジストリ）の所有者を、ホストの利用者のUIDとGIDに合わせて終わる。
 作業ツリーの下に覆いかぶせるボリュームは、イメージの中に同じパスがないので、Dockerがrootの所有で作る。そのままでは、ホストの利用者で動く`dev`が書き込めない。
+`dev-init`は、ボリュームをかぶせる先の2つのディレクトリ（作業ツリーの`target/`と`tools/train/zero/mnsd_reader/target/`）も、ホストの利用者の所有で作る。ホストの側にこれらがないまま`dev`を起動すると、Dockerがマウント先として空のディレクトリをrootの所有でホストに作るからである。
 `dev`は、`dev-init`が成功して終わってから、ホストの利用者のUIDとGIDで起動する。
 `HOME`は、名前つきのボリュームに置く`/home/dev`とし、uvのキャッシュもこの下に置く。
 cargoのレジストリ（`/opt/minase-zero/.runtime/cargo/registry`）も名前つきのボリュームに置き、コンテナを作り直しても取得し直さないようにする。
@@ -263,11 +282,11 @@ cargoのレジストリ（`/opt/minase-zero/.runtime/cargo/registry`）も名前
 - NASはマウントしない。NASを使う実行器と起動スクリプトはホストで動かすからである。
 
 作業機は、対局の測定やlishogi Botの実行にも使っている。
-コンテナの中のビルドと試験も作業機のCPUを使うので、[進行中の測定を確かめる教訓](../lessons/check-running-measurements-before-cpu-load.md)をホストと同じく守る。
+コンテナの中のビルドと試験も作業機のCPUを使うので、[進行中の測定を確かめる教訓](../../lessons/check-running-measurements-before-cpu-load.md)をホストと同じく守る。
 
 ## 実装フェーズ
 
-コードの変更は、実装を担うAIエージェントであるcodexへ委任する（[codexへの委任の手引き](../guides/codex-delegation.md)）。
+コードの変更は、実装を担うAIエージェントであるcodexへ委任する（[codexへの委任の手引き](../../guides/codex-delegation.md)）。
 codexのサンドボックスにはネットワーク、GPU、およびDockerがないので、イメージのビルド、GPUの試験、vast.aiとColab機での確認は委任元が行う。
 
 ### フェーズ1: 環境の入力と実行器の変更
@@ -275,8 +294,7 @@ codexのサンドボックスにはネットワーク、GPU、およびDockerが
 `setup.sh`と`env.sh`を「導入先を環境のディレクトリに閉じる」と「minaseとmnsd_readerは動かす機械でビルドする」の節のとおりに改め、検査のスクリプトと同期のスクリプトを`tools/train/zero/`に置く。
 実行器の`RemotePaths`に読み込む`env.sh`の場所を加え、`scripts/vast/common.py`の`create`にログインの引数と例外の変換を加え、それぞれの試験を改める。
 `create`の試験では、ダミーのトークンで`vastai`の異常終了と時間切れを模擬し、例外の文字列と標準エラーにトークンが出ないことを確かめる。
-あわせて、`mnsd_reader`のディレクトリがない構成での`--no-install-local`の同期を作業機で実行し、受け付ける構成を決める。
-完了条件は、`tools/train/zero/tests`、`scripts/vast/`、および`scripts/vast-spsa/`の試験が通り、同期の構成が決まることである。
+完了条件は、`tools/train/zero/tests`、`scripts/vast/`、および`scripts/vast-spsa/`の試験が通ることである。
 
 ### フェーズ2: イメージと開発用のコンテナ
 
@@ -296,7 +314,7 @@ GPUを2枚にするのは、複数GPUの学習のプロセスの間の通信が�
 
 ColabでGPUがNVIDIA L4の機械を短時間借り、改めた`setup.sh`で導入から照合までが通ることを確かめる。
 L4の消費レートは、Colabの課金の単位である計算単位（compute unit、CU）で1.54 CU/時であり、導入、ビルド、および照合が1時間に収まれば、消費は1.54 CU以下になる。
-あわせて、手引き、ADR、および[ROADMAP](../ROADMAP.md)を改める。
+あわせて、手引き、ADR、および[ROADMAP](../../ROADMAP.md)を改める。
 完了条件は、「完了条件」の節を満たすことである。
 
 ## 検証
@@ -333,9 +351,9 @@ Colab機では、次を確かめる。
 
 ## 参考資料
 
-- [実行環境の導入のADR](../adr/install-the-zero-toolchain-from-one-lock-on-every-machine.md)と[Colab機の借り方のADR](../adr/rent-colab-gpus-through-the-cli-and-keep-state-on-the-nas.md)：Colab機でコンテナを使わない理由。
-- [複数GPU化のvast.aiの測定](../measurements/alphazero-multi-gpu/alphazero-multi-gpu-vast.md)：今の導入の時間と、起動スクリプトと準備スクリプトの元。
-- [借りる機械の操作の手引き](../guides/alphazero-machines.md)：Colab機とvast.aiの今の手順。
+- [実行環境の導入のADR](../../adr/archive/install-the-zero-toolchain-from-one-lock-on-every-machine.md)と[Colab機の借り方のADR](../../adr/rent-colab-gpus-through-the-cli-and-keep-state-on-the-nas.md)：Colab機でコンテナを使わない理由。
+- [複数GPU化のvast.aiの測定](../../measurements/alphazero-multi-gpu/alphazero-multi-gpu-vast.md)：今の導入の時間と、起動スクリプトと準備スクリプトの元。
+- [借りる機械の操作の手引き](../../guides/alphazero-machines.md)：Colab機とvast.aiの今の手順。
 - [vast.aiのDocker Execution Environment](https://docs.vast.ai/guides/instances/docker-environment)：SSHの起動方式で、`-e`で渡した環境変数がSSHのセッションから既定では見えないこと、onstartのスクリプトで`/etc/environment`へ書き出す方法、および共有メモリがGPUの割合に応じて割り当てられること（2026年11月11日参照）。
 - vast.aiのCLI 1.10.0の`vastai create instance --help`：`--image`と`--login`の引数（2026年11月11日に作業機で確認）。
 - uv 0.13.4の`uv help sync`と`uv help run`：`--no-install-local`（パスで指定した依存を入れない）と`UV_NO_SYNC`（`uv run`の同期を止める）。uvの公式のインストーラ（0.13.4）の`UV_UNMANAGED_INSTALL`（2026年11月11日に作業機で確認）。

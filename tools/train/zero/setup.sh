@@ -3,19 +3,19 @@ set -euo pipefail
 
 source "$(dirname -- "${BASH_SOURCE[0]}")/env.sh"
 
-if ! command -v uv >/dev/null 2>&1; then
-    curl -LsSf https://astral.sh/uv/0.13.4/install.sh | env UV_INSTALL_DIR="$HOME/.local/bin" sh
-    export PATH="$HOME/.local/bin:$PATH"
+if [[ ! -x "$ZERO_DIR/.runtime/bin/uv" ]] ||
+    [[ "$("$ZERO_DIR/.runtime/bin/uv" --version | awk '{print $2}')" != "$UV_VERSION" ]]; then
+    curl -LsSf "https://astral.sh/uv/$UV_VERSION/install.sh" | env UV_UNMANAGED_INSTALL="$ZERO_DIR/.runtime/bin" sh
 fi
 
-if ! command -v rustup >/dev/null 2>&1; then
-    curl -LsSf https://sh.rustup.rs | sh -s -- --default-toolchain none --profile minimal -y
+if [[ ! -x "$CARGO_HOME/bin/rustup" ]]; then
+    curl -LsSf https://sh.rustup.rs | sh -s -- --default-toolchain none --profile minimal --no-modify-path -y
 fi
-rustup toolchain install "$RUST_TOOLCHAIN" --profile minimal
+rustup toolchain install "$RUST_TOOLCHAIN" --profile minimal --component clippy --component rustfmt
 
 cd -- "$ZERO_DIR"
-# uv builds the MNSD reader extension (mnsd_reader/) with cargo; pin it to the same toolchain.
-RUSTUP_TOOLCHAIN="$RUST_TOOLCHAIN" uv sync --frozen
+# Leave mnsd_reader uninstalled here; sync-env.sh builds it from source on the machine that runs it.
+uv sync --frozen --no-install-local
 
 if [[ ! -d "$ORT_DIR" ]]; then
     mkdir -p .runtime
@@ -23,8 +23,11 @@ if [[ ! -d "$ORT_DIR" ]]; then
     curl -LfsS "https://github.com/microsoft/onnxruntime/releases/download/v$ORT_VERSION/$ORT_ARCHIVE" -o ".runtime/$ORT_ARCHIVE"
     printf '%s  %s\n' "$ORT_SHA256" ".runtime/$ORT_ARCHIVE" | sha256sum -c -
     tar -xzf ".runtime/$ORT_ARCHIVE" -C .runtime
+    rm -- ".runtime/$ORT_ARCHIVE"
 fi
 
-uv run --frozen python -c "import torch; print(torch.__version__, torch.version.cuda, torch.cuda.is_available())"
-rustc +"$RUST_TOOLCHAIN" --version
+uv run --frozen --no-sync python -c "import torch; print(torch.__version__, torch.version.cuda, torch.cuda.is_available())"
+rustc --version
+cargo clippy --version
+cargo fmt --version
 ls "$ORT_DYLIB_PATH"

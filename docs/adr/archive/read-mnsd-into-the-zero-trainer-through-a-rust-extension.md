@@ -10,7 +10,7 @@
 局面の復元には中将棋の着手の適用と合法手の生成が要るので、PyTorchの学習器はMNSDを単体では読めない。
 Rustの学習器`crates/minase-trainer`の読み込み処理は、αβ探索の教師だけを受け付け、方策を保持しない。
 リプレイバッファは最大4サイクルの約400万局面であり、95面の入力を単精度で展開すると約220 GB、方策の目標を35,856要素の密な配列で持つと約570 GBになる。
-借りた機械は`git archive`の書庫から環境を導入するので、学習器の依存は同じ手順で入らなければならない（[実行環境の導入のADR](../install-the-zero-toolchain-from-one-lock-on-every-machine.md)）。
+借りた機械は`git archive`の書庫から環境を導入するので、学習器の依存は同じ手順で入らなければならない（[実行環境の導入のADR](install-the-zero-toolchain-from-one-lock-on-every-machine.md)）。
 エンジンの開発者は、[学習器の設計書](../../plans/archived/alphazero-trainer.md)で拡張モジュールによる読み込みを決め、着手時に返す値と導入の方法を補った。
 
 ## 決定

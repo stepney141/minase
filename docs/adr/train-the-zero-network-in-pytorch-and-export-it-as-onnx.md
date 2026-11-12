@@ -16,7 +16,7 @@ NNUEの学習器がRustで得た速さは、疎な入力特徴の収集と逆索
 ## 決定
 
 ネットはPyTorchで学習し、学習したネットをONNXへ出力して、minaseがそれを推論する。
-学習器はPythonのパッケージ`tools/train/zero/minase_zero/`とし、依存は環境定義`tools/train/zero/`のuvのロックファイルで固定する（[実行環境の導入のADR](install-the-zero-toolchain-from-one-lock-on-every-machine.md)）。
+学習器はPythonのパッケージ`tools/train/zero/minase_zero/`とし、依存は環境定義`tools/train/zero/`のuvのロックファイルで固定する（[実行環境の導入のADR](archive/install-the-zero-toolchain-from-one-lock-on-every-machine.md)）。
 ネットの定義とONNXへの出力の設定は`minase_zero.net`の1か所に置き、実現性の測定に使ったスクリプト（`feasibility/make_nets.py`）と参照推論のスクリプト（`nn_torch_reference.py`）もそこから読み込む。
 
 ## 検討した代案

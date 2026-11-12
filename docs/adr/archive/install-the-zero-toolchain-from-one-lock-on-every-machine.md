@@ -2,15 +2,15 @@
 
 ## ステータス
 
-承認済み。決定日は2026年10月27日。
+置き換え済み。決定日は2026年10月27日。[AlphaZero型探索の実行環境は、借りる機械では導入スクリプトで導入し、作業機の開発用のコンテナは同じスクリプトから作る](../install-the-zero-toolchain-with-setup-sh-on-rented-machines-and-build-the-workstation-image-from-it.md)によって置き換えられた。
 
 ## コンテキスト
 
-AlphaZero型探索の学習と自己対局は、Colab機、vast.aiやRunpodで借りる機械、および作業機で動かす（[Colab機のADR](rent-colab-gpus-through-the-cli-and-keep-state-on-the-nas.md)）。
+AlphaZero型探索の学習と自己対局は、Colab機、vast.aiやRunpodで借りる機械、および作業機で動かす（[Colab機のADR](../rent-colab-gpus-through-the-cli-and-keep-state-on-the-nas.md)）。
 同じネットの出力が機械によって変わらないように、PyTorch、TensorRT、ONNX Runtime、およびRustのツールチェーンの版をそろえる必要がある。
 Colab機ではコンテナを使えず、vast.aiやRunpodの機械は事業者が用意したコンテナの中で動く。
 作業機（Arch Linux、glibc 2.44）でビルドしたバイナリは、Colab機（Ubuntu 24.04、glibc 2.39）より新しいglibcに依存し得る。
-[実現性の実測](../measurements/alphazero-environment/alphazero-feasibility.md)では、新しいColab機での導入に81〜214秒、minaseのリリースビルドに40〜82秒かかった。
+[実現性の実測](../../measurements/alphazero-environment/alphazero-feasibility.md)では、新しいColab機での導入に81〜214秒、minaseのリリースビルドに40〜82秒かかった。
 
 ## 決定
 
@@ -29,5 +29,5 @@ Rustのツールチェーンはrustupで固定した版を入れ、ONNX Runtime�
 ## 結果
 
 新しい機械を借りるたびに、導入とビルドにかかる数分がサイクルの所要時間に加わる。
-GPUドライバ、OS、およびglibcは機械ごとに異なるので、その差が推論の結果に影響しないことは、PyTorch、ONNX RuntimeのCPU、およびTensorRTのFP16の出力の照合で確かめる（[ネットの入出力と推論](../plans/archived/alphazero-network.md)の検証の節）。
+GPUドライバ、OS、およびglibcは機械ごとに異なるので、その差が推論の結果に影響しないことは、PyTorch、ONNX RuntimeのCPU、およびTensorRTのFP16の出力の照合で確かめる（[ネットの入出力と推論](../../plans/archived/alphazero-network.md)の検証の節）。
 版を上げるときは、ロックファイルと`tools/train/zero/env.sh`の版を同じコミットで変える。

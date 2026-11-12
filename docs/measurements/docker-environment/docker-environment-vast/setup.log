@@ -1,0 +1,88 @@
+2026-11-12T14:04:35+00:00
+2026-11-12T14:04:36+00:00
+   Building minase-mnsd-reader @ file:///workspace/src/tools/train/zero/mnsd_reader
+      Built minase-mnsd-reader @ file:///workspace/src/tools/train/zero/mnsd_reader
+Prepared 1 package in 15m 05s
+Installed 1 package in 31ms
+ + minase-mnsd-reader==0.1.0 (from file:///workspace/src/tools/train/zero/mnsd_reader)
+2026-11-12T14:19:42+00:00
+warning: profiles for the non root package will be ignored, specify profiles at the workspace root:
+package:   /workspace/src/crates/minase/Cargo.toml
+workspace: /workspace/src/Cargo.toml
+    Updating crates.io index
+   Compiling proc-macro2 v1.0.107
+   Compiling quote v1.0.47
+   Compiling unicode-ident v1.0.24
+   Compiling version_check v0.9.5
+   Compiling find-msvc-tools v0.1.10
+   Compiling shlex v2.0.1
+   Compiling typenum v1.20.1
+   Compiling serde_core v1.0.228
+   Compiling cfg-if v1.0.4
+   Compiling utf8parse v0.2.2
+   Compiling zerocopy v0.8.63
+   Compiling anstyle v1.0.14
+   Compiling colorchoice v1.0.5
+   Compiling ort-sys v2.0.0-rc.15
+   Compiling libc v0.2.189
+   Compiling is_terminal_polyfill v1.70.2
+   Compiling rustix v1.1.4
+   Compiling serde v1.0.228
+   Compiling anstyle-query v1.1.5
+   Compiling bitflags v2.13.1
+   Compiling strsim v0.11.1
+   Compiling procfs v0.18.0
+   Compiling heck v0.5.0
+   Compiling linux-raw-sys v0.12.1
+   Compiling serde_json v1.0.140
+   Compiling clap_lex v1.1.0
+   Compiling hex v0.4.3
+   Compiling smallvec v1.16.4
+   Compiling ryu v1.0.10
+   Compiling cpufeatures v0.2.17
+   Compiling memchr v2.7.6
+   Compiling itoa v1.0.14
+   Compiling minase-core v0.2.0 (/workspace/src/crates/minase-core)
+   Compiling anstyle-parse v1.0.0
+   Compiling libloading v0.9.0
+   Compiling cc v1.4.2
+   Compiling generic-array v0.14.7
+   Compiling anstream v1.0.0
+   Compiling procfs-core v0.18.0
+   Compiling clap_builder v4.6.2
+   Compiling syn v2.0.110
+   Compiling syn v3.0.3
+   Compiling libmimalloc-sys v0.1.49
+   Compiling block-buffer v0.10.4
+   Compiling crypto-common v0.1.7
+   Compiling digest v0.10.7
+   Compiling fs2 v0.4.3
+   Compiling sha2 v0.10.9
+   Compiling zerocopy-derive v0.8.63
+   Compiling serde_derive v1.0.228
+   Compiling clap_derive v4.6.4
+   Compiling clap v4.6.4
+   Compiling mimalloc v0.1.52
+   Compiling half v2.7.1
+   Compiling ort v2.0.0-rc.15
+   Compiling minase v2.6.0 (/workspace/src/crates/minase)
+    Finished `release` profile [optimized] target(s) in 2m 02s
+2026-11-12T14:21:45+00:00
+name, memory.total [MiB], driver_version, compute_cap
+NVIDIA GeForce RTX 4090, 24564 MiB, 580.126.20, 8.9
+NVIDIA GeForce RTX 4090, 24564 MiB, 580.126.20, 8.9
+192
+4608000 100000
+Model name:                              AMD EPYC 7K62 48-Core Processor
+Thread(s) per core:                      2
+Core(s) per socket:                      48
+Socket(s):                               2
+               total        used        free      shared  buff/cache   available
+Mem:             503          70          25           1         412         433
+Swap:              7           0           7
+Filesystem      Size  Used Avail Use% Mounted on
+overlay         100G  889M  100G   1% /
+Filesystem      Size  Used Avail Use% Mounted on
+shm              62G     0   62G   0% /dev/shm
+2026-11-12T14:21:45+00:00
+setup-done

@@ -3,7 +3,7 @@
 本書は、AlphaZero型探索の学習と自己対局に使うGPUの機械を、開発に使う作業機から操作して借り、環境を導入し、ファイルを転送し、計算を実行し、終了するまでの手順を定める。
 対象は、Google Colab（以下Colab）の有料プランで借りるGPUつきの仮想機械（以下Colab機）である。
 vast.aiで時間単位で借りるレンタル機の手順は最後の節に書き、Runpodはまだ実機で確かめていないので、同じ節に使う前の規則だけを書く。
-方式を選んだ理由は[Colab機の借り方のADR](../adr/rent-colab-gpus-through-the-cli-and-keep-state-on-the-nas.md)と[実行環境の導入のADR](../adr/install-the-zero-toolchain-from-one-lock-on-every-machine.md)に、手順の根拠になった実測の値は[実現性の実測の記録](../measurements/alphazero-environment/alphazero-feasibility.md)にある。
+方式を選んだ理由は[Colab機の借り方のADR](../adr/rent-colab-gpus-through-the-cli-and-keep-state-on-the-nas.md)と[実行環境のADR](../adr/install-the-zero-toolchain-with-setup-sh-on-rented-machines-and-build-the-workstation-image-from-it.md)に、手順の根拠になった実測の値は[実現性の実測の記録](../measurements/alphazero-environment/alphazero-feasibility.md)にある。
 
 ## 1. 準備
 
@@ -67,10 +67,12 @@ Colab機は同時に1本の`colab ssh`しか受け付けず、2本目の接続�
 作業機の回線では、作業機からColab機への転送が約6.2 MB/秒、Colab機から作業機への転送が約9.7 MB/秒であった。
 学習データは圧縮したまま送り、Colab機で展開する。
 
-Colab機では、書庫を展開し、`tools/train/zero/setup.sh`で環境を導入してから、minaseをビルドする。
+Colab機では、書庫を展開し、`tools/train/zero/setup.sh`で環境を導入してから、学習器の拡張モジュールとminaseをビルドする。
 次のコマンドは、`colab ssh -s <名前>`で開いたColab機のシェルで実行するか、4節の方法によりバックグラウンドで起動する。
-`setup.sh`は、uvのロックファイルからPythonの依存パッケージを、rustupから固定した版のRustのツールチェーンを、Microsoftの配布物からONNX Runtimeを導入し、版を表示して終わる。
-uvは、学習器がMNSDを読む拡張モジュール`minase_mnsd_reader`（`tools/train/zero/mnsd_reader/`）も、固定した版のツールチェーンでビルドして導入する。
+`setup.sh`は、uv、固定した版のRustのツールチェーン、uvのロックファイルが固定するPythonの依存パッケージ、およびMicrosoftの配布物のONNX Runtimeを導入し、版を表示して終わる。
+導入先はすべて`tools/train/zero/`の下の`.runtime/`と`.venv/`であり、ホームのディレクトリには何も置かない。
+学習器がMNSDを読む拡張モジュール`minase_mnsd_reader`（`tools/train/zero/mnsd_reader/`）は、`setup.sh`では入らないので、`env.sh`を読み込んだ後に`sync-env.sh`でビルドして導入する。
+`setup.sh`を実行し直すと拡張モジュールが仮想環境から外れるので、その後には`sync-env.sh`も実行し直す。
 新しいColab機での所要時間は、導入がL4で81秒、A100で214秒、G4で96〜98秒、minaseのビルドが40〜82秒であった。
 2026年10月28日から29日に借りた3台のL4では、依存パッケージの取得だけで2分2秒、10分52秒、14分30秒かかり、取得の時間は日と機械によって大きく変わった（[試走の記録](../measurements/alphazero-rl/alphazero-rl-trial.md)）。
 
@@ -78,10 +80,12 @@ uvは、学習器がMNSDを読む拡張モジュール`minase_mnsd_reader`（`to
 mkdir -p /content/src && tar -xf /content/minase.tar -C /content/src
 bash /content/src/tools/train/zero/setup.sh
 source /content/src/tools/train/zero/env.sh
-cd /content/src && cargo +"$RUST_TOOLCHAIN" build --release --bin minase
+/content/src/tools/train/zero/sync-env.sh
+cd /content/src && cargo build --release --bin minase
 ```
 
-`env.sh`は、ONNX Runtimeの共有ライブラリを`ORT_DYLIB_PATH`に、TensorRT、CUDA、およびcuDNNの共有ライブラリを`LD_LIBRARY_PATH`に設定する。
+`env.sh`は、導入したuvとRustのツールチェーンを`PATH`に加え、`cargo`が使うツールチェーンの版を固定する。
+あわせて、ONNX Runtimeの共有ライブラリを`ORT_DYLIB_PATH`に、TensorRT、CUDA、およびcuDNNの共有ライブラリを`LD_LIBRARY_PATH`に設定する。
 minaseのGPUの推論を使うコマンドは、この設定の下で実行する。
 
 ## 4. 計算を実行する
@@ -196,8 +200,13 @@ python3 docs/measurements/alphazero-multi-gpu/launch-vast.py --offer <出品のI
 
 起動スクリプトは、作業機で`nohup setsid`により端末から切り離して走らせ、標準出力と標準エラーをファイルへ向ける。
 起動スクリプトは、作成時に自己停止を予約し、自己停止の時刻と出品の貸出期限の早いほうを終了期限として実行器へ渡す。
-導入は`docs/measurements/alphazero-multi-gpu/vast-setup.sh`で、パッケージの導入、`tools/train/zero/setup.sh`、および`minase`のビルドを行い、測った機械では11〜15分かかった。
-GitHubからのONNX Runtimeの書庫の取得が毎秒約80 KBしか出ない機械もあった。その場合は、作業機の`tools/train/zero/.runtime/`にある同じ書庫を機械へ送り、`env.sh`の`ORT_SHA256`と照合してから`/workspace/src/tools/train/zero/.runtime/`へ展開しておくと、`setup.sh`は取得を省く。この形にした機械の導入は約4分で終わった。
+導入は`docs/measurements/alphazero-multi-gpu/vast-setup.sh`で、パッケージの導入、`tools/train/zero/setup.sh`、`sync-env.sh`による拡張モジュールのビルド、および`minase`のビルドを行い、測った機械では11〜15分かかった。
+GitHubからのONNX Runtimeの書庫の取得が毎秒約80 KBしか出ない機械もあった。その場合は、`env.sh`の`ORT_VERSION`の書庫を作業機で取得して機械へ送り、`env.sh`の`ORT_SHA256`と照合してから`/workspace/src/tools/train/zero/.runtime/`へ展開しておくと、`setup.sh`は取得を省く。この形にした機械の導入は約4分で終わった。
+`Dockerfile`から作ったイメージをvast.aiの機械に取得させる方式は、2026年11月12日に試して採らなかった（[実行環境のADR](../adr/install-the-zero-toolchain-with-setup-sh-on-rented-machines-and-build-the-workstation-image-from-it.md)）。
+
+機械の回線は、出品によって大きく違う。
+2026年11月12日に借りた中国の機械では、機械から作業機への転送が毎秒約1.25 MBであり、PyPIとcrates.ioからの取得を含む拡張モジュールのビルドに15分かかった（[vast.aiでのイメージの確認](../measurements/docker-environment/docker-environment-vast.md)）。
+料金が近い出品が複数あるときは、照会の結果の`inet_down`と`inet_up`が大きく、作業機から近い場所のものを選ぶ。
 作業機からvast.aiの機械への転送は毎秒約5.5 MBであり、リプレイバッファの上限の約29 GBを新しい機械へ送るには約90分かかる。
 
 **終わり方**
@@ -215,7 +224,7 @@ SSHが使えない機械と導入に失敗した機械は、起動スクリプ�
 Runpodの機械はまだ使っていない。
 使う前に、候補のGPU種別の機械を短時間借り、起動から導入とビルドを終えるまでの時間と転送の時間を測り、時間単価を記録する。
 それまでは、次の規則で扱う。
-事業者が公開するUbuntuとCUDAのイメージの上で`tools/train/zero/setup.sh`を実行し、作業機からは公式CLI`runpodctl`で操作し、ファイルの転送はSSH越しのrsyncで行う。
+事業者が公開するUbuntuとCUDAのイメージの上で、Colab機と同じく`tools/train/zero/setup.sh`と`sync-env.sh`を実行し、作業機からは公式CLI`runpodctl`で操作し、ファイルの転送はSSH越しのrsyncで行う。
 公開IPとTCPポートを使う完全なSSH接続ができる機械を選び、rsyncを作業機と機械の両方に導入する。
 実行器`minase_zero run-cycles`の機械の種類は`colab`と`vast`だけなので、Runpodでは接続の部分を実行器へ足してから試走する。
 作業を終えるときは、必要なファイルを受け取って検査和を確かめてから、terminateで機械を破棄する。停止しただけの機械には記憶領域の保管料がかかり続けるからである。
