@@ -38,7 +38,7 @@ SFENは千日手の判定に使う局面の履歴を含まない。
 | コマンド | minaseでの扱い |
 |---|---|
 | `usi` | 標準どおり。宣言するオプションは「オプション」の節にある。 |
-| `isready` | 標準どおり。MCTS（モンテカルロ木探索）では推論器をここで作り、失敗するとエラーを1行出してエンジンを終了する。 |
+| `isready` | 規則セットが未設定なら、エラーを1行出してエンジンを終了する（「規則セットの指定」の節）。MCTS（モンテカルロ木探索）では推論器をここで作り、失敗した場合も同じくエラーを1行出して終了する。 |
 | `setoption` | minase独自のオプションを持つ。 |
 | `usinewgame` | 省略してよい。 |
 | `position` | 中将棋の表記を使い、終局した対局では受け付けない。 |
@@ -62,6 +62,20 @@ USI原典は解釈できないコマンドを無視するよう定めるが、mi
 探索中に届いた`go`は、`info string error: go is already running`を返して拒否する。
 探索中に届いた`go`、`stop`、`ponderhit`、`gameover`、および`quit`以外のコマンドは、`isready`と`setoption`も含めて、探索が終わってから受信順に処理する。
 したがって、探索中に送った`setoption`は次の探索から反映される。
+
+### 規則セットの指定
+
+minaseは規則セットの既定値を持たないので、GUIや対局用のプログラムは、`isready`より前に`setoption name RuleSet value <規則>`を送る必要がある。
+規則セットは、対局に採用する規則コードの組であり、値の書き方は「オプション」の節の表にある。
+規則セットが未設定のまま`isready`を受けると、minaseは`info string error: required option RuleSet is not set`を出し、`readyok`を返さずに終了コード1で終わる。
+`isready`を送らないクライアントに備えて、`usinewgame`、`position`、`go`、`gameover`、および独自のコマンドの`moves`、`state`、`d`、`eval`、`tt`も、規則セットが未設定の間は同じ文言のエラーで拒否する。
+この場合はエンジンを終了せず、次のコマンドを待つ。
+`USI_Hash`や`Threads`などのほかのオプションは、規則セットより先に送ってよく、届いた時点で検査して適用する。
+
+最初に受け付けた`RuleSet`は、その時点から始まる対局と次の対局の両方の規則になる。
+2回目以降の`RuleSet`は次の対局の規則だけを変え、進行中の対局には影響しない。
+値のない`RuleSet`と、空の文字列を表す`<empty>`の指定は、`info string error: RuleSet requires a value`で拒否する。
+既定値を置かない理由は[ADR](../adr/require-the-rule-set-through-the-protocol-and-keep-no-default.md)にある。
 
 ### position
 
@@ -118,7 +132,7 @@ minaseは`usi`への応答で次のオプションを宣言する。
 
 | 名前 | 型と範囲 | 既定値 | 意味 |
 |---|---|---|---|
-| `RuleSet` | string | 起動時の`--rules`の正準表記 | 規則セット（chu-shogi.md第33条）。規則コードのコンマ区切り、`JCSA`、または`lishogi`で指定し、次の対局から反映される。 |
+| `RuleSet` | string | `<empty>`（未設定） | 規則セット（chu-shogi.md第33条）。規則コードのコンマ区切り、`JCSA`、または`lishogi`で指定する。指定は必須であり、最初の指定は直ちに、2回目以降の指定は次の対局から反映される（「規則セットの指定」の節）。 |
 | `USI_Variant` | string | `chushogi` | 変種名。`chushogi`だけを受け付け、それ以外の値はエラーにする。Lishogi-Botが対局ごとに変種名として送る値を受けるための宣言である。 |
 | `USI_Hash` | spin、1〜65,536 | 256 | αβ探索では置換表、MCTSでは探索木の大きさ（MiB）。 |
 | `Threads` | spin、αβ探索は1〜256、MCTSは1だけ | 1 | 探索スレッドの数。 |

@@ -30,12 +30,13 @@ pub fn probe_engine_defaults(
             hash_mb: Some(CECP_MEMORY_MB),
         });
     }
-    let mut process = EngineProcess::spawn(player, timeout).map_err(|_| {
-        io::Error::other(format!(
-            "failed to start {} for USI resource probe",
-            player.text
-        ))
-    })?;
+    let mut process = EngineProcess::spawn(&player.path, &player.args, player.protocol, timeout)
+        .map_err(|_| {
+            io::Error::other(format!(
+                "failed to start {} for USI resource probe",
+                player.text
+            ))
+        })?;
     let (defaults, declarations) = process.read_usi_declarations().map_err(|failure| {
         io::Error::other(format!(
             "failed to read USI resource defaults from {}: {failure:?}",
@@ -64,10 +65,11 @@ pub fn probe_engine_defaults(
 
 /// USI握手で宣言されたoption行を、期限つきの既存通信経路で取得する。
 pub fn probe_usi_options(
-    player: &PlayerConfig,
+    path: &std::path::Path,
+    args: &[String],
     timeout: Duration,
 ) -> Result<Vec<String>, EngineFailure> {
-    let mut process = EngineProcess::spawn(player, timeout)?;
+    let mut process = EngineProcess::spawn(path, args, Protocol::Usi, timeout)?;
     let (_, options) = process.read_usi_declarations()?;
     Ok(options)
 }

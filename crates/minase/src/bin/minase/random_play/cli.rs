@@ -111,7 +111,7 @@ mod tests {
         assert!(full.verify_all);
         assert!(full.verbose);
 
-        // --rules省略はエラー(match_runnerと異なり明文で必須)
+        // --rules省略はエラーであり、規則を明示する。
         assert!(Arguments::try_parse_from(["random_play"]).is_err());
         // --gameと--gamesの同時指定はエラー
         assert!(

@@ -838,3 +838,60 @@ for _ in sys.stdin:
     let process = EngineProcess::start(&player, 1, Duration::from_secs(2)).unwrap();
     process.wait_for("initialized").unwrap();
 }
+
+// CECPのfeature宣言だけに基づき、規則の原文をnewより前に渡す。
+#[test]
+fn cecp_initialization_sends_ruleset_only_when_declared() {
+    for (features, supported) in [
+        ("feature option=\"RuleSet -string \"\nfeature done=1", true),
+        (
+            "feature done=0\nfeature myname=\"fake engine\" option=\"Other -string x\"\nfeature option=\"RuleSet -string \" ping=1\nfeature done=1",
+            true,
+        ),
+        (
+            "feature myname=\"fake engine\" done=1 option=\"RuleSet -string \"",
+            true,
+        ),
+        ("feature myname=\"fake engine\"\nfeature done=1", false),
+        (
+            "feature option=\"RuleSetExtra -string x\" option=\"Other -string RuleSet -string x\" done=1",
+            false,
+        ),
+    ] {
+        let mut expected = vec![
+            "memory 256".to_owned(),
+            "new".to_owned(),
+            "variant chu".to_owned(),
+            "easy".to_owned(),
+            "nopost".to_owned(),
+            "force".to_owned(),
+            "sd 1".to_owned(),
+            "ping 19".to_owned(),
+        ];
+        if supported {
+            expected.insert(0, "option RuleSet=lIsHoGi".to_owned());
+        }
+        let script = format!(
+            r#"import sys,json
+assert sys.stdin.readline().strip() == 'xboard'
+assert sys.stdin.readline().strip() == 'protover 2'
+print(json.loads({features:?}), flush=True)
+for expected in json.loads({expected:?}):
+    received = sys.stdin.readline().strip()
+    assert received == expected, (expected, received)
+print('pong 19', flush=True)
+for line in sys.stdin:
+    pass
+"#,
+            features = serde_json::to_string(features).unwrap(),
+            expected = serde_json::to_string(&expected).unwrap()
+        );
+        let mut config = fake(Vec::new(), "depth=1");
+        config.protocol = Protocol::Cecp;
+        config.args = vec!["-u".to_owned(), "-c".to_owned(), script];
+        config.rules_source = "lIsHoGi".to_owned();
+        let mut process = EngineProcess::start(&config, 1, Duration::from_secs(5)).unwrap();
+        process.send("ping 19").unwrap();
+        process.wait_for("pong 19").unwrap();
+    }
+}

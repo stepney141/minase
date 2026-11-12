@@ -48,20 +48,27 @@ The engine binary is written to `target/release/minase`.
 
 ### Running the engine
 
-Both `--protocol` and `--rules` are required.
+`--protocol` is required and selects USI or CECP.
 
 ```bash
-# USI, Japan Chu Shogi Association rules
-./target/release/minase --protocol usi --rules JCSA
-
-# USI, lishogi rules
-./target/release/minase --protocol usi --rules lishogi
-
-# CECP, explicit rule codes
-./target/release/minase --protocol cecp --rules L0,P0,R1,E0
+./target/release/minase --protocol usi
+./target/release/minase --protocol cecp
 ```
 
-`--rules` accepts one of the following.
+The rule set is given after startup, and the engine has no default rule set.
+A USI client sets the option `RuleSet` before `isready`.
+
+```text
+usi
+setoption name RuleSet value JCSA
+isready
+```
+
+A CECP client sends `option RuleSet=<rules>` before `new`.
+XBoard does so when it is started with `-firstOptions "RuleSet=JCSA"`.
+If `isready` (USI) or `new` (CECP) arrives before a rule set, the engine reports the error and exits with status 1.
+
+`RuleSet` accepts one of the following.
 
 - `JCSA`: the rules of the Japan Chu Shogi Association, with its repetition rule (R0) replaced by R1 (L0,P0,R1,E0)
 - `lishogi`: the rules used on lishogi (L1,L2,P0,P3,R1,E1,E3)

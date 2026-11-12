@@ -69,7 +69,7 @@ def signal(its, pawn_value):
 
 def main(run_dir, engine, count=200, pawn_value=100):
     samples, byoyomi = main_phase_positions(run_dir, int(count))
-    proc = subprocess.Popen([engine, "--protocol", "usi", "--rules", "JCSA"],
+    proc = subprocess.Popen([engine, "--protocol", "usi"],
                             stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True, bufsize=1)
 
     def send(line):
@@ -83,7 +83,9 @@ def main(run_dir, engine, count=200, pawn_value=100):
             if line.startswith(token):
                 return lines
 
-    send("usi"); wait("usiok"); send("isready"); wait("readyok")
+    send("usi"); wait("usiok")
+    send("setoption name RuleSet value JCSA")
+    send("isready"); wait("readyok")
     reached = fired = 0
     for moves, remaining in samples:
         send("usinewgame")

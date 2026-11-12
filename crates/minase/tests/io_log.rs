@@ -45,10 +45,10 @@ impl Drop for Session {
     }
 }
 
-/// 必須のプロトコルと規則を指定し、任意のログを設定する。
+/// 必須のプロトコルを指定し、任意のログを設定する。
 fn command(protocol: &str, log: Option<&Path>) -> Command {
     let mut command = Command::new(env!("CARGO_BIN_EXE_minase"));
-    command.args(["--protocol", protocol, "--rules", "JCSA"]);
+    command.args(["--protocol", protocol]);
     if let Some(log) = log {
         command.arg("--io-log").arg(log);
     }
@@ -111,7 +111,13 @@ fn usi_session_records_handshake_search_and_exact_stdout() {
             }
         }
     });
-    let commands = ["usi", "isready", "position startpos", "go depth 1"];
+    let commands = [
+        "setoption name RuleSet value JCSA",
+        "usi",
+        "isready",
+        "position startpos",
+        "go depth 1",
+    ];
     for line in commands {
         writeln!(input, "{line}").unwrap();
     }
@@ -176,7 +182,8 @@ fn existing_log_is_preserved_and_startup_fails() {
 #[test]
 fn logging_preserves_stdout_byte_for_byte() {
     let log = TemporaryLog::new();
-    let input = b"usi\nisready\nposition startpos\nmoves\nstate\nquit\n";
+    let input =
+        b"setoption name RuleSet value JCSA\nusi\nisready\nposition startpos\nmoves\nstate\nquit\n";
     let plain = run("usi", None, input);
     let logged = run("usi", Some(&log.0), input);
     assert_eq!(logged.stdout, plain.stdout);

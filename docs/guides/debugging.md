@@ -190,8 +190,8 @@ minaseの評価で成り立つ対称性は「段反転と陣営交換」だけ�
 プロトコルの不具合は、エンジンを手で起動してコマンドを送り、応答を読んで調べる。
 
 ```console
-printf 'usi\nisready\nposition startpos\nmoves\nstate\ngo depth 4\n' \
-  | cargo run --release --bin minase -- --protocol usi --rules JCSA
+printf 'usi\nsetoption name RuleSet value JCSA\nisready\nposition startpos\nmoves\nstate\ngo depth 4\n' \
+  | cargo run --release --bin minase -- --protocol usi
 ```
 
 探索中に`quit`を受けると、minaseは探索の結果を捨てて終了する。
@@ -214,12 +214,14 @@ Xディスプレイのない環境では、Xvfbなどの仮想Xディスプレ�
 
 ```console
 xboard -variant chu \
-  -fcp "target/release/minase --protocol cecp --rules JCSA" \
-  -scp "target/release/minase --protocol cecp --rules JCSA" \
+  -fcp "target/release/minase --protocol cecp" -firstOptions "RuleSet=JCSA" \
+  -scp "target/release/minase --protocol cecp" -secondOptions "RuleSet=JCSA" \
   -tc 1 -inc 1 -mg 1 -autoCallFlag true -testLegality false \
   -saveGameFile mm.pgn -debugMode true -nameOfDebugFile mm.debug
 ```
 
+`-firstOptions`と`-secondOptions`は、エンジンが握手で宣言したオプションの値を指定する引数であり、xboardはその値を最初の`new`より前に`option RuleSet=JCSA`として送る。
+minaseは規則セットの既定値を持たないので、この指定がないと、最初の`new`でエラーを出して終了する。
 `-tc 1 -inc 1`は持ち時間1分と1手ごとの加算1秒、`-mg 1`は対局数1を表す。
 時間切れの検出には`-autoCallFlag true`を書き、`-autoflag`の後に`true`などの値を書かない（[xboardの教訓](../lessons/xboard-autoflag-argtrue.md)）。
 対局が終局まで進み、時間切れと`Illegal move`がともに0件であり、両エンジンの`RESULT`行と`mm.pgn`の結果が一致することを確かめる。
@@ -257,7 +259,7 @@ releaseプロファイルはデバッグ情報を持たないので、行番号�
 ```console
 CARGO_PROFILE_RELEASE_DEBUG=line-tables-only CARGO_TARGET_DIR=target/debuginfo \
   cargo build --release --bin minase
-RUST_BACKTRACE=1 target/debuginfo/release/minase --protocol usi --rules JCSA
+RUST_BACKTRACE=1 target/debuginfo/release/minase --protocol usi
 ```
 
 対局ハーネスは、エンジンのクラッシュと応答タイムアウトを`engine_failures:`の行に理由別に数える（[sprt.md](sprt.md)の「異常時の裁定」）。

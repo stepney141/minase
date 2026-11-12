@@ -5,7 +5,7 @@
 //! | コマンド | 応答と処理 |
 //! | --- | --- |
 //! | `usi` | `UsiProtocol::write_handshake`の握手列を返す。 |
-//! | `isready` | 探索器を準備し、`readyok`を返す。推論器の作成に失敗したらエラーを通知してセッションを終了する。 |
+//! | `isready` | 規則の指定を確認して探索器を準備し、`readyok`を返す。規則が未設定、または準備に失敗した場合はエラーを通知してセッションを終了する。 |
 //! | `setoption` | `UsiProtocol::handle_setoption`で設定を検査する。 |
 //! | `usinewgame` | [`EngineCommand::NewGame`]を適用する。 |
 //! | `position` | `UsiProtocol::handle_position`で局面を同期する。 |
@@ -18,6 +18,11 @@
 //! | `debug`、`register`、`stop` | 無応答で無視する。 |
 //! | `ponderhit` | `info string error: ponderhit requires an active ponder search`を返す。 |
 //! | それ以外 | `info string error: unknown command <第1語>`を返す。 |
+//!
+//! `usinewgame`、`position`、`go`（`go mate`を含む）、`gameover`、`moves`、`state`、`d`、`eval`、`tt`は、
+//! 規則が未設定なら固有の検査に先立って`info string error: required option RuleSet is not set`で拒否し、セッションを続ける。
+//! 最初の有効な`RuleSet`で対局状態を生成し、現局と次局の規則を設定する。
+//! 対局に依存しない設定は規則の指定前でも検査して適用する。
 //!
 //! コマンドの拒否は`info string error: <内容>`の1行で通知し、対局や設定への適用を行わない。
 //! ただし拒否された`position`は同期済みの扱いを解除する。
@@ -60,10 +65,10 @@ use minase_core::position::Position;
 use minase_core::rules::parse_rule_set;
 use minase_core::{MoveGenerator, Square};
 
-use super::Protocol;
 use super::engine::{
     Engine, EngineCommand, EngineLifecycle, EngineReply, RejectReason, canonical_rules_text,
 };
+use super::{Protocol, RuleSetNotSet};
 
 /// 投了閾値の既定値20,000 cp。判定は[`UsiProtocol::should_resign`]に従う。
 /// 通常の評価値がほとんど6,000 cpを超えないことを踏まえ、詰まされる読みを対象にする。
@@ -76,8 +81,8 @@ static TUNING_LOCKED: AtomicBool = AtomicBool::new(false);
 
 /// lishogi系拡張を含むUSIプロトコル。
 pub struct UsiProtocol {
-    /// `option`宣言のdefault値に使う起動時規則の正準表記。
-    startup_rules_text: String,
+    /// 最初の有効な規則指定を受けた後に存在する対局状態。
+    engine: Option<Engine>,
     /// 対局内で持ち越す探索器。探索スレッドへ貸し出している間は`None`。
     searcher: Option<Searcher>,
     /// 最後の`position`コマンドが受理され、局面が同期済みかどうか。
@@ -176,19 +181,22 @@ enum LineAction {
     Quit,
 }
 
+impl Default for UsiProtocol {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl UsiProtocol {
-    /// エンジンの起動時active規則をoption宣言の正準default値として保持する。
-    ///
-    /// セッション開始前に構築することで、宣言値と状態機械の起動時規則を
-    /// 異なる値から作れないようにする。
-    pub fn new(engine: &Engine) -> Self {
-        Self::with_searcher(engine, Searcher::alpha_beta())
+    /// 規則未設定のUSIセッションを構築する。
+    pub fn new() -> Self {
+        Self::with_searcher(Searcher::alpha_beta())
     }
 
-    /// 起動時に選ばれた探索器と、エンジンの規則でUSIセッションを構築する。
-    pub fn with_searcher(engine: &Engine, searcher: Searcher) -> Self {
+    /// 指定された探索器を持つ、規則未設定のUSIセッションを構築する。
+    pub fn with_searcher(searcher: Searcher) -> Self {
         Self {
-            startup_rules_text: canonical_rules_text(engine.active_rule_codes()),
+            engine: None,
             searcher: Some(searcher),
             position_synchronized: false,
             accepted_position: None,
@@ -200,17 +208,41 @@ impl UsiProtocol {
         }
     }
 
+    /// 規則が設定済みの対局状態を参照する。未設定なら専用のエラーを返す。
+    pub fn engine(&self) -> Result<&Engine, RuleSetNotSet> {
+        self.engine.as_ref().ok_or(RuleSetNotSet)
+    }
+
+    /// 規則が設定済みの対局状態を変更するための参照を返す。
+    fn engine_mut(&mut self) -> Result<&mut Engine, RuleSetNotSet> {
+        self.engine.as_mut().ok_or(RuleSetNotSet)
+    }
+
     /// 探索していない待機状態で1コマンドを処理する。
-    fn handle_idle_line(
-        &mut self,
-        engine: &mut Engine,
-        line: &str,
-        output: &mut dyn Write,
-    ) -> io::Result<LineAction> {
+    fn handle_idle_line(&mut self, line: &str, output: &mut dyn Write) -> io::Result<LineAction> {
         let tokens: Vec<_> = line.split_whitespace().collect();
         let Some(command) = tokens.first().copied() else {
             return Ok(LineAction::Continue);
         };
+
+        if self.engine.is_none()
+            && matches!(
+                command,
+                "usinewgame"
+                    | "position"
+                    | "go"
+                    | "gameover"
+                    | "moves"
+                    | "state"
+                    | "d"
+                    | "eval"
+                    | "tt"
+            )
+        {
+            write_error(output, &RuleSetNotSet.to_string())?;
+            output.flush()?;
+            return Ok(LineAction::Continue);
+        }
 
         #[cfg(feature = "tuning")]
         if command == "go" && matches!(self.searcher, Some(Searcher::AlphaBeta(_))) {
@@ -220,6 +252,11 @@ impl UsiProtocol {
         match command {
             "usi" => self.write_handshake(output)?,
             "isready" => {
+                if self.engine.is_none() {
+                    write_error(output, &RuleSetNotSet.to_string())?;
+                    output.flush()?;
+                    return Err(RuleSetNotSet.into());
+                }
                 if let Err(error) = self
                     .searcher
                     .as_mut()
@@ -232,23 +269,23 @@ impl UsiProtocol {
                 }
                 writeln!(output, "readyok")?;
             }
-            "setoption" => self.handle_setoption(engine, &tokens[1..], output)?,
+            "setoption" => self.handle_setoption(&tokens[1..], output)?,
             "usinewgame" => {
-                self.apply_silent(engine, EngineCommand::NewGame, output)?;
+                self.apply_silent(EngineCommand::NewGame, output)?;
             }
-            "position" => self.handle_position(engine, &tokens[1..], output)?,
+            "position" => self.handle_position(&tokens[1..], output)?,
             "gameover" => {
-                self.apply_silent(engine, EngineCommand::EndGame, output)?;
+                self.apply_silent(EngineCommand::EndGame, output)?;
             }
-            "moves" => self.handle_moves(engine, output)?,
-            "state" => self.handle_state(engine, output)?,
-            "d" | "eval" | "tt" => self.handle_diagnostic(engine, command, output)?,
+            "moves" => self.handle_moves(output)?,
+            "state" => self.handle_state(output)?,
+            "d" | "eval" | "tt" => self.handle_diagnostic(command, output)?,
             "ponderhit" => write_error(output, "ponderhit requires an active ponder search")?,
             "go" if tokens[1..].contains(&"mate") => {
                 writeln!(output, "checkmate notimplemented")?;
             }
             "go" => {
-                let Some(search) = self.start_go(engine, &tokens[1..], output)? else {
+                let Some(search) = self.start_go(&tokens[1..], output)? else {
                     output.flush()?;
                     return Ok(LineAction::Continue);
                 };
@@ -256,7 +293,9 @@ impl UsiProtocol {
                 return Ok(LineAction::Start(Box::new(search)));
             }
             "quit" => {
-                let _ = engine.handle(EngineCommand::Quit);
+                if let Some(engine) = &mut self.engine {
+                    let _ = engine.handle(EngineCommand::Quit);
+                }
                 return Ok(LineAction::Quit);
             }
             "debug" | "register" | "stop" => {}
@@ -278,11 +317,10 @@ impl UsiProtocol {
     /// MCTSを開始した`go`ごとに、この違いを`info string`で通知する。
     fn start_go(
         &mut self,
-        engine: &Engine,
         tokens: &[&str],
         output: &mut dyn Write,
     ) -> io::Result<Option<ActiveSearch>> {
-        if engine.lifecycle() != EngineLifecycle::InGame {
+        if self.engine()?.lifecycle() != EngineLifecycle::InGame {
             write_error(output, "go requires an active game")?;
             return Ok(None);
         }
@@ -290,11 +328,11 @@ impl UsiProtocol {
             write_error(output, "go requires a synchronized position")?;
             return Ok(None);
         }
-        let game = engine.game();
+        let game = self.engine()?.game();
         let config = match parse_go_config(
             tokens,
             game.position().side_to_move(),
-            engine.ply(),
+            self.engine()?.ply(),
             self.byoyomi_margin_ms,
         ) {
             Ok(config) => config,
@@ -304,7 +342,7 @@ impl UsiProtocol {
             }
         };
         let position = game.position().clone();
-        let rules = engine.active_rules();
+        let rules = self.engine()?.active_rules();
         let snapshot = match SearchSnapshot::from_game(game) {
             Ok(snapshot) => snapshot,
             Err(error) => {
@@ -360,11 +398,10 @@ impl UsiProtocol {
     /// 探索中は入力を優先し、入力がなければ探索通知を刈り取る。どちらもなければ10 ms待つ。
     /// 送信側が閉じたら有限探索は完了を待つが、結果を保留する無限探索と先読みは捨てる。
     /// 入力スレッドの読み取りエラーでは探索を捨ててエラーを返す。
-    /// `isready`の準備に失敗した場合も元の原因を保持した入出力エラーを返し、`readyok`は出さない。
+    /// `isready`で規則が未設定、または探索器の準備に失敗した場合も元の原因を保持した入出力エラーを返し、`readyok`は出さない。
     /// コマンドの処理順は本モジュールの探索中の入力の契約に従う。
     pub fn run_channel(
         &mut self,
-        engine: &mut Engine,
         input: &Receiver<io::Result<String>>,
         output: &mut dyn Write,
     ) -> io::Result<()> {
@@ -385,7 +422,7 @@ impl UsiProtocol {
                 } else {
                     break;
                 };
-                match self.handle_idle_line(engine, line.trim_end(), output)? {
+                match self.handle_idle_line(line.trim_end(), output)? {
                     LineAction::Continue => {}
                     LineAction::Start(search) => active = Some(*search),
                     LineAction::Quit => break,
@@ -398,7 +435,6 @@ impl UsiProtocol {
                 match input.try_recv() {
                     Ok(Ok(line)) => {
                         self.handle_searching_line(
-                            engine,
                             &mut active,
                             &mut pending,
                             line.trim_end(),
@@ -415,7 +451,7 @@ impl UsiProtocol {
                 }
             }
 
-            self.poll_search(engine, &mut active, output)?;
+            self.poll_search(&mut active, output)?;
             if active.is_none() {
                 continue;
             }
@@ -424,7 +460,6 @@ impl UsiProtocol {
             if input_open {
                 match input.recv_timeout(Duration::from_millis(10)) {
                     Ok(Ok(line)) => self.handle_searching_line(
-                        engine,
                         &mut active,
                         &mut pending,
                         line.trim_end(),
@@ -444,7 +479,7 @@ impl UsiProtocol {
                 // 入力が閉じると停止も的中も届かないため、結果を保留する探索は破棄する。
                 self.discard_search(&mut active)?;
             } else {
-                self.wait_search_event(engine, &mut active, output)?;
+                self.wait_search_event(&mut active, output)?;
             }
         }
 
@@ -460,7 +495,6 @@ impl UsiProtocol {
     /// コマンドは探索終了後に処理するため`pending`へ積む。
     fn handle_searching_line(
         &mut self,
-        engine: &Engine,
         active: &mut Option<ActiveSearch>,
         pending: &mut VecDeque<String>,
         line: &str,
@@ -468,13 +502,13 @@ impl UsiProtocol {
     ) -> io::Result<()> {
         let command = line.split_whitespace().next();
         match command {
-            Some("stop") => self.stop_search(engine, active, output)?,
+            Some("stop") => self.stop_search(active, output)?,
             Some("gameover" | "quit") => {
                 pending.push_back(line.to_owned());
                 self.discard_search(active)?;
             }
             Some("go") => write_error(output, "go is already running")?,
-            Some("ponderhit") => self.ponderhit(engine, active, output)?,
+            Some("ponderhit") => self.ponderhit(active, output)?,
             _ => pending.push_back(line.to_owned()),
         }
         output.flush()
@@ -483,7 +517,6 @@ impl UsiProtocol {
     /// 溜まっている探索イベントをブロックせずにすべて処理する。
     fn poll_search(
         &mut self,
-        engine: &Engine,
         active: &mut Option<ActiveSearch>,
         output: &mut dyn Write,
     ) -> io::Result<()> {
@@ -498,21 +531,20 @@ impl UsiProtocol {
                 },
                 Some(ActiveSearch::AwaitingStop { .. }) | None => return Ok(()),
             };
-            self.handle_search_event(engine, active, event, output)?;
+            self.handle_search_event(active, event, output)?;
         }
     }
 
     /// 探索イベントを短時間だけ待って処理する。入力が閉じた後の待機に使う。
     fn wait_search_event(
         &mut self,
-        engine: &Engine,
         active: &mut Option<ActiveSearch>,
         output: &mut dyn Write,
     ) -> io::Result<()> {
         match active.as_ref() {
             Some(ActiveSearch::Running { handle, .. }) => {
                 match handle.events().recv_timeout(Duration::from_millis(50)) {
-                    Ok(event) => self.handle_search_event(engine, active, event, output)?,
+                    Ok(event) => self.handle_search_event(active, event, output)?,
                     Err(RecvTimeoutError::Timeout) => {}
                     Err(RecvTimeoutError::Disconnected) => {
                         self.handle_search_disconnect(active)?;
@@ -539,7 +571,6 @@ impl UsiProtocol {
     /// `bestmove`を保留する。
     fn handle_search_event(
         &mut self,
-        engine: &Engine,
         active: &mut Option<ActiveSearch>,
         event: SearchEvent,
         output: &mut dyn Write,
@@ -594,7 +625,7 @@ impl UsiProtocol {
                     &pv,
                     partial_score,
                 )?;
-                let ponder_move = validated_ponder_move(engine.game(), best_move, &pv);
+                let ponder_move = validated_ponder_move(self.engine()?.game(), best_move, &pv);
                 if context.infinite || context.ponder {
                     *active = Some(ActiveSearch::AwaitingStop {
                         context,
@@ -628,7 +659,6 @@ impl UsiProtocol {
     /// 理由は`docs/adr/measure-budget-from-ponderhit-and-add-a-quarter-after-pondering.md`にある。
     fn ponderhit(
         &mut self,
-        engine: &Engine,
         active: &mut Option<ActiveSearch>,
         output: &mut dyn Write,
     ) -> io::Result<()> {
@@ -639,7 +669,7 @@ impl UsiProtocol {
                 Ok(())
             }
             Some(ActiveSearch::AwaitingStop { context, .. }) if context.ponder => {
-                self.finish_search(engine, active, output, false)
+                self.finish_search(active, output, false)
             }
             _ => write_error(output, "ponderhit requires an active ponder search"),
         }
@@ -648,11 +678,10 @@ impl UsiProtocol {
     /// `stop`に応じて探索を打ち切り、`bestmove`を返す。
     fn stop_search(
         &mut self,
-        engine: &Engine,
         active: &mut Option<ActiveSearch>,
         output: &mut dyn Write,
     ) -> io::Result<()> {
-        self.finish_search(engine, active, output, true)
+        self.finish_search(active, output, true)
     }
 
     /// 探索の完了を待ち切って`bestmove`を出力する。
@@ -660,7 +689,6 @@ impl UsiProtocol {
     /// 完了までの進捗イベントも順に`info`行として出力する。
     fn finish_search(
         &mut self,
-        engine: &Engine,
         active: &mut Option<ActiveSearch>,
         output: &mut dyn Write,
         request_stop: bool,
@@ -734,7 +762,7 @@ impl UsiProtocol {
                             )?;
                             break (
                                 best_move,
-                                validated_ponder_move(engine.game(), best_move, &pv),
+                                validated_ponder_move(self.engine()?.game(), best_move, &pv),
                                 score,
                                 depth,
                                 stop_reason,
@@ -788,12 +816,12 @@ impl UsiProtocol {
         Ok(())
     }
 
-    /// 起動時の規則を含む握手列を、次の順に出力する。
+    /// 規則の未設定を表す握手列を、次の順に出力する。
     ///
     /// ```text
     /// id name minase <CARGO_PKG_VERSION>
     /// id author stepney141
-    /// option name RuleSet type string default <起動時の--rulesの正準表記>
+    /// option name RuleSet type string default <empty>
     /// option name USI_Variant type string default chushogi
     /// option name USI_Hash type spin default 256 min 1 max 65536
     /// option name Threads type spin default 1 min 1 max 256
@@ -812,11 +840,7 @@ impl UsiProtocol {
     fn write_handshake(&self, output: &mut dyn Write) -> io::Result<()> {
         writeln!(output, "id name minase {}", env!("CARGO_PKG_VERSION"))?;
         writeln!(output, "id author stepney141")?;
-        writeln!(
-            output,
-            "option name RuleSet type string default {}",
-            self.startup_rules_text
-        )?;
+        writeln!(output, "option name RuleSet type string default <empty>")?;
         writeln!(
             output,
             "option name USI_Variant type string default chushogi"
@@ -892,7 +916,7 @@ impl UsiProtocol {
     /// 各キーワードの直後の1語を名前と値として読み、名前がなければ無応答で無視する。
     /// 探索器のstringオプションでは`value`以降を1つの空白でつなぎ、`<empty>`は空文字列にする。
     /// `RuleSet`は[`parse_rule_set`]の規則コードのコンマ区切り、または
-    /// `JCSA`か`lishogi`の単独指定として読み、次局の規則だけを変える。
+    /// `JCSA`か`lishogi`の単独指定として読む。最初の指定は現局と次局の規則になり、以後は次局の規則だけを変える。
     /// 受理時の置換表、history表、および局面トークン履歴の消去は[`Self::apply_silent`]に従う。
     /// `USI_Variant`は大小文字を区別せず`chushogi`だけを受理する。
     /// `USI_Hash`は1〜65,536 MiBで置換表を確保または作り直し、history表を空にする。
@@ -929,12 +953,7 @@ impl UsiProtocol {
     /// MCTSでは`Tune_`名も未知の名前として扱う。
     /// 未知の名前は`USI_Ponder`も含め無応答で無視する。
     /// 探索中の設定は待ち行列へ入り、探索終了後に適用されるため次の探索から効く。
-    fn handle_setoption(
-        &mut self,
-        engine: &mut Engine,
-        tokens: &[&str],
-        output: &mut dyn Write,
-    ) -> io::Result<()> {
+    fn handle_setoption(&mut self, tokens: &[&str], output: &mut dyn Write) -> io::Result<()> {
         let name = token_after(tokens, "name");
         let value = token_after(tokens, "value");
         let Some(name) = name else {
@@ -961,14 +980,24 @@ impl UsiProtocol {
         }
 
         if name.eq_ignore_ascii_case("RuleSet") {
-            let Some(value) = value else {
+            let Some(value) = value.filter(|value| *value != "<empty>") else {
                 return write_error(output, "RuleSet requires a value");
             };
             let codes = match parse_rule_set(value) {
                 Ok(codes) => codes,
                 Err(error) => return write_error(output, &error.to_string()),
             };
-            self.apply_silent(engine, EngineCommand::SetRules(codes), output)
+            if self.engine.is_some() {
+                self.apply_silent(EngineCommand::SetRules(codes), output)
+            } else {
+                match Engine::new(codes) {
+                    Ok(engine) => {
+                        self.engine = Some(engine);
+                        Ok(())
+                    }
+                    Err(error) => write_error(output, &error.to_string()),
+                }
+            }
         } else if name.eq_ignore_ascii_case("USI_Variant") {
             match value {
                 Some(value) if value.eq_ignore_ascii_case("chushogi") => Ok(()),
@@ -1097,12 +1126,7 @@ impl UsiProtocol {
     /// 未同期の間は[`Self::start_go`]が探索を拒否する。
     /// 理由は`docs/adr/keep-searched-moves-out-of-the-usi-game.md`にある。
     /// SFENは反復履歴を運ばないため、着手列のない途中局面では履歴を空から始め、補完しない。
-    fn handle_position(
-        &mut self,
-        engine: &mut Engine,
-        tokens: &[&str],
-        output: &mut dyn Write,
-    ) -> io::Result<()> {
+    fn handle_position(&mut self, tokens: &[&str], output: &mut dyn Write) -> io::Result<()> {
         self.position_synchronized = false;
         let Some(kind) = tokens.first().copied() else {
             self.accepted_position = None;
@@ -1112,7 +1136,7 @@ impl UsiProtocol {
         let move_tokens = moves_index.map(|index| &tokens[index + 1..]).unwrap_or(&[]);
         let position_tokens = &tokens[..moves_index.unwrap_or(tokens.len())];
 
-        if engine.lifecycle() == EngineLifecycle::InGame
+        if self.engine()?.lifecycle() == EngineLifecycle::InGame
             && let Some(accepted) = &self.accepted_position
             && !move_tokens.is_empty()
             && move_tokens.len() == accepted.move_tokens.len()
@@ -1126,7 +1150,7 @@ impl UsiProtocol {
                 .map(String::as_str)
                 .eq(move_tokens[..move_tokens.len() - 1].iter().copied())
             && accepted.move_tokens.last().map(String::as_str) != move_tokens.last().copied()
-            && let Some(previous) = engine.before_last_move()
+            && let Some(previous) = self.engine()?.before_last_move()
         {
             let text = move_tokens[move_tokens.len() - 1];
             let mv = match usi::parse(previous.position(), text) {
@@ -1134,7 +1158,6 @@ impl UsiProtocol {
                 Err(error) => return write_error(output, &error.to_string()),
             };
             return self.apply_position(
-                engine,
                 EngineCommand::ReplaceLastMove(mv),
                 Some(text),
                 PositionHistoryUpdate::Last(text),
@@ -1144,21 +1167,21 @@ impl UsiProtocol {
 
         let extension_start = position_extension_start(
             self.accepted_position.as_ref(),
-            engine.lifecycle(),
+            self.engine()?.lifecycle(),
             position_tokens,
             move_tokens,
         );
         if let Some(extension_start) = extension_start {
-            let parsed = match parse_moves_from_game(engine.game(), &move_tokens[extension_start..])
-            {
-                Ok(parsed) => parsed,
-                Err(error) => {
-                    self.accepted_position = None;
-                    return write_error(output, &error);
-                }
-            };
+            let parsed =
+                match parse_moves_from_game(self.engine()?.game(), &move_tokens[extension_start..])
+                {
+                    Ok(parsed) => parsed,
+                    Err(error) => {
+                        self.accepted_position = None;
+                        return write_error(output, &error);
+                    }
+                };
             return self.apply_position(
-                engine,
                 EngineCommand::ExtendPosition {
                     moves: parsed.moves,
                 },
@@ -1168,7 +1191,7 @@ impl UsiProtocol {
             );
         }
 
-        let rules = engine.position_rules();
+        let rules = self.engine()?.position_rules();
         let setup = match kind {
             "startpos" => {
                 if position_tokens.len() != 1 {
@@ -1199,7 +1222,6 @@ impl UsiProtocol {
             }
         };
         self.apply_position(
-            engine,
             EngineCommand::SetPosition {
                 setup,
                 moves: parsed.moves,
@@ -1216,13 +1238,12 @@ impl UsiProtocol {
     /// `position`の状態機械コマンドを適用し、同期状態と履歴を更新する。
     fn apply_position(
         &mut self,
-        engine: &mut Engine,
         command: EngineCommand,
         first_rejected_text: Option<&str>,
         history_update: PositionHistoryUpdate<'_>,
         output: &mut dyn Write,
     ) -> io::Result<()> {
-        match engine.handle(command) {
+        match self.engine_mut()?.handle(command) {
             EngineReply::Accepted { .. } => {
                 self.position_synchronized = true;
                 match history_update {
@@ -1275,12 +1296,12 @@ impl UsiProtocol {
     /// 順序は契約に含めない。対局中以外は`info string error: moves requires an active game`を返す。
     /// CECPに同等の照会はなく、Lishogi-BotとXBoardの経路も使わない。
     /// 用途は`docs/research/protocols/usi-lishogi.md`の「minase固有のUSI拡張」にある。
-    fn handle_moves(&self, engine: &Engine, output: &mut dyn Write) -> io::Result<()> {
-        if engine.lifecycle() != EngineLifecycle::InGame {
+    fn handle_moves(&self, output: &mut dyn Write) -> io::Result<()> {
+        if self.engine()?.lifecycle() != EngineLifecycle::InGame {
             return write_error(output, "moves requires an active game");
         }
 
-        let game = engine.game();
+        let game = self.engine()?.game();
         write!(output, "moves")?;
         for mv in game.legal_moves() {
             write!(output, " {}", usi::text_generated(game.position(), mv))?;
@@ -1296,20 +1317,20 @@ impl UsiProtocol {
     /// 2欄SFENは先獅子の状態、成り権の保留、および反復履歴を運ばないため、
     /// GUIは着手列を保持して`position`を再送する。
     /// USIに標準の終局通知がないため、自作GUIがminaseを審判として使う際の照会である。
-    fn handle_state(&self, engine: &Engine, output: &mut dyn Write) -> io::Result<()> {
-        if engine.lifecycle() == EngineLifecycle::AwaitingStart {
+    fn handle_state(&self, output: &mut dyn Write) -> io::Result<()> {
+        if self.engine()?.lifecycle() == EngineLifecycle::AwaitingStart {
             return write_error(output, "state requires an active or finished game");
         }
 
-        let status = match state_status_text(engine.status()) {
+        let status = match state_status_text(self.engine()?.status()) {
             Ok(status) => status,
             Err(error) => return write_error(output, error),
         };
         writeln!(
             output,
             "state rules {} board {} status {status}",
-            canonical_rules_text(engine.active_rule_codes()),
-            to_sfen(engine.game().position()),
+            canonical_rules_text(self.engine()?.active_rule_codes()),
+            to_sfen(self.engine()?.game().position()),
         )
     }
 
@@ -1323,24 +1344,20 @@ impl UsiProtocol {
     /// 表示は全行を組み立ててから出力し、構築の失敗時はエラー1行だけで終端行を付けない。
     /// 未知コマンドとUSIの既知の無応答コマンドは、本モジュールのコマンド表に従う。
     /// 理由は`docs/adr/show-position-evaluation-and-tt-as-usi-commands.md`にある。
-    fn handle_diagnostic(
-        &self,
-        engine: &Engine,
-        command: &str,
-        output: &mut dyn Write,
-    ) -> io::Result<()> {
+    fn handle_diagnostic(&self, command: &str, output: &mut dyn Write) -> io::Result<()> {
         if command == "tt" && matches!(self.searcher, Some(Searcher::Mcts(_))) {
             return write_error(output, "tt requires --search alphabeta");
         }
-        if engine.lifecycle() == EngineLifecycle::AwaitingStart {
+        if self.engine()?.lifecycle() == EngineLifecycle::AwaitingStart {
             return write_error(
                 output,
                 &format!("{command} requires an active or finished game"),
             );
         }
+        let engine = self.engine()?;
         let lines = match command {
             "d" => diagnostic_position(engine),
-            "eval" => diagnostic_evaluation(engine.game().position()),
+            "eval" => diagnostic_evaluation(self.engine()?.game().position()),
             "tt" => self
                 .searcher
                 .as_ref()
@@ -1372,12 +1389,7 @@ impl UsiProtocol {
     /// `SetRules`と`NewGame`では置換表とhistory表を空にし、前局や別規則の評価を持ち越さない。
     /// `EndGame`では両表を保つ。
     /// この3コマンドは`position`の差分履歴を捨て、`NewGame`と`EndGame`は局面を未同期にする。
-    fn apply_silent(
-        &mut self,
-        engine: &mut Engine,
-        command: EngineCommand,
-        output: &mut dyn Write,
-    ) -> io::Result<()> {
+    fn apply_silent(&mut self, command: EngineCommand, output: &mut dyn Write) -> io::Result<()> {
         // 新規対局と規則変更で置換表を空にし、前対局・別規則の評価を持ち越さない。
         let clears_transposition_table = matches!(
             &command,
@@ -1389,7 +1401,7 @@ impl UsiProtocol {
         );
         let invalidates_position =
             matches!(&command, EngineCommand::NewGame | EngineCommand::EndGame);
-        match engine.handle(command) {
+        match self.engine_mut()?.handle(command) {
             EngineReply::Accepted { .. } => {
                 if invalidates_position {
                     self.position_synchronized = false;
@@ -1585,14 +1597,10 @@ impl Protocol for UsiProtocol {
     /// 台本入力を逐次処理する。
     ///
     /// 有限の`go`はその場で探索の完了を待ち、`bestmove`を出す。
+    /// 規則未設定の`isready`はエラー行をフラッシュし、原因の型を保持したエラーを返す。
     /// `go infinite`と`go ponder`は探索を持ち越して次の入力を読み、
     /// 先読みに`ponderhit`を受けたら完了まで待って`bestmove`を出す。
-    fn run(
-        &mut self,
-        engine: &mut Engine,
-        input: &mut dyn BufRead,
-        output: &mut dyn Write,
-    ) -> io::Result<()> {
+    fn run(&mut self, input: &mut dyn BufRead, output: &mut dyn Write) -> io::Result<()> {
         let mut active = None;
         let mut pending = VecDeque::new();
         let mut line = String::new();
@@ -1610,18 +1618,18 @@ impl Protocol for UsiProtocol {
             };
 
             if active.is_some() {
-                self.handle_searching_line(engine, &mut active, &mut pending, &command, output)?;
-                self.poll_search(engine, &mut active, output)?;
+                self.handle_searching_line(&mut active, &mut pending, &command, output)?;
+                self.poll_search(&mut active, output)?;
                 if active
                     .as_ref()
                     .is_some_and(|search| !search.withholds_bestmove())
                 {
-                    self.finish_search(engine, &mut active, output, false)?;
+                    self.finish_search(&mut active, output, false)?;
                 }
                 continue;
             }
 
-            match self.handle_idle_line(engine, &command, output)? {
+            match self.handle_idle_line(&command, output)? {
                 LineAction::Continue => {}
                 LineAction::Start(search) => {
                     active = Some(*search);
@@ -1629,7 +1637,7 @@ impl Protocol for UsiProtocol {
                         .as_ref()
                         .is_some_and(ActiveSearch::withholds_bestmove)
                     {
-                        self.finish_search(engine, &mut active, output, false)?;
+                        self.finish_search(&mut active, output, false)?;
                     }
                 }
                 LineAction::Quit => return Ok(()),
@@ -2190,6 +2198,7 @@ fn write_error(output: &mut dyn Write, message: &str) -> io::Result<()> {
 
 #[cfg(test)]
 mod tests {
+    use std::io::Cursor;
     mod history;
     mod mcts_options;
     mod tuning;
@@ -2249,7 +2258,7 @@ mod tests {
         assert!(error_lines(&output).is_empty());
     }
 
-    fn make_engine(codes: &[RuleCode]) -> Engine {
+    fn rule_codes(codes: &[RuleCode]) -> Vec<RuleCode> {
         let mut complete = codes.to_vec();
         if !complete
             .iter()
@@ -2269,32 +2278,44 @@ mod tests {
         {
             complete.push(RuleCode::E0);
         }
-        Engine::new(complete).unwrap()
+        complete
     }
 
-    fn run(protocol: &mut UsiProtocol, engine: &mut Engine, input: &str) -> String {
+    fn run(protocol: &mut UsiProtocol, input: &str) -> String {
         let (sender, receiver) = std::sync::mpsc::channel();
         for line in input.lines() {
             sender.send(Ok(line.to_owned())).unwrap();
         }
         drop(sender);
         let mut output = Vec::new();
-        protocol
-            .run_channel(engine, &receiver, &mut output)
-            .unwrap();
+        protocol.run_channel(&receiver, &mut output).unwrap();
         String::from_utf8(output).unwrap()
     }
 
     fn session(codes: &[RuleCode], input: &str) -> String {
-        let mut engine = make_engine(codes);
-        let mut protocol = UsiProtocol::new(&engine);
-        run(&mut protocol, &mut engine, input)
+        let mut protocol = UsiProtocol::new();
+        let rules_text = canonical_rules_text(&rule_codes(codes));
+        assert_eq!(
+            run(
+                &mut protocol,
+                &format!("setoption name RuleSet value {rules_text}\n")
+            ),
+            ""
+        );
+        run(&mut protocol, input)
     }
 
     fn lishogi_session(input: &str) -> String {
-        let mut engine = Engine::new(parse_rule_set("lishogi").unwrap()).unwrap();
-        let mut protocol = UsiProtocol::new(&engine);
-        run(&mut protocol, &mut engine, input)
+        let mut protocol = UsiProtocol::new();
+        let rules_text = canonical_rules_text(&parse_rule_set("lishogi").unwrap());
+        assert_eq!(
+            run(
+                &mut protocol,
+                &format!("setoption name RuleSet value {rules_text}\n")
+            ),
+            ""
+        );
+        run(&mut protocol, input)
     }
 
     fn bestmoves(output: &str) -> Vec<&str> {
@@ -2371,11 +2392,159 @@ mod tests {
             .collect()
     }
 
+    // 規則の欠落は準備の失敗として通知し、逐次とチャネルの両方の実行経路で原因の型を保つ。
+    #[test]
+    fn isready_without_ruleset_fails_with_typed_source() {
+        use std::error::Error;
+        for channel in [false, true] {
+            let mut protocol = UsiProtocol::new();
+            let mut output = Vec::new();
+            let result = if channel {
+                let (sender, receiver) = std::sync::mpsc::channel();
+                sender.send(Ok("isready".to_owned())).unwrap();
+                drop(sender);
+                protocol.run_channel(&receiver, &mut output)
+            } else {
+                protocol.run(&mut Cursor::new("isready\n"), &mut output)
+            };
+            let error = result.unwrap_err();
+            assert!(error.source().unwrap().is::<RuleSetNotSet>());
+            assert_eq!(
+                String::from_utf8(output).unwrap(),
+                "info string error: required option RuleSet is not set\n"
+            );
+        }
+    }
+
+    #[test]
+    fn commands_requiring_ruleset_reject_before_their_own_checks_and_continue() {
+        for command in [
+            "usinewgame",
+            "position startpos",
+            "position",
+            "go depth 1",
+            "go depth invalid",
+            "go mate 1000",
+            "gameover win",
+            "moves",
+            "state",
+            "d",
+            "eval",
+            "tt",
+        ] {
+            let mut protocol = UsiProtocol::new();
+            assert_eq!(
+                run(&mut protocol, &format!("{command}\n")),
+                "info string error: required option RuleSet is not set\n",
+                "{command}"
+            );
+            assert_eq!(
+                run(
+                    &mut protocol,
+                    "setoption name RuleSet value JCSA\nsetoption name USI_Hash value 1\nisready\n"
+                ),
+                "readyok\n"
+            );
+        }
+    }
+
+    #[test]
+    fn article_33_invalid_first_ruleset_keeps_the_session_unset() {
+        for (command, error) in [
+            ("setoption name RuleSet", "RuleSet requires a value"),
+            ("setoption name RuleSet value", "RuleSet requires a value"),
+            (
+                "setoption name RuleSet value <empty>",
+                "RuleSet requires a value",
+            ),
+            (
+                "setoption name RuleSet value engine-default",
+                "unknown rule code 'engine-default'",
+            ),
+            (
+                "setoption name RuleSet value L0,L1,P0,R1,E0",
+                "conflicting rule codes: L0 and L1",
+            ),
+        ] {
+            let mut protocol = UsiProtocol::new();
+            assert_eq!(
+                run(&mut protocol, &format!("{command}\nstate\n")),
+                format!(
+                    "info string error: {error}\ninfo string error: required option RuleSet is not set\n"
+                )
+            );
+        }
+    }
+
+    #[test]
+    fn article_33_first_ruleset_sets_current_rules_and_later_values_wait_for_next_game() {
+        let mut protocol = UsiProtocol::new();
+        let output = run(
+            &mut protocol,
+            concat!(
+                "setoption name RuleSet value lishogi\nposition startpos\nstate\n",
+                "setoption name RuleSet value JCSA\nstate\n",
+                "usinewgame\nposition startpos\nstate\n",
+            ),
+        );
+        assert!(error_lines(&output).is_empty(), "{output}");
+        let states = state_lines(&output);
+        assert_eq!(states.len(), 3);
+        assert_eq!(state_rules(states[0]), "L1,L2,P0,P3,R1,E1,E3");
+        assert_eq!(states[0], states[1]);
+        assert_eq!(state_rules(states[2]), "L0,P0,R1,E0");
+    }
+
+    #[test]
+    fn independent_options_are_validated_and_applied_before_ruleset() {
+        let mut protocol = UsiProtocol::new();
+        assert_eq!(
+            run(
+                &mut protocol,
+                concat!(
+                    "setoption name USI_Hash value 0\n",
+                    "setoption name Threads value 0\n",
+                )
+            ),
+            concat!(
+                "info string error: USI_Hash must be an integer from 1 to 65536\n",
+                "info string error: Threads must be an integer from 1 to 256\n",
+            )
+        );
+        assert_eq!(
+            run(
+                &mut protocol,
+                "setoption name Threads value 2\nsetoption name USI_Hash value 1\n"
+            ),
+            ""
+        );
+        let searcher = protocol.searcher.as_ref().unwrap();
+        assert_eq!(searcher.threads().get(), 2);
+        let table = std::ptr::from_ref(searcher.transposition_table().unwrap());
+        assert_eq!(
+            run(
+                &mut protocol,
+                "setoption name RuleSet value JCSA\nisready\n"
+            ),
+            "readyok\n"
+        );
+        let searcher = protocol.searcher.as_ref().unwrap();
+        assert_eq!(searcher.threads().get(), 2);
+        assert_eq!(
+            std::ptr::from_ref(searcher.transposition_table().unwrap()),
+            table
+        );
+        let output = run(&mut protocol, "position startpos\nmoves\ngo depth 1\n");
+        assert!(error_lines(&output).is_empty(), "{output}");
+        assert_legal_bestmove(&output, &moves_sets(&output)[0]);
+        assert_eq!(protocol.searcher.as_ref().unwrap().threads().get(), 2);
+    }
+
     #[test]
     fn handshake_declares_ruleset_before_variant_and_ends_with_usiok() {
         // [`UsiProtocol::write_handshake`]の固定宣言を検査する。
         // USI_Hashの宣言位置は規範文書に明記されていないため、存在だけを確認する。
-        let output = session(&[RuleCode::E2, RuleCode::R1, RuleCode::L1], "usi\nquit\n");
+        let output = run(&mut UsiProtocol::new(), "usi\nquit\n");
         let lines: Vec<_> = output.lines().collect();
 
         assert!(lines[0].starts_with("id name minase "));
@@ -2383,8 +2552,8 @@ mod tests {
         assert_eq!(*lines.last().unwrap(), "usiok");
         let ruleset = lines
             .iter()
-            .position(|line| *line == "option name RuleSet type string default L1,P0,R1,E2")
-            .expect("RuleSet declaration must exist with the canonical default");
+            .position(|line| *line == "option name RuleSet type string default <empty>")
+            .expect("RuleSet declaration must have an empty default");
         let variant = lines
             .iter()
             .position(|line| line.starts_with("option name USI_Variant type string"))
@@ -2423,9 +2592,16 @@ mod tests {
     /// chu-shogi.md第31条R1の引き分け値は、両手番とも既定値0、範囲±28,999で宣言する。
     #[test]
     fn draw_value_r1_handshake_declares_defaults_and_bounds() {
-        let mut engine = make_engine(&[RuleCode::R1]);
-        let mut protocol = UsiProtocol::new(&engine);
-        let output = run(&mut protocol, &mut engine, "usi\n");
+        let mut protocol = UsiProtocol::new();
+        let rules_text = canonical_rules_text(&rule_codes(&[RuleCode::R1]));
+        assert_eq!(
+            run(
+                &mut protocol,
+                &format!("setoption name RuleSet value {rules_text}\n")
+            ),
+            ""
+        );
+        let output = run(&mut protocol, "usi\n");
         let lines: Vec<_> = output.lines().collect();
         let margin = lines
             .iter()
@@ -2451,8 +2627,15 @@ mod tests {
     /// chu-shogi.md第31条R1の引き分け値は、符号と範囲を検査し、もう一方の設定を保つ。
     #[test]
     fn draw_value_r1_parsing_accepts_signed_bounds_and_preserves_rejected_values() {
-        let mut engine = make_engine(&[RuleCode::R1]);
-        let mut protocol = UsiProtocol::new(&engine);
+        let mut protocol = UsiProtocol::new();
+        let rules_text = canonical_rules_text(&rule_codes(&[RuleCode::R1]));
+        assert_eq!(
+            run(
+                &mut protocol,
+                &format!("setoption name RuleSet value {rules_text}\n")
+            ),
+            ""
+        );
         for (name, side) in [
             ("DrawValueBlack", Color::Black),
             ("DrawValueWhite", Color::White),
@@ -2474,7 +2657,6 @@ mod tests {
             ] {
                 let output = run(
                     &mut protocol,
-                    &mut engine,
                     &format!(
                         "setoption NAME {} VALUE {value}\n",
                         name.to_ascii_lowercase()
@@ -2511,7 +2693,6 @@ mod tests {
             ] {
                 let output = run(
                     &mut protocol,
-                    &mut engine,
                     &format!("setoption name {name} value {value}\n"),
                 );
                 assert_eq!(
@@ -2524,11 +2705,7 @@ mod tests {
             }
             for suffix in ["", " value", " value "] {
                 assert_eq!(
-                    run(
-                        &mut protocol,
-                        &mut engine,
-                        &format!("setoption name {name}{suffix}\n")
-                    ),
+                    run(&mut protocol, &format!("setoption name {name}{suffix}\n")),
                     format!("info string error: missing {name} value\n")
                 );
                 assert_eq!(protocol.root_draw_value(side), -7);
@@ -2541,12 +2718,18 @@ mod tests {
     #[test]
     fn draw_value_r1_clears_tables_only_when_an_accepted_value_changes() {
         for name in ["DrawValueBlack", "DrawValueWhite"] {
-            let mut engine = make_engine(&[RuleCode::R1]);
-            let mut protocol = UsiProtocol::new(&engine);
+            let mut protocol = UsiProtocol::new();
+            let rules_text = canonical_rules_text(&rule_codes(&[RuleCode::R1]));
             assert_eq!(
                 run(
                     &mut protocol,
-                    &mut engine,
+                    &format!("setoption name RuleSet value {rules_text}\n")
+                ),
+                ""
+            );
+            assert_eq!(
+                run(
+                    &mut protocol,
                     "setoption name USI_Hash value 1\nsetoption name Threads value 2\nposition startpos\n"
                 ),
                 ""
@@ -2556,7 +2739,7 @@ mod tests {
                 ("-50", false, false),
                 ("29000", false, true),
             ] {
-                let output = run(&mut protocol, &mut engine, "go depth 1\n");
+                let output = run(&mut protocol, "go depth 1\n");
                 assert!(error_lines(&output).is_empty(), "{output}");
                 // probeは探索層に限定されるため、それを呼ぶinspectで同じ照合を使う。
                 let before = protocol
@@ -2565,7 +2748,7 @@ mod tests {
                     .unwrap()
                     .transposition_table()
                     .unwrap()
-                    .inspect(engine.game().position(), 0)
+                    .inspect(protocol.engine().unwrap().game().position(), 0)
                     .unwrap();
                 let histories = protocol.searcher.as_mut().unwrap().histories_mut_for_test();
                 for history in &mut histories.workers {
@@ -2578,7 +2761,6 @@ mod tests {
                 }
                 let output = run(
                     &mut protocol,
-                    &mut engine,
                     &format!("setoption name {name} value {value}\n"),
                 );
                 if error {
@@ -2592,7 +2774,7 @@ mod tests {
                     .unwrap()
                     .transposition_table()
                     .unwrap()
-                    .inspect(engine.game().position(), 0);
+                    .inspect(protocol.engine().unwrap().game().position(), 0);
                 if clears {
                     assert!(after.is_none());
                 } else {
@@ -2627,12 +2809,18 @@ mod tests {
     /// chu-shogi.md第31条R1の引き分け値は、根の手番に対応するオプションを選ぶ。
     #[test]
     fn draw_value_r1_selects_the_root_side_option() {
-        let mut engine = make_engine(&[RuleCode::R1]);
-        let mut protocol = UsiProtocol::new(&engine);
+        let mut protocol = UsiProtocol::new();
+        let rules_text = canonical_rules_text(&rule_codes(&[RuleCode::R1]));
         assert_eq!(
             run(
                 &mut protocol,
-                &mut engine,
+                &format!("setoption name RuleSet value {rules_text}\n")
+            ),
+            ""
+        );
+        assert_eq!(
+            run(
+                &mut protocol,
                 "setoption name DrawValueBlack value -50\nsetoption name DrawValueWhite value 70\n"
             ),
             ""
@@ -2641,8 +2829,8 @@ mod tests {
             ("position startpos", Color::Black, -50),
             ("position startpos moves 6i6h", Color::White, 70),
         ] {
-            assert_eq!(run(&mut protocol, &mut engine, position), "");
-            let game = engine.game();
+            assert_eq!(run(&mut protocol, position), "");
+            let game = protocol.engine().unwrap().game();
             assert_eq!(game.position().side_to_move(), side);
             let snapshot = SearchSnapshot::from_game(game)
                 .unwrap()
@@ -2655,18 +2843,17 @@ mod tests {
     /// chu-shogi.md第31条R1の既定値0では、新規対局を挟んだ同じ探索の最善手と最終評価値が一致する。
     #[test]
     fn draw_value_r1_default_search_is_deterministic_across_new_games() {
-        let mut engine = make_engine(&[RuleCode::R1]);
-        let mut protocol = UsiProtocol::new(&engine);
-        let first = run(
-            &mut protocol,
-            &mut engine,
-            "position startpos\ngo depth 3\n",
+        let mut protocol = UsiProtocol::new();
+        let rules_text = canonical_rules_text(&rule_codes(&[RuleCode::R1]));
+        assert_eq!(
+            run(
+                &mut protocol,
+                &format!("setoption name RuleSet value {rules_text}\n")
+            ),
+            ""
         );
-        let second = run(
-            &mut protocol,
-            &mut engine,
-            "usinewgame\nposition startpos\ngo depth 3\n",
-        );
+        let first = run(&mut protocol, "position startpos\ngo depth 3\n");
+        let second = run(&mut protocol, "usinewgame\nposition startpos\ngo depth 3\n");
         let final_score = |output: &str| -> i32 {
             assert!(error_lines(output).is_empty(), "{output}");
             let line = output
@@ -2692,14 +2879,20 @@ mod tests {
     // [`UsiProtocol::handle_setoption`]のByoyomiMarginの単位と受理範囲を検査する。
     #[test]
     fn byoyomi_margin_accepts_bounds_and_rejects_invalid_values_without_changing_it() {
-        let mut engine = make_engine(&[RuleCode::R1]);
-        let mut protocol = UsiProtocol::new(&engine);
+        let mut protocol = UsiProtocol::new();
+        let rules_text = canonical_rules_text(&rule_codes(&[RuleCode::R1]));
+        assert_eq!(
+            run(
+                &mut protocol,
+                &format!("setoption name RuleSet value {rules_text}\n")
+            ),
+            ""
+        );
         assert_eq!(protocol.byoyomi_margin_ms, 30);
         for (value, expected) in [("0", 0), ("60000", 60_000), ("00123", 123)] {
             assert_eq!(
                 run(
                     &mut protocol,
-                    &mut engine,
                     &format!("setoption name byoyomimargin value {value}\n")
                 ),
                 ""
@@ -2725,7 +2918,6 @@ mod tests {
         ] {
             let output = run(
                 &mut protocol,
-                &mut engine,
                 &format!("setoption name ByoyomiMargin {value}\n"),
             );
             assert_eq!(
@@ -2746,14 +2938,20 @@ mod tests {
         // 不正値には固定エラーを返す。正当値は無応答である。
         assert_eq!(parse_spin("1", 1, 256), Some(1));
         assert_eq!(parse_spin("256", 1, 256), Some(256));
-        let mut engine = make_engine(&[RuleCode::R1]);
-        let mut protocol = UsiProtocol::new(&engine);
+        let mut protocol = UsiProtocol::new();
+        let rules_text = canonical_rules_text(&rule_codes(&[RuleCode::R1]));
+        assert_eq!(
+            run(
+                &mut protocol,
+                &format!("setoption name RuleSet value {rules_text}\n")
+            ),
+            ""
+        );
         // 探索開始へ渡す値を受信後に観測し、設定の無視や丸めを検出する。
         for (value, threads) in [("1", 1), ("2", 2), ("+2", 2)] {
             assert_eq!(
                 run(
                     &mut protocol,
-                    &mut engine,
                     &format!("setoption name tHREADS value {value}\n")
                 ),
                 ""
@@ -2762,7 +2960,6 @@ mod tests {
         }
         let output = run(
             &mut protocol,
-            &mut engine,
             concat!(
                 "setoption name Threads\n",
                 "setoption name Threads value nope\n",
@@ -2791,16 +2988,22 @@ mod tests {
     const RESIGN_MATERIAL_SFEN: &str = "k11/12/12/12/12/r11/12/12/12/12/11P/11K b - 1";
 
     /// SFENで局面を同期し、各テストの探索用に小さい置換表を確保する。
-    fn resignation_engine(sfen: &str) -> (Engine, UsiProtocol) {
-        let mut engine = Engine::new(parse_rule_set("lishogi").unwrap()).unwrap();
-        let mut protocol = UsiProtocol::new(&engine);
+    fn resignation_engine(sfen: &str) -> UsiProtocol {
+        let mut protocol = UsiProtocol::new();
+        let rules_text = canonical_rules_text(&parse_rule_set("lishogi").unwrap());
+        assert_eq!(
+            run(
+                &mut protocol,
+                &format!("setoption name RuleSet value {rules_text}\n")
+            ),
+            ""
+        );
         let output = run(
             &mut protocol,
-            &mut engine,
             &format!("setoption name USI_Hash value 1\nposition sfen {sfen}\n"),
         );
         assert!(output.is_empty(), "{output}");
-        (engine, protocol)
+        protocol
     }
 
     /// 非投了の応答が、同じ局面のmovesに含まれる着手を1つ返すことを確認する。
@@ -2816,18 +3019,17 @@ mod tests {
     // [`UsiProtocol::handle_setoption`]と[`UsiProtocol::should_resign`]の契約に従い、設定の保持は次の探索の応答で観測する。
     #[test]
     fn resignation_option_accepts_bounds_and_rejects_invalid_values_without_changing_it() {
-        let (mut engine, mut protocol) = resignation_engine(RESIGN_MATERIAL_SFEN);
-        let legal = moves_sets(&run(&mut protocol, &mut engine, "moves\n")).remove(0);
+        let mut protocol = resignation_engine(RESIGN_MATERIAL_SFEN);
+        let legal = moves_sets(&run(&mut protocol, "moves\n")).remove(0);
         for value in ["1", "99999", "00001"] {
             assert_eq!(
                 run(
                     &mut protocol,
-                    &mut engine,
                     &format!("setoption name ResignValue value {value}\n")
                 ),
                 ""
             );
-            let output = run(&mut protocol, &mut engine, "go depth 1\n");
+            let output = run(&mut protocol, "go depth 1\n");
             if value == "99999" {
                 assert_legal_bestmove(&output, &legal);
             } else {
@@ -2843,7 +3045,6 @@ mod tests {
         ] {
             let output = run(
                 &mut protocol,
-                &mut engine,
                 &format!("setoption name ResignValue {value}\n"),
             );
             assert_eq!(
@@ -2855,7 +3056,7 @@ mod tests {
                 }
             );
         }
-        let output = run(&mut protocol, &mut engine, "go depth 1\n");
+        let output = run(&mut protocol, "go depth 1\n");
         assert_eq!(bestmoves(&output), ["bestmove resign"], "{output}");
     }
 
@@ -2970,20 +3171,16 @@ mod tests {
     fn partial_info_uses_lowerbound_and_resignation_uses_completed_score() {
         for (partial_score, score_text) in [(-1000, "cp -1000"), (-search::MATE + 1, "mate -0")] {
             for release in [None, Some("stop"), Some("ponderhit")] {
-                let (mut engine, mut protocol) = resignation_engine(RESIGN_MATERIAL_SFEN);
-                run(
-                    &mut protocol,
-                    &mut engine,
-                    "setoption name ResignValue value 100\n",
-                );
-                let legal = moves_sets(&run(&mut protocol, &mut engine, "moves\n")).remove(0);
+                let mut protocol = resignation_engine(RESIGN_MATERIAL_SFEN);
+                run(&mut protocol, "setoption name ResignValue value 100\n");
+                let legal = moves_sets(&run(&mut protocol, "moves\n")).remove(0);
                 let mut output = Vec::new();
                 let limits = if release.is_some() {
                     vec!["ponder", "depth", "2"]
                 } else {
                     vec!["depth", "2"]
                 };
-                let mut active = protocol.start_go(&engine, &limits, &mut output).unwrap();
+                let mut active = protocol.start_go(&limits, &mut output).unwrap();
                 loop {
                     let Some(ActiveSearch::Running { handle, .. }) = active.as_ref() else {
                         panic!("search must be running");
@@ -3007,7 +3204,7 @@ mod tests {
                         false
                     };
                     protocol
-                        .handle_search_event(&engine, &mut active, event, &mut output)
+                        .handle_search_event(&mut active, event, &mut output)
                         .unwrap();
                     if finished {
                         break;
@@ -3016,7 +3213,6 @@ mod tests {
                 if let Some(command) = release {
                     protocol
                         .handle_searching_line(
-                            &engine,
                             &mut active,
                             &mut VecDeque::new(),
                             command,
@@ -3041,7 +3237,7 @@ mod tests {
     // その経路も使う共有判定を直接検査する。
     #[test]
     fn resignation_repetition_band_is_excluded_at_every_threshold() {
-        let (_, mut protocol) = resignation_engine(RESIGN_MATERIAL_SFEN);
+        let mut protocol = resignation_engine(RESIGN_MATERIAL_SFEN);
         for threshold in [0, 1, 20_000, 29_487, 29_743, 99_999] {
             protocol.resign_value = threshold;
             for score in [-29_487, -29_740, -29_743] {
@@ -3066,26 +3262,20 @@ mod tests {
 
     /// 探索イベントの評価値を規範値へ差し替え、既定のResignValueで最終出力を検査する。
     fn check_repetition_band_resignation(score: i32, release: Option<&str>, running_hit: bool) {
-        let (mut engine, mut protocol) = resignation_engine(RESIGN_MATERIAL_SFEN);
+        let mut protocol = resignation_engine(RESIGN_MATERIAL_SFEN);
         assert_eq!(protocol.resign_value, 20_000);
-        let legal = moves_sets(&run(&mut protocol, &mut engine, "moves\n")).remove(0);
+        let legal = moves_sets(&run(&mut protocol, "moves\n")).remove(0);
         let mut output = Vec::new();
         let limits = if release.is_some() || running_hit {
             vec!["ponder", "depth", "2"]
         } else {
             vec!["depth", "2"]
         };
-        let mut active = protocol.start_go(&engine, &limits, &mut output).unwrap();
+        let mut active = protocol.start_go(&limits, &mut output).unwrap();
         if running_hit {
             assert!(matches!(active, Some(ActiveSearch::Running { .. })));
             protocol
-                .handle_searching_line(
-                    &engine,
-                    &mut active,
-                    &mut VecDeque::new(),
-                    "ponderhit",
-                    &mut output,
-                )
+                .handle_searching_line(&mut active, &mut VecDeque::new(), "ponderhit", &mut output)
                 .unwrap();
             assert!(matches!(active, Some(ActiveSearch::Running { .. })));
         }
@@ -3110,7 +3300,7 @@ mod tests {
                 }
             };
             protocol
-                .handle_search_event(&engine, &mut active, event, &mut output)
+                .handle_search_event(&mut active, event, &mut output)
                 .unwrap();
             if finished {
                 break;
@@ -3120,13 +3310,7 @@ mod tests {
             assert!(matches!(active, Some(ActiveSearch::AwaitingStop { .. })));
             assert!(bestmoves(std::str::from_utf8(&output).unwrap()).is_empty());
             protocol
-                .handle_searching_line(
-                    &engine,
-                    &mut active,
-                    &mut VecDeque::new(),
-                    command,
-                    &mut output,
-                )
+                .handle_searching_line(&mut active, &mut VecDeque::new(), command, &mut output)
                 .unwrap();
         }
         assert!(active.is_none());
@@ -3177,20 +3361,19 @@ mod tests {
     fn resignation_uses_adopted_score_without_repeating_info() {
         for (score, threshold, resign) in [(-100, 100, true), (0, 1, false), (100, 1, false)] {
             for release in [None, Some("stop")] {
-                let (mut engine, mut protocol) = resignation_engine(RESIGN_MATERIAL_SFEN);
+                let mut protocol = resignation_engine(RESIGN_MATERIAL_SFEN);
                 run(
                     &mut protocol,
-                    &mut engine,
                     &format!("setoption name ResignValue value {threshold}\n"),
                 );
-                let legal = moves_sets(&run(&mut protocol, &mut engine, "moves\n")).remove(0);
+                let legal = moves_sets(&run(&mut protocol, "moves\n")).remove(0);
                 let mut output = Vec::new();
                 let limits = if release.is_some() {
                     vec!["ponder", "depth", "2"]
                 } else {
                     vec!["depth", "2"]
                 };
-                let mut active = protocol.start_go(&engine, &limits, &mut output).unwrap();
+                let mut active = protocol.start_go(&limits, &mut output).unwrap();
                 let before_release = loop {
                     let Some(ActiveSearch::Running { handle, .. }) = active.as_ref() else {
                         panic!("search must be running")
@@ -3218,7 +3401,7 @@ mod tests {
                     };
                     let before = output.len();
                     protocol
-                        .handle_search_event(&engine, &mut active, event, &mut output)
+                        .handle_search_event(&mut active, event, &mut output)
                         .unwrap();
                     if finished {
                         break before;
@@ -3233,7 +3416,6 @@ mod tests {
                     );
                     protocol
                         .handle_searching_line(
-                            &engine,
                             &mut active,
                             &mut VecDeque::new(),
                             command,
@@ -3262,14 +3444,10 @@ mod tests {
     #[test]
     fn resignation_sequential_normal_and_ponderhit_return_resign() {
         for commands in ["go depth 2\n", "go ponder depth 2\nponderhit\n"] {
-            let (mut engine, mut protocol) = resignation_engine(RESIGN_MATE_SFEN);
+            let mut protocol = resignation_engine(RESIGN_MATE_SFEN);
             let mut output = Vec::new();
             protocol
-                .run(
-                    &mut engine,
-                    &mut std::io::Cursor::new(commands),
-                    &mut output,
-                )
+                .run(&mut std::io::Cursor::new(commands), &mut output)
                 .unwrap();
             let output = String::from_utf8(output).unwrap();
             assert!(output.contains(" score mate -"), "{output}");
@@ -3284,14 +3462,10 @@ mod tests {
     // [`UsiProtocol::should_resign`]と[`UsiProtocol::handle_state`]の契約を検査する。
     #[test]
     fn resignation_preserves_position_moves_and_gameover_lifecycle() {
-        let (mut engine, mut protocol) = resignation_engine(RESIGN_MATE_SFEN);
-        let mut output = run(&mut protocol, &mut engine, "state\nmoves\ngo depth 2\n");
-        output.push_str(&run(
-            &mut protocol,
-            &mut engine,
-            "state\nmoves\ngo depth 2\n",
-        ));
-        output.push_str(&run(&mut protocol, &mut engine, &format!(
+        let mut protocol = resignation_engine(RESIGN_MATE_SFEN);
+        let mut output = run(&mut protocol, "state\nmoves\ngo depth 2\n");
+        output.push_str(&run(&mut protocol, "state\nmoves\ngo depth 2\n"));
+        output.push_str(&run(&mut protocol, &format!(
             "position sfen {RESIGN_MATERIAL_SFEN}\nstate\ngameover lose\nstate\nposition sfen {RESIGN_MATE_SFEN}\nstate\ngo depth 2\n"
         )));
         assert_eq!(error_lines(&output), [STATE_ERROR]);
@@ -3310,7 +3484,6 @@ mod tests {
     /// 実行中の探索から深さ1の進捗だけを処理し、停止経路へ渡す。
     fn resignation_wait_for_iteration(
         protocol: &mut UsiProtocol,
-        engine: &Engine,
         active: &mut Option<ActiveSearch>,
         output: &mut Vec<u8>,
     ) {
@@ -3322,34 +3495,22 @@ mod tests {
             .recv_timeout(Duration::from_secs(5))
             .unwrap();
         assert!(matches!(event, SearchEvent::Progress { depth: 1, score, .. } if score < 0));
-        protocol
-            .handle_search_event(engine, active, event, output)
-            .unwrap();
+        protocol.handle_search_event(active, event, output).unwrap();
     }
 
     // [`UsiProtocol::should_resign`]の適用範囲と[`write_bestmove`]の停止理由を検査する。
     // 完了イベントをまだ消費していないRunningからstopを処理する。
     #[test]
     fn resignation_running_stop_returns_resign_for_ponder_search() {
-        let (mut engine, mut protocol) = resignation_engine(RESIGN_MATERIAL_SFEN);
-        run(
-            &mut protocol,
-            &mut engine,
-            "setoption name ResignValue value 1\n",
-        );
+        let mut protocol = resignation_engine(RESIGN_MATERIAL_SFEN);
+        run(&mut protocol, "setoption name ResignValue value 1\n");
         let mut output = Vec::new();
         let mut active = protocol
-            .start_go(&engine, &["ponder", "depth", "256"], &mut output)
+            .start_go(&["ponder", "depth", "256"], &mut output)
             .unwrap();
-        resignation_wait_for_iteration(&mut protocol, &engine, &mut active, &mut output);
+        resignation_wait_for_iteration(&mut protocol, &mut active, &mut output);
         protocol
-            .handle_searching_line(
-                &engine,
-                &mut active,
-                &mut VecDeque::new(),
-                "stop",
-                &mut output,
-            )
+            .handle_searching_line(&mut active, &mut VecDeque::new(), "stop", &mut output)
             .unwrap();
         assert!(active.is_none());
         let output = String::from_utf8(output).unwrap();
@@ -3363,35 +3524,21 @@ mod tests {
     // [`UsiProtocol::should_resign`]の適用範囲と[`UsiProtocol::ponderhit`]の契約を検査する。
     #[test]
     fn resignation_running_ponderhit_continues_until_the_adopted_result() {
-        let (mut engine, mut protocol) = resignation_engine(RESIGN_MATERIAL_SFEN);
-        run(
-            &mut protocol,
-            &mut engine,
-            "setoption name ResignValue value 1\n",
-        );
+        let mut protocol = resignation_engine(RESIGN_MATERIAL_SFEN);
+        run(&mut protocol, "setoption name ResignValue value 1\n");
         let mut output = Vec::new();
         let mut active = protocol
-            .start_go(
-                &engine,
-                &["ponder", "depth", "256", "nodes", "50000"],
-                &mut output,
-            )
+            .start_go(&["ponder", "depth", "256", "nodes", "50000"], &mut output)
             .unwrap();
-        resignation_wait_for_iteration(&mut protocol, &engine, &mut active, &mut output);
+        resignation_wait_for_iteration(&mut protocol, &mut active, &mut output);
         protocol
-            .handle_searching_line(
-                &engine,
-                &mut active,
-                &mut VecDeque::new(),
-                "ponderhit",
-                &mut output,
-            )
+            .handle_searching_line(&mut active, &mut VecDeque::new(), "ponderhit", &mut output)
             .unwrap();
         assert!(matches!(active, Some(ActiveSearch::Running { .. })));
         assert!(bestmoves(std::str::from_utf8(&output).unwrap()).is_empty());
         while active.is_some() {
             protocol
-                .wait_search_event(&engine, &mut active, &mut output)
+                .wait_search_event(&mut active, &mut output)
                 .unwrap();
         }
         let output = String::from_utf8(output).unwrap();
@@ -3407,33 +3554,23 @@ mod tests {
     #[test]
     fn resignation_held_depth_zero_does_not_resign_on_stop_or_ponderhit() {
         for command in ["stop", "ponderhit"] {
-            let (mut engine, mut protocol) = resignation_engine(RESIGN_MATE_SFEN);
-            run(
-                &mut protocol,
-                &mut engine,
-                "setoption name ResignValue value 1\n",
-            );
-            let legal = moves_sets(&run(&mut protocol, &mut engine, "moves\n")).remove(0);
+            let mut protocol = resignation_engine(RESIGN_MATE_SFEN);
+            run(&mut protocol, "setoption name ResignValue value 1\n");
+            let legal = moves_sets(&run(&mut protocol, "moves\n")).remove(0);
             let mut output = Vec::new();
             let mut active = protocol
-                .start_go(&engine, &["ponder", "nodes", "1"], &mut output)
+                .start_go(&["ponder", "nodes", "1"], &mut output)
                 .unwrap();
             while matches!(active, Some(ActiveSearch::Running { .. })) {
                 protocol
-                    .wait_search_event(&engine, &mut active, &mut output)
+                    .wait_search_event(&mut active, &mut output)
                     .unwrap();
             }
             assert!(matches!(active, Some(ActiveSearch::AwaitingStop { .. })));
             assert!(bestmoves(std::str::from_utf8(&output).unwrap()).is_empty());
             let before = output.len();
             protocol
-                .handle_searching_line(
-                    &engine,
-                    &mut active,
-                    &mut VecDeque::new(),
-                    command,
-                    &mut output,
-                )
+                .handle_searching_line(&mut active, &mut VecDeque::new(), command, &mut output)
                 .unwrap();
             assert!(active.is_none());
             let released = std::str::from_utf8(&output[before..]).unwrap();
@@ -3446,22 +3583,17 @@ mod tests {
     // [`UsiProtocol::handle_setoption`]と[`UsiProtocol::should_resign`]の契約。待機列は現在のbestmoveより後に適用する。
     #[test]
     fn resignation_option_changes_wait_until_running_result_is_released() {
-        let (mut engine, mut protocol) = resignation_engine(RESIGN_MATERIAL_SFEN);
-        run(
-            &mut protocol,
-            &mut engine,
-            "setoption name ResignValue value 99999\n",
-        );
-        let legal = moves_sets(&run(&mut protocol, &mut engine, "moves\n")).remove(0);
+        let mut protocol = resignation_engine(RESIGN_MATERIAL_SFEN);
+        run(&mut protocol, "setoption name ResignValue value 99999\n");
+        let legal = moves_sets(&run(&mut protocol, "moves\n")).remove(0);
         let mut output = Vec::new();
         let mut active = protocol
-            .start_go(&engine, &["ponder", "depth", "256"], &mut output)
+            .start_go(&["ponder", "depth", "256"], &mut output)
             .unwrap();
-        resignation_wait_for_iteration(&mut protocol, &engine, &mut active, &mut output);
+        resignation_wait_for_iteration(&mut protocol, &mut active, &mut output);
         let mut pending = VecDeque::new();
         protocol
             .handle_searching_line(
-                &engine,
                 &mut active,
                 &mut pending,
                 "setoption name ResignValue value 1",
@@ -3469,16 +3601,14 @@ mod tests {
             )
             .unwrap();
         protocol
-            .handle_searching_line(&engine, &mut active, &mut pending, "stop", &mut output)
+            .handle_searching_line(&mut active, &mut pending, "stop", &mut output)
             .unwrap();
         assert_legal_bestmove(std::str::from_utf8(&output).unwrap(), &legal);
         assert_eq!(pending.len(), 1);
         while let Some(command) = pending.pop_front() {
-            protocol
-                .handle_idle_line(&mut engine, &command, &mut output)
-                .unwrap();
+            protocol.handle_idle_line(&command, &mut output).unwrap();
         }
-        let next = run(&mut protocol, &mut engine, "go depth 1\n");
+        let next = run(&mut protocol, "go depth 1\n");
         assert_eq!(bestmoves(&next), ["bestmove resign"]);
     }
 
@@ -3486,9 +3616,16 @@ mod tests {
     fn isready_allocates_the_default_transposition_table_before_the_first_go() {
         // 対局開始直後の手が置換表の確保を待たないよう、isreadyで既定容量の
         // [`UsiProtocol::handle_idle_line`]のisready分岐に従い、探索前に置換表を作る。
-        let mut engine = make_engine(&[RuleCode::R1]);
-        let mut protocol = UsiProtocol::new(&engine);
-        let before = run(&mut protocol, &mut engine, "position startpos\nstate\n");
+        let mut protocol = UsiProtocol::new();
+        let rules_text = canonical_rules_text(&rule_codes(&[RuleCode::R1]));
+        assert_eq!(
+            run(
+                &mut protocol,
+                &format!("setoption name RuleSet value {rules_text}\n")
+            ),
+            ""
+        );
+        let before = run(&mut protocol, "position startpos\nstate\n");
         assert!(
             protocol
                 .searcher
@@ -3497,7 +3634,7 @@ mod tests {
                 .transposition_table()
                 .is_none()
         );
-        let output = run(&mut protocol, &mut engine, "isready\nstate\n");
+        let output = run(&mut protocol, "isready\nstate\n");
         let lines: Vec<_> = output.lines().collect();
         assert_eq!(lines[0], "readyok");
         // モジュールdocのコマンド表に従い、isreadyは対局状態を変えない。
@@ -3559,11 +3696,17 @@ mod tests {
     #[test]
     fn article_33_presets_expand_to_code_lists() {
         // [`UsiProtocol::handle_setoption`]と[`EngineCommand::SetRules`]の契約、およびchu-shogi.md第33条第5項と第6項に従う。
-        let mut engine = make_engine(&[RuleCode::R1]);
-        let mut protocol = UsiProtocol::new(&engine);
+        let mut protocol = UsiProtocol::new();
+        let rules_text = canonical_rules_text(&rule_codes(&[RuleCode::R1]));
+        assert_eq!(
+            run(
+                &mut protocol,
+                &format!("setoption name RuleSet value {rules_text}\n")
+            ),
+            ""
+        );
         let output = run(
             &mut protocol,
-            &mut engine,
             "setoption name RuleSet value LISHOGI\nusinewgame\nposition startpos\nstate\n",
         );
         assert_eq!(
@@ -3574,7 +3717,6 @@ mod tests {
 
         let output = run(
             &mut protocol,
-            &mut engine,
             "gameover win\nsetoption name RuleSet value JCSA\nposition startpos\nstate\n",
         );
         assert_eq!(state_rules(state_lines(&output)[0]), "L0,P0,R1,E0");
@@ -3583,30 +3725,28 @@ mod tests {
     #[test]
     fn ruleset_changes_latch_until_the_next_game() {
         // [`crate::protocol::engine`]の表に従い、対局中のSetPositionは現局の規則で再構成する。
-        let mut engine = make_engine(&[RuleCode::R1]);
-        let mut protocol = UsiProtocol::new(&engine);
+        let mut protocol = UsiProtocol::new();
+        let rules_text = canonical_rules_text(&rule_codes(&[RuleCode::R1]));
+        assert_eq!(
+            run(
+                &mut protocol,
+                &format!("setoption name RuleSet value {rules_text}\n")
+            ),
+            ""
+        );
 
         let output = run(
             &mut protocol,
-            &mut engine,
             "position startpos moves 6i6h\nsetoption name RuleSet value L1,P0,R2,E0\nstate\n",
         );
         assert_eq!(state_rules(state_lines(&output)[0]), "L0,P0,R1,E0");
 
         // 対局中の全列再送でもactive規則は変わらない。
-        let output = run(
-            &mut protocol,
-            &mut engine,
-            "position startpos moves 6i6h 1d1e\nstate\n",
-        );
+        let output = run(&mut protocol, "position startpos moves 6i6h 1d1e\nstate\n");
         assert_eq!(state_rules(state_lines(&output)[0]), "L0,P0,R1,E0");
 
         // commit点（次局開始）で初めて反映される。
-        let output = run(
-            &mut protocol,
-            &mut engine,
-            "gameover win\nposition startpos\nstate\n",
-        );
+        let output = run(&mut protocol, "gameover win\nposition startpos\nstate\n");
         assert_eq!(state_rules(state_lines(&output)[0]), "L1,P0,R2,E0");
     }
 
@@ -3731,12 +3871,26 @@ mod tests {
             prelude.push(command);
         }
         for (name, rules, prelude, command) in cases {
-            let mut full_engine = make_engine(&rules);
-            let mut full_protocol = UsiProtocol::new(&full_engine);
-            let mut incremental_engine = make_engine(&rules);
-            let mut incremental_protocol = UsiProtocol::new(&incremental_engine);
+            let mut full_protocol = UsiProtocol::new();
+            let rules_text = canonical_rules_text(&rule_codes(&rules));
+            assert_eq!(
+                run(
+                    &mut full_protocol,
+                    &format!("setoption name RuleSet value {rules_text}\n")
+                ),
+                ""
+            );
+            let mut incremental_protocol = UsiProtocol::new();
+            let rules_text = canonical_rules_text(&rule_codes(&rules));
+            assert_eq!(
+                run(
+                    &mut incremental_protocol,
+                    &format!("setoption name RuleSet value {rules_text}\n")
+                ),
+                ""
+            );
             for input in &prelude {
-                let output = run(&mut incremental_protocol, &mut incremental_engine, input);
+                let output = run(&mut incremental_protocol, input);
                 assert!(output.is_empty(), "{name}: prelude={input}: {output}");
             }
             // 終局局面ではmovesは固定エラーとなるため、stateだけを照会する。
@@ -3746,8 +3900,8 @@ mod tests {
                 "state\nmoves\n"
             };
             let input = format!("{command}\n{queries}");
-            let expected = run(&mut full_protocol, &mut full_engine, &input);
-            let actual = run(&mut incremental_protocol, &mut incremental_engine, &input);
+            let expected = run(&mut full_protocol, &input);
+            let actual = run(&mut incremental_protocol, &input);
             assert!(
                 error_lines(&expected).is_empty(),
                 "{name}: {input}: {expected}"
@@ -3757,13 +3911,13 @@ mod tests {
                 "{name}: prelude={prelude:?}, command={command}"
             );
             assert_eq!(
-                incremental_engine.game().position(),
-                full_engine.game().position(),
+                incremental_protocol.engine().unwrap().game().position(),
+                full_protocol.engine().unwrap().game().position(),
                 "{name}: {command}"
             );
             assert_eq!(
-                incremental_engine.ply(),
-                full_engine.ply(),
+                incremental_protocol.engine().unwrap().ply(),
+                full_protocol.engine().unwrap().ply(),
                 "{name}: {command}"
             );
         }
@@ -3859,24 +4013,26 @@ mod tests {
     #[test]
     fn position_tracks_absolute_ply_from_sfen_and_moves() {
         // [`Engine::ply`]と[`ClockLimits::ply`]に従い、SFENの基底手数と適用した手数の和を時計へ渡す。
-        let mut engine = make_engine(&[RuleCode::R1]);
-        let mut protocol = UsiProtocol::new(&engine);
-
-        let output = run(
-            &mut protocol,
-            &mut engine,
-            "position startpos moves 6i6h 6d6e\n",
+        let mut protocol = UsiProtocol::new();
+        let rules_text = canonical_rules_text(&rule_codes(&[RuleCode::R1]));
+        assert_eq!(
+            run(
+                &mut protocol,
+                &format!("setoption name RuleSet value {rules_text}\n")
+            ),
+            ""
         );
+
+        let output = run(&mut protocol, "position startpos moves 6i6h 6d6e\n");
         assert!(error_lines(&output).is_empty());
-        assert_eq!(engine.ply(), 2);
+        assert_eq!(protocol.engine().unwrap().ply(), 2);
 
         let output = run(
             &mut protocol,
-            &mut engine,
             &format!("position sfen {INITIAL_BOARD} - 41 moves 6i6h 6d6e\n"),
         );
         assert!(error_lines(&output).is_empty());
-        assert_eq!(engine.ply(), 42);
+        assert_eq!(protocol.engine().unwrap().ply(), 42);
     }
 
     // parse_go_configとstart_goの契約: 不正な引数と非対局中の探索を拒否する。
@@ -3986,8 +4142,15 @@ mod tests {
     #[test]
     fn go_infinite_withholds_bestmove_until_stop() {
         // [`ActiveSearch`]に従い、go infiniteではstopまでbestmoveを保留する。
-        let mut engine = make_engine(&[RuleCode::R1]);
-        let mut protocol = UsiProtocol::new(&engine);
+        let mut protocol = UsiProtocol::new();
+        let rules_text = canonical_rules_text(&rule_codes(&[RuleCode::R1]));
+        assert_eq!(
+            run(
+                &mut protocol,
+                &format!("setoption name RuleSet value {rules_text}\n")
+            ),
+            ""
+        );
         let (command_sender, command_receiver) = std::sync::mpsc::channel();
         let (line_sender, line_receiver) = std::sync::mpsc::channel();
 
@@ -3997,7 +4160,7 @@ mod tests {
                     sender: line_sender,
                     bytes: Vec::new(),
                 };
-                protocol.run_channel(&mut engine, &command_receiver, &mut output)
+                protocol.run_channel(&command_receiver, &mut output)
             });
             command_sender
                 .send(Ok("position startpos".to_owned()))
@@ -4169,21 +4332,27 @@ mod tests {
     #[test]
     fn royal_capture_finishes_silently_and_state_reports_the_verdict() {
         // モジュールdocの契約に従い、USIは自発的な終局裁定を出力しない。
-        let mut engine = make_engine(&[RuleCode::R1, RuleCode::E2]);
-        let mut protocol = UsiProtocol::new(&engine);
+        let mut protocol = UsiProtocol::new();
+        let rules_text = canonical_rules_text(&rule_codes(&[RuleCode::R1, RuleCode::E2]));
+        assert_eq!(
+            run(
+                &mut protocol,
+                &format!("setoption name RuleSet value {rules_text}\n")
+            ),
+            ""
+        );
 
         // 王駒捕獲（chu-shogi.md第21条）で終局しても、USI経路には自発出力が一切ない。
         assert_eq!(
             run(
                 &mut protocol,
-                &mut engine,
                 &format!("position sfen {ROYAL_SFEN} moves 7g7d\n"),
             ),
             ""
         );
         // USIには自発的な裁定通知がないため、裁定はrun終了後のGameStatusで検証する。
         assert_eq!(
-            engine.status(),
+            protocol.engine().unwrap().status(),
             GameStatus::Finished(GameResult::Win {
                 winner: Color::Black,
                 reason: WinReason::RoyalCapture,
@@ -4193,7 +4362,6 @@ mod tests {
         // Finished局面への同一position全列の再送は終局通知や重複出力を生まない。
         let output = run(
             &mut protocol,
-            &mut engine,
             &format!("state\nposition sfen {ROYAL_SFEN} moves 7g7d\n"),
         );
         let lines: Vec<_> = output.lines().collect();
@@ -4203,7 +4371,7 @@ mod tests {
 
         // gameoverは無応答でAwaitingStartへ戻る（後続movesのエラーで観測）。
         assert_eq!(
-            run(&mut protocol, &mut engine, "gameover win\nmoves\n"),
+            run(&mut protocol, "gameover win\nmoves\n"),
             format!("{MOVES_ERROR}\n")
         );
     }
@@ -4212,22 +4380,28 @@ mod tests {
     #[test]
     fn diagnostics_frame_success_and_reject_uncommitted_positions() {
         for command in ["d", "eval", "tt"] {
-            let mut engine = Engine::new(parse_rule_set("L0,P0,R1,E2").unwrap()).unwrap();
-            let mut protocol = UsiProtocol::new(&engine);
-            let error = run(&mut protocol, &mut engine, &format!("{command}\n"));
+            let mut protocol = UsiProtocol::new();
+            let rules_text = canonical_rules_text(&parse_rule_set("L0,P0,R1,E2").unwrap());
+            assert_eq!(
+                run(
+                    &mut protocol,
+                    &format!("setoption name RuleSet value {rules_text}\n")
+                ),
+                ""
+            );
+            let error = run(&mut protocol, &format!("{command}\n"));
             assert_eq!(error.lines().count(), 1);
             assert!(error.starts_with("info string error: "));
             assert!(!error.contains("info string end"));
             assert_eq!(
                 run(
                     &mut protocol,
-                    &mut engine,
                     "setoption name USI_Hash value 1\nposition startpos\n"
                 ),
                 ""
             );
-            let before = engine.game().position().clone();
-            let output = run(&mut protocol, &mut engine, &format!("{command}\n"));
+            let before = protocol.engine().unwrap().game().position().clone();
+            let output = run(&mut protocol, &format!("{command}\n"));
             if command == "d" {
                 assert!(output.lines().all(|line| !line.starts_with("info string")));
                 assert!(
@@ -4242,7 +4416,7 @@ mod tests {
                 assert_eq!(output.lines().last(), Some("info string end"));
             }
             assert!(!output.contains("error"));
-            assert_eq!(engine.game().position(), &before);
+            assert_eq!(protocol.engine().unwrap().game().position(), &before);
         }
         let output = session(&[RuleCode::R1], "position startpos\ntt\n");
         assert_eq!(output.lines().count(), 1);
@@ -4276,16 +4450,19 @@ mod tests {
     /// [`diagnostic_position`]の契約: 成り権保留と先獅子を含む拡張SFENがキーまで往復する。
     #[test]
     fn diagnostic_sfen_round_trips_all_position_state() {
-        let mut engine = Engine::new(parse_rule_set("L1,L2,P1,R1,E2").unwrap()).unwrap();
-        let mut protocol = UsiProtocol::new(&engine);
-        let sfen = "k11/12/4P7/12/9g2/5+o3n2/12/9R2/12/12/12/11K b 7f 41 8c";
-        let output = run(
-            &mut protocol,
-            &mut engine,
-            &format!("position sfen {sfen}\nd\n"),
+        let mut protocol = UsiProtocol::new();
+        let rules_text = canonical_rules_text(&parse_rule_set("L1,L2,P1,R1,E2").unwrap());
+        assert_eq!(
+            run(
+                &mut protocol,
+                &format!("setoption name RuleSet value {rules_text}\n")
+            ),
+            ""
         );
+        let sfen = "k11/12/4P7/12/9g2/5+o3n2/12/9R2/12/12/12/11K b 7f 41 8c";
+        let output = run(&mut protocol, &format!("position sfen {sfen}\nd\n"));
         assert!(!output.contains("error:"), "{output}");
-        let original = engine.game().position().clone();
+        let original = protocol.engine().unwrap().game().position().clone();
         assert!(output.contains(&format!("zobrist {:016x}\n", original.zobrist())));
         assert!(output.contains(&format!(
             "rights-zobrist {:016x}\n",
@@ -4303,14 +4480,10 @@ mod tests {
         assert!(output.contains("\npromotion-deferred 8c\n"));
         assert!(output.contains("+o"));
         assert_eq!(
-            run(
-                &mut protocol,
-                &mut engine,
-                &format!("position sfen {emitted}\n")
-            ),
+            run(&mut protocol, &format!("position sfen {emitted}\n")),
             ""
         );
-        let restored = engine.game().position();
+        let restored = protocol.engine().unwrap().game().position();
         assert_eq!(original, *restored);
         assert_eq!(original.zobrist(), restored.zobrist());
         assert_eq!(original.rights_zobrist(), restored.rights_zobrist());
@@ -4409,14 +4582,20 @@ mod tests {
     #[test]
     fn diagnostic_evaluation_matches_full_evaluation_and_formats_rows() {
         let weights = nnue::weights().unwrap();
-        let mut engine = Engine::new(parse_rule_set("L0,P0,R1,E2").unwrap()).unwrap();
-        let mut protocol = UsiProtocol::new(&engine);
+        let mut protocol = UsiProtocol::new();
+        let rules_text = canonical_rules_text(&parse_rule_set("L0,P0,R1,E2").unwrap());
+        assert_eq!(
+            run(
+                &mut protocol,
+                &format!("setoption name RuleSet value {rules_text}\n")
+            ),
+            ""
+        );
         let output = run(
             &mut protocol,
-            &mut engine,
             &format!("position sfen {INITIAL_BOARD} - 1\neval\n"),
         );
-        let score = nnue::evaluate(&weights, engine.game().position());
+        let score = nnue::evaluate(&weights, protocol.engine().unwrap().game().position());
         assert!(
             output.contains(&format!("info string evaluation {score}\n")),
             "{output}"
@@ -4433,25 +4612,33 @@ mod tests {
     /// [`diagnostic_table`]の契約: 空項目と全合法手を列挙し、終局後は現局面だけを表示する。
     #[test]
     fn diagnostic_table_lists_legal_children_and_no_finished_children() {
-        let mut engine = Engine::new(parse_rule_set("L0,P0,R1,E2").unwrap()).unwrap();
-        let mut protocol = UsiProtocol::new(&engine);
+        let mut protocol = UsiProtocol::new();
+        let rules_text = canonical_rules_text(&parse_rule_set("L0,P0,R1,E2").unwrap());
+        assert_eq!(
+            run(
+                &mut protocol,
+                &format!("setoption name RuleSet value {rules_text}\n")
+            ),
+            ""
+        );
         run(
             &mut protocol,
-            &mut engine,
             "setoption name USI_Hash value 1\nposition startpos\n",
         );
-        let expected: HashSet<_> = engine
+        let expected: HashSet<_> = protocol
+            .engine()
+            .unwrap()
             .game()
             .legal_moves()
             .iter()
             .map(|&mv| {
                 format!(
                     "info string {} none",
-                    usi::text_generated(engine.game().position(), mv)
+                    usi::text_generated(protocol.engine().unwrap().game().position(), mv)
                 )
             })
             .collect();
-        let output = run(&mut protocol, &mut engine, "tt\n");
+        let output = run(&mut protocol, "tt\n");
         assert_eq!(output.lines().next(), Some("info string current none"));
         let actual: HashSet<_> = output
             .lines()
@@ -4461,10 +4648,9 @@ mod tests {
             .collect();
         assert_eq!(actual, expected);
         assert_eq!(output.lines().count(), expected.len() + 3);
-        assert_eq!(output, run(&mut protocol, &mut engine, "tt\n"));
+        assert_eq!(output, run(&mut protocol, "tt\n"));
         let output = run(
             &mut protocol,
-            &mut engine,
             &format!("position sfen {ROYAL_SFEN} moves 7g7d\nd\neval\ntt\n"),
         );
         assert!(!output.contains("error:"));
@@ -4606,24 +4792,29 @@ mod tests {
             format!("{STATE_ERROR}\n")
         );
 
-        let mut engine = make_engine(&[RuleCode::R1, RuleCode::E2]);
-        let mut protocol = UsiProtocol::new(&engine);
+        let mut protocol = UsiProtocol::new();
+        let rules_text = canonical_rules_text(&rule_codes(&[RuleCode::R1, RuleCode::E2]));
+        assert_eq!(
+            run(
+                &mut protocol,
+                &format!("setoption name RuleSet value {rules_text}\n")
+            ),
+            ""
+        );
         let output = run(
             &mut protocol,
-            &mut engine,
             &format!("position sfen {ROYAL_SFEN} moves 7g7d\nstate\n"),
         );
         assert_eq!(output, format!("{ROYAL_FINISHED_STATE}\n"));
 
         // gameover後は終局済み局面を内部に保持していてもstateは応答しない。
         assert_eq!(
-            run(&mut protocol, &mut engine, "gameover win\nstate\n"),
+            run(&mut protocol, "gameover win\nstate\n"),
             format!("{STATE_ERROR}\n")
         );
 
         let output = run(
             &mut protocol,
-            &mut engine,
             "setoption name RuleSet value L0,P0,R2,E2\nposition startpos\nstate\n",
         );
         assert_eq!(state_rules(state_lines(&output)[0]), "L0,P0,R2,E2");
@@ -4701,11 +4892,17 @@ mod tests {
         let (lines, output) = std::sync::mpsc::channel();
         std::thread::scope(|scope| {
             let worker = scope.spawn(move || {
-                let mut engine = make_engine(&[RuleCode::R1]);
-                let mut protocol = UsiProtocol::new(&engine);
+                let mut protocol = UsiProtocol::new();
+                let rules_text = canonical_rules_text(&rule_codes(&[RuleCode::R1]));
+                assert_eq!(
+                    run(
+                        &mut protocol,
+                        &format!("setoption name RuleSet value {rules_text}\n")
+                    ),
+                    ""
+                );
                 protocol
                     .run_channel(
-                        &mut engine,
                         &input,
                         &mut LineWriter {
                             sender: lines,
@@ -4832,22 +5029,29 @@ mod tests {
     #[test]
     fn ponder_held_results_release_once_or_are_discarded() {
         for command in ["ponderhit", "stop", "gameover win", "quit", "eof"] {
-            let mut engine = make_engine(&[RuleCode::R1]);
-            let mut protocol = UsiProtocol::new(&engine);
+            let mut protocol = UsiProtocol::new();
+            let rules_text = canonical_rules_text(&rule_codes(&[RuleCode::R1]));
+            assert_eq!(
+                run(
+                    &mut protocol,
+                    &format!("setoption name RuleSet value {rules_text}\n")
+                ),
+                ""
+            );
             let (sender, lines) = std::sync::mpsc::channel();
             let mut output = LineWriter {
                 sender,
                 bytes: Vec::new(),
             };
             protocol
-                .handle_idle_line(&mut engine, "position startpos", &mut output)
+                .handle_idle_line("position startpos", &mut output)
                 .unwrap();
             let mut active = protocol
-                .start_go(&engine, &["ponder", "depth", "2"], &mut output)
+                .start_go(&["ponder", "depth", "2"], &mut output)
                 .unwrap();
             while matches!(active, Some(ActiveSearch::Running { .. })) {
                 protocol
-                    .wait_search_event(&engine, &mut active, &mut output)
+                    .wait_search_event(&mut active, &mut output)
                     .unwrap();
             }
             assert!(matches!(active, Some(ActiveSearch::AwaitingStop { .. })));
@@ -4858,7 +5062,7 @@ mod tests {
                 protocol.discard_search(&mut active).unwrap();
             } else {
                 protocol
-                    .handle_searching_line(&engine, &mut active, &mut pending, command, &mut output)
+                    .handle_searching_line(&mut active, &mut pending, command, &mut output)
                     .unwrap();
             }
             assert!(active.is_none());
@@ -4937,8 +5141,15 @@ mod tests {
                 Ok(line.len())
             }
         }
-        let mut engine = make_engine(&[RuleCode::R1]);
-        let mut protocol = UsiProtocol::new(&engine);
+        let mut protocol = UsiProtocol::new();
+        let rules_text = canonical_rules_text(&rule_codes(&[RuleCode::R1]));
+        assert_eq!(
+            run(
+                &mut protocol,
+                &format!("setoption name RuleSet value {rules_text}\n")
+            ),
+            ""
+        );
         let (sender, output) = std::sync::mpsc::channel();
         let mut input = Input {
             lines: [
@@ -4952,7 +5163,6 @@ mod tests {
         };
         protocol
             .run(
-                &mut engine,
                 &mut input,
                 &mut LineWriter {
                     sender,
@@ -4965,7 +5175,6 @@ mod tests {
         let mut output = Vec::new();
         protocol
             .run(
-                &mut engine,
                 &mut std::io::Cursor::new("go ponder depth 2\n"),
                 &mut output,
             )
@@ -5071,17 +5280,19 @@ mod tests {
     // 理由は`docs/adr/apply-position-by-token-difference.md`にある。
     #[test]
     fn ponder_last_move_replacement_matches_replay_and_is_atomic() {
-        let mut engine = make_engine(&[RuleCode::R2, RuleCode::E2]);
-        let mut protocol = UsiProtocol::new(&engine);
-        let setup = run(
-            &mut protocol,
-            &mut engine,
-            "position startpos moves 5i5h 5d5e 6i6h\n",
+        let mut protocol = UsiProtocol::new();
+        let rules_text = canonical_rules_text(&rule_codes(&[RuleCode::R2, RuleCode::E2]));
+        assert_eq!(
+            run(
+                &mut protocol,
+                &format!("setoption name RuleSet value {rules_text}\n")
+            ),
+            ""
         );
+        let setup = run(&mut protocol, "position startpos moves 5i5h 5d5e 6i6h\n");
         assert!(setup.is_empty(), "{setup}");
         let output = run(
             &mut protocol,
-            &mut engine,
             "state\nposition startpos moves 5i5h 5d5e 1a1b\nstate\ngo depth 1\n",
         );
         assert_eq!(state_lines(&output)[0], state_lines(&output)[1]);
@@ -5089,11 +5300,18 @@ mod tests {
         assert!(bestmoves(&output).is_empty());
         // 反復禁止の履歴も、末尾の交換とその後の延長を通じて全再生と一致する。
         let base = "12/12/12/8k3/12/12/12/12/3K8/12/12/12 b - 41";
-        let mut engine = make_engine(&[RuleCode::R2, RuleCode::E2]);
-        let mut protocol = UsiProtocol::new(&engine);
+        let mut protocol = UsiProtocol::new();
+        let rules_text = canonical_rules_text(&rule_codes(&[RuleCode::R2, RuleCode::E2]));
+        assert_eq!(
+            run(
+                &mut protocol,
+                &format!("setoption name RuleSet value {rules_text}\n")
+            ),
+            ""
+        );
         for moves in ["9i9h 4d4e", "9i9h 4d5d", "9i9h 4d4e", "9i9h 4d4e 9h9i"] {
             let input = format!("position sfen {base} moves {moves}\nstate\nmoves\n");
-            let actual = run(&mut protocol, &mut engine, &input);
+            let actual = run(&mut protocol, &input);
             assert_eq!(actual, session(&[RuleCode::R2, RuleCode::E2], &input));
             assert!(error_lines(&actual).is_empty(), "{actual}");
             if moves.ends_with("9h9i") {

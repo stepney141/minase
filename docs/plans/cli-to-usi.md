@@ -18,9 +18,9 @@ CLIに残すのは、起動引数`--protocol`、`--search`、`--io-log`と、対
 ## 状態
 
 進行中。2026年11月12日に起案し、同じ日に着手した。
-完了済みのフェーズはまだない。
+フェーズ1（規則セット名の改名）とフェーズ2（起動引数`--rules`の削除）を終えた。
 いま詰まっている点はない。
-次の一手は、フェーズ1（規則セット名の改名）を終えて、フェーズ2（起動引数`--rules`の削除）へ進むことである。
+次の一手は、フェーズ3（起動引数`--nn-model`の削除と、ネットのチェックサムの照合）である。
 
 ## 目的
 
@@ -184,8 +184,10 @@ CECPでは、`feature option="RuleSet -string "`と宣言し、既定値の欄�
 最初の`new`までに`option RuleSet=<規則>`を受けていなければ、`Error (required option RuleSet is not set): new`を出し、終了コード1で終える。
 CECPには`isready`に当たるコマンドがないので、規則を必要とする最初のコマンドである`new`で検出する。
 XBoardは、握手の直後に`new`を送る。
-公開されているXBoardのソースでは、起動設定`-firstOptions`に書いたオプションを`new`より前に送ると読めるが、本書の起案では実物で確かめていないので、フェーズ2で実物のXBoardを使って確かめる。
-確かめた結果、`new`より前に規則を渡す手段がなければ、CECPでの検出の時点を設計し直す。
+XBoard 4.9.1は、起動設定`-firstOptions`に書いたオプションを、握手の`feature option`を受理した直後に送り、`new`はその後に送る。
+この順序は、実物のXBoardとminaseの入出力の記録で確かめた。
+規則が未設定のまま届いた`go`、`setboard`、`usermove`は、`Error (required option RuleSet is not set): <コマンド名>`で拒否し、セッションは続ける。
+`new`を送らずにこれらを送る入力に備えるためであり、USIで`isready`を送らない入力に備えるのと同じ扱いである。
 
 ### 規則セット名の改名
 
@@ -451,6 +453,8 @@ ONNX Runtimeの共有ライブラリの場所は、環境変数`ORT_DYLIB_PATH`�
 `spsa`も、`commit:`のエンジンを同じ固定の引数で起動している（`crates/minase/src/bin/minase/spsa_runner/engine.rs`）。
 こちらも`--protocol usi`だけにする。
 `spsa`には起動引数を足す引数がないので、変更より前のコミットを調整の対象にするときは、その時点のハーネスを使う。
+係数のファイルを生成する`spsa params`の引数`--rules`は、握手で宣言を読むためのエンジンの起動引数にしか使っていないので、削除する。
+調整機で`spsa params`を呼ぶ`scripts/vast-spsa/remote.py`も合わせて改める。
 `spsa`の`manifest.json`には形式の版の欄がないので、フェーズ2をマージする前に、再開を予定しているSPSAの実行が残っていないことを確かめる。
 
 ### ネットのチェックサムの記録

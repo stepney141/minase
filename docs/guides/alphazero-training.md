@@ -259,10 +259,13 @@ export XDG_CACHE_HOME=$HOME/.cache
 M=$PWD/target/release/minase
 N=$A/nets/cycles-rl2/cycle-0020.onnx
 "$M" match run --run-dir $A/progress/cycles-rl2/cycle-0020-vs-ab500 --seed <シード> \
-  --candidate "$M --protocol usi --rules JCSA --search mcts --nn-model $N" \
-  --baseline commit:45d5db5498e1739b2307b3719891a1eec24f7fbd \
+  --candidate "$M --protocol usi --search mcts --nn-model $N" \
+  --baseline commit:45d5db5498e1739b2307b3719891a1eec24f7fbd --baseline-args '--rules L0,P0,R1,E0' \
+  --rules L0,P0,R1,E0 \
   --candidate-option NnBatchSize=16 --each nodes=800 --baseline-limit nodes=500 --concurrency 4 elo --pairs 100
 ```
+
+コミット45d5db54は、規則を起動引数`--rules`で受けていた版なので、`--baseline-args`でその引数を足し、規則は名前`JCSA`ではなくコード列で指定する（[SPRTの手引き](sprt.md)の「エンジンの指定方法」の節）。
 
 固定の検証用棋譜の診断は、前回の測定より後の各サイクルについて行う。
 

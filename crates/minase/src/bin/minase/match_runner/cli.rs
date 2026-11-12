@@ -45,10 +45,11 @@ pub(crate) struct Arguments {
     /// 採用するローカルルールコード列または規則セット名。
     #[arg(
         long,
-        default_value = "JCSA",
+        required_unless_present = "resume",
+        conflicts_with = "resume",
         value_parser = parse_rule_set_argument
     )]
-    pub(super) rules: RuleSetArgument,
+    pub(super) rules: Option<RuleSetArgument>,
     /// 1局を打ち切る手数上限。
     #[arg(long, default_value_t = DEFAULT_MAX_PLY, value_parser = parse_positive_u32)]
     pub(super) max_ply: u32,
@@ -321,6 +322,8 @@ mod tests {
     fn usi_options_preserve_values_and_order_for_each_side() {
         let args = Arguments::try_parse_from([
             "match_runner",
+            "--rules",
+            "JCSA",
             "--run-dir",
             "unused",
             "--candidate-option",
@@ -371,10 +374,17 @@ mod tests {
                 "Label=a\nb",
                 "Label=a\rb",
             ] {
-                let error =
-                    Arguments::try_parse_from(["match_runner", "--run-dir", "unused", flag, input])
-                        .err()
-                        .unwrap();
+                let error = Arguments::try_parse_from([
+                    "match_runner",
+                    "--rules",
+                    "JCSA",
+                    "--run-dir",
+                    "unused",
+                    flag,
+                    input,
+                ])
+                .err()
+                .unwrap();
                 assert_eq!(
                     error.kind(),
                     clap::error::ErrorKind::ValueValidation,
@@ -390,6 +400,8 @@ mod tests {
             for duplicate in ["NnBatchSize=64", "nnbATCHsIZE=256"] {
                 let args = Arguments::try_parse_from([
                     "match_runner",
+                    "--rules",
+                    "JCSA",
                     "--run-dir",
                     "unused",
                     flag,
@@ -424,9 +436,17 @@ mod tests {
             ),
         ] {
             let args = Arguments::try_parse_from(
-                ["match_runner", "--run-dir", "unused", "--each", "depth=4"]
-                    .into_iter()
-                    .chain(extra),
+                [
+                    "match_runner",
+                    "--rules",
+                    "JCSA",
+                    "--run-dir",
+                    "unused",
+                    "--each",
+                    "depth=4",
+                ]
+                .into_iter()
+                .chain(extra),
             )
             .unwrap();
             assert_eq!(
@@ -484,8 +504,15 @@ mod tests {
     // 逸脱である。
     #[test]
     fn documented_defaults_match_sprt_md() {
-        let arguments = Arguments::try_parse_from(["match_runner", "--run-dir", "run", "gsprt"])
-            .expect("the documented default invocation must be accepted");
+        let arguments = Arguments::try_parse_from([
+            "match_runner",
+            "--run-dir",
+            "run",
+            "--rules",
+            "JCSA",
+            "gsprt",
+        ])
+        .expect("the documented default invocation must be accepted");
         assert_eq!(arguments.candidate_hash, None);
         assert_eq!(arguments.baseline_hash, None);
         assert_eq!(arguments.response_timeout, 120);
@@ -519,9 +546,16 @@ mod tests {
             (vec!["--elo1", "0"], None),
         ] {
             let arguments = Arguments::try_parse_from(
-                ["match_runner", "--run-dir", "run", "gsprt"]
-                    .into_iter()
-                    .chain(args),
+                [
+                    "match_runner",
+                    "--run-dir",
+                    "run",
+                    "--rules",
+                    "JCSA",
+                    "gsprt",
+                ]
+                .into_iter()
+                .chain(args),
             )
             .unwrap();
             let settings = arguments.mode.unwrap().new_run_settings();
@@ -542,6 +576,8 @@ mod tests {
                 assert!(
                     Arguments::try_parse_from([
                         "match_runner",
+                        "--rules",
+                        "JCSA",
                         "--run-dir",
                         "run",
                         "gsprt",
@@ -558,6 +594,8 @@ mod tests {
     fn explicit_concurrency_remains_a_positive_override() {
         let arguments = Arguments::try_parse_from([
             "match_runner",
+            "--rules",
+            "JCSA",
             "--run-dir",
             "run",
             "--concurrency",
@@ -569,6 +607,8 @@ mod tests {
         assert!(
             Arguments::try_parse_from([
                 "match_runner",
+                "--rules",
+                "JCSA",
                 "--run-dir",
                 "run",
                 "--concurrency",
@@ -586,6 +626,8 @@ mod tests {
         assert!(
             Arguments::try_parse_from([
                 "match_runner",
+                "--rules",
+                "JCSA",
                 "--run-dir",
                 "new",
                 "--resume",
@@ -634,6 +676,8 @@ mod tests {
         }
         let error = Arguments::try_parse_from([
             "match_runner",
+            "--rules",
+            "JCSA",
             "--run-dir",
             "new",
             "--target-pairs",
@@ -660,6 +704,8 @@ mod tests {
                 for value in ["--search mcts --nn-model net.onnx", ""] {
                     let arguments = Arguments::try_parse_from([
                         "match_runner",
+                        "--rules",
+                        "JCSA",
                         "--run-dir",
                         "unused",
                         &format!("--{side}"),
@@ -699,7 +745,7 @@ mod tests {
             vec!["elo", "--pairs", "18446744073709551616"],
         ] {
             let error = Arguments::try_parse_from(
-                ["match_runner", "--run-dir", "new"]
+                ["match_runner", "--rules", "JCSA", "--run-dir", "new"]
                     .into_iter()
                     .chain(args.iter().copied()),
             )
@@ -723,15 +769,40 @@ mod tests {
         assert_eq!(error.kind(), clap::error::ErrorKind::ValueValidation);
     }
 
-    // chu-shogi.md第33条: 共通parserへの接続と指定原文の保持を検査する。
-    // docs/guides/sprt.md: --rules省略時にはJCSAを使う。
     #[test]
-    fn rules_presets_resolve_per_article_33() {
-        let default = Arguments::try_parse_from(["match_runner", "--run-dir", "run", "gsprt"])
-            .expect("omitting --rules must fall back to JCSA");
-        assert_eq!(default.rules.source, "JCSA");
+    fn rules_are_required_for_new_runs_and_conflict_with_resume() {
+        let missing =
+            Arguments::try_parse_from(["match_runner", "--run-dir", "run", "elo", "--pairs", "1"])
+                .err()
+                .unwrap();
         assert_eq!(
-            default.rules.codes,
+            missing.kind(),
+            clap::error::ErrorKind::MissingRequiredArgument
+        );
+        assert!(missing.to_string().contains("--rules"));
+        let conflict =
+            Arguments::try_parse_from(["match_runner", "--resume", "run", "--rules", "JCSA"])
+                .err()
+                .unwrap();
+        assert_eq!(conflict.kind(), clap::error::ErrorKind::ArgumentConflict);
+        assert!(Arguments::try_parse_from(["match_runner", "--resume", "run"]).is_ok());
+    }
+
+    // chu-shogi.md第33条: 共通parserへの接続と指定原文の保持を検査する。
+    #[test]
+    fn article_33_rules_presets_preserve_the_source() {
+        let default = Arguments::try_parse_from([
+            "match_runner",
+            "--run-dir",
+            "run",
+            "--rules",
+            "JCSA",
+            "gsprt",
+        ])
+        .expect("explicit JCSA must be accepted");
+        assert_eq!(default.rules.as_ref().unwrap().source, "JCSA");
+        assert_eq!(
+            default.rules.as_ref().unwrap().codes,
             vec![RuleCode::L0, RuleCode::P0, RuleCode::R1, RuleCode::E0]
         );
 
@@ -744,9 +815,9 @@ mod tests {
             "gsprt",
         ])
         .expect("preset names must match case-insensitively");
-        assert_eq!(lishogi.rules.source, "LISHOGI");
+        assert_eq!(lishogi.rules.as_ref().unwrap().source, "LISHOGI");
         assert_eq!(
-            lishogi.rules.codes,
+            lishogi.rules.as_ref().unwrap().codes,
             vec![
                 RuleCode::L1,
                 RuleCode::L2,
@@ -780,6 +851,8 @@ mod tests {
         ] {
             let mut args = vec![
                 "match_runner",
+                "--rules",
+                "JCSA",
                 "--run-dir",
                 "unused",
                 "--each",
@@ -803,7 +876,14 @@ mod tests {
             vec!["--baseline", "cecp:engine"],
             vec!["--candidate", "cecp:engine"],
         ] {
-            let mut args = vec!["match_runner", "--run-dir", "unused", "--ponder"];
+            let mut args = vec![
+                "match_runner",
+                "--rules",
+                "JCSA",
+                "--run-dir",
+                "unused",
+                "--ponder",
+            ];
             if extra[0] != "--each" {
                 args.extend(["--each", "time=1000+10"]);
             }
@@ -819,6 +899,8 @@ mod tests {
         assert!(
             Arguments::try_parse_from([
                 "match_runner",
+                "--rules",
+                "JCSA",
                 "--run-dir",
                 "unused",
                 "--ponder",
@@ -827,8 +909,15 @@ mod tests {
             ])
             .is_err()
         );
-        let plain =
-            Arguments::try_parse_from(["match_runner", "--run-dir", "unused", "gsprt"]).unwrap();
+        let plain = Arguments::try_parse_from([
+            "match_runner",
+            "--rules",
+            "JCSA",
+            "--run-dir",
+            "unused",
+            "gsprt",
+        ])
+        .unwrap();
         assert!(!plain.ponder);
     }
 }

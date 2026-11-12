@@ -700,7 +700,7 @@ class WorkflowTests(unittest.TestCase):
                 self.fake.add('git', ['checkout', '--detach', CONFIG['runner_commit']])
                 self.fake.add('git', ['rev-parse', '--verify', '--end-of-options', CONFIG['commit'] + '^{commit}'], CONFIG['commit'] + '\n')
                 self.fake.add('cargo', ['build', '--release', '--locked', '--bin', 'minase'])
-                self.fake.add('minase', ['spsa', 'params'], 'parameter 1\n')
+                self.fake.add('minase', ['spsa', 'params', '--engine', 'commit:' + CONFIG['commit']], 'parameter 1\n')
                 self.fake.add('minase', ['dev', 'bench', '--depth', '9', '--repetitions', '3'], 'median: nps=866000\n')
                 good = ('summary: applied=1 valid_pairs=8 discarded_pairs=0\n'
                         'engine_failures: illegal_moves=0 crashes=0 timeouts=0 time_forfeits=0 rejected_moves=0\n')
@@ -713,6 +713,9 @@ class WorkflowTests(unittest.TestCase):
                 with patch.object(remote, 'resources', return_value=(2, 10_000_000_000)):
                     self.assertEqual(remote.remote_main('trial', job), expected)
                 self.assertEqual((job / 'logs/exit-status').read_text(), str(expected) + '\n')
+                params_calls = [call for call in self.fake.calls() if call[:3] == ['minase', 'spsa', 'params']]
+                self.assertTrue(params_calls)
+                self.assertTrue(all(call == ['minase', 'spsa', 'params', '--engine', 'commit:' + CONFIG['commit']] for call in params_calls))
                 self.assertFalse(self.fake.remaining())
 
     def test_remote_resume_keeps_manifest_conditions_despite_slow_estimate(self) -> None:

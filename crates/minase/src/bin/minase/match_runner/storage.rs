@@ -5,16 +5,18 @@
 //! 全JSONはUTF-8で、各構造体のフィールド名をそのままキーにする。
 //! 任意値の欠測は`null`として書き、列挙型の名前は小文字のスネークケースとする。
 //!
-//! `manifest.json`は[`RunManifest`]を1個保存し、`format_version`は7である。
+//! `manifest.json`は[`RunManifest`]を1個保存し、`format_version`は8である。
 //! `ponder`は先読みの真偽、`candidate`と`baseline`は`identity`、`limit`、`options`を持つエンジン設定である。
 //! `options`は追加のUSIオプションを送信順の`[名前, 値]`の配列で持ち、指定がなくても空配列を必須とする。
 //! `identity`は[`EngineIdentity`]の`kind`つきオブジェクトである。
 //! `kind="commit"`の`args`は追加の起動引数を文字列配列で持ち、省略時は空配列となる。
+//! 版8では`commit:`の固定の起動引数が`--protocol usi`だけになり、`args`はその後に足す引数を表す。
+//! 固定引数の変更により`args`の意味が変わるため、版7の記録は読み込まない。
 //! `working_directory`は追加引数の有無によらず測定開始時の作業ディレクトリを記録する。
 //! `limit`は`kind="fixed"`なら`depth`と`nodes`、`kind="time"`なら
 //! `base_ms`、`increment_ms`、`byoyomi_ms`、`kind="movetime"`なら
 //! `movetime_ms`と`timemargin_ms`を持ち、時間の単位はミリ秒である。
-//! `rules_source`は起動時の規則指定、`canonical_rules`は審判用の規則コードの文字列配列である。
+//! `rules_source`は対局ハーネスで指定した規則の原文、`canonical_rules`は審判用の規則コードの文字列配列である。
 //! `mode`は`kind="elo"`、または`kind="gsprt"`と数値の`h0_elo`、`h1_elo`、`alpha`、`beta`である。
 //! `seed`はu64の基本シード、`max_ply`はu32の手数上限、`response_timeout_secs`はu64の応答待ち秒数である。
 //! `engine_threads`と`hash_mb`はそれぞれ`candidate`と`baseline`を持ち、探索ワーカー数と置換表容量MBを表す。
@@ -48,9 +50,9 @@ use minase::harness::{
 };
 use serde::{Deserialize, Serialize};
 
-/// 再開で受け付ける実行記録形式の版7。
+/// 再開で受け付ける実行記録形式の版8。
 /// 旧版は、新しい欄を型として読み取る前に版番号で拒否する。
-pub(crate) const FORMAT_VERSION: u32 = 7;
+pub(crate) const FORMAT_VERSION: u32 = 8;
 
 const MANIFEST_FILE: &str = "manifest.json";
 const MANIFEST_TEMP_FILE: &str = ".manifest.json.tmp";
@@ -783,7 +785,7 @@ mod tests {
             *recorded = args.clone();
             drop(RunStore::create(&path, expected.clone(), 1).unwrap());
             let json: serde_json::Value = read_json(&path.join(MANIFEST_FILE)).unwrap();
-            assert_eq!(json["format_version"], 7);
+            assert_eq!(json["format_version"], 8);
             assert_eq!(
                 json["candidate"]["identity"]["working_directory"],
                 serde_json::json!(std::env::current_dir().unwrap())
@@ -958,7 +960,7 @@ mod tests {
     // [`FORMAT_VERSION`]に従い、新しい欄の有無を調べる前に旧版を拒否する。
     #[test]
     fn resume_rejects_old_versions_before_decoding_new_fields_without_writes() {
-        for version in [3, 4, 5, 6] {
+        for version in [3, 4, 5, 6, 7] {
             let path = temporary_directory("old-version");
             drop(RunStore::create(&path, manifest(), 1).unwrap());
             fs::write(

@@ -1,41 +1,32 @@
 //! alphazero-mcts.mdのUSIの契約を、ONNX Runtimeなしで検査する。
 
 use crate::nn::Network;
-use crate::protocol::{Engine as GameEngine, UsiProtocol};
+use crate::protocol::UsiProtocol;
 use crate::search::mcts::test_support::SCALE;
 use crate::search::mcts::{Config, Engine};
 use crate::search::{PrepareError, Searcher};
-use minase_core::{RuleCode, Rules};
 use std::io;
 use std::path::PathBuf;
 use std::sync::mpsc;
 
-fn session(searcher: Engine) -> (GameEngine, UsiProtocol) {
-    let engine = GameEngine::new(Vec::<RuleCode>::from(Rules::JCSA)).unwrap();
-    let protocol = UsiProtocol::with_searcher(&engine, Searcher::Mcts(searcher));
-    (engine, protocol)
-}
-
-fn run(
-    engine: &mut GameEngine,
-    protocol: &mut UsiProtocol,
-    input: &str,
-) -> (io::Result<()>, String) {
+fn run(protocol: &mut UsiProtocol, input: &str) -> (io::Result<()>, String) {
     let (sender, receiver) = mpsc::channel();
     for line in input.lines() {
         sender.send(Ok(line.to_owned())).unwrap();
     }
     drop(sender);
     let mut output = Vec::new();
-    let result = protocol.run_channel(engine, &receiver, &mut output);
+    let result = protocol.run_channel(&receiver, &mut output);
     (result, String::from_utf8(output).unwrap())
 }
 
 #[test]
 fn mcts_handshake_declares_options_in_order_and_ignores_tuning_names() {
-    let (mut game, mut protocol) = session(Engine::ready_for_test());
+    let mut protocol = UsiProtocol::with_searcher(Searcher::Mcts(Engine::ready_for_test()));
+    let (result, output) = run(&mut protocol, "setoption name RuleSet value JCSA\n");
+    result.unwrap();
+    assert!(output.is_empty());
     let (result, output) = run(
-        &mut game,
         &mut protocol,
         "usi\nsetoption name Tune_DeltaMargin value nope\nsetoption name Tune_Unknown\n",
     );
@@ -65,9 +56,11 @@ fn usi_preserves_cache_paths_with_spaces_and_normalizes_empty_and_backend_case()
     ] {
         let mut searcher = Engine::ready_for_test();
         searcher.set_cache_dir_for_test(PathBuf::from(path));
-        let (mut game, mut protocol) = session(searcher);
+        let mut protocol = UsiProtocol::with_searcher(Searcher::Mcts(searcher));
+        let (result, output) = run(&mut protocol, "setoption name RuleSet value JCSA\n");
+        result.unwrap();
+        assert!(output.is_empty());
         let (result, output) = run(
-            &mut game,
             &mut protocol,
             &format!(
                 "setoption name NnBackend value TeNsOrRt\nsetoption name NnCacheDir value {value}\nposition startpos\ngo nodes 1\n"
@@ -87,9 +80,11 @@ fn usi_preserves_cache_paths_with_spaces_and_normalizes_empty_and_backend_case()
 
 #[test]
 fn usi_rejects_invalid_combo_and_spin_values_without_changing_settings() {
-    let (mut game, mut protocol) = session(Engine::ready_for_test());
+    let mut protocol = UsiProtocol::with_searcher(Searcher::Mcts(Engine::ready_for_test()));
+    let (result, output) = run(&mut protocol, "setoption name RuleSet value JCSA\n");
+    result.unwrap();
+    assert!(output.is_empty());
     let (result, output) = run(
-        &mut game,
         &mut protocol,
         "setoption name NnBackend value vulkan\nsetoption name NnBatchSize value 0\nsetoption name NnBatchSize value 1025\nsetoption name Threads value 2\nisready\n",
     );
@@ -104,9 +99,11 @@ fn usi_rejects_invalid_combo_and_spin_values_without_changing_settings() {
 fn empty_tensorrt_cache_ends_session_without_readyok_or_loading_runtime() {
     let mut searcher = Engine::new(Network::from_bytes(Vec::new()), Config::new(SCALE));
     searcher.set_cache_dir_for_test(PathBuf::from("/initial cache"));
-    let (mut game, mut protocol) = session(searcher);
+    let mut protocol = UsiProtocol::with_searcher(Searcher::Mcts(searcher));
+    let (result, output) = run(&mut protocol, "setoption name RuleSet value JCSA\n");
+    result.unwrap();
+    assert!(output.is_empty());
     let (result, output) = run(
-        &mut game,
         &mut protocol,
         "setoption name NnCacheDir value <empty>\nisready\nusi\n",
     );
@@ -128,20 +125,22 @@ fn empty_tensorrt_cache_ends_session_without_readyok_or_loading_runtime() {
 fn mcts_go_requires_isready_and_rejects_depth_and_tt() {
     let mut searcher = Engine::ready_for_test();
     searcher.clear_evaluator_for_test();
-    let (mut game, mut protocol) = session(searcher);
-    let (result, output) = run(&mut game, &mut protocol, "position startpos\ngo nodes 1\n");
+    let mut protocol = UsiProtocol::with_searcher(Searcher::Mcts(searcher));
+    let (result, output) = run(&mut protocol, "setoption name RuleSet value JCSA\n");
+    result.unwrap();
+    assert!(output.is_empty());
+    let (result, output) = run(&mut protocol, "position startpos\ngo nodes 1\n");
     result.unwrap();
     assert_eq!(
         output,
         "info string error: MCTS requires isready before go\n"
     );
 
-    let (mut game, mut protocol) = session(Engine::ready_for_test());
-    let (result, output) = run(
-        &mut game,
-        &mut protocol,
-        "tt\nposition startpos\ntt\ngo depth 1\n",
-    );
+    let mut protocol = UsiProtocol::with_searcher(Searcher::Mcts(Engine::ready_for_test()));
+    let (result, output) = run(&mut protocol, "setoption name RuleSet value JCSA\n");
+    result.unwrap();
+    assert!(output.is_empty());
+    let (result, output) = run(&mut protocol, "tt\nposition startpos\ntt\ngo depth 1\n");
     result.unwrap();
     assert_eq!(
         output,
@@ -151,9 +150,12 @@ fn mcts_go_requires_isready_and_rejects_depth_and_tt() {
 
 #[test]
 fn every_started_mcts_go_announces_simulation_counts_before_search_output() {
-    let (mut game, mut protocol) = session(Engine::ready_for_test());
+    let mut protocol = UsiProtocol::with_searcher(Searcher::Mcts(Engine::ready_for_test()));
+    let (result, output) = run(&mut protocol, "setoption name RuleSet value JCSA\n");
+    result.unwrap();
+    assert!(output.is_empty());
     for _ in 0..2 {
-        let (result, output) = run(&mut game, &mut protocol, "position startpos\ngo nodes 1\n");
+        let (result, output) = run(&mut protocol, "position startpos\ngo nodes 1\n");
         result.unwrap();
         let notice = "info string nodes count MCTS simulations, not alpha-beta move applications";
         assert_eq!(output.lines().next(), Some(notice));

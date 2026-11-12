@@ -402,17 +402,7 @@ fn cli_requires_explicit_session_conditions_and_excludes_other_protocols() {
         missing.drain(index..index + 2);
         assert!(Arguments::try_parse_from(missing).is_err(), "{flag}");
     }
-    assert!(
-        Arguments::try_parse_from([
-            "spsa_runner",
-            "params",
-            "--engine",
-            "./engine",
-            "--rules",
-            "JCSA"
-        ])
-        .is_ok()
-    );
+    assert!(Arguments::try_parse_from(["spsa_runner", "params", "--engine", "./engine",]).is_ok());
     for spec in ["random", "cecp:engine"] {
         assert!(tuning_spec(spec).is_err());
     }

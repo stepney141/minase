@@ -77,7 +77,15 @@ pub(super) fn main(arguments: Arguments) {
             });
         (store, records, rules, candidate, baseline)
     } else {
-        let rules = match Rules::from_codes(&arguments.rules.codes) {
+        let Some(rule_argument) = &arguments.rules else {
+            crate::subcommand_command(&["match", "run"])
+                .error(
+                    ErrorKind::MissingRequiredArgument,
+                    "--rules is required for a new run",
+                )
+                .exit();
+        };
+        let rules = match Rules::from_codes(&rule_argument.codes) {
             Ok(rules) => rules,
             Err(error) => crate::subcommand_command(&["match", "run"])
                 .error(ErrorKind::ValueValidation, error.to_string())
@@ -108,7 +116,7 @@ pub(super) fn main(arguments: Arguments) {
             arguments.candidate.clone(),
             candidate_limit,
             arguments.candidate_hash,
-            &arguments.rules.source,
+            &rule_argument.source,
             arguments.options.candidate_option.clone(),
             arguments
                 .candidate_args
@@ -125,7 +133,7 @@ pub(super) fn main(arguments: Arguments) {
             arguments.baseline.clone(),
             baseline_limit,
             arguments.baseline_hash,
-            &arguments.rules.source,
+            &rule_argument.source,
             arguments.options.baseline_option.clone(),
             arguments
                 .baseline_args
@@ -141,7 +149,7 @@ pub(super) fn main(arguments: Arguments) {
         let manifest = match run_manifest(
             &candidate,
             &baseline,
-            &arguments.rules,
+            rule_argument,
             manifest_mode,
             base_seed,
             arguments.max_ply,

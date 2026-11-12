@@ -67,7 +67,5 @@ pub(super) enum Command {
     Params {
         #[arg(long, value_parser = tuning_spec)]
         engine: PlayerSpec,
-        #[arg(long)]
-        rules: String,
     },
 }

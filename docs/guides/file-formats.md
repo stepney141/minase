@@ -98,7 +98,7 @@ ONNXのネットはONNXが形式を定めるので載せない。
 
 | 形式 | 識別と版 | 書き手 | 読み手 | 仕様 |
 |---|---|---|---|---|
-| 対局ハーネスの実行条件`manifest.json` | `format_version = 5` | `minase match run` | `minase match run --resume`、`minase match report` | `crates/minase/src/bin/minase/match_runner/storage.rs` |
+| 対局ハーネスの実行条件`manifest.json` | `format_version = 8` | `minase match run` | `minase match run --resume`、`minase match report` | `crates/minase/src/bin/minase/match_runner/storage.rs` |
 | 対局ハーネスの起動の記録`invocations.json` | なし | `minase match run` | `minase match run --resume`、`minase match report` | `crates/minase/src/bin/minase/match_runner/storage.rs` |
 | 対局ハーネスの累計実行時間`summary.json` | なし | `minase match run` | `minase match run --resume`、`minase match report` | `crates/minase/src/bin/minase/match_runner/storage.rs` |
 | 対局ハーネスのペアの記録`pairs/<番号>.json` | なし | `minase match run` | `minase match run --resume`、`minase match report` | `crates/minase/src/harness/records/mod.rs` |

@@ -315,8 +315,7 @@ def execute(session: str, job: Path, children: Children) -> int:
             children.run(['cargo', 'build', '--release', '--locked', '--bin', 'minase'],
                          cwd=repository, stdout=output, stderr=subprocess.STDOUT)
         with (logs / 'declared.params').open('w') as output, (logs / 'build.log').open('a') as errors:
-            children.run(['target/release/minase', 'spsa', 'params', '--engine', 'commit:' + config['commit'],
-                          '--rules', config['rules']], cwd=repository, stdout=output, stderr=errors)
+            children.run(['target/release/minase', 'spsa', 'params', '--engine', 'commit:' + config['commit']], cwd=repository, stdout=output, stderr=errors)
         (job / '.build-ready').touch()
     binary = repository / 'target/match-cache' / (config['commit'] + '-tuning/minase')
     if not os.access(binary, os.X_OK):

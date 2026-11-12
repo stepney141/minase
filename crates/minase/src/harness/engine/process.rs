@@ -37,9 +37,14 @@ pub(in crate::harness) struct EngineProcess {
 
 impl EngineProcess {
     /// プロセスと標準出力読み取りスレッドを起動する。
-    pub(super) fn spawn(config: &PlayerConfig, timeout: Duration) -> Result<Self, EngineFailure> {
-        let mut child = Command::new(&config.path)
-            .args(&config.args)
+    pub(super) fn spawn(
+        path: &std::path::Path,
+        args: &[String],
+        protocol: Protocol,
+        timeout: Duration,
+    ) -> Result<Self, EngineFailure> {
+        let mut child = Command::new(path)
+            .args(args)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::inherit())
@@ -75,7 +80,7 @@ impl EngineProcess {
             lines,
             reader: Some(reader),
             timeout,
-            protocol: config.protocol,
+            protocol,
             sent_moves: 0,
             pondering: None,
         })
@@ -97,7 +102,7 @@ impl EngineProcess {
         seed: u64,
         timeout: Duration,
     ) -> Result<Self, EngineFailure> {
-        let mut process = Self::spawn(config, timeout)?;
+        let mut process = Self::spawn(&config.path, &config.args, config.protocol, timeout)?;
         match config.protocol {
             Protocol::Usi => {
                 process.read_usi_declarations()?;
@@ -124,7 +129,9 @@ impl EngineProcess {
             Protocol::Cecp => {
                 process.send("xboard")?;
                 process.send("protover 2")?;
-                process.wait_for("feature done=1")?;
+                if process.read_cecp_features()? {
+                    process.send(&format!("option RuleSet={}", config.rules_source))?;
+                }
                 process.send(&cecp_memory_text(config.hash_mb))?;
                 process.send("new")?;
                 process.send("variant chu")?;

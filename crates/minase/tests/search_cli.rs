@@ -33,7 +33,7 @@ fn invalid_search_arguments_exit_one_on_stderr_before_session_start() {
         ),
     ] {
         let output = Command::new(env!("CARGO_BIN_EXE_minase"))
-            .args(["--protocol", protocol, "--rules", "JCSA"])
+            .args(["--protocol", protocol])
             .args(args)
             .output()
             .unwrap();
@@ -62,15 +62,7 @@ fn mcts_initialization_error_reaches_process_exit_without_readyok() {
         .write_all(b"not an ONNX model")
         .unwrap();
     let mut child = Command::new(env!("CARGO_BIN_EXE_minase"))
-        .args([
-            "--protocol",
-            "usi",
-            "--rules",
-            "JCSA",
-            "--search",
-            "mcts",
-            "--nn-model",
-        ])
+        .args(["--protocol", "usi", "--search", "mcts", "--nn-model"])
         .arg(&path.0)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
@@ -81,7 +73,7 @@ fn mcts_initialization_error_reaches_process_exit_without_readyok() {
         .stdin
         .take()
         .unwrap()
-        .write_all(b"setoption name NnCacheDir value <empty>\nisready\nusi\n")
+        .write_all(b"setoption name RuleSet value JCSA\nsetoption name NnCacheDir value <empty>\nisready\nusi\n")
         .unwrap();
     let output = child.wait_with_output().unwrap();
     assert_eq!(output.status.code(), Some(1));

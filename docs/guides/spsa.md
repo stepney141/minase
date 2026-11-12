@@ -26,7 +26,7 @@
 
 ```console
 target/release/minase spsa params \
-  --engine commit:<調整対象コミット> --rules JCSA > <パラメーターファイル>
+  --engine commit:<調整対象コミット> > <パラメーターファイル>
 ```
 
 1行は `名前, 開始値, 最小, 最大, c_end, r_end` の6欄であり、fishtestの入力形式と同じである。
@@ -125,7 +125,7 @@ runnerの版とSHA-256、および測定機は起動ごとに `invocations.json`
 
    ```console
    target/release/minase spsa params \
-     --engine commit:<候補コミット> --rules JCSA
+     --engine commit:<候補コミット>
    ```
 
 2. 採否の前に、STCの条件で候補コミットと調整対象コミットの短い固定局数の対局を行い、時間切れとエンジン異常が0件であることを確かめる。

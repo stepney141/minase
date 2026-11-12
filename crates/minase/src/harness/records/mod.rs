@@ -33,7 +33,7 @@
 //! 実行条件で共有する[`EngineIdentity`]は`kind="random"`、`kind="commit"`と`hash`、`sha256`、`args`、`working_directory`、
 //! または`kind="command"`と`program`、`args`、`protocol`、`working_directory`である。
 //! `protocol`は`usi`か`cecp`、パスは文字列、`args`は文字列配列である。
-//! コミットの`args`は`--protocol usi --rules <規則>`の後に足す引数だけを記録し、省略時は空配列とする。
+//! コミットの`args`は`--protocol usi`の後に足す引数だけを記録し、省略時は空配列とする。
 //! `working_directory`は測定開始時の作業ディレクトリであり、追加引数の有無によらず記録する。
 
 pub(in crate::harness) mod convert;
