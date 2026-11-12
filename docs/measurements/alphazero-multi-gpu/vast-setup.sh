@@ -19,6 +19,7 @@ tar -xf "$1" -C /workspace/src
 date -Is
 bash /workspace/src/tools/train/zero/setup.sh
 source /workspace/src/tools/train/zero/env.sh
+bash /workspace/src/tools/train/zero/sync-env.sh
 date -Is
 (cd /workspace/src && cargo +"$RUST_TOOLCHAIN" build --release --bin minase)
 date -Is

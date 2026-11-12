@@ -200,7 +200,7 @@ python3 docs/measurements/alphazero-multi-gpu/launch-vast.py --offer <出品のI
 
 起動スクリプトは、作業機で`nohup setsid`により端末から切り離して走らせ、標準出力と標準エラーをファイルへ向ける。
 起動スクリプトは、作成時に自己停止を予約し、自己停止の時刻と出品の貸出期限の早いほうを終了期限として実行器へ渡す。
-導入は`docs/measurements/alphazero-multi-gpu/vast-setup.sh`で、パッケージの導入、`tools/train/zero/setup.sh`、および`minase`のビルドを行い、測った機械では11〜15分かかった。
+導入は`docs/measurements/alphazero-multi-gpu/vast-setup.sh`で、パッケージの導入、`tools/train/zero/setup.sh`、`sync-env.sh`による拡張モジュールのビルド、および`minase`のビルドを行い、測った機械では11〜15分かかった。
 GitHubからのONNX Runtimeの書庫の取得が毎秒約80 KBしか出ない機械もあった。その場合は、`env.sh`の`ORT_VERSION`の書庫を作業機で取得して機械へ送り、`env.sh`の`ORT_SHA256`と照合してから`/workspace/src/tools/train/zero/.runtime/`へ展開しておくと、`setup.sh`は取得を省く。この形にした機械の導入は約4分で終わった。
 `Dockerfile`から作ったイメージをvast.aiの機械に取得させる方式は、2026年11月12日に試して採らなかった（[実行環境のADR](../adr/install-the-zero-toolchain-with-setup-sh-on-rented-machines-and-build-the-workstation-image-from-it.md)）。
 
