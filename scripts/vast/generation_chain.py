@@ -369,7 +369,7 @@ class Chain:
         (self.root / 'offer.json').write_text(json.dumps(offer, ensure_ascii=False) + '\n')
         (self.root / 'onstart.sh').write_text(onstart(deadline))
         (self.root / 'deadline').write_text(f'{deadline}\n')
-        self.instance_id = common.create(str(args.offer), label, self.root / 'onstart.sh', args.image, args.disk, None)
+        self.instance_id = common.create(str(args.offer), label, self.root / 'onstart.sh', args.image, args.disk)
         self.manage_remote = True
         (self.root / 'instance-id').write_text(f'{self.instance_id}\n')
         common.wait_running(self.instance_id, 600)

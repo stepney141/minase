@@ -933,9 +933,8 @@ class RemoteTests(unittest.TestCase):
 
     def test_detached_jobs_use_each_machines_work_source_and_cache(self):
         common = load_vast_common()
-        for kind, base, env, session, instance in (
-                ("colab", "/content", "/content/src/tools/train/zero/env.sh", "test", None),
-                ("vast", "/workspace", "/opt/minase-zero/env.sh", None, 12345)):
+        for kind, base, session, instance in (("colab", "/content", "test", None),
+                                               ("vast", "/workspace", None, 12345)):
             with self.subTest(kind=kind), tempfile.TemporaryDirectory() as directory, \
                     patch.object(common, "ssh_address", return_value=("192.0.2.10", 22222)), \
                     patch("minase_zero.runner.load_vast_common", return_value=common):
@@ -948,9 +947,8 @@ class RemoteTests(unittest.TestCase):
                     command = shlex.split(argv[-1])
                     script = command[-1]
                     self.assertTrue(script.startswith(f"set -e\ncd {base}/az\n"))
-                    self.assertIn(f"source {env}\n", script)
                     script = script.replace(f"cd {base}/az\n", f"cd {shlex.quote(str(root))}\n")
-                    script = script.replace(f"source {env}",
+                    script = script.replace(f"source {base}/src/tools/train/zero/env.sh",
                                             "source " + shlex.quote(str(root / "env.sh")))
                     script = 'setsid() { "$@"; }\n' + script.replace("< /dev/null &\n", "< /dev/null\n")
                     return subprocess.run(["bash", "-c", script], capture_output=True, text=True,
@@ -1202,7 +1200,7 @@ class RemoteTests(unittest.TestCase):
 
             def shell(script, timeout):
                 scripts.append(script)
-                script = script.replace("source " + remote.paths.env, "source " + str(root / "env.sh"))
+                script = script.replace("source /content/src/tools/train/zero/env.sh", "source " + str(root / "env.sh"))
                 # setsidだけを同期実行するシェル関数にし、実際のジョブと入出力の契約を調べる。
                 script = "setsid() { \"$@\"; }\n" + script.replace("< /dev/null &\n", "< /dev/null\n")
                 result = subprocess.run(["bash", "-c", script], cwd=root, capture_output=True, text=True, timeout=5)
@@ -1216,7 +1214,6 @@ class RemoteTests(unittest.TestCase):
                 remote.start("job", "echo must-not-run", "job.out", "job.err")
             self.assertEqual((root / "job.out").read_text(), "output\n")
             self.assertEqual((root / "job.err").read_text(), "problem\n")
-            self.assertIn("source /content/src/tools/train/zero/env.sh\n", scripts[0])
             self.assertIn("setsid nohup bash -c", scripts[0])
             self.assertIn("< /dev/null &", scripts[0])
             self.assertIn("echo $! > job.pid", scripts[0])

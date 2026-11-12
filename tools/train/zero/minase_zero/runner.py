@@ -120,7 +120,6 @@ class RemotePaths:
         source = base + "/src"
         self.work = base + "/az"
         self.source = source + "/tools/train/zero"
-        self.env = {"colab": "/content/src/tools/train/zero/env.sh", "vast": "/opt/minase-zero/env.sh"}[kind]
         self.cache = base + "/cache"
         self.fixture = source + "/crates/minase/tests/fixtures/nn-positions.jsonl"
         self.engine = source + "/target/release/minase"
@@ -605,7 +604,7 @@ fi"""
         # 再試行でもPIDと終了コードを確かめ、受信だけが失敗した起動を繰り返さない。
         code = shlex.quote(stem + ".exit")
         temporary = shlex.quote(stem + ".exit.tmp")
-        job = ("(\nset -euo pipefail\nsource " + self.paths.env + "\n"
+        job = ("(\nset -euo pipefail\nsource " + self.paths.source + "/env.sh\n"
                f"export XDG_CACHE_HOME={self.paths.cache} PYTHONPATH={self.paths.source}\n{body}\n)\n"
                f"result=$?\nprintf '%s\\n' \"$result\" > {temporary}\nmv -- {temporary} {code}\n")
         redirect = (f"> {shlex.quote(stdout)} 2>&1" if stdout == stderr else

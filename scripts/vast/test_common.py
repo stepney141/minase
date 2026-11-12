@@ -14,7 +14,6 @@ import shlex
 import subprocess
 import sys
 import tempfile
-import traceback
 import unittest
 from unittest.mock import patch
 
@@ -60,11 +59,6 @@ if 'signal_parent' in response:
     signal.pause()
 print(response['stdout'], end='')
 print(response['stderr'], end='', file=sys.stderr)
-if 'pause' in response:
-    import signal
-    sys.stdout.flush()
-    sys.stderr.flush()
-    signal.pause()
 sys.exit(response['code'])
 '''
 
@@ -134,111 +128,19 @@ class CommonTests(unittest.TestCase):
         self.fake.add('vastai', ['create', 'instance', '42'], '{"new_contract": 18}')
         self.assertEqual(common.ids('test'), [17])
         self.assertIsNone(common.instance(17, 2))
-        self.assertEqual(common.create('42', 'label', self.root / 'start', 'rust:1.90.0-bookworm', 50, login=None), 18)
-        self.assertNotIn('--login', self.fake.calls()[-1])
+        self.assertEqual(common.create('42', 'label', self.root / 'start', 'rust:1.90.0-bookworm', 50), 18)
         self.assertFalse(self.fake.remaining())
 
     def test_bad_create_response_and_duplicate_instance(self) -> None:
         """不正な作成IDと重複するインスタンスIDを拒否する。"""
-        logins = (None, common.RegistryLogin('ghcr.io', 'user', 'dummy-token'))
-        for _ in logins:
-            for value in (True, 0, -1, '17'):
-                self.fake.add('vastai', ['create'], json.dumps({'new_contract': value}))
+        for value in (True, 0, -1, '17'):
+            self.fake.add('vastai', ['create'], json.dumps({'new_contract': value}))
         self.show([state('running'), state('running')])
-        for login in logins:
-            for _ in range(4):
-                with self.assertRaises(common.VastError):
-                    common.create('42', 'label', self.root / 'start', 'rust:1.90.0-bookworm', 50, login=login)
+        for _ in range(4):
+            with self.assertRaises(common.VastError):
+                common.create('42', 'label', self.root / 'start', 'rust:1.90.0-bookworm', 50)
         with self.assertRaises(common.VastError):
             common.instance(17, 2)
-
-    def test_create_without_login_preserves_subprocess_failure(self) -> None:
-        """公開イメージの作成失敗は外部コマンドの例外をそのまま返す。"""
-        self.fake.add('vastai', ['create', 'instance', '42'], code=23)
-        with self.assertRaises(subprocess.CalledProcessError) as raised:
-            common.create('42', 'label', self.root / 'start', 'rust:1.90.0-bookworm', 50, login=None)
-        self.assertEqual(raised.exception.returncode, 23)
-        self.assertNotIn('--login', self.fake.calls()[-1])
-
-    def test_create_with_login_passes_credentials_and_redacts_stderr(self) -> None:
-        """認証を1つの引数で渡し、成功時の標準エラーからもトークンを除く。"""
-        token = 'dummy-registry-token'
-        login = common.RegistryLogin('ghcr.io', 'user', token)
-        self.fake.add('vastai', ['create', 'instance', '42'], '{"new_contract": 18}',
-                      stderr=f'authenticated {token}\n')
-        errors = io.StringIO()
-        with redirect_stderr(errors):
-            result = common.create('42', 'label', self.root / 'start', 'ghcr.io/user/image', 50, login)
-        self.assertEqual(result, 18)
-        call = self.fake.calls()[0]
-        self.assertEqual(call[call.index('--login') + 1], f'-u user -p {token} ghcr.io')
-        self.assertEqual(errors.getvalue(), 'authenticated <token>\n')
-        self.assertFalse(self.fake.remaining())
-
-    def assert_token_hidden(self, error: Exception, token: str, stderr: str) -> None:
-        """例外の各表示と標準エラーにトークンが含まれないことを確かめる。"""
-        for output in (str(error), repr(error), ''.join(traceback.format_exception(error)), stderr):
-            self.assertNotIn(token, output)
-
-    def test_create_with_login_redacts_failure(self) -> None:
-        """異常終了では終了コードだけを伝え、例外の連鎖にもトークンを残さない。"""
-        token = 'dummy-registry-token'
-        login = common.RegistryLogin('ghcr.io', 'user', token)
-        self.fake.add('vastai', ['create', 'instance', '42'], code=1, stderr=f'failed {token}\n')
-        errors = io.StringIO()
-        with redirect_stderr(errors):
-            try:
-                common.create('42', 'label', self.root / 'start', 'ghcr.io/user/image', 50, login)
-            except common.VastError as error:
-                self.assert_token_hidden(error, token, errors.getvalue())
-                self.assertIn('1', str(error))
-            else:
-                self.fail('作成失敗が例外になりませんでした')
-        self.assertEqual(errors.getvalue(), 'failed <token>\n')
-
-    def test_create_with_login_redacts_timeout(self) -> None:
-        """実際の時間切れでも標準エラーを置換し、コマンドを例外に残さない。"""
-        token = 'dummy-registry-token'
-        login = common.RegistryLogin('ghcr.io', 'user', token)
-        self.fake.add('vastai', ['create', 'instance', '42'], stderr=f'waiting {token}\n', pause=True)
-        run_timed = common.run_timed
-
-        def timed(args, seconds, **kwargs):
-            return run_timed(args, 1, **kwargs)
-
-        errors = io.StringIO()
-        with patch.object(common, 'run_timed', side_effect=timed), redirect_stderr(errors):
-            try:
-                common.create('42', 'label', self.root / 'start', 'ghcr.io/user/image', 50, login)
-            except common.VastError as error:
-                self.assert_token_hidden(error, token, errors.getvalue())
-            else:
-                self.fail('作成の時間切れが例外になりませんでした')
-        self.assertEqual(errors.getvalue(), 'waiting <token>\n')
-        self.assertEqual(len(self.fake.calls()), 1)
-        self.assertFalse(self.fake.remaining())
-
-    def test_invalid_login_is_rejected_before_vastai(self) -> None:
-        """認証の空文字と空白文字を外部コマンドの起動前に拒否する。"""
-        for registry, user, token in (
-                ('', 'user', 'dummy-token'),
-                ('ghcr.io', '', 'dummy-token'),
-                ('ghcr.io', 'user', ''),
-                ('ghcr.io ', 'user', 'dummy-token'),
-                ('ghcr.io', 'some user', 'dummy-token'),
-                ('ghcr.io', 'user', 'dummy token'),
-                ('ghcr.io', 'user', 'dummy\ttoken'),
-                ('ghcr.io', 'user', 'dummy\ntoken'),
-                ('ghcr.io', 'user', 'dummy\u3000token')):
-            login = common.RegistryLogin(registry, user, token)
-            with self.subTest(login=login), self.assertRaises(common.VastError):
-                common.create('42', 'label', self.root / 'start', 'ghcr.io/user/image', 50, login)
-        self.assertEqual(self.fake.calls(), [])
-
-    def test_registry_login_repr_omits_token(self) -> None:
-        """認証情報のreprはトークンを表示しない。"""
-        token = 'dummy-registry-token'
-        self.assertNotIn(token, repr(common.RegistryLogin('ghcr.io', 'user', token)))
 
     def test_stop_requires_both_status_fields(self) -> None:
         """要求成功だけでは終わらず、実状態と予定状態が停止になるまで照会する。"""

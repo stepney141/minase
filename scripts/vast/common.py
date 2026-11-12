@@ -6,7 +6,6 @@
 
 from collections.abc import Iterator
 from contextlib import contextmanager
-from dataclasses import dataclass, field
 import fcntl
 import ipaddress
 import json
@@ -17,7 +16,6 @@ import shlex
 import signal
 import subprocess
 import sys
-import tempfile
 import time
 from typing import Any
 
@@ -28,14 +26,6 @@ SSH_SECONDS = 300
 
 class VastError(RuntimeError):
     """操作または状態の確認に失敗したことを表す。"""
-
-
-@dataclass(frozen=True)
-class RegistryLogin:
-    """非公開のレジストリからイメージを取得するための利用者名とトークン。"""
-    registry: str
-    user: str
-    token: str = field(repr=False)
 
 
 @contextmanager
@@ -90,36 +80,11 @@ def instance(instance_id: int, seconds: float) -> dict[str, Any] | None:
     return matches[0] if matches else None
 
 
-def _create_with_login(offer: str, label: str, onstart: Path, image: str, disk: int,
-                       login: RegistryLogin) -> str:
-    """認証付きで作成し、標準エラーと例外からトークンを除く。"""
-    for value in (login.registry, login.user, login.token):
-        if not value or any(character.isspace() for character in value):
-            raise VastError('レジストリ、利用者名、トークンは空にできず、空白文字を含められません')
-    with tempfile.TemporaryFile(mode='w+', encoding='utf-8') as errors:
-        try:
-            return call(600, 'create', 'instance', offer, '--image', image,
-                        '--disk', str(disk), '--ssh', '--direct', '--cancel-unavail',
-                        '--label', label, '--onstart', str(onstart), '--raw',
-                        '--login', f'-u {login.user} -p {login.token} {login.registry}', stderr=errors)
-        except subprocess.CalledProcessError as error:
-            raise VastError(f'vastaiの作成に失敗しました（終了コード {error.returncode}）') from None
-        except subprocess.TimeoutExpired:
-            raise VastError('vastaiの作成が制限時間を超えました') from None
-        finally:
-            errors.seek(0)
-            sys.stderr.write(errors.read().replace(login.token, '<token>'))
-
-
-def create(offer: str, label: str, onstart: Path, image: str, disk: int,
-           login: RegistryLogin | None) -> int:
+def create(offer: str, label: str, onstart: Path, image: str, disk: int) -> int:
     """出品からインスタンスを作り、応答のIDを検査する。"""
-    if login is None:
-        value = json.loads(call(600, 'create', 'instance', offer, '--image', image,
-                                '--disk', str(disk), '--ssh', '--direct', '--cancel-unavail',
-                                '--label', label, '--onstart', str(onstart), '--raw'))['new_contract']
-    else:
-        value = json.loads(_create_with_login(offer, label, onstart, image, disk, login))['new_contract']
+    value = json.loads(call(600, 'create', 'instance', offer, '--image', image,
+                            '--disk', str(disk), '--ssh', '--direct', '--cancel-unavail',
+                            '--label', label, '--onstart', str(onstart), '--raw'))['new_contract']
     if type(value) is not int or value <= 0:
         raise VastError('作成応答に正しいnew_contractがありません')
     return value
