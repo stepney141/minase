@@ -1,0 +1,77 @@
+# Set COMPOSE_PROJECT_NAME, MINASE_UID, MINASE_GID, MINASE_TREE, and MINASE_GIT_DIR
+# in this worktree's .env; use a distinct project name for each worktree.
+# Start with `docker compose up -d dev`.
+# Open a shell with `docker compose exec dev bash`.
+# See docs/guides/dev-container.md for setup instructions.
+
+name: "${COMPOSE_PROJECT_NAME:?Set COMPOSE_PROJECT_NAME in .env}"
+
+services:
+  dev-init:
+    image: minase-dev:local
+    build: .
+    user: root
+    restart: "no"
+    environment:
+      MINASE_UID: "${MINASE_UID:?Set MINASE_UID in .env}"
+      MINASE_GID: "${MINASE_GID:?Set MINASE_GID in .env}"
+      MINASE_TREE: "${MINASE_TREE:?Set MINASE_TREE in .env}"
+    volumes:
+      - "${MINASE_TREE:?Set MINASE_TREE in .env}:${MINASE_TREE:?Set MINASE_TREE in .env}"
+      - target:/volumes/target
+      - mnsd-target:/volumes/mnsd-target
+      - home:/volumes/home
+      - cargo-registry:/volumes/cargo-registry
+    command:
+      - bash
+      - -c
+      - |
+        set -euo pipefail
+        # Create mount destinations with host ownership before dev mounts its volumes.
+        # Docker would otherwise create missing directories as root in the host worktree.
+        install -d -o "$$MINASE_UID" -g "$$MINASE_GID" \
+          "$$MINASE_TREE/target" \
+          "$$MINASE_TREE/tools/train/zero/mnsd_reader/target"
+        chown "$$MINASE_UID:$$MINASE_GID" \
+          /volumes/target /volumes/mnsd-target /volumes/home /volumes/cargo-registry
+
+  dev:
+    image: minase-dev:local
+    depends_on:
+      dev-init:
+        condition: service_completed_successfully
+    user: "${MINASE_UID:?Set MINASE_UID in .env}:${MINASE_GID:?Set MINASE_GID in .env}"
+    working_dir: "${MINASE_TREE:?Set MINASE_TREE in .env}"
+    init: true
+    shm_size: 8gb
+    devices:
+      - nvidia.com/gpu=all
+    volumes:
+      - "${MINASE_TREE:?Set MINASE_TREE in .env}:${MINASE_TREE:?Set MINASE_TREE in .env}"
+      - "${MINASE_GIT_DIR:?Set MINASE_GIT_DIR in .env}:${MINASE_GIT_DIR:?Set MINASE_GIT_DIR in .env}"
+      - "target:${MINASE_TREE:?Set MINASE_TREE in .env}/target"
+      - "mnsd-target:${MINASE_TREE:?Set MINASE_TREE in .env}/tools/train/zero/mnsd_reader/target"
+      - home:/home/dev
+      - cargo-registry:/opt/minase-zero/.runtime/cargo/registry
+    environment:
+      HOME: /home/dev
+      # Let sync-env.sh validate inputs before changing the environment.
+      UV_NO_SYNC: "1"
+      # Preserve records for worktrees that are not mounted in this container.
+      GIT_CONFIG_COUNT: "1"
+      GIT_CONFIG_KEY_0: gc.worktreePruneExpire
+      GIT_CONFIG_VALUE_0: never
+    command:
+      - bash
+      - -c
+      - |
+        set -euo pipefail
+        source /opt/minase-zero/env.sh
+        bash tools/train/zero/check-env-inputs.sh
+        exec sleep infinity
+
+volumes:
+  target:
+  mnsd-target:
+  home:
+  cargo-registry:
