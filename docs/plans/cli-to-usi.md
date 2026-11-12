@@ -18,9 +18,9 @@ CLIに残すのは、起動引数`--protocol`、`--search`、`--io-log`と、対
 ## 状態
 
 進行中。2026年11月12日に起案し、同じ日に着手した。
-フェーズ1（規則セット名の改名）とフェーズ2（起動引数`--rules`の削除）を終えた。
+フェーズ1（規則セット名の改名）、フェーズ2（起動引数`--rules`の削除）、およびフェーズ3（起動引数`--nn-model`の削除と、ネットのチェックサムの照合）を終えた。
 いま詰まっている点はない。
-次の一手は、フェーズ3（起動引数`--nn-model`の削除と、ネットのチェックサムの照合）である。
+次の一手は、フェーズ4（`perft`と`bench`をUSIへ移す）である。
 
 ## 目的
 
@@ -94,7 +94,7 @@ USIの状態機械、`position`の扱い、および規則を次局から確定�
 | 規則の既定値 | 既定値を持たず、`RuleSet`の指定を必須にする。 | `RuleSet`の既定値を`JCSA`にする案は採らない。指定漏れのまま、意図しない規則で対局が始まる。起動時に規則を明示させる現在の契約を、プロトコルの側で保つ。 |
 | 規則の未設定の検出 | `isready`で検査し、未設定ならエラーの行を出して終了コード1で終える。 | 最初の`position`で検査する案は採らない。Lishogi-Botと対局ハーネスはどちらも`usi`、`setoption`、`isready`の順に送るので、`isready`のほうが早く、1か所で検出できる。エラーの行だけを返して待つ案は、`readyok`を待つ相手が止まるので採らない。 |
 | 規則セット名 | `engine-default`を`JCSA`へ改名し、旧名の別名は置かない。 | 旧名も受理する案は、同じ規則セットに2つの名前を残すので採らない。 |
-| ネットの指定 | MCTSで起動したときだけ宣言するオプション`NnModel`で指定し、`isready`で読み込む。 | 起動引数のまま残す案は採らない。[元のADR](../adr/select-zero-networks-by-startup-argument-and-embed-only-the-judged-one.md)が起動引数を選んだ理由は、対局ハーネスが任意のオプションを送れないことだったが、`--candidate-option`の追加で解消している。 |
+| ネットの指定 | MCTSで起動したときだけ宣言するオプション`NnModel`で指定し、`isready`で読み込む。 | 起動引数のまま残す案は採らない。[元のADR](../adr/archive/select-zero-networks-by-startup-argument-and-embed-only-the-judged-one.md)が起動引数を選んだ理由は、対局ハーネスが任意のオプションを送れないことだったが、`--candidate-option`の追加で解消している。 |
 | 探索方式の選択 | 起動引数`--search`のまま残す。 | USIのオプションにする案は採らない。理由は「CLIに残すもの」節にある。 |
 | 入出力の記録 | 起動引数`--io-log`のまま残す。 | USIのオプションにする案は採らない。理由は「CLIに残すもの」節にある。 |
 | 診断の実行方法 | 探索していないときに同期で実行し、各行に`info string`を付けて`info string end`で終える。 | 探索と同じ別スレッドで実行して`stop`を受け付ける案は採らない。診断は対局中に送るものではなく、停止の経路を持つ費用に見合う用途がない。 |
@@ -132,7 +132,7 @@ Stockfishは、`bench`、局面を表示する`d`、評価を表示する`eval`�
 
 ネットをオプションで指定する方式にも先例がある。
 Stockfishのオプション`EvalFile`は、評価関数のネットのファイルを指定し、設定された時点で読み込む（`src/engine.cpp`の136〜140行）。
-将棋のエンジンdlshogiのオプション`DNN_Model`と、チェスのエンジンlc0のオプション`WeightsFile`も、ネットのファイルを指定する。この2つは、[元のADR](../adr/select-zero-networks-by-startup-argument-and-embed-only-the-judged-one.md)が該当箇所を挙げている。
+将棋のエンジンdlshogiのオプション`DNN_Model`と、チェスのエンジンlc0のオプション`WeightsFile`も、ネットのファイルを指定する。この2つは、[元のADR](../adr/archive/select-zero-networks-by-startup-argument-and-embed-only-the-judged-one.md)が該当箇所を挙げている。
 
 コマンドの失敗でプロセスを終了する方式にも先例がある。
 Stockfishは、`go`の引数が不正な場合や局面の反転に失敗した場合に、`info string CRITICAL ERROR`で始まる行を出して終了コード1で終わる（`src/uci.cpp`の232行と695〜700行）。
@@ -691,7 +691,7 @@ perftとbenchについては、次を確かめる。
 - 「検証」節の項目がすべて確かめられている。
 - 起動引数`--rules`と`--nn-model`、およびサブコマンド`dev perft`、`dev bench`、`dev nn-eval`、`dev nn-fixture`、`dev random-play`が削除されている。
 - `README.md`、公開するcrateの2つの`README.md`、`CONTRIBUTING.md`の互換性の対象の記述、および「書き換える箇所の洗い出し」節に挙げた手引きが、新しい呼び出し方を案内している。
-- 設計判断がADRへ移されている。新しく書くADRは、規則の指定を必須にして既定値を持たない決定、規則セット名の改名、ネットをオプションで指定する決定、対局ハーネスがネットのチェックサムを記録して照合する決定、診断をUSIのコマンドにする決定と配置の基準、および起動引数に残すものの理由である。置き換えられるADRは、[ネットを起動引数で指定する決定](../adr/select-zero-networks-by-startup-argument-and-embed-only-the-judged-one.md)であり、`docs/adr/archive/`へ移す。[補助ツールをサブコマンドにする決定](../adr/run-developer-tools-as-engine-subcommands.md)、[起動引数を足す決定](../adr/append-startup-arguments-to-commit-engine-specs.md)、および[規則を最初の局面設定で確定する決定](../adr/commit-pending-rules-on-first-position.md)は、本書が変える部分について新しいADRから参照する。
+- 設計判断がADRへ移されている。新しく書くADRは、規則の指定を必須にして既定値を持たない決定、規則セット名の改名、ネットをオプションで指定する決定、対局ハーネスがネットのチェックサムを記録して照合する決定、診断をUSIのコマンドにする決定と配置の基準、および起動引数に残すものの理由である。置き換えられるADRは、[ネットを起動引数で指定する決定](../adr/archive/select-zero-networks-by-startup-argument-and-embed-only-the-judged-one.md)であり、`docs/adr/archive/`へ移す。[補助ツールをサブコマンドにする決定](../adr/run-developer-tools-as-engine-subcommands.md)、[起動引数を足す決定](../adr/append-startup-arguments-to-commit-engine-specs.md)、および[規則を最初の局面設定で確定する決定](../adr/commit-pending-rules-on-first-position.md)は、本書が変える部分について新しいADRから参照する。
 - 関連リポジトリに必要な変更が、それぞれのリポジトリの計画として起案されている。
 
 本書の変更は、エンジンの起動引数、USIのオプション、およびライブラリの公開APIの互換性を壊す。

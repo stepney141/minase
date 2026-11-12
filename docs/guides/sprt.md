@@ -92,6 +92,8 @@ cargo run --release --bin minase -- match run \
 ```
 
 ベースライン側だけ`--baseline-limit`で深さ1へ上書きする非対称条件が、このゲートの定義である。
+コミット0045833は、握手で`Threads`と`USI_Hash`を宣言せず、規則を起動引数で受ける版なので、現行のハーネスでは起動できない。
+このゲートを測り直すときは、当時のハーネスを使う。
 
 ### 外部エンジンとの強さ比較
 
@@ -295,17 +297,23 @@ HaChuは1手固定時間を指定すると、指定値より短い時間で着�
 外部エンジンの規則はそのエンジンの側の設定に委ねられるため、`--rules`にはそのエンジンが実装する規則を指定する。
 握手で`feature option="RuleSet ..."`を宣言するCECPのエンジン（minase自身をCECPで動かす場合）には、ハーネスが`new`の前に`option RuleSet=<--rulesの値>`を送る。
 
-AlphaZero型探索のMCTSは、`--candidate-args "--search mcts --nn-model <ネットのファイル>"`のように起動引数で選ぶ。
+AlphaZero型探索のMCTSは、`--candidate-args '--search mcts'`で探索方式を選び、`--candidate-option 'NnModel=<ネットのファイル>'`でネットを指定する。
+ネットのパスは`manifest.json`のオプションの欄に残る。
+ネットの内容は、エンジンが`isready`で返すチェックサムをハーネスが`manifest.json`のエンジンごとの欄`network_sha256`に記録し、再開時と各対局の開始時に照合する（理由は[チェックサムの照合のADR](../adr/record-and-verify-the-network-checksum-reported-by-match-engines.md)）。
+同じパスのファイルを測定の途中で書き換えると、次の対局の開始時に測定がエラーで止まる。
+その局は反則負けにならず、それまでに終わったペアの記録は残るので、ファイルを元に戻して`--resume`で再開する。
+αβ探索のエンジンのようにチェックサムを返さないエンジンでは、欄は`null`になる。
 MCTSの推論にはONNX Runtimeが要るので、`tools/train/zero/setup.sh`で導入した環境の`tools/train/zero/env.sh`をbashで読み込んでから`minase match run`を起動する。
 推論の設定は`--candidate-option NnBatchSize=64`や`--baseline-option NnBackend=cuda`のように指定でき、指定がなければMCTSは既定のTensorRTで推論し、TensorRTのエンジン（ネットをGPU向けに最適化したもの）のキャッシュを`$XDG_CACHE_HOME/minase/tensorrt`に置く。
 `XDG_CACHE_HOME`が設定されていないとminaseは`isready`でエラーになって終了するので、測定の前に設定する。
 TensorRTのエンジンの作成は、作業機の10ブロック128チャネルのネットで約11秒かかり、キャッシュの鍵には1回の推論の最大バッチ（`NnBatchSize`、既定256）が入る。
-同時に起動した複数の局が同じTensorRTのエンジンを作り始めないように、測定の前に同じネットと最大バッチでエンジンを1回起動してキャッシュを作っておく。
+ハーネスは、対局を始める前に候補と基準のエンジンを順に1回ずつ起動して`isready`まで進めるので、TensorRTのエンジンのキャッシュはこの事前の起動で作られ、同時に始まる複数の局が同じエンジンを作り始めることはない。
+事前の起動も応答の期限（`--response-timeout`、既定は120秒）に従うので、TensorRTのエンジンの作成が期限を超えてエラーになる場合は、期限を延ばすか、次のように同じネットと最大バッチでエンジンを1回起動してキャッシュを先に作る。
 
 ```console
 source tools/train/zero/env.sh   # bashで実行する
-printf 'usi\nsetoption name RuleSet value JCSA\nisready\nquit\n' | target/release/minase --protocol usi \
-  --search mcts --nn-model <ネットのファイル>
+printf 'usi\nsetoption name RuleSet value JCSA\nsetoption name NnModel value <ネットのファイル>\nisready\nquit\n' \
+  | target/release/minase --protocol usi --search mcts
 ```
 
 MCTSの`Threads`は1だけを受け付け、USIの`nodes`はシミュレーションの回数を表し、`depth`の制限は受け付けない。

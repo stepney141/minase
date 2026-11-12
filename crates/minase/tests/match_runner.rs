@@ -1,5 +1,9 @@
 //! 自己対局測定ハーネスのプロセス境界を検査する統合テスト。
 
+#[cfg(unix)]
+#[path = "match_runner/network.rs"]
+mod network;
+
 use std::process::Command;
 use std::sync::atomic::{AtomicU64, Ordering};
 
@@ -732,7 +736,7 @@ printf '%s\n' "$*" >> "$MINASE_TEST_ARGS_LOG"
 test "$1" = '--protocol' && test "$2" = 'usi' || exit 21
 shift 2
 case "$*" in
-    '--search mcts --nn-model net.onnx'|'--search alphabeta') ;;
+    '--search mcts'|'--search alphabeta') ;;
     *) exit 22 ;;
 esac
 while IFS= read -r line; do
@@ -761,7 +765,7 @@ done
             "--baseline",
             "commit:HEAD",
             "--candidate-args",
-            "--search   mcts\t--nn-model net.onnx",
+            "--search   mcts",
             "--baseline-args",
             "--search alphabeta",
             "--each",
@@ -791,7 +795,7 @@ done
     assert_eq!(manifest["format_version"], 8);
     assert_eq!(
         manifest["candidate"]["identity"]["args"],
-        serde_json::json!(["--search", "mcts", "--nn-model", "net.onnx"])
+        serde_json::json!(["--search", "mcts"])
     );
     assert_eq!(
         manifest["baseline"]["identity"]["args"],
@@ -839,7 +843,7 @@ done
     );
     assert_eq!(json_file(&dir.join("manifest.json")), manifest);
     let invocations = std::fs::read_to_string(log).unwrap();
-    let candidate = "--protocol usi --search mcts --nn-model net.onnx";
+    let candidate = "--protocol usi --search mcts";
     let baseline = "--protocol usi --search alphabeta";
     assert!(invocations.lines().any(|line| line == candidate));
     assert!(invocations.lines().any(|line| line == baseline));
@@ -900,11 +904,13 @@ done
         .parse()
         .unwrap();
     assert!(llr.abs() < 1e-9);
-    assert!(
-        !std::fs::read_to_string(&log)
-            .unwrap()
-            .contains("setoption name USI_Hash")
-    );
+    // 事前起動は保存容量を送り、既定値と一致すると判明した後の各局では省略する。
+    let commands = std::fs::read_to_string(&log).unwrap();
+    let hash_commands: Vec<_> = commands
+        .lines()
+        .filter(|line| line.starts_with("setoption name USI_Hash"))
+        .collect();
+    assert_eq!(hash_commands, ["setoption name USI_Hash value 16"; 2]);
     let before = std::fs::read(dir.join("invocations.json")).unwrap();
     assert!(resume_run(&dir, &[]).status.success());
     assert_eq!(std::fs::read(dir.join("invocations.json")).unwrap(), before);
@@ -1075,7 +1081,7 @@ fn usi_options_are_forwarded_recorded_and_restored_for_each_engine() {
                 .lines()
                 .filter(|line| line.starts_with("setoption ") || *line == "isready")
                 .collect();
-            assert_eq!(commands, expected.repeat(2), "{}", log.display());
+            assert_eq!(commands, expected.repeat(3), "{}", log.display());
         }
     };
     check_commands();

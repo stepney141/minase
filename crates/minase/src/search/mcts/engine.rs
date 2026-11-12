@@ -11,13 +11,14 @@ use super::Error;
 use super::driver::{DrawValue, Driver, EvaluationRequest, Step, validate_rules, validate_scale};
 use super::puct::PuctConfig;
 use super::tree::{NodeState, SelectionRule};
-use crate::nn::{Evaluator, ExecutionProvider, Network, NnError, OnnxEvaluator};
+use crate::nn::{Evaluator, ExecutionProvider, Network, NnError, OnnxEvaluator, Query};
 use crate::search::budget::{TimeBudget, time_budget};
 use crate::search::clock::{MonotonicClock, SearchClock};
+use crate::search::inference::validate_output_shape;
 use crate::search::{
-    PrepareError, SearchEvent, SearchHandle, SearchJoinError, SearchLimits, SearchOption,
-    SearchOptionKind, SearchOptionValue, SearchSnapshot, Searcher, SetOptionError, StartError,
-    StartFailure, StopReason,
+    EvaluationError, PrepareError, SearchEvent, SearchHandle, SearchJoinError, SearchLimits,
+    SearchOption, SearchOptionKind, SearchOptionValue, SearchSnapshot, Searcher, SetOptionError,
+    StartError, StartFailure, StopReason,
 };
 
 /// 対局用MCTSの設定。勝率尺度は探索の境界から値で受け取る。
@@ -53,7 +54,8 @@ impl Config {
 
 /// 対局内で持ち越す推論器、探索木、および設定。
 pub struct Engine {
-    network: Network,
+    model_path: String,
+    network: Option<Network>,
     backend: String,
     cache_dir: PathBuf,
     default_cache_dir: PathBuf,
@@ -63,12 +65,13 @@ pub struct Engine {
 }
 
 impl Engine {
-    /// ネットと設定を保持し、推論器の作成は`prepare`まで遅延する。
+    /// ネットを未設定で作り、読み込みと推論器の作成は`prepare`まで遅延する。
     /// TensorRTを既定とし、キャッシュ先は空でない`XDG_CACHE_HOME`の下に置く。
-    pub fn new(network: Network, config: Config) -> Self {
+    pub fn new(config: Config) -> Self {
         let cache_dir = default_cache_dir(std::env::var_os("XDG_CACHE_HOME").as_deref());
         Self {
-            network,
+            model_path: String::new(),
+            network: None,
             backend: "tensorrt".to_owned(),
             default_cache_dir: cache_dir.clone(),
             cache_dir,
@@ -94,6 +97,12 @@ impl Engine {
                     default: 1,
                     min: 1,
                     max: 1,
+                },
+            },
+            SearchOption {
+                name: "NnModel",
+                kind: SearchOptionKind::String {
+                    default: String::new(),
                 },
             },
             SearchOption {
@@ -160,6 +169,14 @@ impl Engine {
                 }
             }
             ("Threads", SearchOptionValue::Spin(_)) => {}
+            ("NnModel", SearchOptionValue::String(value)) => {
+                if self.model_path != value {
+                    self.model_path = value;
+                    self.network = None;
+                    self.evaluator = None;
+                    self.clear();
+                }
+            }
             ("NnBackend", SearchOptionValue::Combo(value)) => {
                 let backend = value.to_ascii_lowercase();
                 if self.backend != backend {
@@ -209,11 +226,86 @@ impl Engine {
     }
 
     pub(in crate::search) fn prepare(&mut self) -> Result<(), PrepareError> {
+        if self.model_path.is_empty() {
+            return Err(PrepareError::MissingModel);
+        }
         if self.evaluator.is_none() {
+            if self.network.is_none() {
+                self.network = Some(
+                    Network::read(std::path::Path::new(&self.model_path))
+                        .map_err(PrepareError::Network)?,
+                );
+            }
             let provider = self.execution_provider()?;
-            let evaluator = OnnxEvaluator::new(&self.network, &provider, self.config.batch_size)
+            let network = self.network.as_ref().ok_or(PrepareError::MissingModel)?;
+            let evaluator = OnnxEvaluator::new(network, &provider, self.config.batch_size)
                 .map_err(PrepareError::Network)?;
             self.evaluator = Some(Box::new(evaluator));
+        }
+        Ok(())
+    }
+
+    pub(in crate::search) fn network_sha256(&self) -> Option<&[u8; 32]> {
+        self.network.as_ref().map(Network::sha256)
+    }
+
+    /// 診断を受け付ける前に、推論器と現局の規則を探索と同じ条件で検査する。
+    pub(crate) fn validate_evaluation(&self, rules: minase_core::MoveRules) -> Result<(), Error> {
+        if self.evaluator.is_none() {
+            return Err(Error::MissingEvaluator);
+        }
+        validate_rules(rules)
+    }
+
+    /// 生のlogitを、探索と同じ温度とsoftmaxで事前確率へ変換する。
+    pub(crate) fn policy_priors(&self, logits: &[f32]) -> Vec<f32> {
+        let mut priors = logits.to_vec();
+        apply_policy_temperature(&mut priors, self.config.policy_temperature);
+        crate::nn::softmax(&mut priors);
+        priors
+    }
+
+    pub(in crate::search) fn evaluate(
+        &mut self,
+        queries: &[Query<'_>],
+        logits: &mut Vec<f32>,
+        values: &mut Vec<f32>,
+    ) -> Result<(), EvaluationError> {
+        let evaluator = self
+            .evaluator
+            .as_mut()
+            .ok_or(EvaluationError::NotPrepared)?;
+        for query in queries {
+            if !query.position.promotion_deferred().is_empty() {
+                return Err(EvaluationError::Input(NnError::PromotionDeferred));
+            }
+        }
+        let mut batch_logits = Vec::new();
+        let mut batch_values = Vec::new();
+        for batch in queries.chunks(self.config.batch_size.get()) {
+            evaluator
+                .evaluate(batch, &mut batch_logits, &mut batch_values)
+                .map_err(EvaluationError::Inference)?;
+            validate_output_shape(batch, &batch_logits, &batch_values)
+                .map_err(EvaluationError::Inference)?;
+            let mut remaining = batch_logits.as_slice();
+            for (index, (query, &value)) in batch.iter().zip(&batch_values).enumerate() {
+                let (current, rest) = remaining.split_at(query.moves.len());
+                if !value.is_finite() || current.iter().any(|logit| !logit.is_finite()) {
+                    return Err(EvaluationError::Inference(NnError::NonFiniteOutput {
+                        query: values.len() + index,
+                    }));
+                }
+                if !(0.0..=1.0).contains(&value) {
+                    return Err(EvaluationError::Inference(NnError::ValueOutOfRange {
+                        query: values.len() + index,
+                        value,
+                    }));
+                }
+                remaining = rest;
+            }
+            logits.extend_from_slice(&batch_logits);
+            values.extend_from_slice(&batch_values);
         }
         Ok(())
     }
@@ -310,7 +402,7 @@ impl Engine {
         if limits.depth().is_some() {
             return Err(Error::DepthLimitUnsupported);
         }
-        validate_rules(&snapshot)?;
+        validate_rules(snapshot.rules())?;
         validate_scale(self.config.cp_per_logit)?;
         self.config.puct.validate()?;
         let draw = DrawValue::Game {
@@ -480,32 +572,25 @@ fn evaluate_batch(
     evaluator
         .evaluate(&queries, logits, values)
         .map_err(SearchJoinError::Inference)?;
-    let total_logits = queries.iter().map(|query| query.moves.len()).sum::<usize>();
-    for (name, expected, actual) in [
-        ("values", requests.len(), values.len()),
-        ("logits", total_logits, logits.len()),
-    ] {
-        if actual != expected {
-            return Err(SearchJoinError::Inference(NnError::OutputShape {
-                name,
-                expected: [expected, 1],
-                actual: vec![actual as i64, 1],
-            }));
-        }
-    }
+    validate_output_shape(&queries, logits, values).map_err(SearchJoinError::Inference)?;
     let mut offset = 0;
     for (request, &value) in requests.iter().zip(values.iter()) {
         let end = offset + request.query().moves.len();
         let logits = &mut logits[offset..end];
-        for logit in logits.iter_mut() {
-            *logit /= policy_temperature;
-        }
+        apply_policy_temperature(logits, policy_temperature);
         driver
             .evaluate(request, logits, value)
             .map_err(SearchJoinError::Mcts)?;
         offset = end;
     }
     Ok(())
+}
+
+/// 方策の温度を適用する。探索木に渡すlogitと診断の事前確率で共有する。
+fn apply_policy_temperature(logits: &mut [f32], temperature: f32) {
+    for logit in logits {
+        *logit /= temperature;
+    }
 }
 
 #[cfg(test)]

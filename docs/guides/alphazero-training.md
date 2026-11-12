@@ -259,7 +259,7 @@ export XDG_CACHE_HOME=$HOME/.cache
 M=$PWD/target/release/minase
 N=$A/nets/cycles-rl2/cycle-0020.onnx
 "$M" match run --run-dir $A/progress/cycles-rl2/cycle-0020-vs-ab500 --seed <シード> \
-  --candidate "$M --protocol usi --search mcts --nn-model $N" \
+  --candidate "$M --protocol usi --search mcts" --candidate-option "NnModel=$N" \
   --baseline commit:45d5db5498e1739b2307b3719891a1eec24f7fbd --baseline-args '--rules L0,P0,R1,E0' \
   --rules L0,P0,R1,E0 \
   --candidate-option NnBatchSize=16 --each nodes=800 --baseline-limit nodes=500 --concurrency 4 elo --pairs 100

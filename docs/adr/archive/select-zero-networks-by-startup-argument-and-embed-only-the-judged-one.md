@@ -2,11 +2,11 @@
 
 ## ステータス
 
-承認済み。決定日は2026年10月27日。
+置き換え済み。決定日は2026年10月27日。[AlphaZero型探索のネットはUSIのオプション`NnModel`のファイルで指定し、`isready`で読み込む](../select-zero-networks-by-the-usi-option-nnmodel.md)によって置き換えられた。
 
 ## コンテキスト
 
-強化学習（RL）の途中のネットは、作業機のNASにファイルとして置き、コミットしない（[強化学習の実行の設計書](../plans/archived/alphazero-rl.md)）。
+強化学習（RL）の途中のネットは、作業機のNASにファイルとして置き、コミットしない（[強化学習の実行の設計書](../../plans/archived/alphazero-rl.md)）。
 各サイクルの生成と進捗測定は借りた機械で行い、借りた機械にはリポジトリがないので、ネットをコミットしてハーネスの`commit:`指定で選ぶことはできない。
 進捗測定では、同じバイナリの候補と基準に別のネットを与える。
 対局ハーネス`minase match run`には、候補と基準のそれぞれに任意のUSIオプションを与える引数がない。
@@ -14,7 +14,7 @@ TensorRTはネットを替えるたびにエンジンを作り直す。
 StockfishのUCIオプション`EvalFile`（`src/engine.cpp` 136行と`src/nnue/network.cpp` 91〜110行、コミット5c4cef0b）とlc0の`WeightsFile`（`src/neural/shared_params.cc` 45行と74〜76行、コミットd91bd14）は、埋め込みのネットを既定にしてファイルで差し替える。
 dlshogiは、ネットのファイルをUSIオプション`DNN_Model`（`cppshogi/usi.cpp` 103行、コミット79df19e）で指定する。
 エンジンの開発者は、2026年10月26日にこの方式を決めた。
-決定の経緯は[ネットの入出力と推論の設計書](../plans/archived/alphazero-network.md)にある。
+決定の経緯は[ネットの入出力と推論の設計書](../../plans/archived/alphazero-network.md)にある。
 
 ## 決定
 
@@ -37,5 +37,5 @@ USIオプションでネットを指定する案は採らなかった。
 ネットのパスはハーネスの実行条件に残るが、ネットの内容は残らない。
 同じパスのファイルを書き換えると記録と対局のネットの対応が失われるので、RLはネットをサイクル番号つきのファイル名で保持し、上書きしない。
 推論のコードは学習済みの重みより先にmasterへ入るが、既定の探索の評価関数としては使われないので、既定の探索のbenchの結果とテストの結果を変えない。
-エンジンの`--nn-model`は[探索方式の共存とMCTS](../plans/archived/alphazero-mcts.md)が、生成器の`--nn-model`は[自己対局生成器](../plans/archived/alphazero-selfplay.md)が実装し、検査用の`minase dev nn-eval`も同じ読み込みを使う。
+エンジンの`--nn-model`は[探索方式の共存とMCTS](../../plans/archived/alphazero-mcts.md)が、生成器の`--nn-model`は[自己対局生成器](../../plans/archived/alphazero-selfplay.md)が実装し、検査用の`minase dev nn-eval`も同じ読み込みを使う。
 ネットの読み込みは`crates/minase/src/nn/onnx.rs`の`Network`にある。

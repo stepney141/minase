@@ -18,7 +18,7 @@ use minase::harness::*;
 use minase::stats::{GSPRT_H1_ELO, GsprtDecision};
 use minase_core::Rules;
 use replay::{completed_pair_from_record, ponder_summary};
-use scheduler::{accept_completed_pair, run_worker_loop};
+use scheduler::{WorkerError, accept_completed_pair, run_worker_loop};
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use std::process;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -174,6 +174,10 @@ pub(super) fn main(arguments: Arguments) {
         (store, BTreeMap::new(), rules, candidate, baseline)
     };
     let manifest = &store.manifest;
+    let mut candidate = candidate;
+    let mut baseline = baseline;
+    candidate.network_sha256 = manifest.candidate.network_sha256.clone();
+    baseline.network_sha256 = manifest.baseline.network_sha256.clone();
     let target_pairs = store.target_pairs;
     let concurrency = manifest.concurrency;
     let base_seed = manifest.seed;
@@ -256,7 +260,8 @@ pub(super) fn main(arguments: Arguments) {
     let pool_result = thread::scope(|scope| {
         let (job_sender, job_receiver) = mpsc::channel::<u64>();
         let job_receiver = Arc::new(Mutex::new(job_receiver));
-        let (result_sender, result_receiver) = mpsc::channel::<Result<CompletedPair, String>>();
+        let (result_sender, result_receiver) =
+            mpsc::channel::<Result<CompletedPair, WorkerError>>();
         let mut workers = Vec::with_capacity(worker_count);
         for _ in 0..worker_count {
             let result_sender = result_sender.clone();
@@ -280,18 +285,23 @@ pub(super) fn main(arguments: Arguments) {
                             response_timeout,
                             ponder,
                             stop,
-                        );
+                        )
+                        .map_err(WorkerError::Match)?;
                         let Some(pair) = pair else {
                             return Ok(None);
                         };
-                        store.save_pair(&pair.record).map_err(|error| {
-                            format!("failed to save pair {pair_number}: {error}")
-                        })?;
+                        store
+                            .save_pair(&pair.record)
+                            .map_err(|source| WorkerError::SavePair {
+                                number: pair_number,
+                                source,
+                            })?;
                         Ok(Some(pair))
                     });
                 }));
                 if worker_result.is_err() {
-                    let _ = result_sender.send(Err("a match worker panicked".to_owned()));
+                    stop.store(true, Ordering::Release);
+                    let _ = result_sender.send(Err(WorkerError::Panicked));
                 }
             }));
         }
@@ -317,7 +327,7 @@ pub(super) fn main(arguments: Arguments) {
                     break;
                 }
                 Err(error) => {
-                    pool_error = Some(format!("worker result channel disconnected: {error}"));
+                    pool_error = Some(WorkerError::Results(error));
                     break;
                 }
             };
@@ -342,14 +352,15 @@ pub(super) fn main(arguments: Arguments) {
                 },
             );
             if let Some(job) = replacement
+                && !stop.load(Ordering::Acquire)
                 && let Err(error) = job_sender.send(job)
             {
-                pool_error = Some(format!("worker job channel disconnected: {error}"));
+                pool_error = Some(WorkerError::Jobs(error));
             }
             if pool_error.is_none()
                 && let Err(error) = store.checkpoint(start.elapsed())
             {
-                pool_error = Some(format!("failed to checkpoint active wall time: {error}"));
+                pool_error = Some(WorkerError::Checkpoint(error));
             }
             if pool_error.is_some() {
                 break;
@@ -362,13 +373,25 @@ pub(super) fn main(arguments: Arguments) {
         for worker in workers {
             worker_panicked |= worker.join().is_err();
         }
-        worker_panicked |= result_receiver.try_iter().any(|result| result.is_err());
+        for result in result_receiver.try_iter() {
+            if let Err(error) = result {
+                if pool_error.is_none() {
+                    pool_error = Some(error);
+                } else {
+                    eprintln!("match execution failed: {error}");
+                }
+            }
+        }
         if worker_panicked {
-            Err("a match worker panicked".to_owned())
-        } else if let Some(error) = pool_error {
-            Err(error)
-        } else {
-            Ok(())
+            if pool_error.is_some() {
+                eprintln!("match execution failed: {}", WorkerError::Panicked);
+            } else {
+                pool_error = Some(WorkerError::Panicked);
+            }
+        }
+        match pool_error {
+            Some(error) => Err(error),
+            None => Ok(()),
         }
     });
     if let Err(error) = pool_result {

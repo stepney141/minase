@@ -77,7 +77,7 @@ fn execute(arguments: Arguments) -> Result<(), Box<dyn std::error::Error>> {
                     .collect();
                 configured
             };
-            Ok(run_pair(
+            run_pair(
                 rules,
                 &manifest.rules_source,
                 settings.seed,
@@ -88,7 +88,8 @@ fn execute(arguments: Arguments) -> Result<(), Box<dyn std::error::Error>> {
                 timeout,
                 false,
                 stop,
-            ))
+            )
+            .map_err(io::Error::other)
         },
         |record| {
             store.save(record)?;

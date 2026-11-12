@@ -8,6 +8,7 @@
 //! `manifest.json`は[`RunManifest`]を1個保存し、`format_version`は8である。
 //! `ponder`は先読みの真偽、`candidate`と`baseline`は`identity`、`limit`、`options`を持つエンジン設定である。
 //! `options`は追加のUSIオプションを送信順の`[名前, 値]`の配列で持ち、指定がなくても空配列を必須とする。
+//! `network_sha256`はエンジンが準備時に報告した小文字の16進数64桁で、未報告では`null`とする。欄は省略できない。
 //! `identity`は[`EngineIdentity`]の`kind`つきオブジェクトである。
 //! `kind="commit"`の`args`は追加の起動引数を文字列配列で持ち、省略時は空配列となる。
 //! 版8では`commit:`の固定の起動引数が`--protocol usi`だけになり、`args`はその後に足す引数を表す。
@@ -70,6 +71,9 @@ pub(super) struct EngineRecord {
     pub(super) limit: StoredSearchLimit,
     /// 新規実行時に検査した追加のUSIオプション。送信順を保ち、欄は省略できない。
     pub(super) options: Vec<(String, String)>,
+    /// 準備時に報告されたネットのSHA-256。未報告では`null`を明示し、欄の欠落は拒否する。
+    #[serde(deserialize_with = "minase::harness::deserialize_network_sha256")]
+    pub(super) network_sha256: Option<minase::harness::NetworkSha256>,
 }
 
 /// 保存用の探索制限。
@@ -622,6 +626,7 @@ mod tests {
                     nodes: Some(100_000),
                 },
                 options: vec![("NnBatchSize".to_owned(), "64".to_owned())],
+                network_sha256: None,
             },
             baseline: EngineRecord {
                 identity: EngineIdentity::Random,
@@ -631,6 +636,7 @@ mod tests {
                     byoyomi_ms: 0,
                 },
                 options: Vec::new(),
+                network_sha256: None,
             },
             rules_source: "JCSA".to_owned(),
             canonical_rules: vec!["L1".to_owned(), "P0".to_owned()],
@@ -772,8 +778,8 @@ mod tests {
             vec![
                 "--search".to_owned(),
                 "mcts".to_owned(),
-                "--nn-model".to_owned(),
-                "net.onnx".to_owned(),
+                "--io-log".to_owned(),
+                "engine.log".to_owned(),
             ],
         ] {
             let path = temporary_directory("commit-args");

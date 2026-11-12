@@ -30,8 +30,8 @@ static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
 ///
 /// サブコマンドなしはエンジン起動であり、`--protocol`を必須とする。
 /// この欄は`Option`だが`required = true`を付け、`subcommand_negates_reqs`で補助ツール時だけ必須を外す。
-/// `--protocol`、`--io-log`、`--search`、`--nn-model`とサブコマンドの併用は拒否する。
-/// 探索方式は既定で`alphabeta`とし、`mcts`にはUSIと`--nn-model`の指定を要求する。
+/// `--protocol`、`--io-log`、`--search`とサブコマンドの併用は拒否する。
+/// 探索方式は既定で`alphabeta`とし、`mcts`にはUSIを要求し、ネットは`NnModel`で指定する。
 /// 引数なしの起動もエラーである。プロトコルは`usi`か`cecp`で、既定値も自動判別も持たない。
 /// 対局ハーネスの`commit:`はコミットを`--protocol usi`で起動するため、この形は互換性の対象である。
 /// 理由は`docs/adr/run-developer-tools-as-engine-subcommands.md`にある。
@@ -51,9 +51,6 @@ struct Arguments {
     /// 起動時に選ぶ探索方式。
     #[arg(long, value_enum, default_value = "alphabeta")]
     search: SearchKind,
-    /// MCTSで読むONNX形式のネットのパス。
-    #[arg(long)]
-    nn_model: Option<PathBuf>,
     /// 補助ツールの呼び出し。
     #[command(subcommand)]
     command: Option<Command>,
@@ -159,7 +156,6 @@ fn main() -> ExitCode {
                 .expect("clap requires --protocol for the engine"),
             arguments.io_log,
             arguments.search,
-            arguments.nn_model,
         ),
         Some(Command::Match(MatchCommand::Run(arguments))) => match_runner::main(arguments),
         Some(Command::Match(MatchCommand::Report(arguments))) => match_report::main(arguments),
@@ -384,7 +380,6 @@ mod tests {
             vec!["--io-log", "io.log"],
             vec!["--search", "alphabeta"],
             vec!["--search", "mcts"],
-            vec!["--nn-model", "net.onnx"],
         ] {
             let error = Arguments::try_parse_from(
                 std::iter::once("minase")

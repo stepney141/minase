@@ -560,7 +560,7 @@ DL水匠15bは配布物にライセンスのファイルも利用条件の文言
 
 minaseの側の条件は次のとおりである。
 ac2b3f3eのCargo.tomlは、minase-coreとminase-trainerをMIT、エンジンのcrates/minaseをGPL-3.0-or-laterとし、READMEは`docs/`などそれ以外のファイルに許諾を与えていない。
-また、到達の判定に使うネットは`crates/minase/nets/`に置いてバイナリへ埋め込む（[ネットの指定のADR](../adr/select-zero-networks-by-startup-argument-and-embed-only-the-judged-one.md)）。
+また、到達の判定に使うネットは`crates/minase/nets/`に置いてバイナリへ埋め込む（[ネットの指定のADR](../adr/archive/select-zero-networks-by-startup-argument-and-embed-only-the-judged-one.md)）。
 
 学習器`tools/train/zero/`で候補の重みを読むこと自体は、候補のコードを写さずにできる（推論）。
 ONNXは学習器が既に依存するonnxで、npzはNumPyで、PyTorchのcheckpointはPyTorchで読め、AobaZeroの文字形式は1行目が版番号、以後1行に1つのテンソルを空白区切りで並べた単純な形式なので、自前の読み取りで足りる（`src/common/nnet.cpp` 100〜131行）。

@@ -701,7 +701,7 @@ mod tests {
                 "unavailable-engine",
                 "cecp:unavailable-engine",
             ] {
-                for value in ["--search mcts --nn-model net.onnx", ""] {
+                for value in ["--search mcts", ""] {
                     let arguments = Arguments::try_parse_from([
                         "match_runner",
                         "--rules",

@@ -316,7 +316,7 @@ PSTは駒の種類と升ごとの値の表による評価、FMはFactorization M
 - 2026年10月27日 [AlphaZero型探索のネットは、大域プーリングを入れたResNetとし、10ブロック128チャネルから始める](archive/start-the-zero-network-as-a-10-block-128-channel-resnet-with-global-pooling.md)（置き換え済み）
 - 2026年10月27日 [AlphaZero型探索のネットの推論は、ortクレートのload-dynamicでONNX Runtimeを実行時に読み込み、既定ではTensorRTのFP16で行う](run-zero-network-inference-through-ort-load-dynamic.md)
 - 2026年10月27日 [TensorRTのエンジンのキャッシュは、ネットの検査和、GPUの機種名とメモリ容量、および最大バッチで分けたディレクトリに置く](key-tensorrt-engine-caches-by-network-checksum-gpu-and-max-batch.md)
-- 2026年10月27日 [AlphaZero型探索のネットは起動引数`--nn-model`のファイルで指定し、到達の判定に使うネットだけを埋め込む](select-zero-networks-by-startup-argument-and-embed-only-the-judged-one.md)
+- 2026年10月27日 [AlphaZero型探索のネットは起動引数`--nn-model`のファイルで指定し、到達の判定に使うネットだけを埋め込む](archive/select-zero-networks-by-startup-argument-and-embed-only-the-judged-one.md)（置き換え済み）
 - 2026年10月27日 [探索方式は起動引数`--search`で起動時に選び、探索の境界の閉じた列挙型`Searcher`で束ねる](select-the-search-method-at-startup-through-a-closed-enum.md)
 - 2026年10月27日 [AlphaZero型探索の強化学習の自己対局は、Gumbel AlphaZeroの探索をmctxの既定値で行う](archive/use-gumbel-alphazero-for-zero-self-play-search.md)（置き換え済み）
 - 2026年10月27日 [MCTSの対局の探索は、dlshogiの式のPUCTと仮想損失によるバッチ評価で行い、時間配分はαβ探索と同じ式を使う](search-mcts-games-by-puct-with-virtual-loss-batches.md)
@@ -378,3 +378,5 @@ PSTは駒の種類と升ごとの値の表による評価、FMはFactorization M
 - 2026年11月11日 [AlphaZero型探索の推論は、ortのrc.15を使い、ONNX Runtimeの環境をプロセスの終了まで保持する](hold-the-onnx-runtime-environment-until-process-exit-through-ort-rc15.md)
 - 2026年11月12日 [標準規則の千日手をR1に置き換えた規則セットをJCSAと名づける](name-the-standard-rule-set-jcsa.md)
 - 2026年11月12日 [規則セットは起動後のプロトコルで必ず指定させ、エンジンは既定値を持たない](require-the-rule-set-through-the-protocol-and-keep-no-default.md)
+- 2026年11月12日 [AlphaZero型探索のネットはUSIのオプション`NnModel`のファイルで指定し、`isready`で読み込む](select-zero-networks-by-the-usi-option-nnmodel.md)
+- 2026年11月12日 [対局ハーネスは、エンジンが`isready`で返すネットのチェックサムを実行条件に記録し、対局の開始時と再開時に照合する](record-and-verify-the-network-checksum-reported-by-match-engines.md)

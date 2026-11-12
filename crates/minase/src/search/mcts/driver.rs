@@ -46,8 +46,8 @@ pub(super) fn validate_scale(scale: f32) -> Result<(), Error> {
     Ok(())
 }
 
-pub(super) fn validate_rules(snapshot: &SearchSnapshot) -> Result<(), Error> {
-    if snapshot.rules().promotion != PromotionRule::P0 || snapshot.rules().p5 {
+pub(super) fn validate_rules(rules: minase_core::MoveRules) -> Result<(), Error> {
+    if rules.promotion != PromotionRule::P0 || rules.p5 {
         return Err(Error::PromotionDeferred);
     }
     Ok(())
@@ -105,7 +105,7 @@ impl Driver {
         capacity_bytes: usize,
         draw: DrawValue,
     ) -> Result<Self, Error> {
-        validate_rules(&snapshot)?;
+        validate_rules(snapshot.rules())?;
         snapshot.game().ok_or(Error::MissingGame)?;
         let draw_probability = draw.probability(&snapshot)?;
         let tree = Tree::new(snapshot.root_moves(), capacity_bytes)?;
@@ -257,7 +257,7 @@ impl Driver {
         snapshot: &SearchSnapshot,
         draw: DrawValue,
     ) -> Result<bool, Error> {
-        validate_rules(snapshot)?;
+        validate_rules(snapshot.rules())?;
         let new_game = snapshot.game().ok_or(Error::MissingGame)?;
         let probability = draw.probability(snapshot)?;
         if self.root_pending

@@ -72,6 +72,8 @@ pub struct PlayerConfig {
     /// USIの握手後、`isready`より前に送るオプションの名前と値。
     /// 同名の重複も含めて列順に送る。
     pub options: Vec<(String, String)>,
+    /// 事前の起動で記録したネットのSHA-256。局ごとの初期化で報告値と照合する。
+    pub network_sha256: Option<super::NetworkSha256>,
 }
 
 impl PlayerConfig {
@@ -256,6 +258,7 @@ pub fn resolve_player(
         hash_mb,
         rules_source: rules_text.to_owned(),
         options,
+        network_sha256: None,
     })
 }
 
@@ -372,10 +375,11 @@ mod tests {
                 assert_eq!(player.path, PathBuf::from("engine"), "{text}");
                 assert_eq!(player.args, ["--option", "value"], "{text}");
                 assert_eq!(
-                    probe_engine_defaults(&player, Duration::from_secs(1)).unwrap(),
+                    probe_engine_defaults(&player, true, Duration::from_secs(1)).unwrap(),
                     EngineDefaults {
                         threads: None,
-                        hash_mb: Some(256)
+                        hash_mb: Some(256),
+                        network_sha256: None,
                     },
                     "{text}"
                 );

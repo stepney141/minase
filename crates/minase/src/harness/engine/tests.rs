@@ -79,6 +79,7 @@ for raw in sys.stdin:
         hash_mb: None,
         rules_source: "JCSA".to_owned(),
         options: Vec::new(),
+        network_sha256: None,
     }
 }
 
@@ -146,6 +147,7 @@ fn movetime_game_records_and_counts_time_forfeits() {
         false,
         &AtomicBool::new(false),
     )
+    .unwrap()
     .unwrap();
     assert_eq!(result.record.turns.len(), 1);
     let turn = &result.record.turns[0];
@@ -223,6 +225,7 @@ fn both_engines_ponder_hit_and_stop_on_resignation() {
         true,
         &AtomicBool::new(false),
     )
+    .unwrap()
     .unwrap();
     assert_eq!(result.record.turns.len(), 4);
     assert!(matches!(
@@ -461,6 +464,7 @@ fn absent_illegal_and_terminal_predictions_do_not_start_ponder() {
             true,
             &AtomicBool::new(false),
         )
+        .unwrap()
         .unwrap();
         assert!(matches!(
             result.record.termination,
@@ -503,7 +507,9 @@ fn absent_illegal_and_terminal_predictions_do_not_start_ponder() {
         &clocks.think_request(Color::White, a.limit),
     );
     process.send("isready").unwrap();
-    process.wait_for("readyok").unwrap();
+    process
+        .receive_until(|line| line.trim() == "readyok")
+        .unwrap();
     assert!(process.pondering.is_none());
 }
 
@@ -661,6 +667,7 @@ fn ponder_stops_before_resources_on_cutoff_and_opponent_failures() {
             true,
             &AtomicBool::new(false),
         )
+        .unwrap()
         .unwrap();
         assert_eq!(result.record.termination, expected);
         #[cfg(target_os = "linux")]
@@ -716,6 +723,7 @@ fn ponder_stops_on_opponent_terminal_move_and_never_starts_after_terminal_move()
         true,
         &AtomicBool::new(false),
     )
+    .unwrap()
     .unwrap();
     assert!(matches!(
         result.record.termination,
@@ -761,6 +769,7 @@ fn predictions_are_saved_when_ponder_is_disabled() {
         false,
         &AtomicBool::new(false),
     )
+    .unwrap()
     .unwrap();
     assert!(matches!(
         result.record.termination,
@@ -836,7 +845,9 @@ for _ in sys.stdin:
         .to_owned(),
     ];
     let process = EngineProcess::start(&player, 1, Duration::from_secs(2)).unwrap();
-    process.wait_for("initialized").unwrap();
+    process
+        .receive_until(|line| line.trim() == "initialized")
+        .unwrap();
 }
 
 // CECPのfeature宣言だけに基づき、規則の原文をnewより前に渡す。
@@ -892,6 +903,8 @@ for line in sys.stdin:
         config.rules_source = "lIsHoGi".to_owned();
         let mut process = EngineProcess::start(&config, 1, Duration::from_secs(5)).unwrap();
         process.send("ping 19").unwrap();
-        process.wait_for("pong 19").unwrap();
+        process
+            .receive_until(|line| line.trim() == "pong 19")
+            .unwrap();
     }
 }

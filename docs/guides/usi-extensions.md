@@ -38,7 +38,7 @@ SFENは千日手の判定に使う局面の履歴を含まない。
 | コマンド | minaseでの扱い |
 |---|---|
 | `usi` | 標準どおり。宣言するオプションは「オプション」の節にある。 |
-| `isready` | 規則セットが未設定なら、エラーを1行出してエンジンを終了する（「規則セットの指定」の節）。MCTS（モンテカルロ木探索）では推論器をここで作り、失敗した場合も同じくエラーを1行出して終了する。 |
+| `isready` | 規則セットが未設定なら、エラーを1行出してエンジンを終了する（「規則セットの指定」の節）。MCTS（モンテカルロ木探索）ではニューラルネット（以下ネット）をここで読み込んで推論器を作り、失敗した場合も同じくエラーを1行出して終了する（「isready」の節）。 |
 | `setoption` | minase独自のオプションを持つ。 |
 | `usinewgame` | 省略してよい。 |
 | `position` | 中将棋の表記を使い、終局した対局では受け付けない。 |
@@ -77,6 +77,15 @@ minaseは規則セットの既定値を持たないので、GUIや対局用の�
 値のない`RuleSet`と、空の文字列を表す`<empty>`の指定は、`info string error: RuleSet requires a value`で拒否する。
 既定値を置かない理由は[ADR](../adr/require-the-rule-set-through-the-protocol-and-keep-no-default.md)にある。
 
+### isready
+
+MCTSで起動したminaseは、`isready`でオプション`NnModel`のファイルからネットを読み込み、推論器（ネットを読み込んで局面を評価する部品）を作る。
+`NnModel`が未設定なら`info string error: required option NnModel is not set`を出し、`readyok`を返さずに終了コード1で終わる。
+ファイルを読めない場合と推論器を作れない場合も、エラーを1行出して終了し、別のネットや実行プロバイダへは切り替えない。
+読み込みに成功した`isready`は、`readyok`の直前に`info string network_sha256 <64桁の16進数>`を1行出す。
+この値は、推論に渡すバイト列のチェックサム（SHA-256）であり、対局ハーネスがネットの同一性の照合に使う（[SPRTの手引き](sprt.md)の「エンジンの指定方法」の節）。
+αβ探索で起動したminaseは、この行を出さない。
+
 ### position
 
 `usinewgame`は省略してよい。
@@ -97,7 +106,7 @@ Lishogi-Botは`usinewgame`を送らないので、minaseは対局の開始を待
 
 `go mate`は詰み探索を実装していないので、USI原典の定めに従って`checkmate notimplemented`を返す。
 
-`--search mcts --nn-model <ネットのパス>`で起動したMCTSでは、`nodes`の値はシミュレーションの回数を表し、αβ探索の着手の適用回数とは意味が異なる。
+`--search mcts`で起動したMCTSでは、`nodes`の値はシミュレーションの回数を表し、αβ探索の着手の適用回数とは意味が異なる。
 MCTSは正常に始まった`go`のたびに、この違いを`info string nodes count MCTS simulations, not alpha-beta move applications`の1行で知らせる。
 
 ### gameoverとquit
@@ -140,6 +149,7 @@ minaseは`usi`への応答で次のオプションを宣言する。
 | `ByoyomiMargin` | spin、0〜60,000 | 30 | 秒読みの締切の前に残す余裕で、単位はmsである（[ADR](../adr/give-the-byoyomi-margin-as-a-millisecond-usi-option.md)）。 |
 | `DrawValueBlack` | spin、−28,999〜28,999 | 0 | 探索を始める局面（根）が先手番のときに引き分けへ与える評価値。単位は根の手番側から見たcpである。 |
 | `DrawValueWhite` | spin、−28,999〜28,999 | 0 | 探索を始める局面（根）が後手番のときに引き分けへ与える評価値。単位は根の手番側から見たcpである。 |
+| `NnModel` | string | `<empty>`（未設定） | MCTSだけが宣言する。ネットのONNX形式のファイルのパス。指定は必須であり、相対パスはエンジンの作業ディレクトリから解決する。 |
 | `NnBackend` | combo、`tensorrt`、`cuda`、`cpu` | `tensorrt` | MCTSだけが宣言する。推論の実行プロバイダ。 |
 | `NnCacheDir` | string | `$XDG_CACHE_HOME/minase/tensorrt`（環境変数が空なら空） | MCTSだけが宣言する。TensorRTのキャッシュを置くディレクトリ。空の文字列は`<empty>`と書く。 |
 | `NnBatchSize` | spin、1〜1,024 | 256 | MCTSだけが宣言する。1回の推論に送る葉の数の上限。 |
@@ -148,6 +158,8 @@ minaseは`usi`への応答で次のオプションを宣言する。
 
 引き分けの評価値は、規則R1の千日手のように探索が引き分けと判定する局面で使う（[ADR](../adr/set-the-draw-value-by-usi-option-signed-from-the-root-side.md)）。
 `NnBackend`、`NnCacheDir`、または`NnBatchSize`を変えると、次の`isready`で推論器を作り直す。
+`NnModel`を別の値へ変えると、読み込み済みのネット、推論器、およびMCTSが対局の間に持ち越す探索木を捨て、次の`isready`でネットを読み直すまで`go`と`eval`を拒否する。
+文字列のオプションの値は、`value`の後の語を1つの空白でつないだものなので、連続する空白やタブを含むパスは指定できない。
 各オプションの受理で置換表や探索木を消すかどうかと、拒否の文言は、`UsiProtocol::handle_setoption`のdocコメントにある。
 
 ## 独自のコマンド
@@ -198,8 +210,21 @@ d
 eval
 ```
 
-現局面のNNUE（評価関数のニューラルネット）による手番側の評価値と、升ごとの線形の寄与を12行12列の表で表示する。
+αβ探索で起動したminaseでは、現局面のNNUE（評価関数のニューラルネット）による手番側の評価値と、升ごとの線形の寄与を12行12列の表で表示する。
 各行に`info string`を付け、最後の行を`info string end`とする。
+
+MCTSで起動したminaseでは、現局面をセッションの推論器で推論し、ネットの出力を次の形で表示する。
+
+```text
+info string value <手番側の勝率>
+info string move <着手> logit <logit> prior <事前確率>
+...
+info string end
+```
+
+`move`の行は全合法手について1行ずつあり、事前確率の降順に並ぶ。
+logitは方策（着手の確率）の正規化する前の値であり、事前確率は、探索が各手を読み始めるときに使う確率で、logitを`PolicyTemperature`の温度で割ってから正規化して求める。
+推論器が準備されていなければ`info string error: eval requires isready`を返し、`eval`からネットを読み込むことはしない。
 
 ### tt
 

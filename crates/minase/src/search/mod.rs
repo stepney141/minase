@@ -13,6 +13,7 @@ mod clock;
 mod error;
 mod events;
 mod handle;
+mod inference;
 mod limits;
 pub mod mate_in_three;
 pub mod mcts;
@@ -37,6 +38,7 @@ pub use alphabeta::tt::{
 pub use error::SearchError;
 pub use events::{SearchEvent, SearchResult, StopReason};
 pub use handle::{SearchHandle, SearchJoinError, search};
+pub use inference::EvaluationError;
 pub use limits::{ClockLimits, SearchLimits};
 pub use searcher::{
     PrepareError, SearchOption, SearchOptionKind, SearchOptionValue, Searcher, SetOptionError,

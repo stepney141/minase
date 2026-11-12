@@ -1,5 +1,6 @@
 //! 先後入替ペアの実行、得点、および表示。
 
+use crate::harness::MatchEngineError;
 use crate::harness::failure::FailureCounts;
 use crate::harness::game::{GameOutcome, PlayedGame, play_game};
 use crate::harness::opening::generate_opening;
@@ -117,6 +118,7 @@ pub fn record_game_failure(game: PlayedGame, counts: &mut FailureCounts) {
 /// 候補は第1局で先手、第2局で後手を持つ。停止要求を検出した場合は`None`を返す。
 /// どちらかの局が開始手順を含む手数上限に達したペアは分類を`None`にし、統計から除く。
 /// 得点と異常の扱いは[`half_points`]に従う。
+/// どちらの局でもネットの報告が記録と異なる場合は、その原因を返してペアを保存しない。
 #[allow(clippy::too_many_arguments)]
 pub fn run_pair(
     rules: Rules,
@@ -129,9 +131,9 @@ pub fn run_pair(
     timeout: Duration,
     ponder: bool,
     stop: &AtomicBool,
-) -> Option<CompletedPair> {
+) -> Result<Option<CompletedPair>, MatchEngineError> {
     if stop.load(Ordering::Acquire) {
-        return None;
+        return Ok(None);
     }
     let pair_seed = derive_seed(base_seed, pair_number);
     let opening = generate_opening(rules, pair_seed);
@@ -169,7 +171,7 @@ pub fn run_pair(
         "pair {pair_number} game 1 settings: A=Black seed_a={game1_a_seed} B=White seed_b={game1_b_seed}"
     )
     .expect("writing to String cannot fail");
-    let game1 = play_game(
+    let Some(game1) = play_game(
         opening.game.clone(),
         opening.usi_moves.clone(),
         opening.moves.clone(),
@@ -182,7 +184,10 @@ pub fn run_pair(
         timeout,
         ponder,
         stop,
-    )?;
+    )?
+    else {
+        return Ok(None);
+    };
     writeln!(
         output,
         "pair {pair_number} game 1: {}",
@@ -195,7 +200,7 @@ pub fn run_pair(
         "pair {pair_number} game 2 settings: B=Black seed_b={game2_b_seed} A=White seed_a={game2_a_seed}"
     )
     .expect("writing to String cannot fail");
-    let game2 = play_game(
+    let Some(game2) = play_game(
         opening.game,
         opening.usi_moves,
         opening.moves,
@@ -208,7 +213,10 @@ pub fn run_pair(
         timeout,
         ponder,
         stop,
-    )?;
+    )?
+    else {
+        return Ok(None);
+    };
     writeln!(
         output,
         "pair {pair_number} game 2: {}",
@@ -239,7 +247,7 @@ pub fn run_pair(
     else {
         writeln!(output, "pair {pair_number} result: discarded")
             .expect("writing to String cannot fail");
-        return Some(CompletedPair {
+        return Ok(Some(CompletedPair {
             number: pair_number,
             output,
             result: PairResult {
@@ -247,7 +255,7 @@ pub fn run_pair(
                 failures,
             },
             record: pair_record(None),
-        });
+        }));
     };
     let category = usize::from(
         half_points(game1_outcome, Color::Black) + half_points(game2_outcome, Color::White),
@@ -258,7 +266,7 @@ pub fn run_pair(
         category as f64 / 2.0
     )
     .expect("writing to String cannot fail");
-    Some(CompletedPair {
+    Ok(Some(CompletedPair {
         number: pair_number,
         output,
         result: PairResult {
@@ -266,7 +274,7 @@ pub fn run_pair(
             failures,
         },
         record: pair_record(Some(u8::try_from(category).expect("category is in 0..=4"))),
-    })
+    }))
 }
 
 #[cfg(test)]

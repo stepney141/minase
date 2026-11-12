@@ -7,6 +7,44 @@ use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{self, Receiver};
 
+/// ワーカーの原因を、標準エラーへの出力まで型のまま保持する。
+#[derive(Debug)]
+pub(super) enum WorkerError {
+    Match(minase::harness::MatchEngineError),
+    SavePair { number: u64, source: std::io::Error },
+    Checkpoint(std::io::Error),
+    Results(mpsc::RecvError),
+    Jobs(mpsc::SendError<u64>),
+    Panicked,
+}
+
+impl std::fmt::Display for WorkerError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Match(error) => error.fmt(f),
+            Self::SavePair { number, source } => {
+                write!(f, "failed to save pair {number}: {source}")
+            }
+            Self::Checkpoint(error) => write!(f, "failed to checkpoint active wall time: {error}"),
+            Self::Results(error) => write!(f, "worker result channel disconnected: {error}"),
+            Self::Jobs(error) => write!(f, "worker job channel disconnected: {error}"),
+            Self::Panicked => f.write_str("a match worker panicked"),
+        }
+    }
+}
+
+impl std::error::Error for WorkerError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::Match(error) => Some(error),
+            Self::SavePair { source, .. } | Self::Checkpoint(source) => Some(source),
+            Self::Results(error) => Some(error),
+            Self::Jobs(error) => Some(error),
+            Self::Panicked => None,
+        }
+    }
+}
+
 /// 完了したペアを番号順に取り込み、実験を続ける場合は次の1件を返す。
 ///
 /// ジョブの補充は統計へ取り込めた件数ではなく、完了結果を1件受信した事実に
@@ -53,9 +91,9 @@ pub(super) fn continue_after_decision(
 /// ジョブを受信してペアを実行し、停止で打ち切られなかった結果だけを送る。
 pub(super) fn run_worker_loop(
     job_receiver: &Mutex<Receiver<u64>>,
-    result_sender: &mpsc::Sender<Result<CompletedPair, String>>,
+    result_sender: &mpsc::Sender<Result<CompletedPair, WorkerError>>,
     stop: &AtomicBool,
-    mut run: impl FnMut(u64, &AtomicBool) -> Result<Option<CompletedPair>, String>,
+    mut run: impl FnMut(u64, &AtomicBool) -> Result<Option<CompletedPair>, WorkerError>,
 ) {
     loop {
         let job = job_receiver
@@ -69,6 +107,7 @@ pub(super) fn run_worker_loop(
             Ok(Some(pair)) => pair,
             Ok(None) => break,
             Err(error) => {
+                stop.store(true, Ordering::Release);
                 let _ = result_sender.send(Err(error));
                 break;
             }

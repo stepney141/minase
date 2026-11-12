@@ -103,6 +103,7 @@ pub(super) fn resolve_engine(
         hash_mb: None,
         rules_source: rules.to_owned(),
         options: Vec::new(),
+        network_sha256: None,
     })
 }
 

@@ -85,8 +85,18 @@ pub(super) fn run_manifest(
     ponder: bool,
 ) -> io::Result<RunManifest> {
     let timeout = Duration::from_secs(response_timeout_secs);
-    let candidate_defaults = probe_engine_defaults(candidate, timeout)?;
-    let baseline_defaults = probe_engine_defaults(baseline, timeout)?;
+    let candidate_defaults = probe_engine_defaults(candidate, true, timeout).map_err(|source| {
+        io::Error::other(EngineProbeError {
+            side: EngineSide::Candidate,
+            source,
+        })
+    })?;
+    let baseline_defaults = probe_engine_defaults(baseline, true, timeout).map_err(|source| {
+        io::Error::other(EngineProbeError {
+            side: EngineSide::Baseline,
+            source,
+        })
+    })?;
     let physical_cores = physical_core_count();
     let concurrency = match concurrency {
         Some(concurrency) => concurrency,
@@ -105,11 +115,13 @@ pub(super) fn run_manifest(
             identity: candidate.identity.clone(),
             limit: stored_search_limit(candidate.limit),
             options: candidate.options.clone(),
+            network_sha256: candidate_defaults.network_sha256,
         },
         baseline: EngineRecord {
             identity: baseline.identity.clone(),
             limit: stored_search_limit(baseline.limit),
             options: baseline.options.clone(),
+            network_sha256: baseline_defaults.network_sha256,
         },
         rules_source: rules.source.clone(),
         canonical_rules: rules.codes.iter().map(ToString::to_string).collect(),

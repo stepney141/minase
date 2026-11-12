@@ -1243,3 +1243,258 @@ fn hash_capacity_change_discards_tree_and_keeps_evaluator() {
     assert_eq!(engine.config.capacity_bytes, 2 * 1024 * 1024);
     assert!(engine.evaluator.is_some());
 }
+
+// cli-to-usi.md: ネット変更時は木と推論器を破棄し、同値の再設定では保持する。
+#[test]
+fn model_change_discards_network_evaluator_and_tree_while_same_text_preserves_them() {
+    let (mut engine, _) = finish(
+        engine(UniformEvaluator)
+            .start(initial(), nodes(40), 1, false)
+            .unwrap(),
+    );
+    let visits = engine
+        .driver
+        .as_ref()
+        .unwrap()
+        .tree()
+        .root()
+        .edges
+        .iter()
+        .map(|edge| edge.visits)
+        .collect::<Vec<_>>();
+    let bytes = engine.driver.as_ref().unwrap().tree().used_bytes();
+    engine
+        .set_option("NnModel", SearchOptionValue::String("test.onnx".to_owned()))
+        .unwrap();
+    assert_eq!(
+        engine
+            .driver
+            .as_ref()
+            .unwrap()
+            .tree()
+            .root()
+            .edges
+            .iter()
+            .map(|edge| edge.visits)
+            .collect::<Vec<_>>(),
+        visits
+    );
+    assert_eq!(engine.driver.as_ref().unwrap().tree().used_bytes(), bytes);
+    assert!(engine.network.is_some());
+    assert!(engine.evaluator.is_some());
+    engine
+        .set_option(
+            "NnModel",
+            SearchOptionValue::String("other.onnx".to_owned()),
+        )
+        .unwrap();
+    assert!(engine.driver.is_none());
+    assert!(engine.network.is_none());
+    assert!(engine.evaluator.is_none());
+    assert!(matches!(
+        engine.prepare_driver(initial(), nodes(4)),
+        Err(Error::MissingEvaluator)
+    ));
+    let mut searcher = Searcher::Mcts(engine);
+    assert!(matches!(
+        searcher.evaluate(&[], &mut Vec::new(), &mut Vec::new()),
+        Err(EvaluationError::NotPrepared)
+    ));
+}
+
+#[test]
+fn inference_boundary_batches_queries_and_preserves_raw_logits_and_query_order() {
+    struct RecordingPolicy(Arc<Mutex<Vec<usize>>>);
+    impl Evaluator for RecordingPolicy {
+        fn evaluate(
+            &mut self,
+            queries: &[Query<'_>],
+            logits: &mut Vec<f32>,
+            values: &mut Vec<f32>,
+        ) -> Result<(), NnError> {
+            self.0.lock().unwrap().push(queries.len());
+            NonUniformEvaluator.evaluate(queries, logits, values)?;
+            for (query, value) in queries.iter().zip(values.iter_mut()) {
+                *value = query.moves.len() as f32 / 10.0;
+            }
+            Ok(())
+        }
+    }
+    let batches = Arc::new(Mutex::new(Vec::new()));
+    let mut engine = engine(RecordingPolicy(batches.clone()));
+    engine
+        .set_option("PolicyTemperature", SearchOptionValue::Spin(200))
+        .unwrap();
+    let mut searcher = Searcher::Mcts(engine);
+    let root = initial();
+    let counts = [3, 0, 2, 1, 4, 2, 1, 0, 3];
+    let queries: Vec<_> = counts
+        .iter()
+        .map(|&count| Query {
+            position: root.position(),
+            moves: &root.root_moves()[..count],
+        })
+        .collect();
+    let mut logits = vec![99.0];
+    let mut values = vec![99.0];
+    searcher
+        .evaluate(&queries, &mut logits, &mut values)
+        .unwrap();
+    assert_eq!(*batches.lock().unwrap(), [4, 4, 1]);
+    assert_eq!(values, counts.map(|count| count as f32 / 10.0));
+    let expected: Vec<_> = counts
+        .iter()
+        .flat_map(|&count| (0..count).map(|index| if index == 0 { 4.0_f32.ln() } else { 0.0 }))
+        .collect();
+    assert_eq!(logits, expected);
+    searcher.evaluate(&[], &mut logits, &mut values).unwrap();
+    assert!(logits.is_empty() && values.is_empty());
+    assert_eq!(*batches.lock().unwrap(), [4, 4, 1]);
+    assert!(matches!(
+        Searcher::alpha_beta().evaluate(&queries, &mut logits, &mut values),
+        Err(EvaluationError::UnsupportedSearch)
+    ));
+}
+
+#[test]
+fn diagnostic_inference_does_not_change_search_visits_or_fixed_node_result() {
+    let input = initial();
+    let (engine, _) = finish(
+        engine(NonUniformEvaluator)
+            .start(input.clone(), nodes(40), 1, false)
+            .unwrap(),
+    );
+    let visits = engine
+        .driver
+        .as_ref()
+        .unwrap()
+        .tree()
+        .root()
+        .edges
+        .iter()
+        .map(|edge| edge.visits)
+        .collect::<Vec<_>>();
+    let mut searcher = Searcher::Mcts(engine);
+    searcher
+        .evaluate(
+            &[Query {
+                position: input.position(),
+                moves: input.root_moves(),
+            }],
+            &mut Vec::new(),
+            &mut Vec::new(),
+        )
+        .unwrap();
+    let Searcher::Mcts(engine) = searcher else {
+        panic!()
+    };
+    assert_eq!(
+        engine
+            .driver
+            .as_ref()
+            .unwrap()
+            .tree()
+            .root()
+            .edges
+            .iter()
+            .map(|edge| edge.visits)
+            .collect::<Vec<_>>(),
+        visits
+    );
+    let (_, after) = finish(engine.start(input.clone(), nodes(50), 2, false).unwrap());
+    let (before, _) = finish(
+        super::tests::engine(NonUniformEvaluator)
+            .start(input.clone(), nodes(40), 1, false)
+            .unwrap(),
+    );
+    let (_, before) = finish(before.start(input, nodes(50), 2, false).unwrap());
+    let summary = |event| match event {
+        SearchEvent::Finished {
+            best_move,
+            score,
+            nodes,
+            pv,
+            ..
+        } => (best_move, score, nodes, pv),
+        _ => panic!(),
+    };
+    assert_eq!(summary(after), summary(before));
+}
+
+#[test]
+fn inference_boundary_rejects_unencodable_positions_before_calling_the_evaluator() {
+    let setup = minase_core::notation::sfen::parse_extended_sfen(
+        "k11/12/4P7/12/9g2/5+o3n2/12/9R2/12/12/12/11K b 7f 41 8c",
+        minase_core::MoveRules {
+            promotion: PromotionRule::P1,
+            ..minase_core::Rules::JCSA.moves
+        },
+    )
+    .unwrap();
+    let mut searcher = Searcher::Mcts(engine(PanicEvaluator));
+    assert!(matches!(
+        searcher.evaluate(
+            &[Query {
+                position: setup.position(),
+                moves: &[]
+            }],
+            &mut Vec::new(),
+            &mut Vec::new()
+        ),
+        Err(EvaluationError::Input(NnError::PromotionDeferred))
+    ));
+}
+
+#[test]
+fn inference_boundary_rejects_nonfinite_logits_values_and_out_of_range_probabilities() {
+    struct InvalidOutput {
+        logit: f32,
+        value: f32,
+    }
+    impl Evaluator for InvalidOutput {
+        fn evaluate(
+            &mut self,
+            queries: &[Query<'_>],
+            logits: &mut Vec<f32>,
+            values: &mut Vec<f32>,
+        ) -> Result<(), NnError> {
+            logits.clear();
+            values.clear();
+            for query in queries {
+                logits.extend(std::iter::repeat_n(self.logit, query.moves.len()));
+                values.push(self.value);
+            }
+            Ok(())
+        }
+    }
+    let root = initial();
+    for (logit, value, nonfinite) in [
+        (f32::NAN, 0.5, true),
+        (0.0, f32::INFINITY, true),
+        (0.0, -0.1, false),
+        (0.0, 1.1, false),
+    ] {
+        let mut searcher = Searcher::Mcts(engine(InvalidOutput { logit, value }));
+        let error = searcher
+            .evaluate(
+                &[Query {
+                    position: root.position(),
+                    moves: root.root_moves(),
+                }],
+                &mut Vec::new(),
+                &mut Vec::new(),
+            )
+            .unwrap_err();
+        if nonfinite {
+            assert!(matches!(
+                error,
+                EvaluationError::Inference(NnError::NonFiniteOutput { query: 0 })
+            ));
+        } else {
+            assert!(matches!(
+                error,
+                EvaluationError::Inference(NnError::ValueOutOfRange { query: 0, .. })
+            ));
+        }
+    }
+}

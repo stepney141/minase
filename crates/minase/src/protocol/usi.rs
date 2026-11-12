@@ -5,7 +5,7 @@
 //! | コマンド | 応答と処理 |
 //! | --- | --- |
 //! | `usi` | `UsiProtocol::write_handshake`の握手列を返す。 |
-//! | `isready` | 規則の指定を確認して探索器を準備し、`readyok`を返す。規則が未設定、または準備に失敗した場合はエラーを通知してセッションを終了する。 |
+//! | `isready` | 規則の指定を確認して探索器を準備し、MCTSではネットのSHA-256を通知してから`readyok`を返す。規則やネットが未設定、または準備に失敗した場合はエラーを通知してセッションを終了する。 |
 //! | `setoption` | `UsiProtocol::handle_setoption`で設定を検査する。 |
 //! | `usinewgame` | [`EngineCommand::NewGame`]を適用する。 |
 //! | `position` | `UsiProtocol::handle_position`で局面を同期する。 |
@@ -266,6 +266,13 @@ impl UsiProtocol {
                     write_error(output, &error.to_string())?;
                     output.flush()?;
                     return Err(io::Error::other(error));
+                }
+                if let Some(checksum) = self.searcher.as_ref().and_then(Searcher::network_sha256) {
+                    write!(output, "info string network_sha256 ")?;
+                    for byte in checksum {
+                        write!(output, "{byte:02x}")?;
+                    }
+                    writeln!(output)?;
                 }
                 writeln!(output, "readyok")?;
             }
@@ -922,6 +929,8 @@ impl UsiProtocol {
     /// `USI_Hash`は1〜65,536 MiBで置換表を確保または作り直し、history表を空にする。
     /// `Threads`は1〜256で、変更時はhistory表をその数で作り直し、置換表は保つ。
     /// MCTSでは`USI_Hash`は探索木の容量MiBを表し、変更すると木を捨てる。`Threads`は1だけを受理する。
+    /// `NnModel`はONNXのパスで、変更するとネット、推論器、および探索木を捨てる。
+    /// 次の`isready`が成功するまで`go`と`eval`を拒否する。同値の再設定では状態を保つ。
     /// `NnBackend`は大小文字を区別せず`tensorrt`、`cuda`、`cpu`を受理する。
     /// `NnCacheDir`または1〜1,024の`NnBatchSize`も含め、推論の設定が変わると次の`isready`で推論器を作り直す。
     /// `PolicyTemperature`は方策の温度の100倍を表す10〜1,000の整数で、変更すると木を捨てる。
@@ -940,6 +949,7 @@ impl UsiProtocol {
     /// | `USI_Variant` | `USI_Variant requires a value`を返す。 | `unsupported USI_Variant value '<値>'`を返す。 |
     /// | `USI_Hash` | `USI_Hash requires a value`を返す。 | `USI_Hash must be an integer from 1 to 65536`を返す。 |
     /// | `Threads` | `Threads requires a value`を返す。 | `Threads must be an integer from 1 to <上限>`を返す。上限はαβ探索で256、MCTSで1。 |
+    /// | `NnModel` | `NnModel requires a value`を返す。 | 文字列として受理し、`isready`で検査する。 |
     /// | `NnBackend` | `NnBackend requires a value`を返す。 | `invalid NnBackend value '<値>'`を返す。 |
     /// | `NnCacheDir` | `NnCacheDir requires a value`を返す。 | 文字列として受理する。 |
     /// | `NnBatchSize` | `NnBatchSize requires a value`を返す。 | `NnBatchSize must be an integer from 1 to 1024`を返す。 |
@@ -1344,7 +1354,9 @@ impl UsiProtocol {
     /// 表示は全行を組み立ててから出力し、構築の失敗時はエラー1行だけで終端行を付けない。
     /// 未知コマンドとUSIの既知の無応答コマンドは、本モジュールのコマンド表に従う。
     /// 理由は`docs/adr/show-position-evaluation-and-tt-as-usi-commands.md`にある。
-    fn handle_diagnostic(&self, command: &str, output: &mut dyn Write) -> io::Result<()> {
+    /// MCTSの`eval`は現局の合法手を準備済みの推論器で評価する。
+    /// 未準備と入力の不適合は1行で拒否し、推論の失敗はフラッシュしてセッションを終了する。
+    fn handle_diagnostic(&mut self, command: &str, output: &mut dyn Write) -> io::Result<()> {
         if command == "tt" && matches!(self.searcher, Some(Searcher::Mcts(_))) {
             return write_error(output, "tt requires --search alphabeta");
         }
@@ -1353,6 +1365,12 @@ impl UsiProtocol {
                 output,
                 &format!("{command} requires an active or finished game"),
             );
+        }
+        if command == "eval"
+            && let Some(searcher @ Searcher::Mcts(_)) = self.searcher.as_mut()
+        {
+            let engine = self.engine.as_ref().ok_or(RuleSetNotSet)?;
+            return Self::handle_mcts_evaluation(engine.game(), searcher, output);
         }
         let engine = self.engine()?;
         let lines = match command {
@@ -1382,6 +1400,68 @@ impl UsiProtocol {
             }
             Err(error) => write_error(output, &error),
         }
+    }
+
+    /// 価値を1行、全合法手を事前確率の降順と着手表記の昇順で出し、終端行を付ける。
+    /// 数値は小数点以下6桁とし、合法手がなくても価値を推論する。
+    fn handle_mcts_evaluation(
+        game: &Game,
+        searcher: &mut Searcher,
+        output: &mut dyn Write,
+    ) -> io::Result<()> {
+        let position = game.position();
+        let moves = game.legal_moves();
+        let rules = game.rules();
+        if let Searcher::Mcts(engine) = searcher
+            && let Err(error) = engine.validate_evaluation(rules.moves)
+        {
+            return match error {
+                search::mcts::Error::MissingEvaluator => {
+                    write_error(output, "eval requires isready")
+                }
+                error => write_error(output, &error.to_string()),
+            };
+        }
+        let mut logits = Vec::new();
+        let mut values = Vec::new();
+        if let Err(error) = searcher.evaluate(
+            &[crate::nn::Query {
+                position,
+                moves: &moves,
+            }],
+            &mut logits,
+            &mut values,
+        ) {
+            write_error(output, &error.to_string())?;
+            if matches!(error, search::EvaluationError::Inference(_)) {
+                output.flush()?;
+                return Err(io::Error::other(error));
+            }
+            return Ok(());
+        }
+        let priors = match searcher {
+            Searcher::Mcts(engine) => engine.policy_priors(&logits),
+            Searcher::AlphaBeta(_) => {
+                return Err(io::Error::other(search::EvaluationError::UnsupportedSearch));
+            }
+        };
+        let mut rows: Vec<_> = moves
+            .into_iter()
+            .zip(logits)
+            .zip(priors)
+            .map(|((mv, logit), prior)| (usi::text_generated(position, mv), logit, prior))
+            .collect();
+        rows.sort_by(|a, b| b.2.total_cmp(&a.2).then_with(|| a.0.cmp(&b.0)));
+        for value in values {
+            writeln!(output, "info string value {value:.6}")?;
+        }
+        for (mv, logit, prior) in rows {
+            writeln!(
+                output,
+                "info string move {mv} logit {logit:.6} prior {prior:.6}"
+            )?;
+        }
+        writeln!(output, "info string end")
     }
 
     /// 受理時に何も出力しない対局コマンドを適用し、関連する探索状態を消去する。

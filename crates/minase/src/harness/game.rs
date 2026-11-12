@@ -1,7 +1,7 @@
 //! 1局の進行と終局結果。
 
 use crate::harness::clock::GameClocks;
-use crate::harness::engine::{EngineProcess, EngineResponse, ThinkResult};
+use crate::harness::engine::{EngineProcess, EngineResponse, InitializationError, ThinkResult};
 use crate::harness::failure::EngineFailure;
 use crate::harness::player::PlayerConfig;
 use crate::harness::records::convert::{
@@ -9,6 +9,7 @@ use crate::harness::records::convert::{
 };
 use crate::harness::records::{TurnRecord, TurnResponse};
 use crate::harness::referee::validate_bestmove;
+use crate::harness::{EngineSide, MatchEngineError};
 use minase_core::notation::usi;
 use minase_core::{Color, Game, GameResult, GameStatus, Move, MoveGenerator};
 use std::num::NonZeroU64;
@@ -55,7 +56,8 @@ pub enum PlayedGame {
 ///
 /// 開始手順を含む手数が`max_ply`へ達したら打ち切る。
 /// 対局を進める場合は両エンジンを局ごとに起動し直し、置換表などの状態を局間で持ち越さない。
-/// 起動や初期化の失敗はその側の反則負けとし、停止要求を検出した場合は`None`を返す。
+/// 起動や通信の失敗はその側の反則負けとし、停止要求を検出した場合は`None`を返す。
+/// ネットの報告形式の誤りと不一致は、反則負けにせず原因と側を保持して返す。
 /// 理由は`docs/adr/compare-commits-as-separate-engine-processes.md`にある。
 #[allow(clippy::too_many_arguments)]
 pub fn play_game(
@@ -71,7 +73,7 @@ pub fn play_game(
     timeout: Duration,
     ponder: bool,
     stop: &AtomicBool,
-) -> Option<RecordedGame> {
+) -> Result<Option<RecordedGame>, MatchEngineError> {
     let started = Instant::now();
     let forfeit = |plies, loser: Color, reason| PlayedGame::Finished {
         plies,
@@ -82,7 +84,7 @@ pub fn play_game(
     };
     let mut turns = Vec::new();
     if game.ply_count() >= max_ply {
-        return Some(recorded_game(
+        return Ok(Some(recorded_game(
             PlayedGame::Cutoff {
                 plies: game.ply_count(),
             },
@@ -93,12 +95,18 @@ pub fn play_game(
             started,
             None,
             None,
-        ));
+        )));
     }
     let mut player_a_process = match EngineProcess::start(player_a, player_a_seed.get(), timeout) {
         Ok(process) => process,
-        Err(reason) => {
-            return Some(recorded_game(
+        Err(InitializationError::Network(source)) => {
+            return Err(MatchEngineError {
+                side: EngineSide::Candidate,
+                source,
+            });
+        }
+        Err(InitializationError::Failure(reason)) => {
+            return Ok(Some(recorded_game(
                 forfeit(game.ply_count(), player_a_color, reason),
                 player_a_color,
                 player_a_seed,
@@ -107,13 +115,19 @@ pub fn play_game(
                 started,
                 None,
                 None,
-            ));
+            )));
         }
     };
     let mut player_b_process = match EngineProcess::start(player_b, player_b_seed.get(), timeout) {
         Ok(process) => process,
-        Err(reason) => {
-            return Some(recorded_game(
+        Err(InitializationError::Network(source)) => {
+            return Err(MatchEngineError {
+                side: EngineSide::Baseline,
+                source,
+            });
+        }
+        Err(InitializationError::Failure(reason)) => {
+            return Ok(Some(recorded_game(
                 forfeit(game.ply_count(), player_a_color.opposite(), reason),
                 player_a_color,
                 player_a_seed,
@@ -122,17 +136,17 @@ pub fn play_game(
                 started,
                 Some(&mut player_a_process),
                 None,
-            ));
+            )));
         }
     };
     let mut clocks = GameClocks::new(player_a_color, player_a.limit, player_b.limit);
 
     loop {
         if stop.load(Ordering::Acquire) {
-            return None;
+            return Ok(None);
         }
         if game.ply_count() >= max_ply {
-            return Some(recorded_game(
+            return Ok(Some(recorded_game(
                 PlayedGame::Cutoff {
                     plies: game.ply_count(),
                 },
@@ -143,7 +157,7 @@ pub fn play_game(
                 started,
                 Some(&mut player_a_process),
                 Some(&mut player_b_process),
-            ));
+            )));
         }
 
         let side_to_move = game.position().side_to_move();
@@ -162,7 +176,7 @@ pub fn play_game(
         } = match process.bestmove(&usi_history, &move_history, &clocks, side_to_move, limit) {
             Ok(response) => response,
             Err(reason) => {
-                return Some(recorded_game(
+                return Ok(Some(recorded_game(
                     forfeit(game.ply_count(), side_to_move, reason),
                     player_a_color,
                     player_a_seed,
@@ -171,11 +185,11 @@ pub fn play_game(
                     started,
                     Some(&mut player_a_process),
                     Some(&mut player_b_process),
-                ));
+                )));
             }
         };
         if stop.load(Ordering::Acquire) {
-            return None;
+            return Ok(None);
         }
         if let Err(reason) = clocks.update(side_to_move, limit, elapsed) {
             turns.push(TurnRecord {
@@ -189,7 +203,7 @@ pub fn play_game(
                     reason: stored_failure(reason),
                 },
             });
-            return Some(recorded_game(
+            return Ok(Some(recorded_game(
                 forfeit(game.ply_count(), side_to_move, reason),
                 player_a_color,
                 player_a_seed,
@@ -198,7 +212,7 @@ pub fn play_game(
                 started,
                 Some(&mut player_a_process),
                 Some(&mut player_b_process),
-            ));
+            )));
         }
         let EngineResponse::Move(response) = response else {
             turns.push(TurnRecord {
@@ -210,7 +224,7 @@ pub fn play_game(
                 ponder: prediction.clone(),
                 response: TurnResponse::Resigned,
             });
-            return Some(recorded_game(
+            return Ok(Some(recorded_game(
                 PlayedGame::Finished {
                     plies: game.ply_count(),
                     outcome: GameOutcome::Resigned {
@@ -224,7 +238,7 @@ pub fn play_game(
                 started,
                 Some(&mut player_a_process),
                 Some(&mut player_b_process),
-            ));
+            )));
         };
         let selected = match validate_bestmove(&game, &response, process.protocol) {
             Ok(selected) => selected,
@@ -240,7 +254,7 @@ pub fn play_game(
                         reason: stored_failure(reason),
                     },
                 });
-                return Some(recorded_game(
+                return Ok(Some(recorded_game(
                     forfeit(game.ply_count(), side_to_move, reason),
                     player_a_color,
                     player_a_seed,
@@ -249,7 +263,7 @@ pub fn play_game(
                     started,
                     Some(&mut player_a_process),
                     Some(&mut player_b_process),
-                ));
+                )));
             }
         };
         let canonical = usi::text(
@@ -275,7 +289,7 @@ pub fn play_game(
             .play(selected)
             .expect("a move validated against legal_moves must be accepted");
         if let GameStatus::Finished(result) = status {
-            return Some(recorded_game(
+            return Ok(Some(recorded_game(
                 PlayedGame::Finished {
                     plies: game.ply_count(),
                     outcome: GameOutcome::Adjudicated(result),
@@ -287,7 +301,7 @@ pub fn play_game(
                 started,
                 Some(&mut player_a_process),
                 Some(&mut player_b_process),
-            ));
+            )));
         }
         if ponder {
             process.start_ponder(

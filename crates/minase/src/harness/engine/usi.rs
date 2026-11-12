@@ -194,6 +194,7 @@ mod tests {
             EngineDefaults {
                 threads: Some(2),
                 hash_mb: Some(256),
+                network_sha256: None,
             }
         );
         assert_eq!(

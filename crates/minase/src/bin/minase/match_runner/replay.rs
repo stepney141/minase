@@ -478,6 +478,7 @@ mod tests {
             hash_mb: None,
             rules_source: "JCSA".into(),
             options: vec![],
+            network_sha256: None,
         };
         let validate = |record| {
             completed_pair_from_record(

@@ -2,9 +2,9 @@
 //!
 //! サブコマンドなしの起動では[`super::Arguments`]が`--protocol usi|cecp`を必須とし、
 //! 既定値やプロトコルの自動判別を設けない。規則は起動後に`RuleSet`で指定する。
-//! `--search`の既定は`alphabeta`で、`--nn-model`は`mcts`の場合だけ受理する。
-//! MCTSはUSIだけで使え、ネットのパスを必須とする。ネットは起動時に読み、
-//! 推論器は`isready`で作る。指定不備、読み込み失敗、推論器の作成失敗は
+//! `--search`の既定は`alphabeta`で、MCTSはUSIだけで使える。
+//! MCTSのネットは`NnModel`で指定し、読み込みと推論器の作成を`isready`で行う。
+//! 指定不備、読み込み失敗、推論器の作成失敗は
 //! `error: <理由>`を標準エラーへ出して終了コード1で終え、別のネットや実行プロバイダへ切り替えない。
 //!
 //! 起動時に埋め込み評価重みを検証し、不正なら
@@ -16,7 +16,7 @@
 use std::error::Error;
 use std::fs::OpenOptions;
 use std::io;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::process;
 use std::sync::{Arc, mpsc};
 use std::thread;
@@ -30,16 +30,12 @@ use minase::search::Searcher;
 
 #[derive(Debug)]
 enum SearchArgumentError {
-    ModelRequiresMcts,
-    MissingModel,
     CecpUnsupported,
 }
 
 impl std::fmt::Display for SearchArgumentError {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         formatter.write_str(match self {
-            Self::ModelRequiresMcts => "--nn-model requires --search mcts",
-            Self::MissingModel => "--search mcts requires --nn-model",
             Self::CecpUnsupported => "--search mcts requires --protocol usi; CECP is not supported",
         })
     }
@@ -47,43 +43,27 @@ impl std::fmt::Display for SearchArgumentError {
 
 impl Error for SearchArgumentError {}
 
-fn create_searcher(
-    protocol: ProtocolKind,
-    search: SearchKind,
-    nn_model: Option<&Path>,
-) -> Result<Searcher, Box<dyn Error>> {
+fn create_searcher(protocol: ProtocolKind, search: SearchKind) -> Result<Searcher, Box<dyn Error>> {
     match search {
-        SearchKind::Alphabeta => {
-            if nn_model.is_some() {
-                return Err(SearchArgumentError::ModelRequiresMcts.into());
-            }
-            Ok(Searcher::alpha_beta())
-        }
+        SearchKind::Alphabeta => Ok(Searcher::alpha_beta()),
         SearchKind::Mcts => {
             if matches!(protocol, ProtocolKind::Cecp) {
                 return Err(SearchArgumentError::CecpUnsupported.into());
             }
-            let path = nn_model.ok_or(SearchArgumentError::MissingModel)?;
-            let network = minase::nn::Network::read(path)?;
-            Ok(Searcher::mcts(network)?)
+            Ok(Searcher::mcts()?)
         }
     }
 }
 
 /// 本モジュールの起動契約に従って評価重みを検査し、セッションを開始する。
 /// 実行時のエラーは標準エラーへ報告し、終了コード1で終える。
-pub(super) fn main(
-    protocol: ProtocolKind,
-    io_log: Option<PathBuf>,
-    search: SearchKind,
-    nn_model: Option<PathBuf>,
-) {
+pub(super) fn main(protocol: ProtocolKind, io_log: Option<PathBuf>, search: SearchKind) {
     let started = Instant::now();
     if let Err(error) = minase::eval::weights() {
         eprintln!("error: embedded evaluation weights are invalid: {error}");
         process::exit(1);
     }
-    if let Err(error) = run(started, protocol, io_log, search, nn_model) {
+    if let Err(error) = run(started, protocol, io_log, search) {
         eprintln!("error: {error}");
         process::exit(1);
     }
@@ -98,9 +78,8 @@ fn run(
     protocol: ProtocolKind,
     io_log: Option<PathBuf>,
     search: SearchKind,
-    nn_model: Option<PathBuf>,
 ) -> Result<(), Box<dyn Error>> {
-    let searcher = create_searcher(protocol, search, nn_model.as_deref())?;
+    let searcher = create_searcher(protocol, search)?;
     let log = io_log
         .map(|path| {
             OpenOptions::new()
@@ -136,34 +115,5 @@ fn run(
             protocol.run_channel(&receiver, output)?;
             Ok(())
         }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn unreadable_network_keeps_the_read_error_type_and_source() {
-        let error = create_searcher(
-            ProtocolKind::Usi,
-            SearchKind::Mcts,
-            Some(Path::new("/nonexistent.onnx")),
-        )
-        .err()
-        .unwrap();
-        assert!(matches!(
-            error.downcast_ref::<minase::nn::NnError>(),
-            Some(minase::nn::NnError::ReadNetwork { .. })
-        ));
-        assert_eq!(
-            error
-                .source()
-                .unwrap()
-                .downcast_ref::<io::Error>()
-                .unwrap()
-                .kind(),
-            io::ErrorKind::NotFound
-        );
     }
 }

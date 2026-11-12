@@ -5,6 +5,7 @@ use crate::harness::engine::channel::receive_until;
 use crate::harness::failure::EngineFailure;
 use crate::harness::limit::SearchLimit;
 use crate::harness::player::{PlayerConfig, Protocol};
+use crate::harness::{NetworkError, NetworkSha256};
 use minase_core::Move;
 use std::io::BufReader;
 use std::io::{BufRead, Write};
@@ -14,6 +15,37 @@ use std::sync::mpsc::Receiver;
 use std::thread::JoinHandle;
 use std::time::Duration;
 use std::{io, thread};
+
+/// エンジンの異常と、測定全体を中止するネットの誤りを区別する。
+#[derive(Debug)]
+pub(in crate::harness) enum InitializationError {
+    Failure(EngineFailure),
+    Network(NetworkError),
+}
+
+impl std::fmt::Display for InitializationError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Failure(error) => error.fmt(f),
+            Self::Network(error) => error.fmt(f),
+        }
+    }
+}
+
+impl std::error::Error for InitializationError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::Failure(error) => Some(error),
+            Self::Network(error) => Some(error),
+        }
+    }
+}
+
+impl From<EngineFailure> for InitializationError {
+    fn from(error: EngineFailure) -> Self {
+        Self::Failure(error)
+    }
+}
 
 /// 読み取りスレッドからプロトコル出力を受け取る外部エンジン。
 pub(in crate::harness) struct EngineProcess {
@@ -88,42 +120,25 @@ impl EngineProcess {
 
     /// 局ごとのプロセスを起動し、プロトコルの初期化を完了する。
     ///
-    /// USIでは`usi`の応答から既定値を読み、`RuleSet`へ`--rules`の入力原文を送る。
-    /// `USI_Hash`は明示された場合だけ送るが、`random`には送らない。
-    /// 続けて両側へ無条件に`ResignValue 99999`を送り、`random`には局ごとの`Seed`を送る。
-    /// [`PlayerConfig::options`]を列順に送ってから`isready`の`readyok`を待ち、`usinewgame`を送る。
-    ///
-    /// `ResignValue 99999`は投了を無効にして規則上の終局まで指させる測定条件である。
-    /// このオプションを持たないエンジンは未知のオプションとして無視する。
-    /// 理由は`docs/adr/disable-resignation-in-strength-measurements.md`にある。
+    /// USIでは握手の後に[`Self::initialize_usi`]を行い、ネットの報告値と記録値を照合する。
+    /// 一致した場合に`usinewgame`を送り、形式の誤りと不一致は反則負けから区別して返す。
     /// CECPの初期化列は[`super::cecp`]に従う。
     pub(in crate::harness) fn start(
         config: &PlayerConfig,
         seed: u64,
         timeout: Duration,
-    ) -> Result<Self, EngineFailure> {
+    ) -> Result<Self, InitializationError> {
         let mut process = Self::spawn(&config.path, &config.args, config.protocol, timeout)?;
         match config.protocol {
             Protocol::Usi => {
                 process.read_usi_declarations()?;
-                process.send(&format!(
-                    "setoption name RuleSet value {}",
-                    config.rules_source
-                ))?;
-                if !config.is_random
-                    && let Some(hash_mb) = config.hash_mb
-                {
-                    process.send(&format!("setoption name USI_Hash value {hash_mb}"))?;
+                let received = process.initialize_usi(config, seed)?;
+                if received != config.network_sha256 {
+                    return Err(InitializationError::Network(NetworkError::Mismatch {
+                        recorded: config.network_sha256.clone(),
+                        received,
+                    }));
                 }
-                process.send("setoption name ResignValue value 99999")?;
-                if config.is_random {
-                    process.send(&format!("setoption name Seed value {seed}"))?;
-                }
-                for (name, value) in &config.options {
-                    process.send(&format!("setoption name {name} value {value}"))?;
-                }
-                process.send("isready")?;
-                process.wait_for("readyok")?;
                 process.send("usinewgame")?;
             }
             Protocol::Cecp => {
@@ -158,17 +173,75 @@ impl EngineProcess {
         Ok(process)
     }
 
+    /// 握手後のオプション送信と`isready`を、事前の起動と各対局で共有する。
+    ///
+    /// `RuleSet`、明示された`USI_Hash`、`ResignValue 99999`、追加オプションの順に送る。
+    /// `random`には`USI_Hash`を送らず、`ResignValue`の後に局ごとの`Seed`を送る。
+    /// 投了の無効化は`docs/adr/disable-resignation-in-strength-measurements.md`に従う。
+    /// `readyok`までに届くチェックサムは0行または1行だけを受理し、同じ値の重複も拒否する。
+    /// 未報告を`None`とするのは、期限内に`readyok`を受け取った場合だけである。
+    pub(super) fn initialize_usi(
+        &mut self,
+        config: &PlayerConfig,
+        seed: u64,
+    ) -> Result<Option<NetworkSha256>, InitializationError> {
+        self.send(&format!(
+            "setoption name RuleSet value {}",
+            config.rules_source
+        ))?;
+        if !config.is_random
+            && let Some(hash_mb) = config.hash_mb
+        {
+            self.send(&format!("setoption name USI_Hash value {hash_mb}"))?;
+        }
+        self.send("setoption name ResignValue value 99999")?;
+        if config.is_random {
+            self.send(&format!("setoption name Seed value {seed}"))?;
+        }
+        for (name, value) in &config.options {
+            self.send(&format!("setoption name {name} value {value}"))?;
+        }
+        self.send("isready")?;
+        let mut checksum = None;
+        let mut error = None;
+        self.receive_until(|line| {
+            let mut words = line.split_whitespace();
+            if words.next() == Some("info")
+                && words.next() == Some("string")
+                && words.next() == Some("network_sha256")
+            {
+                let received = words.collect::<Vec<_>>().join(" ");
+                if let Some(first) = checksum.take() {
+                    error = Some(NetworkError::Duplicate {
+                        recorded: config.network_sha256.clone(),
+                        first,
+                        received,
+                    });
+                } else {
+                    match NetworkSha256::try_from(received) {
+                        Ok(value) => checksum = Some(value),
+                        Err(source) => {
+                            error = Some(NetworkError::Invalid {
+                                recorded: config.network_sha256.clone(),
+                                source,
+                            })
+                        }
+                    }
+                }
+            }
+            error.is_some() || line.trim() == "readyok"
+        })?;
+        match error {
+            Some(error) => Err(InitializationError::Network(error)),
+            None => Ok(checksum),
+        }
+    }
+
     /// エンジンへ1行を送る。
     pub(super) fn send(&mut self, line: &str) -> Result<(), EngineFailure> {
         let input = self.input.as_mut().ok_or(EngineFailure::Crash)?;
         writeln!(input, "{line}").map_err(|_| EngineFailure::Crash)?;
         input.flush().map_err(|_| EngineFailure::Crash)
-    }
-
-    /// 指定行を期限まで読み進める。
-    pub(super) fn wait_for(&self, expected: &str) -> Result<(), EngineFailure> {
-        self.receive_until(|line| line.trim() == expected)
-            .map(|_| ())
     }
 
     /// 条件を満たす行を、呼び出し全体の期限まで受信する。
