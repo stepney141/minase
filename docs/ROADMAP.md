@@ -65,6 +65,7 @@
 | AlphaZero型探索の強化学習の実行 | [plans/archived/alphazero-rl.md](plans/archived/alphazero-rl.md) | 中断 | 2026年11月9日 |
 | AlphaZero型探索の強化学習の2回目の実行の準備 | [plans/archived/alphazero-rl-2-prep.md](plans/archived/alphazero-rl-2-prep.md) | 完了（採用） | 2026年11月10日 |
 | AlphaZero型探索の強化学習の2回目の実行 | [plans/alphazero-rl-2.md](plans/alphazero-rl-2.md) | 起案 | |
+| 対局用MCTSのPUCTの係数と方策の温度のSPSAによる調整 | [plans/mcts-puct-spsa.md](plans/mcts-puct-spsa.md) | 起案 | |
 | AlphaZero型探索の学習と自己対局生成の複数GPU化 | [plans/archived/alphazero-multi-gpu.md](plans/archived/alphazero-multi-gpu.md) | 完了（採用） | 2026年11月11日 |
 | AlphaZero型探索の推論で、ホストとGPUの間の転送を減らす | [plans/archived/alphazero-inference-transfer.md](plans/archived/alphazero-inference-transfer.md) | 完了（採用） | 2026年11月11日 |
 | 開発環境とvast.aiの機械の実行環境を、1つのDockerイメージで用意する | [plans/archived/docker-environment.md](plans/archived/docker-environment.md) | 完了（一部不採用） | 2026年11月13日 |
@@ -177,7 +178,7 @@
 
 次の2件は、2回目の実行と独立に進められる。
 
-- 対局用MCTSのPUCTの6つの係数の調整は、[大敗の原因の調査](proposals/alphazero-strength-gap.md)が勧めた対策のうちまだ行っていないものであり、設計書はまだない。自己対局の探索はPUCTの係数を使わず、進捗測定はサイクル1を始めたときのバイナリに固定するので、調整しても2回目の学習の途中で条件が変わることはない。
+- [対局用MCTSのPUCTの係数と方策の温度のSPSAによる調整](plans/mcts-puct-spsa.md)は起案の段階で、利用者の承認を待っている。道具の変更はすぐに始められるが、本番の調整は、2回目の実行のネットのうち利用者が指定するものを使う。自己対局の探索はPUCTの係数を使わず、進捗測定はサイクル1を始めたときのバイナリに固定するので、調整しても2回目の学習の途中で条件が変わることはない。
 - 2回目の実行と[NNUEの標準レシピv1](plans/nnue-standard-recipe.md)は、借りる計算機が競合しないので並行して進め、作業機での対局の測定だけを重ならないように順番を調整する。
 
 統括計画の完了の後には、AlphaZero型のネットで教師の値を付け直す案（「教師生成」の節）を起案する。到達の判定でMCTSがαβ探索と同等以上とされた場合は、既定の探索方式の変更とlishogi Botへの配備も別の設計書で扱う。
