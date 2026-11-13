@@ -95,6 +95,10 @@ GSPRTの`H1`は10 Eloの改善を仮定するので、真の差が10 Elo以下�
 使うのは、v0を線形の経路だけのMNUEへ書き出す`minase-trainer nnue export-handcrafted`、MNUEから探索用駒価値とKを読む`nnue train --base`、連続生成スクリプト、中断した系列の第1世代と第2世代の教師、および参照`refs/nnue-generation-reset/gen-<N>`の比較用のネットである。
 中断した系列の参照と教師は、本書の比較の対照と根拠に使うので、本書の完了まで消さない。
 
+教師の生成器と連続生成スクリプトは、[教師生成を中断の後に再開できるようにする設計書](archived/resumable-nnue-teacher-generation.md)で、本を250局ごとの塊で確定させ、止まった後に続きから生成できる形に改まった。
+連続生成スクリプトには塊の局数`--chunk-games 250`を与える。
+生成機のワーカーは生成器を新しい引数（`--output-dir`と`--chunk-games`）で呼ぶので、各世代の生成に使うコミット（第1世代では第0世代のコミット）は、この変更を含まなければならない。
+
 ネットの構成と学習の引数の大半は、[NNUEの構成の見直し](archived/nnue-architecture-revision.md)で確定した構成（[ADR](../adr/compose-the-nnue-of-a-piece-value-initialized-linear-path-and-pairwise-products-with-two-hidden-layers.md)）と、中断した系列の第2世代の学習の引数をそのまま使う。
 
 本書は次の決定を、対局で確かめて改める可能性がある。
