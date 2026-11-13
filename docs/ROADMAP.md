@@ -142,7 +142,7 @@
 以下の計画に着手するかどうかと実施の順序は、いずれも利用者の指示で決める。
 方式と測定の条件は各設計書にあるので、ここには位置づけと次の判断だけを書く。
 
-- [NNUEの標準レシピv1と、v0からの世代反復のやり直し](plans/nnue-standard-recipe.md)は、2026年11月7日にフェーズ1と2を終え、フェーズ3（第1世代の生成）は利用者の着手の指示を待っている。2026年11月6日に中断した[世代反復のやり直し](plans/archived/nnue-generation-reset.md)の系列の教師での対局の結果、標準レシピv1は線形の経路の学習率0.03を保ち、学習後の補正を行わず、その世代の教師だけで学ぶと決まった（[測定1](measurements/nnue-standard-recipe/nnue-standard-recipe-lr-linear-stc.md)、[測定2](measurements/nnue-standard-recipe/nnue-standard-recipe-fit-stc.md)、[測定3](measurements/nnue-standard-recipe/nnue-standard-recipe-window-stc.md)）。補正前のネットは補正後のネットに得点率57.1%で勝ち、第1世代の教師を併用したネットは第2世代の教師だけのネットに得点率36.4%で負けた。次は1世代を教師37本と定めてv0から世代反復をやり直し、第1世代は中断した系列でv0が生成した26本を使い、不足の11本を足す。世代反復の最終候補は、[NNUEの構成の見直し](plans/archived/nnue-architecture-revision.md)の統合前のコミットを残したブランチ`nnue-width128-regressed`と比べる。最終候補が決まるまで、masterのエンジンは統合前より弱いと見込まれる。
+- [NNUEの標準レシピv1と、v0からの世代反復のやり直し](plans/nnue-standard-recipe.md)は、2026年11月7日にフェーズ1と2を終え、フェーズ3（第1世代の生成）は利用者の着手の指示を待っている。2026年11月6日に中断した[世代反復のやり直し](plans/archived/nnue-generation-reset.md)の系列の教師での対局の結果、標準レシピv1は線形の経路の学習率0.03を保ち、学習後の補正を行わず、その世代の教師だけで学ぶと決まった（[測定1](measurements/nnue-standard-recipe/nnue-standard-recipe-lr-linear-stc.md)、[測定2](measurements/nnue-standard-recipe/nnue-standard-recipe-fit-stc.md)、[測定3](measurements/nnue-standard-recipe/nnue-standard-recipe-window-stc.md)）。補正前のネットは補正後のネットに得点率57.1%で勝ち、第1世代の教師を併用したネットは第2世代の教師だけのネットに得点率36.4%で負けた。次は1世代を教師37本と定めてv0から世代反復をやり直す。2026年11月13日の利用者の決定で、新しい系列の自己対局と世代の判定の対局は規則セット`lishogi`で行うので、教師の生成器などの規則を切り替えてから、第1世代の37本もすべて新しく生成する。世代反復の最終候補は、[NNUEの構成の見直し](plans/archived/nnue-architecture-revision.md)の統合前のコミットを残したブランチ`nnue-width128-regressed`と比べる。最終候補が決まるまで、masterのエンジンは統合前より弱いと見込まれる。
 - 教師生成の運用の残りの候補として、教師ファイルの末尾で次のファイルを重ねて始める案と、NUMAノードごとに2つのプロセスへ分ける案がある。前者は第2世代の生成機の実測で約1.12〜1.14倍の見込みだが、節約に対してスクリプトの変更が大きいので2026年11月5日の利用者の決定で見送った（[記録](measurements/nnue-generation-reset/nnue-generation-reset-gen2-training.md)）。後者は第1世代の測定で1.06〜1.09倍の見込みである（[記録](measurements/nnue-generation-reset/nnue-generation-reset-generator-speed.md)）。世代反復を延長するときなどに検討する。
 
 ### 評価関数（NNUE）
@@ -154,7 +154,7 @@
 
 強くする手段に人間の棋譜は使わない（[ADR](adr/do-not-use-human-games-to-strengthen-the-engine.md)）。
 
-- [先読みなしの教師での間引きの比較](plans/nnue-subsample-no-lookahead.md)と[記録する局面の間引き](plans/sparse-teacher-recording.md)は、同じ計算時間でより多くの対局から教師を作る一連の計画であり、前者の判定が後者の着手の前提になる。どちらも現行の探索値だけの教師を前提に書かれているので、世代反復の結果を見て続けるかを決める。
+- [先読みなしの教師での間引きの比較](plans/nnue-subsample-no-lookahead.md)と[記録する局面の間引き](plans/sparse-teacher-recording.md)は、同じ計算時間でより多くの対局から教師を作る一連の計画であり、前者の判定が後者の着手の前提になる。どちらも現行の探索値だけの教師を前提に書かれているので、世代反復の結果を見て続けるかを決める。後者は`JCSA`で生成した基準の教師を使う前提なので、着手の前に`lishogi`の規則に合わせて改める。
 - [vast.aiでの教師生成](plans/vast-selfplay.md)は、教師の生成をvast.aiで借りる計算機へ移す計画である。試走では30ファイルを約5.5時間、約5.6米ドルと見込み（[記録](measurements/vast-selfplay/vast-selfplay-trial.md)）、作業機で同じ条件を測るフェーズ0の作業が残っている。世代反復は同書の選定条件と検査の方式を使うが、教師の取得の後に学習と補正まで続けて行うので専用のスクリプトで生成し、同書のフェーズ0の残りとフェーズ1を待たない。
 - AlphaZero型のネットの評価値で教師の値を付け直す案は、[強豪エンジンの教師生成の調査](research/teacher-generation-strong-engines.md)を受けて、AlphaZero型の計画の後に起案する（2026年10月25日の開発者の決定）。tanuki-はこの方法でレーティング差R+104.3を得ている。付け直しに使う前に、[線形経路の計画](plans/archived/nnue-material-linear-init.md)の麒麟の診断で、そのネットに偏りがないことを確かめる。
 - 設計書のない着想は調査メモにある。対局途中のランダム化と評価が食い違う局面の採取は[教師生成の調査](research/teacher-generation-strong-engines.md)に、教師の予算の重点配分は[評価関数を改善する3つの観点](proposals/archived/evaluation-improvement-strategy.md)に、別系統の局面を開始局面に加える案は[偏りの先行事例](research/self-play-bias-prior-art.md)にある。
@@ -174,12 +174,12 @@
 | 2 | [複数GPU化](plans/archived/alphazero-multi-gpu.md)（完了） | 学習器と生成器の複数GPU化、vast.aiの機械への対応、およびColabのG4との1サイクルの料金の比較 | 1の完了（済み） |
 | 3 | [推論の転送の削減](plans/archived/alphazero-inference-transfer.md)（完了） | 推論の入出力の転送を減らす4つの候補（ピン留めメモリ、uint8の入力、FP16の方策、方策の固定の表による詰め）の採否 | 2の完了（済み） |
 | 4 | [Dockerイメージ](plans/archived/docker-environment.md)（完了） | 作業機の開発用のコンテナのイメージと、導入先を1つのディレクトリに閉じた導入スクリプト。vast.aiの機械をイメージで借りる方式は採用せず、借りる機械は導入スクリプトを使い続ける | 2の完了（済み）。3と並行できる |
-| 5 | [2回目の実行](plans/alphazero-rl-2.md) | 開始局面の偏りの確認、USIへの移行に合わせた定例の測定のスクリプトの置き換え、機械の選択、およびサイクルの実行 | 偏りの確認は1の完了（済み）の後、サイクル1は2の完了（済み）と3の完了（済み）の後。4の完了（済み）の後 |
+| 5 | [2回目の実行](plans/alphazero-rl-2.md) | 開始局面の偏りの確認、USIへの移行に合わせた定例の測定のスクリプトの置き換え、自己対局の規則の`lishogi`への切り替え、機械の選択、およびサイクルの実行 | 偏りの確認は1の完了（済み）の後、サイクル1は2の完了（済み）と3の完了（済み）の後。4の完了（済み）の後 |
 
 次の2件は、2回目の実行と独立に進められる。
 
 - [対局用MCTSのPUCTの係数と方策の温度のSPSAによる調整](plans/mcts-puct-spsa.md)は起案の段階で、利用者の承認を待っている。道具の変更はすぐに始められるが、本番の調整は、2回目の実行のネットのうち利用者が指定するものを使う。自己対局の探索はPUCTの係数を使わず、進捗測定はサイクル1を始めたときのバイナリに固定するので、調整しても2回目の学習の途中で条件が変わることはない。
-- 2回目の実行と[NNUEの標準レシピv1](plans/nnue-standard-recipe.md)は、借りる計算機が競合しないので並行して進め、作業機での対局の測定だけを重ならないように順番を調整する。
+- 2回目の実行と[NNUEの標準レシピv1](plans/nnue-standard-recipe.md)は、借りる計算機が競合しないので並行して進め、作業機での対局の測定だけを重ならないように順番を調整する。どちらも、自己対局とネットの強さを測る対局を規則セット`lishogi`で行う（2026年11月13日の利用者の決定、[統括計画](plans/alphazero.md)の「自己対局と測定の規則」の節）。
 
 統括計画の完了の後には、AlphaZero型のネットで教師の値を付け直す案（「教師生成」の節）を起案する。到達の判定でMCTSがαβ探索と同等以上とされた場合は、既定の探索方式の変更とlishogi Botへの配備も別の設計書で扱う。
 

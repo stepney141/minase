@@ -16,6 +16,7 @@ minaseの係数は、将棋のAlphaZero型エンジンdlshogiが温度1.74と組
 ## 状態
 
 起案の段階であり、2026年11月13日に起案して、まだ着手していない。
+同じ日の利用者の決定で、本書の対局の規則を`JCSA`から`lishogi`へ改めた（「エンジンの設定」の節）。
 次の一手は、利用者の承認を得てフェーズ1（エンジンと`minase spsa`の変更）を始めることである。
 フェーズ2は、調整に使うネットを利用者が指定してから始める。
 
@@ -229,7 +230,8 @@ MCTSの`nodes`は、その手の探索で新しく行ったシミュレーショ
 
 両エンジンに固定で送るUSIオプションは、`NnModel`と`NnBatchSize=16`だけとし、`Threads`と`USI_Hash`はエンジンの既定値を使う。
 `NnBatchSize`は1回のネットの計算に送る局面の数の上限であり、16はこれまでのMCTS同士の段階ゲートと同じ値である（[温度のSTC](../measurements/mcts-royal-capture-temperature/mcts-royal-capture-temperature-temperature-stc.md)）。
-規則は、`minase spsa`の`--rules`で日本中将棋連盟の規則`JCSA`を与える。
+規則は、本書のすべての対局で、ネットを学ぶ自己対局と同じ規則セット`lishogi`（L1＋L2＋P0＋P3＋R1＋E1＋E3）とする（2026年11月13日の利用者の決定、[統括計画](alphazero.md)の「自己対局と測定の規則」の節）。
+1手の回数を測るSTC、SPSAの対局、および段階ゲートのいずれでも、`minase spsa`と`minase match run`の`--rules`で`lishogi`を与える。
 
 ## 規模と所要時間
 
