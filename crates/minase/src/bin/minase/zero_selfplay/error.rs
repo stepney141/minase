@@ -186,3 +186,14 @@ impl From<serde_json::Error> for Error {
         Self::Json(error)
     }
 }
+impl From<minase::datagen::output::Error> for Error {
+    fn from(error: minase::datagen::output::Error) -> Self {
+        match error {
+            minase::datagen::output::Error::Locked { path, source } => {
+                Self::Locked { path, source }
+            }
+            minase::datagen::output::Error::Json(error) => Self::Json(error),
+            minase::datagen::output::Error::Io(error) => Self::Io(error),
+        }
+    }
+}
