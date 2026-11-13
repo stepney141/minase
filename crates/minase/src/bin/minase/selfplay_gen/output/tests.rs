@@ -621,6 +621,89 @@ fn missing_committed_mnsd_fails_before_table_construction() {
     assert!(!output.join("teacher.mnsd").exists());
 }
 
+/// 集計JSONの塊番号がファイル名と異なれば拒否する。
+#[test]
+fn chunk_summary_number_must_match_its_file_name() {
+    let temporary = TemporaryDirectory::new();
+    let nnue = epoch_zero_nnue();
+    let conditions = conditions(&nnue, 2, 2, 1, 1, None, false);
+    let output = temporary.0.join("output");
+    write_config(&output, &conditions);
+    fs::write(output.join(chunk_mnsd_name(0)), b"").unwrap();
+    atomic_json(
+        &output,
+        &chunk_summary_name(0),
+        &ChunkSummary {
+            chunk: 1,
+            first_game: 1,
+            statistics: Statistics::default(),
+        },
+    )
+    .unwrap();
+
+    let error = output_error(generate_to_directory(
+        &output,
+        &conditions,
+        &nnue,
+        None,
+        nz_usize(1),
+    ));
+
+    assert!(matches!(
+        error
+            .get_ref()
+            .unwrap()
+            .downcast_ref::<OutputError>()
+            .unwrap(),
+        OutputError::ChunkSummaryNumberMismatch {
+            file_chunk: 0,
+            saved_chunk: 1,
+        }
+    ));
+}
+
+/// 集計JSONの先頭対局番号が担当範囲と異なれば拒否する。
+#[test]
+fn chunk_summary_first_game_must_match_its_range() {
+    let temporary = TemporaryDirectory::new();
+    let nnue = epoch_zero_nnue();
+    let conditions = conditions(&nnue, 4, 2, 1, 1, None, false);
+    let output = temporary.0.join("output");
+    write_config(&output, &conditions);
+    fs::write(output.join(chunk_mnsd_name(1)), b"").unwrap();
+    atomic_json(
+        &output,
+        &chunk_summary_name(1),
+        &ChunkSummary {
+            chunk: 1,
+            first_game: 2,
+            statistics: Statistics::default(),
+        },
+    )
+    .unwrap();
+
+    let error = output_error(generate_to_directory(
+        &output,
+        &conditions,
+        &nnue,
+        None,
+        nz_usize(1),
+    ));
+
+    assert!(matches!(
+        error
+            .get_ref()
+            .unwrap()
+            .downcast_ref::<OutputError>()
+            .unwrap(),
+        OutputError::ChunkSummaryFirstGameMismatch {
+            chunk: 1,
+            saved: 2,
+            expected: 3,
+        }
+    ));
+}
+
 /// ヘッダ、担当範囲、および塊の局数を組み直し前に検査する。
 #[test]
 fn reassembly_rejects_header_range_and_count_errors() {

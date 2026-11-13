@@ -183,6 +183,15 @@ pub(super) enum OutputError {
         chunk: u32,
         path: PathBuf,
     },
+    ChunkSummaryNumberMismatch {
+        file_chunk: u32,
+        saved_chunk: u32,
+    },
+    ChunkSummaryFirstGameMismatch {
+        chunk: u32,
+        saved: u32,
+        expected: u32,
+    },
     HeaderMismatch {
         chunk: u32,
     },
@@ -239,6 +248,18 @@ impl fmt::Display for OutputError {
                 f,
                 "committed chunk {chunk} is missing MNSD file {}",
                 path.display()
+            ),
+            Self::ChunkSummaryNumberMismatch {
+                file_chunk,
+                saved_chunk,
+            } => write!(f, "chunk {file_chunk} summary records chunk {saved_chunk}"),
+            Self::ChunkSummaryFirstGameMismatch {
+                chunk,
+                saved,
+                expected,
+            } => write!(
+                f,
+                "chunk {chunk} summary records first game {saved}, expected {expected}"
             ),
             Self::HeaderMismatch { chunk } => {
                 write!(
@@ -587,6 +608,21 @@ fn open_output(
         }
         let summary: ChunkSummary =
             serde_json::from_reader(BufReader::new(File::open(summary_path)?))?;
+        if summary.chunk != chunk {
+            return Err(OutputError::ChunkSummaryNumberMismatch {
+                file_chunk: chunk,
+                saved_chunk: summary.chunk,
+            });
+        }
+        let expected_first_game = u32::try_from(conditions.config.game_range(chunk).start)
+            .map_err(|_| OutputError::StatisticsOverflow)?;
+        if summary.first_game != expected_first_game {
+            return Err(OutputError::ChunkSummaryFirstGameMismatch {
+                chunk,
+                saved: summary.first_game,
+                expected: expected_first_game,
+            });
+        }
         completed.insert(chunk, summary);
     }
 
@@ -647,12 +683,13 @@ fn generate_chunks(
         max_ply: conditions.config.max_ply.get(),
     };
     let result = thread::scope(|scope| -> Result<GeneratedRun, OutputError> {
+        let _stop_workers = StopWorkersOnDrop(&stop);
         for _ in 0..concurrency.get() {
             let sender = sender.clone();
             let next = &next;
             let stop = &stop;
             let numbers = &numbers;
-            scope.spawn(move || {
+            let _worker = thread::Builder::new().spawn_scoped(scope, move || {
                 let mut table = match TranspositionTable::new(conditions.config.hash_mb.get()) {
                     Ok(table) => table,
                     Err(error) => {
@@ -704,10 +741,9 @@ fn generate_chunks(
                         break;
                     }
                 }
-            });
+            })?;
         }
         drop(sender);
-        let _stop_workers = StopWorkersOnDrop(&stop);
 
         let mut active = BTreeMap::new();
         let mut generated = GeneratedRun::default();
