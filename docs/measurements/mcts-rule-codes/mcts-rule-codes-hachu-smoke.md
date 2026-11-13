@@ -45,7 +45,7 @@ HaChuは棋譜の配列の上限が2,000手で、それを超えると異常終�
 
 基準（`--baseline`）は、HaChu（Debianパッケージ収録のオリジナル版、コミットdf26f4a、`../hachu-debian`で`gcc -O2`によりビルド、バイナリのSHA-256は`10db1299f95626fe58875b1c24a1cee6acce0eee5fb42ed8b17ce1373a9dcbdf`）である。
 規則オプションは既定の設定（“Okazaki rule” 無効、“Promote on entry” 有効、“Allow repeats” 無効）であり、思考の制限は深さ2（CECPの`sd 2`）である。
-深さ2は、対局が成り立つことを確かめるために選んだ値であり、強さを測るときの深さは、[強さを測る固定の相手の設計書](../../plans/mcts-fixed-opponents.md)で別に選ぶ。
+深さ2は、対局が成り立つことを確かめるために選んだ値であり、強さを測るときの深さは、[強さを測る固定の相手の設計書](../../plans/archived/mcts-fixed-opponents.md)で別に選ぶ。
 
 規則は、HaChuの既定の設定に対応する`L1,L3,P0,P5,P6,R2,E1,E2`（[競技規則](../../rules/chu-shogi.md)第33条第7項）を、審判層とMCTSの双方に与えた。
 

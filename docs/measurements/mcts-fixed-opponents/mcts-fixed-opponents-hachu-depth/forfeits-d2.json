@@ -1,0 +1,40 @@
+[
+  {
+    "pair_number": 14,
+    "game_index": 1,
+    "candidate_color": "white",
+    "reason": "illegal_move",
+    "loser": "baseline",
+    "loser_color": "black",
+    "ply": 889,
+    "cecp": "g6g7",
+    "usi": "6g6f",
+    "hachu_response_lines": [
+      "move g6g7"
+    ],
+    "minase_response_lines": [
+      "Illegal move (repetition): g6g7"
+    ],
+    "repetition_distance": 248,
+    "classification": "history_window"
+  },
+  {
+    "pair_number": 26,
+    "game_index": 0,
+    "candidate_color": "black",
+    "reason": "illegal_move",
+    "loser": "baseline",
+    "loser_color": "white",
+    "ply": 1078,
+    "cecp": "j9j1",
+    "usi": "3d3l",
+    "hachu_response_lines": [
+      "move j9j1"
+    ],
+    "minase_response_lines": [
+      "Illegal move (repetition): j9j1"
+    ],
+    "repetition_distance": 208,
+    "classification": "history_window"
+  }
+]
