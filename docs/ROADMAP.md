@@ -139,7 +139,7 @@
 | NNUEの標準レシピv1と、v0からの世代反復のやり直し | [plans/nnue-standard-recipe.md](plans/nnue-standard-recipe.md) | 待機中 | |
 | MCTSの葉での王駒の捕獲の判定と方策の温度 | [plans/archived/mcts-royal-capture-temperature.md](plans/archived/mcts-royal-capture-temperature.md) | 完了（採用） | 2026年11月9日 |
 | 起動引数と診断ツールをUSIへ移す | [plans/archived/cli-to-usi.md](plans/archived/cli-to-usi.md) | 完了（採用） | 2026年11月12日 |
-| NNUEの教師生成を中断の後に再開できるようにする | [plans/resumable-nnue-teacher-generation.md](plans/resumable-nnue-teacher-generation.md) | 起案 | |
+| NNUEの教師生成を中断の後に再開できるようにする | [plans/resumable-nnue-teacher-generation.md](plans/resumable-nnue-teacher-generation.md) | 進行中 | |
 
 ## 現在地
 
@@ -159,7 +159,7 @@
 強くする手段に人間の棋譜は使わない（[ADR](adr/do-not-use-human-games-to-strengthen-the-engine.md)）。
 
 - [先読みなしの教師での間引きの比較](plans/nnue-subsample-no-lookahead.md)と[記録する局面の間引き](plans/sparse-teacher-recording.md)は、同じ計算時間でより多くの対局から教師を作る一連の計画であり、前者の判定が後者の着手の前提になる。どちらも現行の探索値だけの教師を前提に書かれているので、世代反復の結果を見て続けるかを決める。後者は`JCSA`で生成した基準の教師を使う前提なので、着手の前に`lishogi`の規則に合わせて改める。
-- [教師生成の中断と再開](plans/resumable-nnue-teacher-generation.md)は起案の段階で、利用者の承認を待っている。生成器が教師ファイルを250局ずつの塊に分けて確定させ、止まった後は続きから生成できるようにする。いつ止められてもよい代わりに安い計算機（GCPのSpot VMやvast.aiの中断可能インスタンス）で教師を生成するための土台である。そうした計算機での料金は止まる頻度と失う量で決まり、中断に強い生成器がないと測れないので、借り先の比較と決定、および借りた機械を回す仕組みは、本書の完了後に起案する設計書で扱う。vast.aiより確実に安ければGCPに固定する（2026年11月14日の利用者の方針）。教師の内容は変えないので、[NNUEの標準レシピv1](plans/nnue-standard-recipe.md)のフェーズ3とは順序を問わない。
+- [教師生成の中断と再開](plans/resumable-nnue-teacher-generation.md)は進行中で、2026年11月14日に着手した。生成器が教師ファイルを250局ずつの塊に分けて確定させ、止まった後は続きから生成できるようにする。いつ止められてもよい代わりに安い計算機（GCPのSpot VMやvast.aiの中断可能インスタンス）で教師を生成するための土台である。そうした計算機での料金は止まる頻度と失う量で決まり、中断に強い生成器がないと測れないので、借り先の比較と決定、および借りた機械を回す仕組みは、本書の完了後に起案する設計書で扱う。vast.aiより確実に安ければGCPに固定する（2026年11月14日の利用者の方針）。教師の内容は変えないので、[NNUEの標準レシピv1](plans/nnue-standard-recipe.md)のフェーズ3とは順序を問わない。
 - [vast.aiでの教師生成](plans/vast-selfplay.md)は、教師の生成をvast.aiで借りる計算機へ移す計画である。試走では30ファイルを約5.5時間、約5.6米ドルと見込み（[記録](measurements/vast-selfplay/vast-selfplay-trial.md)）、作業機で同じ条件を測るフェーズ0の作業が残っている。世代反復は同書の選定条件と検査の方式を使うが、教師の取得の後に学習と補正まで続けて行うので専用のスクリプトで生成し、同書のフェーズ0の残りとフェーズ1を待たない。
 - AlphaZero型のネットの評価値で教師の値を付け直す案は、[強豪エンジンの教師生成の調査](research/teacher-generation-strong-engines.md)を受けて、AlphaZero型の計画の後に起案する（2026年10月25日の開発者の決定）。tanuki-はこの方法でレーティング差R+104.3を得ている。付け直しに使う前に、[線形経路の計画](plans/archived/nnue-material-linear-init.md)の麒麟の診断で、そのネットに偏りがないことを確かめる。
 - 設計書のない着想は調査メモにある。対局途中のランダム化と評価が食い違う局面の採取は[教師生成の調査](research/teacher-generation-strong-engines.md)に、教師の予算の重点配分は[評価関数を改善する3つの観点](proposals/archived/evaluation-improvement-strategy.md)に、別系統の局面を開始局面に加える案は[偏りの先行事例](research/self-play-bias-prior-art.md)にある。
