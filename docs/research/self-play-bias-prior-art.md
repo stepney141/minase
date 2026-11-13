@@ -3,6 +3,7 @@
 本書のminaseに関する記述は2026年11月3日時点のものである。
 冒頭に書いた奔王の割合85.8%は、同日に採用した[NNUEの線形の経路を対局結果への回帰（Texel tuning）で補正する設計書](../plans/archived/nnue-outcome-regression.md)による補正の前のネットの値である。
 補正の前後のネットを比べた[nnue-outcome-regression-placement-stc](../measurements/nnue-outcome-regression/nnue-outcome-regression-placement-stc.md)では、20〜99手目に奔王が1〜2段にいる割合が86.0%から14.6%へ下がった。
+AlphaZero型のネットの系統の局面を開始局面にする案は、2026年11月14日に[NNUEの教師の局面と教師値を変える候補](../proposals/nnue-teacher-content-candidates.md)の候補の1つとし、採否と起案の時期はそちらで扱う。
 
 本書は、強化学習や自己対局で育てたゲームAIで、自己対局の閉ループが特定の配置、戦型、または盲点への偏りを生む現象を一次資料で調べ、検出の方法、解消の手段、効果の測定、および解消しなかった例を先例ごとに整理した調査メモである。
 きっかけは、minaseの現行のNNUEで指すと、20〜99手目の奔王が85.8%の手数で自陣の最下段から2段以内にいるなど、人間の上位者、既存の中将棋エンジンHaChu、およびゼロから学んだAlphaZero型のネットの3者がそろって示さない配置が複数の駒に現れたことである（[集計](../measurements/adhoc/piece-placement-census.md)）。

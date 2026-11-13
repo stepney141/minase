@@ -15,13 +15,25 @@ vast.aiは、個人や事業者が貸し出す計算機を時間単位で借り�
 
 ## 状態
 
-状態は起案であり、起案日は2026年10月16日、調達先をvast.aiとする改訂は2026年10月17日である。
-実装には未着手であり、作業機にはvastai CLI 1.8.3が入っている。
-作業機のAPIキーで`vastai show user`と`vastai show ssh-keys`が通ることを2026年10月17日に確かめ、同じ日に作業機のvast.ai専用の鍵`~/.ssh/id_vastai`の公開鍵をアカウントに登録した。
-フェーズ0のうち生成機での測定は2026年10月17日に終え、結果を[試走の記録](../measurements/vast-selfplay/vast-selfplay-trial.md)に書いた。
-同時384局で1ファイル653秒（4,206記録局面/秒）であり、同時192局より約10%速かったので、並列度はスレッド数とする。
-いま詰まっている点はない。
-次の一手は、同じコミットとシードの1ファイルを作業機で生成し、生成機が作業機より速いことを確かめてフェーズ0を終えることである。
+> 本書は中断の時点で凍結した記録であり、以後の変更を反映しない。現行の仕様はコードのdocコメントに、設計判断は[docs/adr/](../../adr/README.md)にある。
+
+中断。2026年10月16日に起案し、2026年10月17日に調達先をvast.aiとする形へ改訂した。
+2026年11月14日に、利用者の決定で中断した。
+完了条件は満たしておらず、作業機より速い生成の確認も、スクリプトによる生成、取得、検査、および再開も終えていない。
+
+終えたのは、フェーズ0のうち生成機での測定だけである。
+選定条件に合う機械（物理192コア、384スレッド）の[試走](../../measurements/vast-selfplay/vast-selfplay-trial.md)では、同時384局で1ファイルを653秒（4,206記録局面/秒）で生成し、同時192局より約10%速かったので、同時対局数はスレッド数と同じ384とした。
+フェーズ0の残りである作業機での同じ条件の測定と、フェーズ1のスクリプト（`launch.py`、`remote.py`、`fetch.py`）、およびフェーズ2の手引きには着手していない。
+
+中断の理由は、本書が作る予定だった仕組みの役割を、別の設計書が受け持ったことである。
+2026年11月4日に着手した設計書[NNUEの世代反復のやり直し](nnue-generation-reset.md)では、教師生成の後に学習まで続けて行う必要があったので、生成、取得、検査、および学習を順に行う専用のスクリプト`scripts/vast/generation_chain.py`と`scripts/vast/generation_worker.py`を作った。
+その後の教師生成はこのスクリプトで行っており、[NNUEの標準レシピの設計書](../nnue-standard-recipe.md)もこれを使う。
+生成が途中で止まった場合への対応は、[教師生成の中断と再開の設計書](../resumable-nnue-teacher-generation.md)と、その完了後に起案する設計書（スポットの計算機での教師生成）で扱う。
+
+後の設計書と調査へ引き継いだものは3つある。
+1つ目は試走の記録であり、生成の速さと費用の見積もりの基準として、世代反復の設計書と[GCPでの教師生成の費用の調査](../../research/nnue-teacher-gcp-cost.md)が使っている。
+2つ目は、生成機の選定条件、教師ファイルの保存先、取得後の検査、および再開の単位に関する設計判断であり、世代反復のスクリプトが引き継いだ。
+3つ目は、借りた機械の自己停止と、停止および削除の確認に関する設計判断であり、SPSAの調整機の[ADR](../../adr/limit-rented-spsa-costs-by-self-stop-deadlines-and-deletion-after-the-last-game.md)が引用している。
 
 ## 目的
 
@@ -42,11 +54,11 @@ vast.aiは、個人や事業者が貸し出す計算機を時間単位で借り�
 
 ## 依存関係
 
-教師データの構造と検査は、[MNSD版2の実装](../../crates/minase/src/training/records.rs)と[生成・検査コマンド](../../crates/minase/src/bin/minase/selfplay_gen/)を使う。
+教師データの構造と検査は、[MNSD版2の実装](../../../crates/minase/src/training/records.rs)と[生成・検査コマンド](../../../crates/minase/src/bin/minase/selfplay_gen/)を使う。
 `inspect`はヘッダを表示したうえで全対局を復号するので、ファイルの途中の破損も検出する。
 学習器は複数の完成ファイルを入力できるため、ファイルを1つへ連結する必要はない。
-生成条件と過去のシード範囲の確認は、[教師生成の手引き](../guides/pst-training.md)に従う。
-生成コマンドはヘッダの生成コミットを`git rev-parse HEAD`で取り、作業ツリーに未コミットの変更があれば停止するので、生成機にも固定コミットのGit作業コピーが要る（[生成コミットを固定する教訓](../lessons/pin-generation-binary-to-worktree.md)）。
+生成条件と過去のシード範囲の確認は、[教師生成の手引き](../../guides/pst-training.md)に従う。
+生成コマンドはヘッダの生成コミットを`git rev-parse HEAD`で取り、作業ツリーに未コミットの変更があれば停止するので、生成機にも固定コミットのGit作業コピーが要る（[生成コミットを固定する教訓](../../lessons/pin-generation-binary-to-worktree.md)）。
 GitHubのリポジトリ`stepney141/minase`は公開されているので、生成機は認証情報なしにcloneできる。
 作業機では、vast.aiのCLI（`vastai`）で生成機の作成、状態の確認、ファイルの取得、停止、および削除を行う。
 
@@ -71,7 +83,7 @@ GitHubのリポジトリ`stepney141/minase`は公開されているので、生�
 
 ### 見積もりの土台
 
-作業機の実測は、[初代NNUEの教師生成](../measurements/nnue-replacement/nnue-replacement-generation.md)の20ファイル（7,500局、1局面20,000ノード、同時12局）に22.87時間かかった記録を使う。
+作業機の実測は、[初代NNUEの教師生成](../../measurements/nnue-replacement/nnue-replacement-generation.md)の20ファイル（7,500局、1局面20,000ノード、同時12局）に22.87時間かかった記録を使う。
 1ファイルあたり1.14時間、30ファイルで約35時間である。
 容量は、この記録の旧形式（1局面160バイト）で数えると30ファイルで約14 GBになる。
 現行のMNSD版2は1局面の固定部が7バイトなので実際にはこれより小さく、試走では1ファイルが25.1 MB、30ファイルで約0.75 GBだった。
@@ -84,7 +96,7 @@ EPYC 9654は2,898、EPYC 9B14は2,886であり、比はともに約0.59である
 vast.aiの出品が示すコア数は、1つの物理コアで2つのスレッドを同時に動かすSMTのスレッド数であり、384スレッドの2基構成は物理192コアに当たる。
 1物理コアに1局を割り当てると、作業機の同時12局に対して約9.4倍（192×0.59÷12）になる。
 SMTで2局目を載せたときの上積みは測っていないので、0〜3割の幅を置いて約9.4〜12.3倍と見積もった。
-試走では、SMTの上積みは約11%だったが、384スレッドを同時に動かすと1スレッドあたりの探索速度が単独で動かしたときの約3割に落ち、生成の速さはこの見積もりを下回った（[試走の記録](../measurements/vast-selfplay/vast-selfplay-trial.md)）。
+試走では、SMTの上積みは約11%だったが、384スレッドを同時に動かすと1スレッドあたりの探索速度が単独で動かしたときの約3割に落ち、生成の速さはこの見積もりを下回った（[試走の記録](../../measurements/vast-selfplay/vast-selfplay-trial.md)）。
 作業機の同時12局にはEコアも含まれるが、すべてPコアで動くとみなして作業機の性能を過大に見積もる。一方、PassMarkの値は1スレッドだけを動かしたときの値であり、GPU向けに組まれた機械で384スレッドを同時に動かしたときの周波数は分からない。以下の倍率はこの両方向の不確かさを持つ推定であり、採否はフェーズ0の実測で決める。
 
 ### 候補の比較
@@ -146,7 +158,7 @@ CLI 1.8.3にファイルのパスを渡すと、ファイルの中身ではな�
 | `logs/` | 生成機の`logs/`を取得した写し。 |
 | `deadline` | 現在の生成機の停止の期限（UNIX時刻）。`launch.py`が生成機を作るたびに書き、`fetch.py`が自己停止の失敗を見つけるために読む。 |
 
-計画の行はどれも同じ列を持つ表なのでタブ区切りにし、条件は型を持つ値の組なのでTOMLにする。作業機と生成機のスクリプトはPythonで書き、標準ライブラリの`csv`と`tomllib`で読む（[探索の関数形の見直しの統括計画](archived/search-forms.md)の設計判断の「スクリプトの言語」）。
+計画の行はどれも同じ列を持つ表なのでタブ区切りにし、条件は型を持つ値の組なのでTOMLにする。作業機と生成機のスクリプトはPythonで書き、標準ライブラリの`csv`と`tomllib`で読む（[探索の関数形の見直しの統括計画](search-forms.md)の設計判断の「スクリプトの言語」）。
 シードは互いに局数以上離し、過去の生成と重ならないことを手引きの手順で確認する。
 `plan.tsv`と`conditions.toml`は実行を始めた後は変更せず、条件を変える場合は新しい`run_id`で別の実行にする。
 並列度は生成機のスレッド数とし、期限までの分数は、1ファイル約11分にファイル数を掛けて1.3倍し、ビルドの分として10分を足した値とする（30ファイルで439分）。
@@ -245,7 +257,7 @@ APIが作業機からの停止も受け付けない場合、課金を止める�
 ## 操作の入口
 
 スクリプトは`scripts/vast-selfplay/`に置く。
-[探索の関数形の見直しの統括計画](archived/search-forms.md)のSPSAのスクリプトと共通する処理（機械の作成と待機、SSHの接続先、起動時スクリプトの権限の修正と自己停止、停止と削除の確認）は、先に実装する側が`scripts/vast/common.py`に置き、後から実装する側はそれを使う。
+[探索の関数形の見直しの統括計画](search-forms.md)のSPSAのスクリプトと共通する処理（機械の作成と待機、SSHの接続先、起動時スクリプトの権限の修正と自己停止、停止と削除の確認）は、先に実装する側が`scripts/vast/common.py`に置き、後から実装する側はそれを使う。
 
 | 操作 | 内容 |
 |---|---|
@@ -316,4 +328,4 @@ vast.aiの資料と出品は2026年10月17日に参照した。価格と出品�
 - [Finding & Renting](https://docs.vast.ai/guides/instances/choosing/find-and-rent)と[Verification Stages](https://docs.vast.ai/host/verification-stages)は、検証済み、未検証、および検証取り消しの区別の根拠である。
 - [PassMarkのEPYC 9B14とEPYC 9654の比較](https://www.cpubenchmark.net/compare/5763vs5088/AMD-EPYC-9B14-vs-AMD-EPYC-9654)と[PassMarkのXeon Platinum 8581CとEPYC 9R45の比較](https://www.cpubenchmark.net/compare/6592vs6952/Intel-Xeon-Platinum-8581C-vs-AMD-EPYC-9R45)は、1スレッド性能の比の根拠である。公開ベンチマークは探索の負荷を直接測るものではないので、フェーズ0の実測で置き換える。
 - [EC2の価格表](https://aws.amazon.com/ec2/pricing/on-demand/)と[オンデマンドのvCPU上限](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/ec2-on-demand-instances.html)は、比較に挙げたAWSの費用と利用枠の根拠である。
-- [教師生成の手引き](../guides/pst-training.md)、[生成コミットを固定する教訓](../lessons/pin-generation-binary-to-worktree.md)、[シードの教訓](../lessons/derive-seed-adjacent-collision.md)、および[テストの手引き](../guides/testing-minase-rules.md)は、本リポジトリ内での作業規則を定める。
+- [教師生成の手引き](../../guides/pst-training.md)、[生成コミットを固定する教訓](../../lessons/pin-generation-binary-to-worktree.md)、[シードの教訓](../../lessons/derive-seed-adjacent-collision.md)、および[テストの手引き](../../guides/testing-minase-rules.md)は、本リポジトリ内での作業規則を定める。
