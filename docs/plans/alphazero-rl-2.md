@@ -17,10 +17,11 @@
 
 起案。2026年11月9日に起案し、2026年11月13日に、着手の前の点検の結果を受けた利用者の決定で構成を改めた。まだ着手していない。
 本書のサイクル1は、同じ日に起案した3本の設計書の完了を前提とする。
-[対局用MCTSの規則コードへの対応](mcts-rule-codes.md)、[強さを測る固定の相手](mcts-fixed-opponents.md)、および[固定の検証用データ](zero-validation-games.md)である。
+[対局用MCTSの規則コードへの対応](archived/mcts-rule-codes.md)、[強さを測る固定の相手](mcts-fixed-opponents.md)、および[固定の検証用データ](zero-validation-games.md)である。
+このうち、対局用MCTSの規則コードへの対応は、2026年11月13日に完了した。
 以前からの前提である[準備の設計書](archived/alphazero-rl-2-prep.md)、[複数GPU化の設計書](archived/alphazero-multi-gpu.md)、および[推論の転送の削減の設計書](archived/alphazero-inference-transfer.md)は、すべて完了している。
-いま詰まっている点は、前提の3本の設計書が未着手であることである。
-次の一手は、利用者の承認を得たうえで、前提の3本の設計書を進め、並行して本書のフェーズ1を始めることである。
+いま詰まっている点は、前提の残る2本の設計書が未着手であることである。
+次の一手は、利用者の承認を得たうえで、前提の残る2本の設計書を進め、並行して本書のフェーズ1を始めることである。
 借りている機械はなく、Google Colab（以下、Colab）の計算単位（CU）の残高は、2026年11月13日の時点で247.72 CUである。
 
 ## 目的
@@ -83,7 +84,7 @@ AlphaZero（19ブロック256チャネル）とAobaZero（20ブロック256チ�
 標準レシピの各値の根拠は、深層強化学習を回す手引きの「標準レシピの設定と根拠」の節が挙げるADRにある。
 初期ネットは、NAS（ネットワーク接続の記憶装置）の`cycles-rl2/cycle-0000/`にある（`model.onnx`のSHA-256は`7a9f3ec7…`、[記録](../measurements/alphazero-inference-transfer/alphazero-inference-transfer-workstation.md)の「初期ネットの書き出し直し」）。
 サイクル1は、次の3本の設計書の完了を前提とする。
-[対局用MCTSの規則コードへの対応](mcts-rule-codes.md)は、MCTSがHaChuの規則で探索できるようにする。
+[対局用MCTSの規則コードへの対応](archived/mcts-rule-codes.md)は、MCTSがHaChuの規則で探索できるようにするもので、完了している。
 [強さを測る固定の相手](mcts-fixed-opponents.md)は、HaChuと固定したαβ探索との対局の条件を定め、1回目の学習のネットで基準を測り、対局のスクリプトを用意する。
 [固定の検証用データ](zero-validation-games.md)は、lishogiの人間同士の棋譜から検証用データを作り、診断の道具を対応させる。
 本書のフェーズ1は、この3本と並行して進められる。
@@ -425,7 +426,7 @@ RLを終えるときは、借りた機械の終了手順をとり、統括計画
 ## 参考資料
 
 - Y. Demura and T. Kaneko, "Initial state diversification for efficient AlphaZero-style training", ICGA Journal 46(2), 40–66, 2024, [doi:10.3233/ICG-240255](https://doi.org/10.3233/ICG-240255)：総対局数の60%での切り替え（4節）と、千日手で終わった対局の除外（付録B.1）。
-- [対局用MCTSの規則コードへの対応の設計書](mcts-rule-codes.md)、[強さを測る固定の相手の設計書](mcts-fixed-opponents.md)、および[固定の検証用データの設計書](zero-validation-games.md)：本書が前提とする3本の設計書。
+- [対局用MCTSの規則コードへの対応の設計書](archived/mcts-rule-codes.md)、[強さを測る固定の相手の設計書](mcts-fixed-opponents.md)、および[固定の検証用データの設計書](zero-validation-games.md)：本書が前提とする3本の設計書。
 - [準備の設計書](archived/alphazero-rl-2-prep.md)：初期ネット、組み替えた初期配置の生成、および本書が使う道具の変更。
 - [CLIからUSIへ移した設計書](archived/cli-to-usi.md)：定例の測定のスクリプトが使っていた起動引数とサブコマンドを削除し、USIのオプション`NnModel`とコマンド`nn-eval`へ移した変更。
 - [1回目の実行の設計書](archived/alphazero-rl.md)：サイクル1〜32の経過と、本書が引き継いだ費用と段階の規則の元の記述。

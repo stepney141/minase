@@ -1,0 +1,107 @@
+[
+ {
+  "position": "sfen lfcsgekgscfl/a1b1txot1b1a/mvrhdqndhrvm/pppppppppppp/3i4i3/12/12/3I4I3/PPPPPPPPPPPP/MVRHDNQDHRVM/A1B1TOXT1B1A/LFCSGKEGSCFL b - 1",
+  "bestmove": "bestmove 2j2k ponder 3a4b",
+  "score": "cp 7",
+  "nodes": "800",
+  "pv": "2j2k 3a4b 8j9k 8c9b 7j5h 6c7e 5h3h"
+ },
+ {
+  "position": "sfen lfcsgekgsc1l/a1b1txot1bfa/mvrhd1d4r/1p1p1p2+INpp/p1pi2pp4/4p1n5/9P2/3IP2P4/PPPP1PP1POPP/MVR1D2D1RVM/A1B1T1XT1B1A/LFCSGKEGSCFL b - 1",
+  "bestmove": "bestmove 3l4k ponder 6f4g",
+  "score": "cp 269",
+  "nodes": "800",
+  "pv": "3l4k 6f4g 4d4c 1c4c 3d4c3d 9c3i+ 3j3i 4g3i 2j2k 10a9b 10l9k 6b4b"
+ },
+ {
+  "position": "sfen lfcsgekg1c1l/a1b1txo2s1a/mvrh1d6/1p1p1p2+IN+Op/p2i2ppB3/2p1p1n5/9P2/3IP2P4/PPPP1PP1P1PP/MVR1D2D1RVM/A3T1XT1B1A/LFCSGKEGSCFL b - 1",
+  "bestmove": "bestmove 3l4k ponder 6f4g",
+  "score": "cp 2718",
+  "nodes": "800",
+  "pv": "3l4k 6f4g 10l9k 9c3i+ 4d5c 7c5c"
+ },
+ {
+  "position": "sfen 1q1b2ko3l/1d1h1ett1b1a/1dm7r1/1+g1psn1xpmv1/2pisghcip2/3+p5fpp/6N5/2P3PH4/4R2TMV2/3T1DBDG3/2H2OXS3A/Q2SGKE1FC1L b - 1",
+  "bestmove": "bestmove 12l12e ponder 11b12b",
+  "score": "cp -419",
+  "nodes": "800",
+  "pv": "12l12e 11b12b 12e12b 11a12b 9l8k 10c6c 7k9k 6e12k+ 5h4g 3f4g 1k1f 1b1f 1l1f"
+ },
+ {
+  "position": "sfen 3+s1ok5/5ett4/12/3ps1x+bpm1+r/3i1g1cip+p1/4+b+pP5/4n2N4/7E4/12/12/4S+VD5/5KS1FC2 w - 1",
+  "bestmove": "bestmove 8g8i ponder 4l5k",
+  "score": "cp 3344",
+  "nodes": "800",
+  "pv": "8g8i 4l5k 1d1g 5g3h 7f6f 3h1g"
+ },
+ {
+  "position": "sfen 2q1gekog3/4tddtsb2/fvrbs3h3/2mp1c1xp1v1/1ppip1ppi2m/5p6/3I5p2/1P2P1PPI3/1MPP4PN2/2VRDQD1+c3/2BHTOXR4/1FCSGKEGS1n1 b - 1",
+  "bestmove": "bestmove 6j4j ponder 2d2c",
+  "score": "cp -57",
+  "nodes": "800",
+  "pv": "6j4j 2d2c 3i3g 2l3l 4l3k 1e1d 3g3e 6b5c 3e4d4e 5d6d 4j3j 6d6c 4e3e"
+ },
+ {
+  "position": "sfen 4gekog3/5d1ts3/1v1t8/2mp1c2p3/Xf1ipsppmx2/1pp9/3I8/1P2PpPN4/1MPP8/2V1OGHE3+d/R3T7/1FCSGK2S1+v+r b - 1",
+  "bestmove": "bestmove 5h6i ponder 7h7i+",
+  "score": "cp -527",
+  "nodes": "800",
+  "pv": "5h6i 7h7i+ 6i7i6i 3e3f 6i5g 1j5j 6j5j 2l4j 5j4j 1l4l 4j6l 4l6l 7l6l 7b6c 5g3f 11c12c 3f4e4f 12c12e 12k12e 11e12d"
+ },
+ {
+  "position": "sfen 1hcs1ek3+P1/1f2gxgq4/m1rd1t2ton1/1v1pp3p1s1/2p3N5/1p3p2X3/3I4H3/1PP1PP2IQ2/L2P4P2+L/VC4D3V1/2F1TO1TC3/3SGKEGS1F1 b - 1",
+  "bestmove": "bestmove 4g5f ponder 5b5f",
+  "score": "cp 2252",
+  "nodes": "800",
+  "pv": "4g5f 5b5f 6e5f6e 3c5c 2j2d+ 2c2d2c"
+ },
+ {
+  "position": "sfen 2cs1keh4/1f4g3o1/m2dtg4+H1/1v1pp7/11O/1pp9/3I1pQ4+V/1PPPPP2I3/L7P3/VC4+L5/2F1TEGT1F2/3SGK2S3 w - 1",
+  "bestmove": "bestmove 5a3c ponder 2c2b2a",
+  "score": "cp -3770",
+  "nodes": "800",
+  "pv": "5a3c 2c2b2a 9a8b 1e1c+ 3c4b"
+ },
+ {
+  "position": "sfen l1c1gekgsc1l/a1bst2t1b1a/1vr1dq1dhrv1/mf1p1poxp1fm/pppih1ppippp/4pn6/1P1N8/P1PIPPPPIPPP/MF1PX1C1P3/2RHD1Q1HRVM/ACB1TODT1B1A/LV1SGKEGS1FL w - 1",
+  "bestmove": "bestmove 10a11b ponder 4j4k",
+  "score": "cp 130",
+  "nodes": "800",
+  "pv": "10a11b 4j4k 8e7e 8l9k 6d6b 3j5j 8f8g 9g7i"
+ },
+ {
+  "position": "sfen l1c1gekgsc1l/3st2t1b1a/1vr1dq1dhrv1/a2p1poxp1fm/1p2h1ppippp/p4n6/1PFbf7/PN3PPPIPPP/MC1P1OC1P3/2RHD1Q1HRVM/A1B1T1DT1B1A/LV1SGKEGS1FL w - 1",
+  "bestmove": "bestmove 9g7i+ ponder 6j7i",
+  "score": "cp 250",
+  "nodes": "800",
+  "pv": "9g7i+ 6j7i 8e8d 11h9g 8d7e 9g8g9f 8c8j+ 7i8j"
+ },
+ {
+  "position": "sfen l3g1k4l/a2stegt3a/m7d2m/p2+I+D+P+S4p/1F9h/10s1/P8f2/3P1PP2nc1/2R8P/4CTG1TF1A/A5XE1C2/L4K2Q2L w - 1",
+  "bestmove": "bestmove 2h2i+ ponder 3j2i",
+  "score": "cp -65",
+  "nodes": "800",
+  "pv": "2h2i+ 3j2i 3h5h 7l6l 3g4h 7d8c 9b8c 9d8c 12c8c 8d8e"
+ },
+ {
+  "position": "sfen l5k4l/a2sge1t3a/12/p4+P5p/3+f3m2E1/1+I1+F5T2/P2C2P5/3P8/11P/11A/A3K7/L10L w - 1",
+  "bestmove": "bestmove 9e6h ponder 8k7l",
+  "score": "cp 197",
+  "nodes": "800",
+  "pv": "9e6h 8k7l 9b8a 7d6d 6a7a 9f5b 5e8e 6d6c 7b6c 5b6c 8a7b 6c8e"
+ },
+ {
+  "position": "sfen +l+d4k4v/4exqhob2/1+rr5mc2/3tt5f1/5ppNp1p1/1m7p2/5P4P1/4O2Pi3/2+a3P3M1/3T2GDR2F/2S2GXEHV2/2Q3K1SC2 w - 1",
+  "bestmove": "bestmove 6b5c ponder 5e4e",
+  "score": "cp 422",
+  "nodes": "800",
+  "pv": "6b5c 5e4e 5b6c 10l8j 6c4e 2i1i 1a1i+ 1j1i 11f12f 9j10i 4e10k+ 8h10h 10k9l"
+ },
+ {
+  "position": "sfen 4+l1k2+b1v/2+d3e5/6+m5/2+r9/8pNp1/5p3p2/6p3P1/2o9/5G6/6E4F/8+R1VC/6QKS3 b - 1",
+  "bestmove": "bestmove 6j5k ponder 3a5c",
+  "score": "cp -99",
+  "nodes": "800",
+  "pv": "6j5k 3a5c 3e3f 8a12e 6l6k 12e6k 5k6k 10h10j+ 7i7j"
+ }
+]

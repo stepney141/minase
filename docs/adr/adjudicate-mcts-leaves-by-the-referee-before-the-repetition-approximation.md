@@ -2,7 +2,7 @@
 
 ## ステータス
 
-承認済み。決定日は2026年10月28日。
+承認済み。決定日は2026年10月28日。MCTSが成り規則P0（P5なし）だけを受け付けるという記述は、2026年11月13日の[全部の規則コードで探索する決定](search-all-rule-codes-in-mcts-without-encoding-deferred-promotion.md)が改めた。
 
 ## コンテキスト
 

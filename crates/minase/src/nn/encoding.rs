@@ -1,7 +1,7 @@
 //! 手番側から見た局面を159面のネット入力へ符号化する。
 
 use super::control::{CONTROL_PLANES, encode_control};
-use super::{NnError, relative_square};
+use super::relative_square;
 use crate::eval::features::{PIECE_STATE_COUNT, piece_state};
 use minase_core::{BOARD_SQUARE_COUNT, Position};
 
@@ -21,20 +21,16 @@ pub const INPUT_SIZE: usize = INPUT_PLANES * BOARD_SQUARE_COUNT;
 /// 面95〜158は[`encode_control`]が返す駒種ごとの疑似利きと利き数の面である。
 /// 全要素を0にした後に該当箇所へ1を置くため、値は0か1だけである。
 ///
-/// 規則セット`JCSA`（P0でP5なし）では、この159面で次の合法手が決まる。
-/// 過去の局面の履歴と反復の回数は含めない。
-///
-/// # Errors
-/// 成り権の保留がある局面は[`NnError::PromotionDeferred`]を返す。
-/// 保留はP1・P2・P5で生じ得るが、この159面では表せない。エラー時の`out`の内容は未規定である。
+/// この159面だけで次の合法手が決まるのは、成り権の保留を追跡する規則（chu-shogi.md第30条のP1、P2、P5）も、
+/// 既出の局面の再現を禁じる反復の規則（第31条のR2、R3）も含まない規則セットに限る。
+/// 成り権の保留（[`Position::promotion_deferred`]）、過去の局面の履歴、および反復の回数は符号化しない。
+/// 保留だけが異なる2つの局面は同じ159面になるので、合法手は審判層から得て、ネットの出力からは決めない。
+/// 理由は`docs/adr/search-all-rule-codes-in-mcts-without-encoding-deferred-promotion.md`にある。
 ///
 /// # Panics
 /// `out.len()`が[`INPUT_SIZE`]でなければパニックする。
-pub fn encode(position: &Position, out: &mut [u8]) -> Result<(), NnError> {
+pub fn encode(position: &Position, out: &mut [u8]) {
     assert_eq!(out.len(), INPUT_SIZE);
-    if !position.promotion_deferred().is_empty() {
-        return Err(NnError::PromotionDeferred);
-    }
     out.fill(0);
     let side = position.side_to_move();
     for square in position.occupied() {
@@ -49,14 +45,12 @@ pub fn encode(position: &Position, out: &mut [u8]) -> Result<(), NnError> {
         out[94 * BOARD_SQUARE_COUNT + relative_square(square, side)] = 1;
     }
     encode_control(position, &mut out[95 * BOARD_SQUARE_COUNT..]);
-    Ok(())
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::nn::test_support::{random_positions, rotate};
-    use minase_core::rules::PromotionRule;
     use minase_core::test_util::{position, sq};
     use minase_core::{Color, Move, MoveGenerator, PieceCode, PieceKind, PositionBuilder, Rules};
 
@@ -79,7 +73,7 @@ mod tests {
         let mut position = builder.finish().unwrap();
         position.set_lion_capture(Some(sq(5, 7))).unwrap();
         let mut input = vec![7; INPUT_SIZE];
-        encode(&position, &mut input).unwrap();
+        encode(&position, &mut input);
         let active: Vec<_> = input[..95 * BOARD_SQUARE_COUNT]
             .iter()
             .enumerate()
@@ -90,7 +84,7 @@ mod tests {
             vec![(29 * 144 + 105, 1), (64 * 144 + 38, 1), (94 * 144 + 54, 1)]
         );
         assert!(input.iter().all(|&value| value == 0 || value == 1));
-        encode(&Position::empty(Color::Black), &mut input).unwrap();
+        encode(&Position::empty(Color::Black), &mut input);
         assert!(input.iter().all(|&value| value == 0));
     }
 
@@ -129,26 +123,25 @@ mod tests {
             // 先獅子の自然発生に依存せず、その面の回転も各盤面で確かめる。
             let trigger = position.pieces_of(Color::Black).into_iter().next();
             position.set_lion_capture(trigger).unwrap();
-            encode(&position, &mut white_input).unwrap();
-            encode(&rotate_and_swap_colors(&position), &mut black_input).unwrap();
+            encode(&position, &mut white_input);
+            encode(&rotate_and_swap_colors(&position), &mut black_input);
             assert_eq!(white_input, black_input);
             checked_positions += 1;
         }
         assert!(checked_positions >= 100);
     }
 
-    // [`encode`]の契約: 159面で表せない成り権の保留は、規則によらず専用エラーで拒む。
+    // [`encode`]の契約: 第30条P1・P2・P5の保留だけが違う局面は同じ159面になる。
     #[test]
-    fn deferred_promotion_is_rejected() {
-        for (promotion, p5) in [
-            (PromotionRule::P1, false),
-            (PromotionRule::P2, false),
-            (PromotionRule::P0, true),
-        ] {
-            let mut rules = Rules::JCSA.moves;
-            rules.promotion = promotion;
-            rules.p5 = p5;
-            let generator = MoveGenerator::new(rules);
+    fn deferred_promotion_is_not_encoded() {
+        let without_deferred = position(Color::White, &[(sq(4, 8), Color::Black, PieceKind::Pawn)]);
+        assert!(without_deferred.promotion_deferred().is_empty());
+        let mut expected = vec![0; INPUT_SIZE];
+        encode(&without_deferred, &mut expected);
+        for codes in ["L0,P1,R1,E0", "L0,P2,R1,E0", "L0,P0,P5,R1,E0"] {
+            let rules =
+                Rules::from_codes(&minase_core::rules::parse_rule_set(codes).unwrap()).unwrap();
+            let generator = MoveGenerator::new(rules.moves);
             let mut position = position(Color::Black, &[(sq(4, 7), Color::Black, PieceKind::Pawn)]);
             position
                 .try_make_move(
@@ -162,10 +155,10 @@ mod tests {
                 )
                 .unwrap();
             assert!(!position.promotion_deferred().is_empty());
-            assert!(matches!(
-                encode(&position, &mut vec![0; INPUT_SIZE]),
-                Err(NnError::PromotionDeferred)
-            ));
+            let mut input = vec![0; INPUT_SIZE];
+            encode(&position, &mut input);
+            assert_eq!(input, expected);
+            assert!(input.contains(&1));
         }
     }
 }

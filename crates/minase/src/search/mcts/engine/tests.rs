@@ -5,7 +5,7 @@ use crate::search::MATE;
 use crate::search::mcts::test_support::*;
 use crate::search::mcts::tree::{Edge, Node};
 use minase_core::test_util::{position, sq};
-use minase_core::{Color, Game, GameStatus, PieceKind, PromotionRule, RepetitionRule};
+use minase_core::{Color, Game, GameStatus, PieceKind, RepetitionRule, Rules};
 use std::error::Error as _;
 use std::sync::Mutex;
 use std::sync::mpsc::{self, Receiver, Sender};
@@ -872,7 +872,7 @@ fn finite_time_limits_use_the_shared_clock_budget() {
 }
 
 #[test]
-fn mcts_start_rejects_missing_evaluator_depth_and_deferred_promotion_rules() {
+fn mcts_start_rejects_missing_evaluator_and_depth() {
     let no_evaluator = Engine::with_evaluator(None, Config::new(SCALE));
     let failure = match Searcher::Mcts(no_evaluator).start(initial(), nodes(1), 1, false) {
         Err(failure) => failure,
@@ -894,25 +894,27 @@ fn mcts_start_rejects_missing_evaluator_depth_and_deferred_promotion_rules() {
         StartError::Mcts(Error::DepthLimitUnsupported)
     ));
     assert!(matches!(failure.searcher, Searcher::Mcts(_)));
-    for (promotion, p5) in [
-        (PromotionRule::P1, false),
-        (PromotionRule::P2, false),
-        (PromotionRule::P0, true),
-    ] {
-        let mut input = initial();
+}
+
+// 探索開始の契約: 第30条P1・P2・P5を採用した規則でも根の候補手から着手を返す。
+#[test]
+fn mcts_start_accepts_rules_that_track_deferred_promotion() {
+    for codes in ["L0,P1,R1,E2", "L0,P2,R1,E2", "L0,P0,P5,R1,E2"] {
+        let rules = Rules::from_codes(&minase_core::rules::parse_rule_set(codes).unwrap()).unwrap();
+        let input =
+            SearchSnapshot::from_game(&Game::from_position(rules, initial().position().clone()))
+                .unwrap();
         assert!(input.position().promotion_deferred().is_empty());
-        input.rules.promotion = promotion;
-        input.rules.p5 = p5;
-        let failure =
-            match Searcher::Mcts(engine(UniformEvaluator)).start(input, nodes(1), 1, false) {
-                Err(failure) => failure,
-                Ok(_) => panic!(),
-            };
-        assert!(matches!(
-            failure.error,
-            StartError::Mcts(Error::PromotionDeferred)
-        ));
-        assert!(matches!(failure.searcher, Searcher::Mcts(_)));
+        let candidates = input.root_moves().to_vec();
+        let (_, event) = finish(
+            engine(UniformEvaluator)
+                .start(input, nodes(1), 1, false)
+                .unwrap(),
+        );
+        let SearchEvent::Finished { best_move, .. } = event else {
+            panic!("the search must finish")
+        };
+        assert!(candidates.contains(&best_move));
     }
 }
 
@@ -1422,27 +1424,32 @@ fn diagnostic_inference_does_not_change_search_visits_or_fixed_node_result() {
 }
 
 #[test]
-fn inference_boundary_rejects_unencodable_positions_before_calling_the_evaluator() {
+fn inference_boundary_passes_deferred_promotion_positions_to_the_evaluator() {
+    let rules =
+        Rules::from_codes(&minase_core::rules::parse_rule_set("L0,P1,R1,E0").unwrap()).unwrap();
     let setup = minase_core::notation::sfen::parse_extended_sfen(
         "k11/12/4P7/12/9g2/5+o3n2/12/9R2/12/12/12/11K b 7f 41 8c",
-        minase_core::MoveRules {
-            promotion: PromotionRule::P1,
-            ..minase_core::Rules::JCSA.moves
-        },
+        rules.moves,
     )
     .unwrap();
-    let mut searcher = Searcher::Mcts(engine(PanicEvaluator));
-    assert!(matches!(
-        searcher.evaluate(
+    let game = Game::from_position(rules, setup.restore_position().unwrap());
+    assert!(!game.position().promotion_deferred().is_empty());
+    let moves = game.legal_moves();
+    let mut searcher = Searcher::Mcts(engine(UniformEvaluator));
+    let mut logits = Vec::new();
+    let mut values = Vec::new();
+    searcher
+        .evaluate(
             &[Query {
-                position: setup.position(),
-                moves: &[]
+                position: game.position(),
+                moves: &moves,
             }],
-            &mut Vec::new(),
-            &mut Vec::new()
-        ),
-        Err(EvaluationError::Input(NnError::PromotionDeferred))
-    ));
+            &mut logits,
+            &mut values,
+        )
+        .unwrap();
+    assert_eq!(logits.len(), moves.len());
+    assert_eq!(values.len(), 1);
 }
 
 #[test]

@@ -64,7 +64,7 @@
 教師データの形式MNSDは、[教師データの形式のADR](../adr/record-teacher-data-as-chained-games.md)が定め、学習器はPythonの拡張モジュール`mnsd_reader`で読む（[読み込みのADR](../adr/read-mnsd-into-the-zero-trainer-and-build-control-planes-and-replay-targets-in-a-rust-extension.md)）。
 lishogiの棋譜を規則セット`lishogi`で再生して結果を照合する土台は、既存の試験`crates/minase-core/tests/lishogi_replay.rs`にある。
 基準の診断には、ネットワーク接続の記憶装置（NAS）に残っている、強化学習の1回目のチェックポイントを使う。
-本書は、[対局用MCTSの規則コードへの対応](mcts-rule-codes.md)と[強さを測る固定の相手](mcts-fixed-opponents.md)の2本の設計書と独立であり、どちらとも並行して進められる。
+本書は、[対局用MCTSの規則コードへの対応](archived/mcts-rule-codes.md)と[強さを測る固定の相手](mcts-fixed-opponents.md)の2本の設計書と独立であり、どちらとも並行して進められる。
 強化学習の2回目の実行は、本書の完了を前提とする。
 
 ## 設計判断

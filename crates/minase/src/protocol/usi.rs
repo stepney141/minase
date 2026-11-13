@@ -1369,7 +1369,7 @@ impl UsiProtocol {
     /// 未知コマンドとUSIの既知の無応答コマンドは、本モジュールのコマンド表に従う。
     /// 理由は`docs/adr/show-position-evaluation-and-tt-as-usi-commands.md`にある。
     /// MCTSの`eval`は現局の合法手を準備済みの推論器で評価する。
-    /// 未準備と入力の不適合は1行で拒否し、推論の失敗はフラッシュしてセッションを終了する。
+    /// 未準備は1行で拒否し、推論の失敗はフラッシュしてセッションを終了する。
     fn handle_diagnostic(&mut self, command: &str, output: &mut dyn Write) -> io::Result<()> {
         if command == "tt" && matches!(self.searcher, Some(Searcher::Mcts(_))) {
             return write_error(output, "tt requires --search alphabeta");
@@ -1425,17 +1425,6 @@ impl UsiProtocol {
     ) -> io::Result<()> {
         let position = game.position();
         let moves = game.legal_moves();
-        let rules = game.rules();
-        if let Searcher::Mcts(engine) = searcher
-            && let Err(error) = engine.validate_evaluation(rules.moves)
-        {
-            return match error {
-                search::mcts::Error::MissingEvaluator => {
-                    write_error(output, "eval requires isready")
-                }
-                error => write_error(output, &error.to_string()),
-            };
-        }
         let mut logits = Vec::new();
         let mut values = Vec::new();
         if let Err(error) = searcher.evaluate(

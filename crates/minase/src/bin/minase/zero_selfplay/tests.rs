@@ -529,7 +529,7 @@ impl Evaluator for FailingEvaluator {
                 logits.pop();
             }
             Failure::Nan => values[0] = f32::NAN,
-            Failure::Inference => return Err(NnError::PromotionDeferred),
+            Failure::Inference => return Err(NnError::MissingOutput { name: "value" }),
             Failure::Panic => panic!("inference panic fixture"),
         }
         Ok(())
@@ -585,7 +585,7 @@ fn inference_failures_keep_typed_causes_join_all_workers_and_allow_resume() {
                 assert!(error.source().unwrap().is::<NnError>());
                 assert!(matches!(
                     error,
-                    Error::Inference(NnError::PromotionDeferred)
+                    Error::Inference(NnError::MissingOutput { name: "value" })
                 ));
             }
             Failure::Panic => assert!(

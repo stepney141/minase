@@ -4,14 +4,12 @@ use std::io;
 use std::num::ParseIntError;
 use std::path::PathBuf;
 
+use super::POLICY_SIZE;
 use super::tensorrt_cache::GpuQueryError;
-use super::{INPUT_PLANES, POLICY_SIZE};
 
-/// ネットの読み込み、推論の準備、入力の符号化、または評価に失敗した理由。
+/// ネットの読み込み、推論の準備、または評価に失敗した理由。
 #[derive(Debug)]
 pub enum NnError {
-    /// 159面の入力では表せない成り権の保留がある。
-    PromotionDeferred,
     /// `ORT_DYLIB_PATH`が未設定または空である。
     RuntimeLibraryPathUnset,
     /// ONNX Runtimeのライブラリのパスを解決または検査できなかった。
@@ -160,12 +158,6 @@ pub enum NnError {
 impl fmt::Display for NnError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::PromotionDeferred => {
-                write!(
-                    formatter,
-                    "deferred promotion rights cannot be encoded in {INPUT_PLANES} planes"
-                )
-            }
             Self::RuntimeLibraryPathUnset => {
                 formatter.write_str("ORT_DYLIB_PATH is unset or empty")
             }

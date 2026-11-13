@@ -61,7 +61,7 @@ fn shuffled_start_replays_boards_plies_legal_moves_and_control_planes() {
             records::encode_board(expected.position()).unwrap()
         );
         let mut input = vec![0; INPUT_SIZE];
-        encode(expected.position(), &mut input).unwrap();
+        encode(expected.position(), &mut input);
         assert_eq!(
             planes[index * CONTROL_SIZE..(index + 1) * CONTROL_SIZE],
             input[95 * 144..]
@@ -104,7 +104,7 @@ fn control_planes_match_inference_for_every_retained_record() {
             {
                 continue;
             }
-            encode(position, &mut input).unwrap();
+            encode(position, &mut input);
             assert_eq!(
                 actual[index * CONTROL_SIZE..(index + 1) * CONTROL_SIZE],
                 input[95 * 144..]
@@ -170,7 +170,7 @@ fn control_planes_decode_promoted_pieces_and_both_sides_from_records() {
     for planes in actual.as_chunks::<CONTROL_SIZE>().0 {
         let game = reader.read_game().unwrap().unwrap();
         let mut input = vec![0; INPUT_SIZE];
-        encode(&game.positions()[0], &mut input).unwrap();
+        encode(&game.positions()[0], &mut input);
         assert_eq!(
             planes.as_slice(),
             input[95 * 144..]

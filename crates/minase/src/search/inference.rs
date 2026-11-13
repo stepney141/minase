@@ -10,8 +10,6 @@ pub enum EvaluationError {
     UnsupportedSearch,
     /// `prepare`が成功した後に推論器が破棄されたか、まだ準備していない。
     NotPrepared,
-    /// 入力の局面をネットへ符号化できない。
-    Input(NnError),
     /// 推論器の実行または出力の検査に失敗した。
     Inference(NnError),
 }
@@ -21,7 +19,7 @@ impl fmt::Display for EvaluationError {
         match self {
             Self::UnsupportedSearch => f.write_str("network evaluation requires --search mcts"),
             Self::NotPrepared => f.write_str("eval requires isready"),
-            Self::Input(error) | Self::Inference(error) => error.fmt(f),
+            Self::Inference(error) => error.fmt(f),
         }
     }
 }
@@ -29,7 +27,7 @@ impl fmt::Display for EvaluationError {
 impl std::error::Error for EvaluationError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
-            Self::Input(error) | Self::Inference(error) => Some(error),
+            Self::Inference(error) => Some(error),
             Self::UnsupportedSearch | Self::NotPrepared => None,
         }
     }
