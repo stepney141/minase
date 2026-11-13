@@ -43,7 +43,7 @@ GPUが速くても、1手あたり32〜64回のシミュレーションの探索
 
 ## 依存関係
 
-vast.aiの出品の選定条件は、[vast.aiでの教師生成](../vast-selfplay.md)と同じく、vast.aiの中継を通らずにSSHで接続できることとする。
+vast.aiの出品の選定条件は、[vast.aiでの教師生成](vast-selfplay.md)と同じく、vast.aiの中継を通らずにSSHで接続できることとする。
 生成のバイナリは、[長時間の生成は生成コミットを固定したworktreeで実行する](../../lessons/pin-generation-binary-to-worktree.md)の規則を満たすように、固定したコミットから作る。
 実装を担うAIエージェントのcodexには、[GPUを要する学習はcodexへ委任しない](../../lessons/run-gpu-training-outside-codex-sandbox.md)に従い、導入スクリプトと測定のコードだけを委任し、GPUを使う測定は委任元のエージェントが直接行う。
 1シミュレーションあたりのCPUの処理時間の実測で使う1手の探索回数と探索の手順は、[探索方式の共存とMCTS](alphazero-mcts.md)の「RLの探索はGumbel AlphaZeroにする」の節が定める。

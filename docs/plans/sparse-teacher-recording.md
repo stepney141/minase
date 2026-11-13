@@ -58,8 +58,8 @@
 判定1が「不支持」または「判定不能」なら、本書は着手せず、その結論を見て扱いを決める。
 
 生成は計算量が大きく、基準の教師の30ファイルの生成には作業機（Intel Core Ultra 7 265KF、20スレッド）で約35時間かかる。
-候補の教師も同じ計算時間を使うので、[vast.aiでの教師生成](vast-selfplay.md)で生成機の手順が整っていればそちらで行い、整っていなければ作業機で行う。
-どちらで生成するかは、着手時に利用者が決める。
+候補の教師も同じ計算時間を使うので、借りた計算機と作業機のどちらで生成するかは、着手時に利用者が決める。
+借りた計算機での生成の手順を作る予定だった[vast.aiでの教師生成](archived/vast-selfplay.md)は2026年11月14日に中断したので、借りた計算機で生成する場合の手順は、着手の前に本書を改めるときに定める。
 
 学習器は現行のmasterの`minase-trainer`であり、変更しない。
 段階ゲートはryzen0（Threadripper 2990WX、物理32コア）で行い、runnerが物理コア数を誤判定するので同時対局数を`--concurrency 30`と明示する。
@@ -169,7 +169,7 @@ masterに対し、`crates/minase/nets/nnue.bin`を候補のネットへ差し替
 - [NNUEの検証損失が早く頭打ちになる原因の切り分け](archived/nnue-early-best-epoch.md)
 - [対局単位と局面単位の間引きによるNNUEの学習の記録](../measurements/nnue-early-best-epoch/nnue-train-subsample.md)
 - [先読みなしの教師での間引きの比較](nnue-subsample-no-lookahead.md)
-- [vast.aiでの教師生成](vast-selfplay.md)
+- [vast.aiでの教師生成](archived/vast-selfplay.md)
 - [学習率スケジュールの学習の記録（基準の教師の生成条件）](../measurements/nnue-lr-schedule/nnue-lr-schedule-training.md)
 - KataGo（コミット`d91ea855110dae533f0aada947b2b7d78cc8a4e1`）の`cpp/configs/training/selfplay1.cfg`と`cpp/program/play.cpp`
 - David J. Wu, “Accelerating Self-Play Learning in Go,” arXiv:1902.10565

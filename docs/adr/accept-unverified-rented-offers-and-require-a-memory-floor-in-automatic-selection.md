@@ -8,7 +8,7 @@
 
 SPSAは、vast.aiで借りる物理コアの多い計算機（以下、調整機）で実行し、出品はアーキテクチャ、スレッド数、および貸出期限で絞る（[出品と同時対局数のADR](run-one-game-per-physical-core-with-the-default-hash-and-filter-rented-offers-by-architecture-threads-and-duration.md)）。
 同じADRにより、同時対局数は物理コア数とメモリの両方から決まり、メモリの少ない機械では同時対局数が下がる。
-[vast.aiでの教師生成](../plans/vast-selfplay.md)の選定条件は、vast.aiの検証済み（`verified`）であることも求める。
+[vast.aiでの教師生成](../plans/archived/vast-selfplay.md)の選定条件は、vast.aiの検証済み（`verified`）であることも求める。
 `vastai search offers`は、既定では検証済みの出品だけを返す。
 
 [aspiration windowsの形](../plans/archived/aspiration-window-forms.md)のセッションでは、`launch.py`の条件による自動の選択がメモリを条件に含めていなかったので、実メモリが260,000 MB以上の出品だけを手で照会して借りた。
