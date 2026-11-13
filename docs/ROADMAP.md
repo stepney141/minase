@@ -65,7 +65,7 @@
 | AlphaZero型探索の強化学習の実行 | [plans/archived/alphazero-rl.md](plans/archived/alphazero-rl.md) | 中断 | 2026年11月9日 |
 | AlphaZero型探索の強化学習の2回目の実行の準備 | [plans/archived/alphazero-rl-2-prep.md](plans/archived/alphazero-rl-2-prep.md) | 完了（採用） | 2026年11月10日 |
 | AlphaZero型探索の強化学習の2回目の実行 | [plans/alphazero-rl-2.md](plans/alphazero-rl-2.md) | 起案 | |
-| 対局用MCTSを全部の規則コードで探索できるようにする | [plans/mcts-rule-codes.md](plans/mcts-rule-codes.md) | 進行中 | |
+| 対局用MCTSを全部の規則コードで探索できるようにする | [plans/archived/mcts-rule-codes.md](plans/archived/mcts-rule-codes.md) | 完了（採用） | 2026年11月13日 |
 | AlphaZero型探索の強さを測る固定の相手 | [plans/mcts-fixed-opponents.md](plans/mcts-fixed-opponents.md) | 起案 | |
 | AlphaZero型探索のネットを診断する固定の検証用データ | [plans/zero-validation-games.md](plans/zero-validation-games.md) | 起案 | |
 | 対局用MCTSのPUCTの係数と方策の温度のSPSAによる調整 | [plans/mcts-puct-spsa.md](plans/mcts-puct-spsa.md) | 起案 | |
@@ -169,16 +169,16 @@
 サブタスク1〜5は完了し、強化学習の[1回目の実行](plans/archived/alphazero-rl.md)はサイクル32で中断したので、次は2回目の実行で、20ブロック256チャネルのネットをランダムに初期化してやり直す。
 2回目の実行のための初期ネット、複数GPU化、推論の転送の削減、および導入スクリプトは用意が済んでいる（状態表の完了の行）。
 
-2回目の実行は、次の4本の設計書で進める。
-1本目から3本目は、2026年11月13日に、2回目の実行の設計書から、学習の実行と独立に進められる準備を分けて起案したものである。
-1本目は2026年11月13日に着手して進行中であり、残る3本は起案の段階で、利用者の承認を待っている。
+2回目の実行は、次の3本の設計書で進める。
+1本目と2本目は、2026年11月13日に、2回目の実行の設計書から、学習の実行と独立に進められる準備を分けて起案したものである。
+3本とも起案の段階で、利用者の承認を待っている。
+同じ日に分けたもう1本の[対局用MCTSの規則コードへの対応](plans/archived/mcts-rule-codes.md)は完了しており、MCTSは外部エンジンHaChuの既定の規則でも探索できる。
 
 | 順 | 設計書 | 内容 | 前提 |
 |---|---|---|---|
-| 1 | [対局用MCTSの規則コードへの対応](plans/mcts-rule-codes.md) | 成りの保留を追跡する規則P1、P2、およびP5でもMCTSが探索できるようにし、外部エンジンHaChuと対局できるようにする変更 | なし |
-| 2 | [強さを測る固定の相手](plans/mcts-fixed-opponents.md) | HaChuと、コミットを固定したαβ探索との対局の条件の決定と、1回目の学習のネットによる基準の測定 | HaChuとの対局は1の完了の後。αβ探索との基準は前提なし |
-| 3 | [固定の検証用データ](plans/zero-validation-games.md) | lishogiの人間同士の棋譜から作る検証用データと、診断の道具の対応 | なし。1と2と並行できる |
-| 4 | [2回目の実行](plans/alphazero-rl-2.md) | 自己対局の規則の`lishogi`への切り替え、定例の測定のスクリプトの用意、3サイクルの試走、機械の選択、およびサイクルの実行 | 規則の切り替えと試走は前提なし。サイクル1は1、2、および3の完了の後 |
+| 1 | [強さを測る固定の相手](plans/mcts-fixed-opponents.md) | HaChuと、コミットを固定したαβ探索との対局の条件の決定と、1回目の学習のネットによる基準の測定 | なし |
+| 2 | [固定の検証用データ](plans/zero-validation-games.md) | lishogiの人間同士の棋譜から作る検証用データと、診断の道具の対応 | なし。1と並行できる |
+| 3 | [2回目の実行](plans/alphazero-rl-2.md) | 自己対局の規則の`lishogi`への切り替え、定例の測定のスクリプトの用意、3サイクルの試走、機械の選択、およびサイクルの実行 | 規則の切り替えと試走は前提なし。サイクル1は1と2の完了の後 |
 
 次の2件は、2回目の実行と独立に進められる。
 
