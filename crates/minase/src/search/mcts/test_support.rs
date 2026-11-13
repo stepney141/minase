@@ -2,7 +2,8 @@
 
 use minase_core::test_util::{position, sq};
 use minase_core::{
-    Color, ExhaustionRule, Game, Move, MoveGenerator, PieceKind, Position, RepetitionRule, Rules,
+    Color, ExhaustionRule, Game, Move, MoveGenerator, MoveRules, PieceKind, Position,
+    RepetitionRule, Rules,
 };
 
 use super::{Driver, EvaluationRequest};
@@ -93,12 +94,16 @@ pub(super) struct ScriptedEvaluator {
 
 impl ScriptedEvaluator {
     pub(super) fn line(position: &Position, moves: &[Move]) -> Self {
+        Self::line_with_rules(position, moves, Rules::JCSA.moves)
+    }
+
+    pub(super) fn line_with_rules(position: &Position, moves: &[Move], rules: MoveRules) -> Self {
         let mut script = Vec::new();
         let mut position = position.clone();
+        let generator = MoveGenerator::new(rules);
         for &mv in moves {
-            assert!(legal_moves(&position).contains(&mv));
             script.push((position.clone(), mv));
-            position.make_move_unchecked(mv, Rules::JCSA.moves);
+            position.try_make_move(mv, &generator).unwrap();
         }
         Self {
             script,

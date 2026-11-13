@@ -365,7 +365,7 @@ impl Evaluator for OnnxEvaluator {
         }
         let input = &mut self.input[..n * INPUT_SIZE];
         for (query, buffer) in queries.iter().zip(input.as_chunks_mut::<INPUT_SIZE>().0) {
-            encode(query.position, buffer)?;
+            encode(query.position, buffer);
         }
         let tensor = TensorRef::from_array_view(([n, INPUT_PLANES, 12, 12], &*input))?;
         let outputs = if let Some((binding, memory)) = &mut self.output_binding {

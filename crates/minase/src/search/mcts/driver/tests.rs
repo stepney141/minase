@@ -5,7 +5,7 @@ use crate::search::mcts::puct::PuctConfig;
 use crate::search::mcts::test_support::*;
 use crate::search::{MATE, MATE_THRESHOLD, MAX_PLY, REPETITION_WIN, in_repetition_band};
 use minase_core::test_util::{position, sq};
-use minase_core::{Game, GameStatus, PieceKind, RepetitionRule, Rules};
+use minase_core::{Game, GameStatus, PieceKind, PositionBuilder, RepetitionRule, Rules, Square};
 
 const WIN_IN_ONE: NodeState = NodeState::Proven(Proof {
     outcome: Outcome::Win,
@@ -520,6 +520,228 @@ fn prohibition_counts_the_root_once_and_includes_the_child_path() {
             );
         }
     }
+}
+
+fn promotion_game(codes: &str, kind: PieceKind, extra: &[(Square, Color, PieceKind)]) -> Game {
+    let rules = Rules::from_codes(&minase_core::rules::parse_rule_set(codes).unwrap()).unwrap();
+    let mut pieces = vec![
+        (sq(0, 0), Color::Black, PieceKind::King),
+        (sq(11, 11), Color::White, PieceKind::King),
+        (sq(10, 6), Color::White, PieceKind::GoBetween),
+        (sq(5, 7), Color::Black, kind),
+    ];
+    pieces.extend_from_slice(extra);
+    Game::from_position(rules, position(Color::Black, &pieces))
+}
+
+fn promotion_line() -> [Move; 6] {
+    [
+        step(sq(5, 7), sq(5, 8)),
+        step(sq(10, 6), sq(10, 5)),
+        step(sq(5, 8), sq(5, 9)),
+        step(sq(10, 5), sq(10, 6)),
+        step(sq(5, 9), sq(5, 10)),
+        step(sq(10, 6), sq(10, 5)),
+    ]
+}
+
+fn expand_line(game: &Game, line: &[Move]) -> (Driver, Position) {
+    let mut driver = Driver::new(
+        SearchSnapshot::from_game(game).unwrap(),
+        CAPACITY,
+        DrawValue::SelfPlay,
+    )
+    .unwrap();
+    let mut evaluator =
+        ScriptedEvaluator::line_with_rules(game.position(), line, game.rules().moves);
+    for ply in 0..=line.len() {
+        let selected = advance(&mut driver, &mut evaluator).unwrap();
+        assert_eq!(selected, path(&driver, &line[..ply]));
+    }
+    (driver, evaluator.seen.pop().unwrap())
+}
+
+fn assert_promotion_moves(moves: &[Move], mv: Move, unpromoted: bool, promoted: bool) {
+    assert_eq!(moves.contains(&mv), unpromoted, "{mv:?}");
+    let promotion = Move {
+        promote: true,
+        ..mv
+    };
+    assert_eq!(moves.contains(&promotion), promoted, "{promotion:?}");
+}
+
+fn assert_tree_and_root_promotion(
+    game: &Game,
+    line: &[Move],
+    mv: Move,
+    unpromoted: bool,
+    promoted: bool,
+) {
+    let (driver, leaf_position) = expand_line(game, line);
+    let mut replayed = game.clone();
+    for &mv in line {
+        assert_eq!(replayed.play(mv), Ok(GameStatus::Ongoing));
+    }
+    assert_eq!(&leaf_position, replayed.position());
+    let expected = replayed.legal_moves();
+    let node = driver.tree().node(&path(&driver, line)).unwrap();
+    let moves: Vec<_> = node.edges.iter().map(|edge| edge.mv).collect();
+    assert_eq!(moves, expected);
+    assert_promotion_moves(&moves, mv, unpromoted, promoted);
+
+    let mut root = Driver::new(
+        SearchSnapshot::from_game(&replayed).unwrap(),
+        CAPACITY,
+        DrawValue::SelfPlay,
+    )
+    .unwrap();
+    let Step::Evaluate(request) = root
+        .select_leaf(SelectionRule::Puct(&PuctConfig::default()))
+        .unwrap()
+    else {
+        panic!("the root requires evaluation")
+    };
+    assert_eq!(request.query().moves, expected);
+    assert_promotion_moves(request.query().moves, mv, unpromoted, promoted);
+}
+
+// 第30条P1: 回復には、不成を選んだ駒自身の追加の1回の移動が要る。
+#[test]
+fn article_30_p1_tree_and_root_restore_promotion_after_the_piece_moves_once_more() {
+    let game = promotion_game("L0,P1,R1,E2", PieceKind::FerociousLeopard, &[]);
+    let line = promotion_line();
+    assert_tree_and_root_promotion(&game, &line[..2], step(sq(5, 8), sq(5, 9)), true, false);
+    assert_tree_and_root_promotion(&game, &line[..4], step(sq(5, 9), sq(5, 10)), true, true);
+    let other_piece = [line[0], line[1], step(sq(0, 0), sq(0, 1)), line[3]];
+    assert_tree_and_root_promotion(&game, &other_piece, step(sq(5, 8), sq(5, 9)), true, false);
+}
+
+// 第30条P2: 直後の自分の1手番が過ぎれば、別の駒を動かした場合も待機は満了する。
+#[test]
+fn article_30_p2_tree_and_root_block_quiet_promotion_for_one_own_turn() {
+    let game = promotion_game("L0,P2,R1,E2", PieceKind::FerociousLeopard, &[]);
+    let line = promotion_line();
+    assert_tree_and_root_promotion(&game, &line[..2], step(sq(5, 8), sq(5, 9)), true, false);
+    assert_tree_and_root_promotion(&game, &line[..4], step(sq(5, 9), sq(5, 10)), true, true);
+    let other_piece = [line[0], line[1], step(sq(0, 0), sq(0, 1)), line[3]];
+    assert_tree_and_root_promotion(&game, &other_piece, step(sq(5, 8), sq(5, 9)), true, true);
+}
+
+// 第30条P5: 保留した歩兵は、併用する成り規則で成れる最奥段への着手だけが強制成りとなる。
+#[test]
+fn article_30_p5_tree_and_root_limit_a_deferred_pawn_to_forced_last_rank_promotion() {
+    let line = promotion_line();
+    // 第18条第2項aの捕獲でも、最奥段以外への成りはP5が禁じる。
+    let capture = promotion_game(
+        "L0,P0,P5,R1,E2",
+        PieceKind::Pawn,
+        &[(sq(5, 9), Color::White, PieceKind::Pawn)],
+    );
+    assert_tree_and_root_promotion(&capture, &line[..2], step(sq(5, 8), sq(5, 9)), true, false);
+    // P5では、第19条第1項の非捕獲による成りの機会がない。
+    let quiet = promotion_game("L0,P0,P5,R1,E2", PieceKind::Pawn, &[]);
+    assert_tree_and_root_promotion(&quiet, &line, step(sq(5, 10), sq(5, 11)), true, false);
+    let last_rank_capture = promotion_game(
+        "L0,P0,P5,R1,E2",
+        PieceKind::Pawn,
+        &[(sq(5, 11), Color::White, PieceKind::Lance)],
+    );
+    assert_tree_and_root_promotion(
+        &last_rank_capture,
+        &line,
+        step(sq(5, 10), sq(5, 11)),
+        false,
+        true,
+    );
+    let p2 = promotion_game("L0,P2,P5,R1,E2", PieceKind::Pawn, &[]);
+    assert_tree_and_root_promotion(&p2, &line, step(sq(5, 10), sq(5, 11)), false, true);
+}
+
+// 駆動部の契約: 同じ159面でも、辺は各対局の審判層に従う。
+// 第18条第2項a・第5項と第30条P5により、最奥段での捕獲は保留の有無で選択が異なる。
+#[test]
+fn positions_differing_only_in_deferred_promotion_expand_to_their_own_legal_moves() {
+    let mut game_x = promotion_game(
+        "L0,P0,P5,R1,E2",
+        PieceKind::Pawn,
+        &[(sq(5, 11), Color::White, PieceKind::Lance)],
+    );
+    let mut game_y = Game::from_position(
+        game_x.rules(),
+        position(
+            Color::Black,
+            &[
+                (sq(0, 0), Color::Black, PieceKind::King),
+                (sq(11, 11), Color::White, PieceKind::King),
+                (sq(10, 5), Color::White, PieceKind::GoBetween),
+                (sq(5, 8), Color::Black, PieceKind::Pawn),
+                (sq(5, 11), Color::White, PieceKind::Lance),
+            ],
+        ),
+    );
+    let line = promotion_line();
+    let (driver_x, leaf_x) = expand_line(&game_x, &line);
+    let (driver_y, leaf_y) = expand_line(&game_y, &line[2..]);
+    assert_ne!(leaf_x, leaf_y);
+    assert!(leaf_x.promotion_deferred().contains(sq(5, 10)));
+    assert!(leaf_y.promotion_deferred().is_empty());
+    let mut input_x = vec![0; crate::nn::INPUT_SIZE];
+    let mut input_y = vec![0; crate::nn::INPUT_SIZE];
+    crate::nn::encode(&leaf_x, &mut input_x);
+    crate::nn::encode(&leaf_y, &mut input_y);
+    assert_eq!(input_x, input_y);
+
+    for (game, driver, leaf, moves, unpromoted) in [
+        (&mut game_x, &driver_x, &leaf_x, line.as_slice(), false),
+        (&mut game_y, &driver_y, &leaf_y, &line[2..], true),
+    ] {
+        for &mv in moves {
+            assert_eq!(game.play(mv), Ok(GameStatus::Ongoing));
+        }
+        assert_eq!(leaf, game.position());
+        let node = driver.tree().node(&path(driver, moves)).unwrap();
+        let edges: Vec<_> = node.edges.iter().map(|edge| edge.mv).collect();
+        assert_eq!(edges, game.legal_moves());
+        assert_promotion_moves(&edges, step(sq(5, 10), sq(5, 11)), unpromoted, true);
+    }
+}
+
+// [`Driver::reuse`]の契約: 第31条R2のキー列が同じでも、保留を含む局面の一致を要する。
+#[test]
+fn reuse_requires_the_same_deferred_promotion_state() {
+    let rules =
+        Rules::from_codes(&minase_core::rules::parse_rule_set("L1,L3,P0,P5,P6,R2,E1,E2").unwrap())
+            .unwrap();
+    let without_deferred = position(
+        Color::Black,
+        &[
+            (sq(0, 0), Color::Black, PieceKind::King),
+            (sq(11, 11), Color::White, PieceKind::King),
+            (sq(10, 5), Color::White, PieceKind::GoBetween),
+            (sq(5, 8), Color::Black, PieceKind::Pawn),
+        ],
+    );
+    let mut builder = PositionBuilder::new(Color::Black);
+    for square in without_deferred.occupied() {
+        builder
+            .put(square, without_deferred.piece_at(square).unwrap())
+            .unwrap();
+    }
+    builder.mark_promotion_deferred(sq(5, 8)).unwrap();
+    let mut game_a = Game::from_position(rules, builder.finish().unwrap());
+    let mut game_b = Game::from_position(rules, without_deferred);
+    let mv = step(sq(5, 8), sq(5, 9));
+    let (mut driver, _) = expand_line(&game_a, &[mv]);
+    let root_b = SearchSnapshot::from_game(&game_b).unwrap();
+    assert_eq!(driver.snapshot.history_keys(), root_b.history_keys());
+    assert!(!driver.reuse(&root_b, DrawValue::SelfPlay).unwrap());
+    assert_eq!(game_b.play(mv), Ok(GameStatus::Ongoing));
+    let child_b = SearchSnapshot::from_game(&game_b).unwrap();
+    assert!(!driver.reuse(&child_b, DrawValue::SelfPlay).unwrap());
+    assert_eq!(game_a.play(mv), Ok(GameStatus::Ongoing));
+    let child_a = SearchSnapshot::from_game(&game_a).unwrap();
+    assert_eq!(child_a.history_keys(), child_b.history_keys());
+    assert!(driver.reuse(&child_a, DrawValue::SelfPlay).unwrap());
 }
 
 // 第23条: 局面合法手がすべて反復で禁止される場合も、審判層の合法手なしで確定する。

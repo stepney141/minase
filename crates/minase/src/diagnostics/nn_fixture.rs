@@ -147,7 +147,7 @@ fn fixture_bytes() -> Result<Vec<u8>, serde_json::Error> {
     for position in fixture_positions() {
         let setup = SetupPosition::new(position.clone(), position.lion_capture_square(), 1)
             .expect("fixed positions and move number are valid");
-        encode(&position, &mut input).expect("JCSA fixtures have no deferred promotion");
+        encode(&position, &mut input);
         moves.clear();
         generator.generate_moves(&position, &mut moves);
         let fixture = Fixture {

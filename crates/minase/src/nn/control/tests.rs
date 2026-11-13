@@ -49,7 +49,7 @@ fn assert_matches_attackers(position: &Position) {
         }
     }
     let mut full = vec![7; INPUT_SIZE];
-    encode(position, &mut full).unwrap();
+    encode(position, &mut full);
     assert_eq!(&full[95 * 144..], input);
 }
 

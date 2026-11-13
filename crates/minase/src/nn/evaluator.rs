@@ -25,7 +25,7 @@ pub trait Evaluator {
     /// `queries`が空なら、両方のVecを空にして成功する。
     ///
     /// # Errors
-    /// 入力の符号化またはネットの評価に失敗した場合は[`NnError`]を返す。
+    /// ネットの評価に失敗した場合は[`NnError`]を返す。
     fn evaluate(
         &mut self,
         queries: &[Query<'_>],

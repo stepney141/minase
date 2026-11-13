@@ -65,7 +65,7 @@
 | AlphaZero型探索の強化学習の実行 | [plans/archived/alphazero-rl.md](plans/archived/alphazero-rl.md) | 中断 | 2026年11月9日 |
 | AlphaZero型探索の強化学習の2回目の実行の準備 | [plans/archived/alphazero-rl-2-prep.md](plans/archived/alphazero-rl-2-prep.md) | 完了（採用） | 2026年11月10日 |
 | AlphaZero型探索の強化学習の2回目の実行 | [plans/alphazero-rl-2.md](plans/alphazero-rl-2.md) | 起案 | |
-| 対局用MCTSを全部の規則コードで探索できるようにする | [plans/mcts-rule-codes.md](plans/mcts-rule-codes.md) | 起案 | |
+| 対局用MCTSを全部の規則コードで探索できるようにする | [plans/mcts-rule-codes.md](plans/mcts-rule-codes.md) | 進行中 | |
 | AlphaZero型探索の強さを測る固定の相手 | [plans/mcts-fixed-opponents.md](plans/mcts-fixed-opponents.md) | 起案 | |
 | AlphaZero型探索のネットを診断する固定の検証用データ | [plans/zero-validation-games.md](plans/zero-validation-games.md) | 起案 | |
 | 対局用MCTSのPUCTの係数と方策の温度のSPSAによる調整 | [plans/mcts-puct-spsa.md](plans/mcts-puct-spsa.md) | 起案 | |
@@ -171,7 +171,7 @@
 
 2回目の実行は、次の4本の設計書で進める。
 1本目から3本目は、2026年11月13日に、2回目の実行の設計書から、学習の実行と独立に進められる準備を分けて起案したものである。
-4本とも起案の段階で、利用者の承認を待っている。
+1本目は2026年11月13日に着手して進行中であり、残る3本は起案の段階で、利用者の承認を待っている。
 
 | 順 | 設計書 | 内容 | 前提 |
 |---|---|---|---|

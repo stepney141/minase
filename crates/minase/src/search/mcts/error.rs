@@ -33,8 +33,6 @@ pub enum Error {
     MissingEvaluator,
     /// MCTSが受け付けない深さ制限が指定された。
     DepthLimitUnsupported,
-    /// 入力平面で表せない成り権の保留を生じる規則である。
-    PromotionDeferred,
     /// 勝率尺度が有限の正数ではない。
     InvalidScale,
     /// 木の操作が契約を満たさなかった。
@@ -59,7 +57,6 @@ impl fmt::Display for Error {
             }
             Self::MissingEvaluator => f.write_str("MCTS requires isready before go"),
             Self::DepthLimitUnsupported => f.write_str("MCTS does not support a depth limit"),
-            Self::PromotionDeferred => f.write_str("MCTS cannot encode rules P1, P2 or P5"),
             Self::InvalidScale => f.write_str("MCTS cp_per_logit must be finite and positive"),
             Self::Tree(error) => error.fmt(f),
         }

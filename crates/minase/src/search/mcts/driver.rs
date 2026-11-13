@@ -4,8 +4,8 @@
 //! 子の辺は経路の`Game::legal_moves`から作り、再生の失敗は仮想損失を戻して返す。
 
 use minase_core::{
-    Color, GameResult, GameStatus, Move, MoveGenerator, Position, PromotionRule, WinReason,
-    move_was_attacking, repetition_key,
+    Color, GameResult, GameStatus, Move, MoveGenerator, Position, WinReason, move_was_attacking,
+    repetition_key,
 };
 
 use super::Error;
@@ -42,13 +42,6 @@ impl DrawValue {
 pub(super) fn validate_scale(scale: f32) -> Result<(), Error> {
     if !scale.is_finite() || scale <= 0.0 {
         return Err(Error::InvalidScale);
-    }
-    Ok(())
-}
-
-pub(super) fn validate_rules(rules: minase_core::MoveRules) -> Result<(), Error> {
-    if rules.promotion != PromotionRule::P0 || rules.p5 {
-        return Err(Error::PromotionDeferred);
     }
     Ok(())
 }
@@ -99,13 +92,12 @@ impl Driver {
     /// 根の候補手から新しい探索を作る。
     ///
     /// # Errors
-    /// 審判状態がない場合、成り規則、勝率尺度、または木の容量が不正な場合は拒否する。
+    /// 審判状態がない場合、または勝率尺度や木の容量が不正な場合は拒否する。
     pub fn new(
         snapshot: SearchSnapshot,
         capacity_bytes: usize,
         draw: DrawValue,
     ) -> Result<Self, Error> {
-        validate_rules(snapshot.rules())?;
         snapshot.game().ok_or(Error::MissingGame)?;
         let draw_probability = draw.probability(&snapshot)?;
         let tree = Tree::new(snapshot.root_moves(), capacity_bytes)?;
@@ -257,7 +249,6 @@ impl Driver {
         snapshot: &SearchSnapshot,
         draw: DrawValue,
     ) -> Result<bool, Error> {
-        validate_rules(snapshot.rules())?;
         let new_game = snapshot.game().ok_or(Error::MissingGame)?;
         let probability = draw.probability(snapshot)?;
         if self.root_pending

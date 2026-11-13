@@ -8,7 +8,7 @@ use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::time::Duration;
 
 use super::Error;
-use super::driver::{DrawValue, Driver, EvaluationRequest, Step, validate_rules, validate_scale};
+use super::driver::{DrawValue, Driver, EvaluationRequest, Step, validate_scale};
 use super::puct::PuctConfig;
 use super::tree::{NodeState, SelectionRule};
 use crate::nn::{Evaluator, ExecutionProvider, Network, NnError, OnnxEvaluator, Query};
@@ -260,14 +260,6 @@ impl Engine {
         Ok((network.sha256(), &self.backend, self.config.batch_size))
     }
 
-    /// 診断を受け付ける前に、推論器と現局の規則を探索と同じ条件で検査する。
-    pub(crate) fn validate_evaluation(&self, rules: minase_core::MoveRules) -> Result<(), Error> {
-        if self.evaluator.is_none() {
-            return Err(Error::MissingEvaluator);
-        }
-        validate_rules(rules)
-    }
-
     /// 生のlogitを、探索と同じ温度とsoftmaxで事前確率へ変換する。
     pub(crate) fn policy_priors(&self, logits: &[f32]) -> Vec<f32> {
         let mut priors = logits.to_vec();
@@ -286,11 +278,6 @@ impl Engine {
             .evaluator
             .as_mut()
             .ok_or(EvaluationError::NotPrepared)?;
-        for query in queries {
-            if !query.position.promotion_deferred().is_empty() {
-                return Err(EvaluationError::Input(NnError::PromotionDeferred));
-            }
-        }
         let mut batch_logits = Vec::new();
         let mut batch_values = Vec::new();
         for batch in queries.chunks(self.config.batch_size.get()) {
@@ -413,7 +400,6 @@ impl Engine {
         if limits.depth().is_some() {
             return Err(Error::DepthLimitUnsupported);
         }
-        validate_rules(snapshot.rules())?;
         validate_scale(self.config.cp_per_logit)?;
         self.config.puct.validate()?;
         let draw = DrawValue::Game {

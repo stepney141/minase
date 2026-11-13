@@ -3,6 +3,10 @@
 use crate::protocol::{Protocol, UsiProtocol};
 use crate::search::mcts::Engine;
 use crate::search::{PrepareError, Searcher};
+use minase_core::notation::{sfen::parse_extended_sfen, usi};
+use minase_core::rules::{RuleCode, parse_rule_set};
+use minase_core::{Game, Rules};
+use std::collections::HashSet;
 use std::io;
 use std::path::PathBuf;
 use std::sync::mpsc;
@@ -375,25 +379,56 @@ fn eval_reports_all_current_legal_moves_with_raw_logits_and_tempered_priors() {
 }
 
 #[test]
-fn unsupported_mcts_rules_are_rejected_by_eval_without_ending_the_session() {
-    for rules in ["L0,P1,R1,E0", "L0,P2,R1,E0", "L0,P0,P5,R1,E0"] {
+fn every_rule_code_starts_an_mcts_search() {
+    // USIの契約: 第29条〜第33条の全規則コードでevalとgoを受理する。
+    let mut covered = HashSet::new();
+    for rules in [
+        "JCSA",
+        "lishogi",
+        "L1,L3,P0,P5,P6,R2,E1,E2",
+        "L0,L4,P1,P4,R3,E0",
+        "L0,L4,P2,P5,P6,R2,E1,E2",
+        "L0,P1,R1,E0",
+        "L0,P2,R1,E0",
+        "L0,P0,P5,R1,E0",
+    ] {
+        let codes = parse_rule_set(rules).unwrap();
+        covered.extend(codes.iter().copied());
+        let game = Game::new(Rules::from_codes(&codes).unwrap());
         let mut protocol = UsiProtocol::with_searcher(Searcher::Mcts(Engine::ready_for_test()));
         let (result, output) = run(
             &mut protocol,
-            &format!(
-                "setoption name RuleSet value {rules}\nposition startpos\neval\ngo nodes 1\nusi\n"
-            ),
+            &format!("setoption name RuleSet value {rules}\nposition startpos\neval\ngo nodes 8\n"),
         );
         result.unwrap();
-        assert!(
-            output.starts_with(
-                &"info string error: MCTS cannot encode rules P1, P2 or P5\n".repeat(2)
-            ),
-            "{output}"
-        );
-        assert!(!output.contains("info string end"));
-        assert!(output.ends_with("usiok\n"));
+        assert!(!output.contains("info string error"), "{rules}: {output}");
+        assert!(output.lines().any(|line| line == "info string end"));
+        assert_legal_bestmove(&output, &game);
     }
+    assert_eq!(covered, HashSet::from(RuleCode::ALL));
+}
+
+fn assert_legal_bestmove(output: &str, game: &Game) {
+    let moves: Vec<_> = output
+        .lines()
+        .filter_map(|line| line.strip_prefix("bestmove "))
+        .map(|line| line.split_whitespace().next().unwrap())
+        .collect();
+    assert_eq!(moves.len(), 1, "{output}");
+    let legal: Vec<_> = game
+        .legal_moves()
+        .into_iter()
+        .map(|mv| usi::text_generated(game.position(), mv))
+        .collect();
+    assert!(legal.iter().any(|mv| mv == moves[0]), "{output}");
+}
+
+fn eval_moves(output: &str) -> HashSet<String> {
+    output
+        .lines()
+        .filter_map(|line| line.strip_prefix("info string move "))
+        .map(|line| line.split_whitespace().next().unwrap().to_owned())
+        .collect()
 }
 
 struct BrokenEvaluator {
@@ -477,19 +512,100 @@ fn eval_with_no_legal_moves_reports_only_value_and_end() {
 }
 
 #[test]
-fn eval_rejects_a_deferred_promotion_position_without_ending_session() {
+fn eval_reports_the_legal_moves_of_a_deferred_promotion_position() {
+    use minase_core::Move;
+    use minase_core::test_util::sq;
+
+    let rules = Rules::from_codes(&parse_rule_set("L0,P1,R1,E0").unwrap()).unwrap();
+    let setup = parse_extended_sfen(DEFERRED_SFEN, rules.moves).unwrap();
+    let game = Game::from_position(rules, setup.restore_position().unwrap());
     let mut protocol = UsiProtocol::with_searcher(Searcher::Mcts(Engine::ready_for_test()));
     let (result, output) = run(
         &mut protocol,
-        "setoption name RuleSet value L0,P1,R1,E0\nposition sfen k11/12/4P7/12/9g2/5+o3n2/12/9R2/12/12/12/11K b 7f 41 8c\neval\nusi\n",
+        &format!(
+            "setoption name RuleSet value L0,P1,R1,E0\nposition sfen {DEFERRED_SFEN}\neval\nusi\n"
+        ),
     );
     result.unwrap();
+    assert!(!output.contains("info string error"), "{output}");
     assert!(
-        output.starts_with("info string error: MCTS cannot encode rules P1, P2 or P5\n"),
-        "{output}"
+        output
+            .lines()
+            .any(|line| line.starts_with("info string value "))
     );
-    assert!(!output.contains("info string end"));
+    assert!(output.lines().any(|line| line == "info string end"));
     assert!(output.ends_with("usiok\n"));
+    let actual = eval_moves(&output);
+    let expected: HashSet<_> = game
+        .legal_moves()
+        .into_iter()
+        .map(|mv| usi::text_generated(game.position(), mv))
+        .collect();
+    assert_eq!(actual, expected);
+    // 第30条P1: 保留中の歩兵8cは、もう1回動くまで非捕獲の8bへの着手で成れない。
+    assert!(game.position().promotion_deferred().contains(sq(4, 9)));
+    let mv = Move {
+        from: sq(4, 9),
+        mid: None,
+        to: sq(4, 10),
+        promote: false,
+    };
+    assert!(actual.contains(&usi::text_generated(game.position(), mv)));
+    assert!(!actual.contains(&usi::text_generated(
+        game.position(),
+        Move {
+            promote: true,
+            ..mv
+        }
+    )));
+}
+
+const DEFERRED_SFEN: &str = "k11/12/4P7/12/9g2/5+o3n2/12/9R2/12/12/12/11K b 7f 41 8c";
+
+// USIの契約: 第33条第7項のHaChu既定規則で、保留のあるpositionからgoを実行する。
+#[test]
+fn hachu_default_rules_search_from_position_to_go() {
+    use minase_core::Move;
+    use minase_core::test_util::sq;
+
+    let sfen = "k11/4p7/4P7/12/9g2/5+o3n2/12/9R2/12/12/12/11K b - 41 8c";
+    let rules_text = "L1,L3,P0,P5,P6,R2,E1,E2";
+    let rules = Rules::from_codes(&parse_rule_set(rules_text).unwrap()).unwrap();
+    let setup = parse_extended_sfen(sfen, rules.moves).unwrap();
+    let game = Game::from_position(rules, setup.restore_position().unwrap());
+    assert!(game.position().promotion_deferred().contains(sq(4, 9)));
+    let mut protocol = UsiProtocol::with_searcher(Searcher::Mcts(Engine::ready_for_test()));
+    let (result, output) = run(
+        &mut protocol,
+        &format!(
+            "setoption name RuleSet value {rules_text}\nposition sfen {sfen}\neval\ngo nodes 8\n"
+        ),
+    );
+    result.unwrap();
+    assert!(!output.contains("info string error"), "{output}");
+    let actual = eval_moves(&output);
+    let expected: HashSet<_> = game
+        .legal_moves()
+        .into_iter()
+        .map(|mv| usi::text_generated(game.position(), mv))
+        .collect();
+    assert_eq!(actual, expected);
+    // 第30条P5により、保留中の歩兵は最奥段ではない8bへの捕獲着手で成れない。
+    let mv = Move {
+        from: sq(4, 9),
+        mid: None,
+        to: sq(4, 10),
+        promote: false,
+    };
+    assert!(actual.contains(&usi::text_generated(game.position(), mv)));
+    assert!(!actual.contains(&usi::text_generated(
+        game.position(),
+        Move {
+            promote: true,
+            ..mv
+        }
+    )));
+    assert_legal_bestmove(&output, &game);
 }
 
 #[test]
