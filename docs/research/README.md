@@ -55,6 +55,9 @@ Stockfishのコミットを引用するときは、ローカルにクローン�
 | 2026年10月29日 | [AlphaZero型の学習の局面の選び方と方策の損失の正規化の先行実装調査](alphazero-training-sample-selection.md) | 自己対局の棋譜から学習の局面を選ぶリプレイバッファと間引きの方式、および方策の損失を合法手だけで正規化するかどうかを、9つの実装と4本の論文で比べる。 |
 | 2026年10月31日 | [AlphaZero型の強化学習の学習効率と強さに効く技法の先行実装調査](alphazero-rl-training-efficiency.md) | ふかうら王の学習のページ、lc0、KataGo、dlshogi系、およびGumbel AlphaZeroの論文の技法をminaseの実装と突き合わせ、リセット前のサイクル1〜37で価値が学べなかった症状と結びつけて優先度を付ける。 |
 | 2026年11月1日 | [将棋のResNet系公開モデルを中将棋のネットへ転移する実験台の調査](shogi-resnet-transfer-sources.md) | dlshogi、ふかうら王、AobaZero、DL水匠、python-dlshogi2、およびnshogiの公開重みの形式、構成、利用条件、学習データの出所、および強さを一次資料で調べ、minaseのネットへ載るのは残差ブロックと入力層の一部だけで価値と方策のヘッドは再初期化になることを示し、Soemersらの将棋の系統の間の転移の結果とともに、目的ごとに向く実験台を挙げる。 |
+| 2026年11月2日 | [AlphaZero型探索の規模の調査：学習量、持ち時間、ネットの大きさ](alphazero-strength-gap/scale.md) | KataGo、AobaZero、技巧、nshogi、dlshogi、およびlc0の学習量、ネットの大きさ、探索回数、および持ち時間と強さの関係を、αβ探索に大敗したサイクル32のminaseと並べる。[大敗の原因の調査](../proposals/alphazero-strength-gap.md)の付属として書き、2026年11月13日に調査メモへ移した。 |
+| 2026年11月2日 | [対局用の探索の先行実装調査](alphazero-strength-gap/search.md) | dlshogiとふかうら王を中心に、葉の詰み判定、PUCTの係数と方策の温度の既定値と調整の記録、バッチと推論の重ね合わせ、NNキャッシュ、および指す手の決定を一次資料で調べ、minaseとの差を一覧にする。同じ提案の付属から移した。 |
+| 2026年11月2日 | [価値の過大評価と分布のずれの先行調査](alphazero-strength-gap/value-bias.md) | 自己対局の外の局面で価値を過大評価する現象について、KataGo、AobaZero、AlphaZeroなどの先行報告、保存局面で安く行える診断、および分布を広げる対策を一次資料で調べる。同じ提案の付属から移した。 |
 
 ## 詰み探索
 

@@ -1,5 +1,11 @@
 # 対局用の探索の先行実装調査
 
+本書のminaseに関する記述は、調査した版81424e68（2026年11月2日）のものである。
+本書は[大敗の原因の調査](../../proposals/alphazero-strength-gap.md)の付属として書き、2026年11月13日に調査メモへ移した。
+調査の後、新しい節点で手番側が最後の王駒を取れるかの判定を、2026年11月8日に[判定のADR](../../adr/prove-mcts-nodes-whose-side-to-move-can-capture-the-last-royal.md)で採用し（ADRは設計判断の記録である）、方策の温度を2026年11月9日に[温度のADR](../../adr/divide-mcts-policy-logits-by-a-temperature-of-1-4.md)で1.4とした。
+ネットの推論の入力は2026年11月11日に[受け渡しのADR](../../adr/exchange-zero-inference-tensors-as-uint8-inputs-and-packed-fp16-policies-in-pinned-memory.md)でFP32からuint8に改め、方策の出力も、35,856要素のFP32から、取り得る16,108ラベルのFP16に改めた。
+PUCT（方策を探索項に使う上側信頼限界）の係数と温度を同時に調整する[設計書](../../plans/mcts-puct-spsa.md)は、2026年11月13日に起案した。
+
 本書は、minaseのMCTS（モンテカルロ木探索）が対局で弱い原因を探すために、dlshogiとふかうら王を中心に、対局の強さに効く探索の仕組みを一次資料で調べた結果である。
 調査日は2026年11月2日である。
 本書は文献とソースの調査の記録である。
@@ -34,13 +40,10 @@ PUCT（方策を探索項に使う上側信頼限界）は葉の価値を平均�
 この穴は、公開APIの利きの参照だけで塞げる。
 [測定記録](../../measurements/adhoc/alphazero-rl-c0032-value-bias.md)では、αβの深さ8が強制負けを読まない67局面のうち、MCTSは2,000回の探索で65局面、20,000回でも54局面で、直後に最後の王駒を取られる手を選んだ。
 ただし、この手を指した時点の駒の損得の中央値は−103なので、対局の勝敗への直接の影響は小さい。
-手番側が最後の王駒を取れるかの判定は、2026年11月8日に、設計判断の記録（ADR）である[判定のADR](../../adr/prove-mcts-nodes-whose-side-to-move-can-capture-the-last-royal.md)で採用した。
 
 第3に、minaseのPUCTはdlshogiの係数だけを写し、係数と同時に調整された温度1.74を写していない。
 lc0は1.359、CrazyAraは1.7を使う。
 温度1.0では、順位の低い手が探索に入る条件が約8倍厳しくなる（推論）。
-温度は、2026年11月9日に[温度のADR](../../adr/divide-mcts-policy-logits-by-a-temperature-of-1-4.md)で1.4とした。
-係数と温度を同時に調整する[設計書](../../plans/mcts-puct-spsa.md)は、2026年11月13日に起案した。
 
 第4に、毎秒のシミュレーション数はCPU側で頭打ちである（[測定記録](../../measurements/adhoc/alphazero-rl-c0032-value-bias.md)で、バッチ64が約16,900回、256が約16,600回）。
 minaseは葉ごとに根から`Game::play`で経路を再生するので、ここを軽くし、GPUの推論と木の処理を重ねれば、GPUの上限まで約1.7倍の余地がある（推論）。
@@ -90,7 +93,7 @@ MCTSの停止理由は23,051手中23,044手が`soft`で、残り7手は根の確
 
 | 仕組み | dlshogi | ふかうら王 | minase |
 |---|---|---|---|
-| 葉の詰み判定 | 奇数手詰め5手（`usi/Makefile` 2行、`usi/UctSearch.cpp` 1557〜1566行） | 葉のdf-pn 40節点（`SearchOptions.cpp`の`LeafDfpnNodesLimit`、`UctSearch.cpp` 706行） | 調査した版では審判層の詰みと王駒捕獲の裁定だけ（`driver.rs` 333〜395行）。2026年11月8日からは、手番側が最後の王駒を次に取れる節点も勝ちに確定させる |
+| 葉の詰み判定 | 奇数手詰め5手（`usi/Makefile` 2行、`usi/UctSearch.cpp` 1557〜1566行） | 葉のdf-pn 40節点（`SearchOptions.cpp`の`LeafDfpnNodesLimit`、`UctSearch.cpp` 706行） | 審判層の詰みと王駒捕獲の裁定だけ（`driver.rs` 333〜395行） |
 | 根のdf-pn | 深さ33、ハッシュ2,048 MB、最低300 ms待つ（`cppshogi/usi.cpp` 121、137、138行、`usi/main.cpp` 546〜588行） | PVの探索スレッドが根も担当（`PvMateSearch.cpp` 46〜48行） | なし |
 | PVのdf-pn | 既定0スレッド、深さ33、50万節点（`cppshogi/usi.cpp` 123〜125行、`usi/PvMateSearch.cpp`） | 既定1スレッド、50万節点、奇数番スレッドは幅優先の6手（`SearchOptions.cpp`、`PvMateSearch.cpp` 339〜345行） | なし |
 | 確定の伝播 | 勝ちと負け（`UctSearch.cpp` 1666行以下） | 勝ち、負け、引き分け（`UctSearch.cpp`の`SelectMaxUcbChild`） | 勝ちと負け（`tree.rs` 190〜222行、`puct.rs` 82〜92行） |
@@ -131,12 +134,6 @@ PVのdf-pnは、ふかうら王のwikiが「R40ぐらい強くなります」と
 dlshogiも自己対局をdf-pnで打ち切るので「詰みの手順を学習しなくなる」と書くが（[2019/12/25/221346](https://tadaoyamaoka.hatenablog.com/entry/2019/12/25/221346)）、対局では葉と根の詰み判定がその穴を埋める。
 minaseは学習の側だけ打ち切りを持ち、対局の側に対応する判定がない。
 ADRは葉での判定を「探索の結果と方策の目標が変わる」「費用が探索回数に比例する」として採らなかったが（`docs/adr/stop-zero-self-play-at-check-only-wins-within-three-plies-found-under-the-search-module.md`）、これは自己対局についての判断であり、対局の探索の費用は別に測れる。
-
-ここまでの本節の記述は、調査した版81424e68の扱いである。
-2026年11月8日の[判定のADR](../../adr/prove-mcts-nodes-whose-side-to-move-can-capture-the-last-royal.md)で、次節の1段目にあたる判定を採用した。
-経路の再生で終局しなかった節点では、深さの上限の葉を除き、`classify_child`が反復の近似より前に`Game::can_capture_last_royal`を呼ぶ。
-手番側が最後の王駒を取れる節点は、これで勝ちに確定する。
-`Driver`は対局と自己対局で共有するので、この判定は自己対局の探索にも効く。
 
 ### 王手放置が合法の規則での葉の扱い（推論）
 
@@ -182,7 +179,6 @@ dlshogiの3手と5手の比較は、速さより深さが勝つ例だが、ネ�
 | KataGo（対局） | 1.0 | 1.0（対数項0.45） | 定義が異なる | 減算0.2、根0.1 | `cpp/program/setup.cpp` 551、554、572、655行、`cpp/search/searchparams.cpp` 81行 |
 | minase | なし（1.0相当） | 1.44、1.16 | 28,288、25,617 | 減算0.27、0 | `crates/minase/src/search/mcts/puct.rs` 26〜37行 |
 
-minaseの行は調査した版81424e68の値であり、温度は2026年11月9日に1.4へ改めた。
 Qの尺度は、dlshogi、ふかうら王、minaseが[0, 1]で、lc0とKataGoは[−1, 1]である。
 dlshogiのC_PUCTの理論値を[0, 1]で半分にする議論は[2018/12/13/001953](https://tadaoyamaoka.hatenablog.com/entry/2018/12/13/001953)にある。
 
@@ -228,9 +224,7 @@ lc0の減算は訪問済みの子の確率を各1回だけ数えるので、上�
 ただし、温度を上げると読みが浅くなる（dlshogiの42から32の例）。
 Gumbelの学習の方策は、completed Qの目標で分布の形が異なり得るので、まず固定局面でネットの方策のエントロピーと、αβが選んだ手の方策の順位を測るべきである。
 係数は学習とは独立に探索だけで調整でき、調整の対局にネットの再学習は要らない。
-調査した版のminaseには係数のUSIオプションがないので、調整には小さな変更が要る。
-温度は、2026年11月8日にUSIオプション`PolicyTemperature`で変えられるようになった。
-係数のUSIオプションは、係数と温度を同時に調整する[設計書](../../plans/mcts-puct-spsa.md)が、調整用ビルドに加える予定である。
+minaseには係数のUSIオプションがないので、調整には小さな変更が要る。
 
 ## 指す手の決定と時間管理
 
@@ -278,7 +272,7 @@ ADRは、到達の判定で時間の配り方が探索方式の差に混ざる�
 | 衝突 | 破棄して続行、仮想損失はバッチ終了まで保持 | 同左 | 上限917回、80,000訪問まで続行 | 仮想損失と仮想訪問の混合 | 最初の衝突で収集を打ち切る |
 | 既知の値の処理 | キャッシュ命中と終端は即時に逆伝播 | 同左 | out-of-orderで即時（既定有効、係数2.4） | あり | 即時に逆伝播して収集を続行 |
 | NNキャッシュ | 10万局面、256シャードのLRU | 10万局面（2026年9月導入） | 200万局面 | MCGSの節点の共有 | なし |
-| 入力の転送 | ビット詰めをGPUで展開 | 同左 | 浮動小数 | 浮動小数 | 調査した版は浮動小数。2026年11月11日からuint8 |
+| 入力の転送 | ビット詰めをGPUで展開 | 同左 | 浮動小数 | 浮動小数 | 浮動小数 |
 
 出典は、dlshogiが`cppshogi/usi.cpp` 95、111、119行、`usi/UctSearch.cpp` 1312〜1410行、`usi/PolicyValueCache.h`、ふかうら王が`FukauraOuEngine.cpp` 57〜63行、`SearchOptions.cpp`、`ふかうら王のお勧めエンジン設定.md`、lc0が`params.cc` 546、574〜582行、`shared_params.cc` 82行、CrazyAraが`optionsuci.cpp` 70〜78、185〜187、197〜198行、minaseが`engine.rs` 373〜391行である。
 
@@ -352,8 +346,6 @@ R1では合法手の順序も局面だけで決まる。
 ADRは頻度を測る前に作らないとしたので、1回の探索で同じ局面の評価がどれだけ重なるかを先に数える。
 転送の量は、入力が159面×144升のFP32で1局面91.6 KB、方策の出力が35,856要素で143 KBであり、dlshogiの方策2,187要素の16倍である。
 毎秒15,000回で入力が約1.4 GB/s、出力が約2.2 GB/sになる。
-この転送の量は調査した版81424e68の値である。
-2026年11月11日の[受け渡しのADR](../../adr/exchange-zero-inference-tensors-as-uint8-inputs-and-packed-fp16-policies-in-pinned-memory.md)で、入力をuint8、方策の出力を取り得る16,108ラベルのFP16に改めた。
 
 ## 木の再利用とDAG
 
@@ -519,16 +511,15 @@ AobaZeroは、WCSC36でDLからNNUEへ移った（[文書](https://www.apply.com
 
 費用は、小が定数か数十行、中が探索の一部の作り直し、大が再学習か記録形式の変更を伴うものを指す。
 順は、測定の前の推定の効きの順であり、順序と費用は推論である。
-勧める順序は[総論](../alphazero-strength-gap.md)が定める。
-「minaseの現状」の列は、2026年11月13日の時点に合わせた。
+勧める順序は[大敗の原因の調査](../../proposals/alphazero-strength-gap.md)が定める。
 
 | 技法 | 先行実装の値 | minaseの現状 | 効果の報告 | 費用 |
 |---|---|---|---|---|
-| 新しい節点で最後の王駒を取れるかの判定 | 将棋は合法手生成と1手詰めで吸収。dlshogiは5手詰め | あり（2026年11月8日に採用） | 単独の報告なし（規則が中将棋に固有） | 小 |
-| 指すと王駒を取られる手を展開時に除く | 将棋の合法手生成に相当 | 方策を持つ辺として残る。上の行のADRは、発動の頻度を見てから要否を決めるとした | 単独の報告なし | 小〜中 |
+| 新しい節点で最後の王駒を取れるかの判定 | 将棋は合法手生成と1手詰めで吸収。dlshogiは5手詰め | なし。ネットの未学習の局面へ送る | 単独の報告なし（規則が中将棋に固有） | 小 |
+| 指すと王駒を取られる手を展開時に除く | 将棋の合法手生成に相当 | 方策を持つ辺として残る | 単独の報告なし | 小〜中 |
 | 価値の偏りの対局なしの診断 | 該当なし | 実測で偏りを確認済み、静止探索との比較は未実施 | 該当なし | 小 |
-| 方策の温度 | dlshogi 1.74（新しい学習法では1.40〜1.50）、lc0 1.359、CrazyAra 1.7 | 1.4（2026年11月9日に採用） | 学習法の変更で未調整だと27.6 Elo差（13.8対−13.8）、再調整で互角 | 小 |
-| PUCT係数の同時調整 | Optuna、SPSA | dlshogiの値を写したまま未調整。2026年11月13日に調整の設計書を起案 | lc0 Kiudeeで+30〜40 Elo、dlshogiのOptunaは有意差なし | 小（対局の時間は別） |
+| 方策の温度 | dlshogi 1.74（新しい学習法では1.40〜1.50）、lc0 1.359、CrazyAra 1.7 | なし | 学習法の変更で未調整だと27.6 Elo差（13.8対−13.8）、再調整で互角 | 小 |
+| PUCT係数の同時調整 | Optuna、SPSA | 未調整、温度なしの写し | lc0 Kiudeeで+30〜40 Elo、dlshogiのOptunaは有意差なし | 小（対局の時間は別） |
 | FPUの定義 | lc0は上限0.33、dlshogi型は累積 | dlshogi型 | 親の価値の初期化で+68.6（2020年、100局） | 小 |
 | 分散で尺度を変えるcPUCT | KataGo | なし | 不確実性と合わせて+50〜75 Elo（囲碁） | 小 |
 | 不確実性による葉の重み付け | KataGo（短期の誤差のヘッド） | なし | 同上 | 大 |
@@ -546,7 +537,7 @@ AobaZeroは、WCSC36でDLからNNUEへ移った（[文書](https://www.apply.com
 | 指す手へのQの反映 | KataGoのLCB、CrazyAraの拒否権 | 訪問回数、同数でQ | 図のみ | 小 |
 | 打ち切りと延長 | dlshogi 2倍1回、ふかうら王の収束判定 | `soft`で止まるだけ | 単独の報告なし | 小 |
 | DAG | CrazyAra、KataGo既定、lc0 preview | 木のみ | MCGSで+110（クレイジーハウス） | 大（反復規則） |
-| 入力のビット詰め | dlshogi、ふかうら王 | 入力はuint8、方策の出力は取り得る16,108ラベルのFP16（2026年11月11日に[受け渡しのADR](../../adr/exchange-zero-inference-tensors-as-uint8-inputs-and-packed-fp16-policies-in-pinned-memory.md)で採用）。ビットには詰めていない | 2026年の転送の並列化の一部 | 中 |
+| 入力のビット詰め | dlshogi、ふかうら王 | FP32のまま | 2026年の転送の並列化の一部 | 中 |
 
 ## 確認できなかった事項
 

@@ -26,7 +26,7 @@ minaseの係数は、将棋のAlphaZero型エンジンdlshogiが温度1.74と組
 そのうち温度だけは、[王駒の捕獲の判定と温度の設計書](archived/mcts-royal-capture-temperature.md)で先に変えてある。
 残りの係数をいまの値のまま使うべきでない理由は、次の3つである。
 
-第1に、minaseの係数はdlshogiが温度と同時に最適化した値であり（[探索の調査](../proposals/alphazero-strength-gap/search.md)の「調整の記録と効果の大きさ」の節）、温度を1.4にした今のminaseに合う保証がない。
+第1に、minaseの係数はdlshogiが温度と同時に最適化した値であり（[探索の調査](../research/alphazero-strength-gap/search.md)の「調整の記録と効果の大きさ」の節）、温度を1.4にした今のminaseに合う保証がない。
 PUCTで手を広く読ませる探索の項は、温度で平らにした方策の確率に係数cを掛けた値なので、温度を変えると、同じ広さで読むための係数の値も変わる（推論）。
 この式は「調整する係数と範囲」の節に示す。
 第2に、最適値はネットごとに異なる。
@@ -171,7 +171,7 @@ LTCは各60秒+1手0.2秒の持ち時間である。
 根のFPUの係数は0に固定する。
 dlshogiは2020年のOptunaで根のFPUの係数も0から0.26へ動かした候補を得たが、追加の対局で改善を確かめられず、全係数を元に戻した（[2020年5月1日の記事](https://tadaoyamaoka.hatenablog.com/entry/2020/05/01/131354)）。
 いまのdlshogiのOptunaの既定とSPSAの試運転は、根のFPUの係数を調整の対象に入れていない。
-lc0は根でも内部と同じ係数を使い、囲碁のエンジンKataGoは根で0.1とするが（[探索の調査](../proposals/alphazero-strength-gap/search.md)の「既定値」の節）、探索の実装が異なり、中将棋のminaseで0以外がよいという根拠にはならない。
+lc0は根でも内部と同じ係数を使い、囲碁のエンジンKataGoは根で0.1とするが（[探索の調査](../research/alphazero-strength-gap/search.md)の「既定値」の節）、探索の実装が異なり、中将棋のminaseで0以外がよいという根拠にはならない。
 また、範囲の下限0から始めると、正負に揺らした設定の一方が常に下限へ切り詰められ、勾配の推定が非対称になる。
 
 ## 対局の条件
@@ -438,4 +438,4 @@ SPSAの最終値は、所定の反復を終えた値にすぎず、反復を終�
 - dlshogiの2020年のOptunaによる調整は、[将棋AIの進捗 その43](https://tadaoyamaoka.hatenablog.com/entry/2020/05/01/131354)とその翌日の追記にある。
 - dlshogiがSPSAへ移った経緯は、[2025年11月6日の記事](https://tadaoyamaoka.hatenablog.com/entry/2025/11/06/230537)にある。
 - lc0のKiudeeの設定は[talkchessの投稿](https://talkchess.com/viewtopic.php?p=827259)に、Kiudeeの道具は[chess-tuning-tools](https://github.com/kiudee/chess-tuning-tools)にある。
-- 先行エンジンの既定値と調整の記録は、[探索の調査](../proposals/alphazero-strength-gap/search.md)の「PUCTの周辺」の節にまとめてある。
+- 先行エンジンの既定値と調整の記録は、[探索の調査](../research/alphazero-strength-gap/search.md)の「PUCTの周辺」の節にまとめてある。

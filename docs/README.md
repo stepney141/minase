@@ -14,7 +14,7 @@ docs/ 直下に置くファイルは、本書と [ROADMAP.md](ROADMAP.md) の2�
 | [guides/](guides/) | 人間とエージェントが手順どおりに実行する手引き。[guides/README.md](guides/README.md) を索引とする。ファイルの形式、記録の欄、およびコードが実装する式は、それを読み書きするコードのdocコメントが定めるので、手引きには書かずに該当する項目を示す。 | 手順を実行順に書き、判断規則と標準コマンドを本文に含める。 |
 | [audits/](audits/) | ある時点のコード、テスト、または文書を対象にした監査報告と、学習実験や採否判断の原因を切り分けた調査報告。保存棋譜、対局記録、教師データ、または重みから、ある時点のminaseの挙動を調べた診断もここに置く。ファイル名に監査日または調査日を含める。 | 冒頭に基準コミットと範囲を明記する。原因の調査報告では、観測事実、原因仮説、未検証事項、および再現資料を区別する。報告は監査後に更新せず、修正は設計書として起案する。 |
 | [research/](research/) | 他エンジンのソースコード、論文、および公開の記録を調べた先行研究の調査メモ。設計書とADRが方式の根拠として参照し、[research/README.md](research/README.md) を索引とする。通信プロトコル（USI、CECP）と外部エンジンの調査は [research/protocols/](research/protocols/) にまとめ、[research/protocols/README.md](research/protocols/README.md) を索引とする。 | 結論を先に書き、一次資料へリンクする。作成後は移動せず、minaseに関する記述が古くなったら冒頭に記述の時点とその後の決定を書き足す。 |
-| [proposals/](proposals/) | minaseの方式についての提案と、その検討の議論。調査メモや診断を根拠に候補と試す順序を示し、採否は設計書かADRで決める。[proposals/README.md](proposals/README.md) を索引とする。 | 採否が決まったか前提が成り立たなくなった提案は [proposals/archived/](proposals/archived/) へ移して凍結し、冒頭に決着を書く。 |
+| [proposals/](proposals/) | minaseの方式についての提案と、その検討の議論。調査メモや診断を根拠に、何を試すかを利用者が選ぶための候補と試す順序を示す。選んだ候補をどう試して採否を決めるかは設計書が定める。[proposals/README.md](proposals/README.md) を索引とする。 | proposals/README.md に従う。最初の節「候補の扱い」の表に、候補ごとに未決、設計書へ、不採用、取り下げのいずれかを書き、それより後の本文には採否と進捗を書かない。未決の候補がなくなった提案は、冒頭に決着を書いて凍結し、[proposals/archived/](proposals/archived/) へ移す。 |
 
 分類に迷う文書は、次の順で判定し、最初に当てはまったものとする。
 

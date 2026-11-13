@@ -54,7 +54,7 @@ NAS（ネットワーク接続の記憶装置）の記録では、サイクル32
 そのため、期間の切り替え、伸びが止まったかの判断、および段階の引き上げは、いずれも10サイクルごとの進捗測定で測る強さで決める。
 
 ネットを20ブロック256チャネルにするのは、2026年11月9日の利用者の決定である。
-AlphaZero（19ブロック256チャネル）とAobaZero（20ブロック256チャネル）は、最初からこの規模のネットで学習した（[先行実装の調査](../research/alphazero-prior-art.md)、[規模の調査](../proposals/alphazero-strength-gap/scale.md)）。
+AlphaZero（19ブロック256チャネル）とAobaZero（20ブロック256チャネル）は、最初からこの規模のネットで学習した（[先行実装の調査](../research/alphazero-prior-art.md)、[規模の調査](../research/alphazero-strength-gap/scale.md)）。
 ただし、どちらの対局数もminaseの1回目の数十〜数百倍である。
 一方、KataGoは6ブロック96チャネルから段階的にネットを広げた。
 

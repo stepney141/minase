@@ -1,5 +1,15 @@
 # やねうら王の合法手生成の構造をMCTSの葉の全件生成へ応用する調査
 
+## 候補の扱い
+
+「minaseへの当てはめ」の節で述べる3つの候補の扱いは次のとおりである。
+
+| 候補 | 扱い |
+|---|---|
+| 候補1　成りの選択肢を駒1枚ごとの集合で決める | 未決 |
+| 候補2　獅子の捕獲制限の検査を獅子を取る着手に限る | 未決 |
+| 候補3　出力と作業領域の確保を生成のたびに繰り返さない | 未決 |
+
 ## 結論
 
 [審判層の裁定が繰り返す合法手生成の削減](../plans/archived/referee-adjudication-movegen.md)の完了後、MCTS（モンテカルロ木探索）の探索では、終局、反復の打ち切り、および深さの上限に当たらない新しい節点を作るたびに呼ぶ`Game::legal_moves`の全件生成が、探索の命令数の37.9%（`Game::legal_moves`の全呼び出しの合計）を占める最大の項目になった（[測定記録](../measurements/referee-adjudication-movegen/referee-adjudication-movegen-driver-cost.md)）。

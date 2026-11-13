@@ -13,7 +13,7 @@
 AobaZeroの振り飛車と別系統の棋譜の混合、tanuki-の評価値の付け直し、開始局面、および方策の抽選は[付録「将棋」](teacher-generation-strong-engines/shogi.md)にある。
 Stockfishの食い違い局面の採取とWDL選別（評価値と対局結果が矛盾する局面を確率的に捨てる選別）は[付録「チェスの主流エンジン」](teacher-generation-strong-engines/chess-mainstream.md)にある。
 自己生成で育てたチェスエンジンの記録は[付録「自己生成で育てたチェスエンジンと変種」](teacher-generation-strong-engines/zero-chess-and-variants.md)にある。
-AlphaZero型のネットの過信と診断の候補は[価値の過大評価の調査](../proposals/alphazero-strength-gap/value-bias.md)にある。
+AlphaZero型のネットの過信と診断の候補は[価値の過大評価の調査](alphazero-strength-gap/value-bias.md)にある。
 
 NNUEは着手ごとに差分で更新できる小さなニューラルネット評価関数である。
 MCTSはモンテカルロ木探索、探索回数はMCTSが1手に行うシミュレーションの回数を指す。
@@ -123,7 +123,7 @@ Tsengらはさらに3つの防御を試した（[Tseng et al.](https://arxiv.org
 Vision Transformerは、画像を小片に分けて注意機構で処理するネットである。
 畳み込みネットをVision Transformerに替えても、65,536回の探索で78%負けた（[Tseng et al. 5節](https://arxiv.org/abs/2406.12843v3)）。
 著者は、固定の攻撃を防ぐ計算量は少ないが、防御が新しい攻撃へ汎化しないと結論し、反復の中で攻撃は防御の18倍の計算量を要したと書く（[Tseng et al. 7節と表5](https://arxiv.org/abs/2406.12843v3)）。
-これらの主要な数値は、既存の[価値の調査](../proposals/alphazero-strength-gap/value-bias.md)が要約器を通した値と記していたものであり、本書でPDFの本文と照合して一致を確かめた。
+これらの主要な数値は、既存の[価値の調査](alphazero-strength-gap/value-bias.md)が要約器を通した値と記していたものであり、本書でPDFの本文と照合して一致を確かめた。
 
 KataGoの作者は、敵対的学習の後に循環した石の誤りが少しずつ減っていると書き、最新のネットへの報告は学習の材料になるとして、報告を求めている（[#808](https://github.com/lightvector/KataGo/issues/808)）。
 同じ作者は、盲点は人間を含むすべての対局者に共通し、弱い相手とだけ指すと問題が少なく見えると書く（[#705](https://github.com/lightvector/KataGo/issues/705)）。

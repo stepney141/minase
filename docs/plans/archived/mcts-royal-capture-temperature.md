@@ -41,7 +41,7 @@ MCTS 800回とαβ 500ノードの固定ノードの対局では、MCTSの負け
 
 温度については、minaseのPUCTの係数に問題がある。
 PUCTは方策の確率で探索の広がりを決める選択式である。
-その6つの係数のうち5つは、dlshogiが温度1.74と同時に調整した値をminaseが取り入れたものである（[探索の調査](../../proposals/alphazero-strength-gap/search.md)の「PUCTの周辺」の節）。
+その6つの係数のうち5つは、dlshogiが温度1.74と同時に調整した値をminaseが取り入れたものである（[探索の調査](../../research/alphazero-strength-gap/search.md)の「PUCTの周辺」の節）。
 サイクル32の自己対局では、1局面の合法手が平均84手、最大205手ある（NASの`cycles.jsonl`のサイクル32の`teacher_stats`）。
 合法手が多い局面では、温度1.0の方策は下位の手の確率が小さく、探索が下位の手に届きにくい（推論）。
 本書の目的は、この2点が実際に棋力を損なっているかを学習の再開より前に対局で確かめ、損なっているなら塞ぐことである。
@@ -100,7 +100,7 @@ MCTSの推論には、`tools/train/zero/setup.sh`で導入した実行環境を�
 相手の王駒が1枚なら疑似利きが届くことと合法に取れることが一致することは、補題のdocコメントが第8条をもとに述べている。
 
 判定は反復の近似より前に置く。
-反復の近似を先に適用すると、王駒を取れる側が近似で負けと判定され、受ける側がその手順へ引き寄せられるからである（[探索の調査](../../proposals/alphazero-strength-gap/search.md)の「王手放置が合法の規則での葉の扱い」の節）。
+反復の近似を先に適用すると、王駒を取れる側が近似で負けと判定され、受ける側がその手順へ引き寄せられるからである（[探索の調査](../../research/alphazero-strength-gap/search.md)の「王手放置が合法の規則での葉の扱い」の節）。
 これは、正確な裁定を近似より先に適用するという[終局判定の教訓](../../lessons/share-terminal-adjudication-with-the-referee.md)と同じ順序である。
 
 深さの上限の葉では判定しない。
@@ -185,7 +185,7 @@ PUCTの6つの係数のUSIオプションは、本書が係数を動かさない
 
 dlshogiの1.74をそのまま写すことはしない。
 dlshogiでは、学習法を変えて方策のエントロピーが1.12から1.40へ上がった後、温度を1.74のまま使うと旧モデルに約28 Elo負けた。
-その後に調整された最適値は1.40〜1.50である（[探索の調査](../../proposals/alphazero-strength-gap/search.md)の「調整の記録と効果の大きさ」の節）。
+その後に調整された最適値は1.40〜1.50である（[探索の調査](../../research/alphazero-strength-gap/search.md)の「調整の記録と効果の大きさ」の節）。
 minaseの方策は、Gumbel AlphaZeroの方式で、探索で補正した確率を目標として学んでいる。
 これはdlshogiの訪問回数の分布の目標とは別の目標であり、分布の形が異なり得る。
 
@@ -325,7 +325,7 @@ masterへのマージは、利用者の許可を得てから行う。
 ## 参考資料
 
 - [AlphaZero型探索がαβ探索に大敗する原因とDL系将棋ソフトから移せる点の調査](../../proposals/alphazero-strength-gap.md)は、本書の2つの候補を最初に勧めた調査である。
-- [対局用の探索の先行実装調査](../../proposals/alphazero-strength-gap/search.md)は、葉の扱いとPUCTの既定値の出典を、ソースの行番号つきで記す。
+- [対局用の探索の先行実装調査](../../research/alphazero-strength-gap/search.md)は、葉の扱いとPUCTの既定値の出典を、ソースの行番号つきで記す。
 - [サイクル32の価値の診断](../../measurements/adhoc/alphazero-rl-c0032-value-bias.md)と[固定ノードの対局](../../measurements/adhoc/alphazero-rl-c0032-ab-ladder.md)は、本書の基準の値を記す。
-- DeepLearningShogiの`cppshogi/usi.cpp`の120〜135行は、温度1.74とPUCTの係数の既定値を定める（[探索の調査](../../proposals/alphazero-strength-gap/search.md)の「既定値」の表）。
+- DeepLearningShogiの`cppshogi/usi.cpp`の120〜135行は、温度1.74とPUCTの係数の既定値を定める（[探索の調査](../../research/alphazero-strength-gap/search.md)の「既定値」の表）。
 - 「先行実装との対応」の節の行番号は、2026年11月8日に取得したlc0のコミットfcabd174、DeepLearningShogiのコミット26bbc67b、およびCrazyAraのコミットbb3b5b65のものである。
