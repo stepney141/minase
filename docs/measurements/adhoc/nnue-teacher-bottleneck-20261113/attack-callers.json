@@ -1,0 +1,481 @@
+{
+  "binary": "/home/stepney141/board-games/minase/target/teacher-profile-20261113/bin/minase-baseline",
+  "data": "target/teacher-profile-20261113/runs/samples-validated-c1.data",
+  "total_cycles": {
+    "samples": 105336,
+    "period": 421347897432
+  },
+  "unresolved": {
+    "samples": 0,
+    "period": 0
+  },
+  "callers": [
+    {
+      "return_address": "0xaf11df",
+      "call_address": "0xaf11de",
+      "samples": 8915,
+      "period": 35660329855,
+      "period_percent": 8.463393331814384,
+      "frames": [
+        {
+          "function": "minase::search::alphabeta::see::see_prunes",
+          "location": "/tmp/minase-teacher-profile-20261113-source/crates/minase/src/search/alphabeta/see.rs:91"
+        }
+      ]
+    },
+    {
+      "return_address": "0xbe5f39",
+      "call_address": "0xbe5f38",
+      "samples": 881,
+      "period": 3524032597,
+      "period_percent": 0.8363712311080732,
+      "frames": [
+        {
+          "function": "<minase_core::movegen::gives_check::CheckContext>::gives_check",
+          "location": "/tmp/minase-teacher-profile-20261113-source/crates/minase-core/src/movegen/gives_check.rs:104"
+        }
+      ]
+    },
+    {
+      "return_address": "0xbe65ff",
+      "call_address": "0xbe65fe",
+      "samples": 430,
+      "period": 1720015910,
+      "period_percent": 0.40821751348067137,
+      "frames": [
+        {
+          "function": "<minase_core::movegen::gives_check::CheckContext>::gives_check",
+          "location": "/tmp/minase-teacher-profile-20261113-source/crates/minase-core/src/movegen/gives_check.rs:63"
+        }
+      ]
+    },
+    {
+      "return_address": "0xbda31c",
+      "call_address": "0xbda31b",
+      "samples": 325,
+      "period": 1300012025,
+      "period_percent": 0.30853649274701905,
+      "frames": [
+        {
+          "function": "minase_core::movegen::lion_capture::lion_has_foot_after_capture",
+          "location": "/tmp/minase-teacher-profile-20261113-source/crates/minase-core/src/movegen/lion_capture.rs:191"
+        }
+      ]
+    },
+    {
+      "return_address": "0xaddebc",
+      "call_address": "0xaddebb",
+      "samples": 300,
+      "period": 1200011100,
+      "period_percent": 0.2848029163818637,
+      "frames": [
+        {
+          "function": "minase::search::alphabeta::royal::royal_under_attack::{closure#0}",
+          "location": "/tmp/minase-teacher-profile-20261113-source/crates/minase/src/search/alphabeta/royal.rs:16"
+        },
+        {
+          "function": "core::iter::traits::iterator::Iterator::any::check::<minase_core::board::square::Square, minase::search::alphabeta::royal::royal_under_attack::{closure#0}>::{closure#0}",
+          "location": "/home/stepney141/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/core/src/iter/traits/iterator.rs:2893"
+        },
+        {
+          "function": "<minase_core::board::bitboard::SquareIter as core::iter::traits::iterator::Iterator>::try_fold::<(), core::iter::traits::iterator::Iterator::any::check<minase_core::board::square::Square, minase::search::alphabeta::royal::royal_under_attack::{closure#0}>::{closure#0}, core::ops::control_flow::ControlFlow<()>>",
+          "location": "/home/stepney141/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/core/src/iter/traits/iterator.rs:2494"
+        },
+        {
+          "function": "<minase_core::board::bitboard::SquareIter as core::iter::traits::iterator::Iterator>::any::<minase::search::alphabeta::royal::royal_under_attack::{closure#0}>",
+          "location": "/home/stepney141/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/core/src/iter/traits/iterator.rs:2897"
+        },
+        {
+          "function": "minase::search::alphabeta::royal::royal_under_attack",
+          "location": "/tmp/minase-teacher-profile-20261113-source/crates/minase/src/search/alphabeta/royal.rs:14"
+        },
+        {
+          "function": "<minase::search::alphabeta::searcher::Searcher>::negamax::{closure#9}",
+          "location": "/tmp/minase-teacher-profile-20261113-source/crates/minase/src/search/alphabeta/negamax.rs:304"
+        },
+        {
+          "function": "<core::option::Option<bool>>::get_or_insert_with::<<minase::search::alphabeta::searcher::Searcher>::negamax::{closure#9}>",
+          "location": "/home/stepney141/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/core/src/option.rs:1826"
+        },
+        {
+          "function": "<minase::search::alphabeta::searcher::Searcher>::negamax",
+          "location": "/tmp/minase-teacher-profile-20261113-source/crates/minase/src/search/alphabeta/negamax.rs:304"
+        }
+      ]
+    },
+    {
+      "return_address": "0xade3d1",
+      "call_address": "0xade3d0",
+      "samples": 278,
+      "period": 1112010286,
+      "period_percent": 0.26391736918052705,
+      "frames": [
+        {
+          "function": "minase::search::alphabeta::royal::royal_under_attack::{closure#0}",
+          "location": "/tmp/minase-teacher-profile-20261113-source/crates/minase/src/search/alphabeta/royal.rs:16"
+        },
+        {
+          "function": "core::iter::traits::iterator::Iterator::any::check::<minase_core::board::square::Square, minase::search::alphabeta::royal::royal_under_attack::{closure#0}>::{closure#0}",
+          "location": "/home/stepney141/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/core/src/iter/traits/iterator.rs:2893"
+        },
+        {
+          "function": "<minase_core::board::bitboard::SquareIter as core::iter::traits::iterator::Iterator>::try_fold::<(), core::iter::traits::iterator::Iterator::any::check<minase_core::board::square::Square, minase::search::alphabeta::royal::royal_under_attack::{closure#0}>::{closure#0}, core::ops::control_flow::ControlFlow<()>>",
+          "location": "/home/stepney141/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/core/src/iter/traits/iterator.rs:2494"
+        },
+        {
+          "function": "<minase_core::board::bitboard::SquareIter as core::iter::traits::iterator::Iterator>::any::<minase::search::alphabeta::royal::royal_under_attack::{closure#0}>",
+          "location": "/home/stepney141/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/core/src/iter/traits/iterator.rs:2897"
+        },
+        {
+          "function": "minase::search::alphabeta::royal::royal_under_attack",
+          "location": "/tmp/minase-teacher-profile-20261113-source/crates/minase/src/search/alphabeta/royal.rs:14"
+        },
+        {
+          "function": "<minase::search::alphabeta::searcher::Searcher>::negamax::{closure#14}",
+          "location": "/tmp/minase-teacher-profile-20261113-source/crates/minase/src/search/alphabeta/negamax.rs:337"
+        },
+        {
+          "function": "<core::option::Option<bool>>::get_or_insert_with::<<minase::search::alphabeta::searcher::Searcher>::negamax::{closure#14}>",
+          "location": "/home/stepney141/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/core/src/option.rs:1826"
+        },
+        {
+          "function": "<minase::search::alphabeta::searcher::Searcher>::negamax",
+          "location": "/tmp/minase-teacher-profile-20261113-source/crates/minase/src/search/alphabeta/negamax.rs:337"
+        }
+      ]
+    },
+    {
+      "return_address": "0xae5a63",
+      "call_address": "0xae5a62",
+      "samples": 71,
+      "period": 284002627,
+      "period_percent": 0.06740335687704109,
+      "frames": [
+        {
+          "function": "minase::search::alphabeta::royal::royal_under_attack::{closure#0}",
+          "location": "/tmp/minase-teacher-profile-20261113-source/crates/minase/src/search/alphabeta/royal.rs:16"
+        },
+        {
+          "function": "core::iter::traits::iterator::Iterator::any::check::<minase_core::board::square::Square, minase::search::alphabeta::royal::royal_under_attack::{closure#0}>::{closure#0}",
+          "location": "/home/stepney141/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/core/src/iter/traits/iterator.rs:2893"
+        },
+        {
+          "function": "<minase_core::board::bitboard::SquareIter as core::iter::traits::iterator::Iterator>::try_fold::<(), core::iter::traits::iterator::Iterator::any::check<minase_core::board::square::Square, minase::search::alphabeta::royal::royal_under_attack::{closure#0}>::{closure#0}, core::ops::control_flow::ControlFlow<()>>",
+          "location": "/home/stepney141/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/core/src/iter/traits/iterator.rs:2494"
+        },
+        {
+          "function": "<minase_core::board::bitboard::SquareIter as core::iter::traits::iterator::Iterator>::any::<minase::search::alphabeta::royal::royal_under_attack::{closure#0}>",
+          "location": "/home/stepney141/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/core/src/iter/traits/iterator.rs:2897"
+        },
+        {
+          "function": "minase::search::alphabeta::royal::royal_under_attack",
+          "location": "/tmp/minase-teacher-profile-20261113-source/crates/minase/src/search/alphabeta/royal.rs:14"
+        },
+        {
+          "function": "<minase::search::alphabeta::searcher::Searcher>::negamax::{closure#21}",
+          "location": "/tmp/minase-teacher-profile-20261113-source/crates/minase/src/search/alphabeta/negamax.rs:496"
+        },
+        {
+          "function": "<core::option::Option<bool>>::get_or_insert_with::<<minase::search::alphabeta::searcher::Searcher>::negamax::{closure#21}>",
+          "location": "/home/stepney141/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/core/src/option.rs:1826"
+        },
+        {
+          "function": "<minase::search::alphabeta::searcher::Searcher>::negamax",
+          "location": "/tmp/minase-teacher-profile-20261113-source/crates/minase/src/search/alphabeta/negamax.rs:496"
+        }
+      ]
+    },
+    {
+      "return_address": "0xaf3676",
+      "call_address": "0xaf3675",
+      "samples": 39,
+      "period": 156001443,
+      "period_percent": 0.037024379129642286,
+      "frames": [
+        {
+          "function": "minase::search::alphabeta::royal::royal_under_attack::{closure#0}",
+          "location": "/tmp/minase-teacher-profile-20261113-source/crates/minase/src/search/alphabeta/royal.rs:16"
+        },
+        {
+          "function": "core::iter::traits::iterator::Iterator::any::check::<minase_core::board::square::Square, minase::search::alphabeta::royal::royal_under_attack::{closure#0}>::{closure#0}",
+          "location": "/home/stepney141/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/core/src/iter/traits/iterator.rs:2893"
+        },
+        {
+          "function": "<minase_core::board::bitboard::SquareIter as core::iter::traits::iterator::Iterator>::try_fold::<(), core::iter::traits::iterator::Iterator::any::check<minase_core::board::square::Square, minase::search::alphabeta::royal::royal_under_attack::{closure#0}>::{closure#0}, core::ops::control_flow::ControlFlow<()>>",
+          "location": "/home/stepney141/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/core/src/iter/traits/iterator.rs:2494"
+        },
+        {
+          "function": "<minase_core::board::bitboard::SquareIter as core::iter::traits::iterator::Iterator>::any::<minase::search::alphabeta::royal::royal_under_attack::{closure#0}>",
+          "location": "/home/stepney141/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/core/src/iter/traits/iterator.rs:2897"
+        },
+        {
+          "function": "minase::search::alphabeta::royal::royal_under_attack",
+          "location": "/tmp/minase-teacher-profile-20261113-source/crates/minase/src/search/alphabeta/royal.rs:14"
+        },
+        {
+          "function": "<minase::search::alphabeta::searcher::Searcher>::negamax::{closure#20}",
+          "location": "/tmp/minase-teacher-profile-20261113-source/crates/minase/src/search/alphabeta/negamax.rs:485"
+        },
+        {
+          "function": "<core::option::Option<bool>>::get_or_insert_with::<<minase::search::alphabeta::searcher::Searcher>::negamax::{closure#20}>",
+          "location": "/home/stepney141/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/core/src/option.rs:1826"
+        }
+      ]
+    },
+    {
+      "return_address": "0xae64ac",
+      "call_address": "0xae64ab",
+      "samples": 23,
+      "period": 92000851,
+      "period_percent": 0.021834890255942888,
+      "frames": [
+        {
+          "function": "minase::search::alphabeta::royal::royal_under_attack::{closure#0}",
+          "location": "/tmp/minase-teacher-profile-20261113-source/crates/minase/src/search/alphabeta/royal.rs:16"
+        },
+        {
+          "function": "core::iter::traits::iterator::Iterator::any::check::<minase_core::board::square::Square, minase::search::alphabeta::royal::royal_under_attack::{closure#0}>::{closure#0}",
+          "location": "/home/stepney141/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/core/src/iter/traits/iterator.rs:2893"
+        },
+        {
+          "function": "<minase_core::board::bitboard::SquareIter as core::iter::traits::iterator::Iterator>::try_fold::<(), core::iter::traits::iterator::Iterator::any::check<minase_core::board::square::Square, minase::search::alphabeta::royal::royal_under_attack::{closure#0}>::{closure#0}, core::ops::control_flow::ControlFlow<()>>",
+          "location": "/home/stepney141/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/core/src/iter/traits/iterator.rs:2494"
+        },
+        {
+          "function": "<minase_core::board::bitboard::SquareIter as core::iter::traits::iterator::Iterator>::any::<minase::search::alphabeta::royal::royal_under_attack::{closure#0}>",
+          "location": "/home/stepney141/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/core/src/iter/traits/iterator.rs:2897"
+        },
+        {
+          "function": "minase::search::alphabeta::royal::royal_under_attack",
+          "location": "/tmp/minase-teacher-profile-20261113-source/crates/minase/src/search/alphabeta/royal.rs:14"
+        },
+        {
+          "function": "<minase::search::alphabeta::searcher::Searcher>::negamax::{closure#26}",
+          "location": "/tmp/minase-teacher-profile-20261113-source/crates/minase/src/search/alphabeta/negamax.rs:569"
+        },
+        {
+          "function": "<core::option::Option<bool>>::get_or_insert_with::<<minase::search::alphabeta::searcher::Searcher>::negamax::{closure#26}>",
+          "location": "/home/stepney141/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/core/src/option.rs:1826"
+        },
+        {
+          "function": "<minase::search::alphabeta::searcher::Searcher>::negamax",
+          "location": "/tmp/minase-teacher-profile-20261113-source/crates/minase/src/search/alphabeta/negamax.rs:569"
+        }
+      ]
+    },
+    {
+      "return_address": "0xae6101",
+      "call_address": "0xae6100",
+      "samples": 15,
+      "period": 60000555,
+      "period_percent": 0.014240145819093188,
+      "frames": [
+        {
+          "function": "minase::search::alphabeta::royal::royal_under_attack::{closure#0}",
+          "location": "/tmp/minase-teacher-profile-20261113-source/crates/minase/src/search/alphabeta/royal.rs:16"
+        },
+        {
+          "function": "core::iter::traits::iterator::Iterator::any::check::<minase_core::board::square::Square, minase::search::alphabeta::royal::royal_under_attack::{closure#0}>::{closure#0}",
+          "location": "/home/stepney141/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/core/src/iter/traits/iterator.rs:2893"
+        },
+        {
+          "function": "<minase_core::board::bitboard::SquareIter as core::iter::traits::iterator::Iterator>::try_fold::<(), core::iter::traits::iterator::Iterator::any::check<minase_core::board::square::Square, minase::search::alphabeta::royal::royal_under_attack::{closure#0}>::{closure#0}, core::ops::control_flow::ControlFlow<()>>",
+          "location": "/home/stepney141/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/core/src/iter/traits/iterator.rs:2494"
+        },
+        {
+          "function": "<minase_core::board::bitboard::SquareIter as core::iter::traits::iterator::Iterator>::any::<minase::search::alphabeta::royal::royal_under_attack::{closure#0}>",
+          "location": "/home/stepney141/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/core/src/iter/traits/iterator.rs:2897"
+        },
+        {
+          "function": "minase::search::alphabeta::royal::royal_under_attack",
+          "location": "/tmp/minase-teacher-profile-20261113-source/crates/minase/src/search/alphabeta/royal.rs:14"
+        },
+        {
+          "function": "<minase::search::alphabeta::searcher::Searcher>::negamax::{closure#22}",
+          "location": "/tmp/minase-teacher-profile-20261113-source/crates/minase/src/search/alphabeta/negamax.rs:525"
+        },
+        {
+          "function": "<core::option::Option<bool>>::get_or_insert_with::<<minase::search::alphabeta::searcher::Searcher>::negamax::{closure#22}>",
+          "location": "/home/stepney141/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/core/src/option.rs:1826"
+        },
+        {
+          "function": "<minase::search::alphabeta::searcher::Searcher>::negamax",
+          "location": "/tmp/minase-teacher-profile-20261113-source/crates/minase/src/search/alphabeta/negamax.rs:525"
+        }
+      ]
+    },
+    {
+      "return_address": "0xad8fb7",
+      "call_address": "0xad8fb6",
+      "samples": 13,
+      "period": 52000481,
+      "period_percent": 0.012341459709880763,
+      "frames": [
+        {
+          "function": "minase::search::alphabeta::royal::royal_under_attack::{closure#0}",
+          "location": "/tmp/minase-teacher-profile-20261113-source/crates/minase/src/search/alphabeta/royal.rs:16"
+        },
+        {
+          "function": "core::iter::traits::iterator::Iterator::any::check::<minase_core::board::square::Square, minase::search::alphabeta::royal::royal_under_attack::{closure#0}>::{closure#0}",
+          "location": "/home/stepney141/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/core/src/iter/traits/iterator.rs:2893"
+        },
+        {
+          "function": "<minase_core::board::bitboard::SquareIter as core::iter::traits::iterator::Iterator>::try_fold::<(), core::iter::traits::iterator::Iterator::any::check<minase_core::board::square::Square, minase::search::alphabeta::royal::royal_under_attack::{closure#0}>::{closure#0}, core::ops::control_flow::ControlFlow<()>>",
+          "location": "/home/stepney141/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/core/src/iter/traits/iterator.rs:2494"
+        },
+        {
+          "function": "<minase_core::board::bitboard::SquareIter as core::iter::traits::iterator::Iterator>::any::<minase::search::alphabeta::royal::royal_under_attack::{closure#0}>",
+          "location": "/home/stepney141/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/core/src/iter/traits/iterator.rs:2897"
+        },
+        {
+          "function": "minase::search::alphabeta::royal::royal_under_attack",
+          "location": "/tmp/minase-teacher-profile-20261113-source/crates/minase/src/search/alphabeta/royal.rs:14"
+        },
+        {
+          "function": "<minase::search::alphabeta::searcher::Searcher>::update_correction::{closure#0}",
+          "location": "/tmp/minase-teacher-profile-20261113-source/crates/minase/src/search/alphabeta/correction.rs:98"
+        },
+        {
+          "function": "<core::option::Option<bool>>::get_or_insert_with::<<minase::search::alphabeta::searcher::Searcher>::update_correction::{closure#0}>",
+          "location": "/home/stepney141/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/core/src/option.rs:1826"
+        },
+        {
+          "function": "<minase::search::alphabeta::searcher::Searcher>::update_correction",
+          "location": "/tmp/minase-teacher-profile-20261113-source/crates/minase/src/search/alphabeta/correction.rs:98"
+        }
+      ]
+    },
+    {
+      "return_address": "0xad7878",
+      "call_address": "0xad7877",
+      "samples": 7,
+      "period": 28000259,
+      "period_percent": 0.006645401382243487,
+      "frames": [
+        {
+          "function": "<minase::search::alphabeta::searcher::Searcher>::search_move",
+          "location": "minase.d7b155d02a3f263-cgu.0:?"
+        }
+      ]
+    },
+    {
+      "return_address": "0xae63c2",
+      "call_address": "0xae63c1",
+      "samples": 6,
+      "period": 24000222,
+      "period_percent": 0.005696058327637275,
+      "frames": [
+        {
+          "function": "minase::search::alphabeta::royal::royal_under_attack::{closure#0}",
+          "location": "/tmp/minase-teacher-profile-20261113-source/crates/minase/src/search/alphabeta/royal.rs:16"
+        },
+        {
+          "function": "core::iter::traits::iterator::Iterator::any::check::<minase_core::board::square::Square, minase::search::alphabeta::royal::royal_under_attack::{closure#0}>::{closure#0}",
+          "location": "/home/stepney141/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/core/src/iter/traits/iterator.rs:2893"
+        },
+        {
+          "function": "<minase_core::board::bitboard::SquareIter as core::iter::traits::iterator::Iterator>::try_fold::<(), core::iter::traits::iterator::Iterator::any::check<minase_core::board::square::Square, minase::search::alphabeta::royal::royal_under_attack::{closure#0}>::{closure#0}, core::ops::control_flow::ControlFlow<()>>",
+          "location": "/home/stepney141/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/core/src/iter/traits/iterator.rs:2494"
+        },
+        {
+          "function": "<minase_core::board::bitboard::SquareIter as core::iter::traits::iterator::Iterator>::any::<minase::search::alphabeta::royal::royal_under_attack::{closure#0}>",
+          "location": "/home/stepney141/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/core/src/iter/traits/iterator.rs:2897"
+        },
+        {
+          "function": "minase::search::alphabeta::royal::royal_under_attack",
+          "location": "/tmp/minase-teacher-profile-20261113-source/crates/minase/src/search/alphabeta/royal.rs:14"
+        },
+        {
+          "function": "<minase::search::alphabeta::searcher::Searcher>::negamax::{closure#24}",
+          "location": "/tmp/minase-teacher-profile-20261113-source/crates/minase/src/search/alphabeta/negamax.rs:553"
+        },
+        {
+          "function": "<core::option::Option<bool>>::get_or_insert_with::<<minase::search::alphabeta::searcher::Searcher>::negamax::{closure#24}>",
+          "location": "/home/stepney141/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/core/src/option.rs:1826"
+        },
+        {
+          "function": "<minase::search::alphabeta::searcher::Searcher>::negamax",
+          "location": "/tmp/minase-teacher-profile-20261113-source/crates/minase/src/search/alphabeta/negamax.rs:553"
+        }
+      ]
+    },
+    {
+      "return_address": "0xade018",
+      "call_address": "0xade017",
+      "samples": 5,
+      "period": 20000185,
+      "period_percent": 0.0047467152730310625,
+      "frames": [
+        {
+          "function": "minase::search::alphabeta::royal::royal_under_attack::{closure#0}",
+          "location": "/tmp/minase-teacher-profile-20261113-source/crates/minase/src/search/alphabeta/royal.rs:16"
+        },
+        {
+          "function": "core::iter::traits::iterator::Iterator::any::check::<minase_core::board::square::Square, minase::search::alphabeta::royal::royal_under_attack::{closure#0}>::{closure#0}",
+          "location": "/home/stepney141/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/core/src/iter/traits/iterator.rs:2893"
+        },
+        {
+          "function": "<minase_core::board::bitboard::SquareIter as core::iter::traits::iterator::Iterator>::try_fold::<(), core::iter::traits::iterator::Iterator::any::check<minase_core::board::square::Square, minase::search::alphabeta::royal::royal_under_attack::{closure#0}>::{closure#0}, core::ops::control_flow::ControlFlow<()>>",
+          "location": "/home/stepney141/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/core/src/iter/traits/iterator.rs:2494"
+        },
+        {
+          "function": "<minase_core::board::bitboard::SquareIter as core::iter::traits::iterator::Iterator>::any::<minase::search::alphabeta::royal::royal_under_attack::{closure#0}>",
+          "location": "/home/stepney141/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/core/src/iter/traits/iterator.rs:2897"
+        },
+        {
+          "function": "minase::search::alphabeta::royal::royal_under_attack",
+          "location": "/tmp/minase-teacher-profile-20261113-source/crates/minase/src/search/alphabeta/royal.rs:14"
+        },
+        {
+          "function": "<minase::search::alphabeta::searcher::Searcher>::negamax::{closure#12}",
+          "location": "/tmp/minase-teacher-profile-20261113-source/crates/minase/src/search/alphabeta/negamax.rs:315"
+        },
+        {
+          "function": "<core::option::Option<bool>>::get_or_insert_with::<<minase::search::alphabeta::searcher::Searcher>::negamax::{closure#12}>",
+          "location": "/home/stepney141/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/core/src/option.rs:1826"
+        },
+        {
+          "function": "<minase::search::alphabeta::searcher::Searcher>::negamax",
+          "location": "/tmp/minase-teacher-profile-20261113-source/crates/minase/src/search/alphabeta/negamax.rs:315"
+        }
+      ]
+    },
+    {
+      "return_address": "0xbe1f0c",
+      "call_address": "0xbe1f0b",
+      "samples": 1,
+      "period": 4000037,
+      "period_percent": 0.0009493430546062125,
+      "frames": [
+        {
+          "function": "minase_core::game::repetition::r1::move_was_attacking::{closure#0}",
+          "location": "/tmp/minase-teacher-profile-20261113-source/crates/minase-core/src/game/repetition/r1.rs:242"
+        },
+        {
+          "function": "core::iter::traits::iterator::Iterator::any::check::<minase_core::board::square::Square, minase_core::game::repetition::r1::move_was_attacking::{closure#0}>::{closure#0}",
+          "location": "/home/stepney141/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/core/src/iter/traits/iterator.rs:2893"
+        },
+        {
+          "function": "<minase_core::board::bitboard::SquareIter as core::iter::traits::iterator::Iterator>::try_fold::<(), core::iter::traits::iterator::Iterator::any::check<minase_core::board::square::Square, minase_core::game::repetition::r1::move_was_attacking::{closure#0}>::{closure#0}, core::ops::control_flow::ControlFlow<()>>",
+          "location": "/home/stepney141/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/core/src/iter/traits/iterator.rs:2494"
+        },
+        {
+          "function": "<minase_core::board::bitboard::SquareIter as core::iter::traits::iterator::Iterator>::any::<minase_core::game::repetition::r1::move_was_attacking::{closure#0}>",
+          "location": "/home/stepney141/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/core/src/iter/traits/iterator.rs:2897"
+        },
+        {
+          "function": "minase_core::game::repetition::r1::move_was_attacking",
+          "location": "/tmp/minase-teacher-profile-20261113-source/crates/minase-core/src/game/repetition/r1.rs:240"
+        },
+        {
+          "function": "<minase_core::game::adjudication::AdjudicationState>::record_move",
+          "location": "/tmp/minase-teacher-profile-20261113-source/crates/minase-core/src/game/adjudication/mod.rs:90"
+        },
+        {
+          "function": "<minase_core::game::referee::Game>::play",
+          "location": "/tmp/minase-teacher-profile-20261113-source/crates/minase-core/src/game/referee.rs:79"
+        }
+      ]
+    }
+  ]
+}

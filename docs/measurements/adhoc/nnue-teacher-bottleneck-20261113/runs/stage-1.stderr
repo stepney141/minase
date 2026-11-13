@@ -1,0 +1,6 @@
+[TEACHER_PROFILE_20261113_GAME] game=1 total_ns=13214230365 setup_ns=286541135 snapshot_ns=8102077 search_ns=12915950054 positions=665 nodes=13300000 recorded=564
+progress: games=1/2 records=564 elapsed_seconds=13.257
+[TEACHER_PROFILE_20261113_GAME] game=2 total_ns=10463077863 setup_ns=43639403 snapshot_ns=5253722 search_ns=10411281060 positions=485 nodes=9700000 recorded=391
+progress: games=2/2 records=955 elapsed_seconds=23.711
+[TEACHER_PROFILE_20261113_MERGE] write_ns=12451071 statistics_ns=63721
+[TEACHER_PROFILE_20261113_FINISH] finish_ns=10217277

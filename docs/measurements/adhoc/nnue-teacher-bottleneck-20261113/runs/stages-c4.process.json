@@ -1,0 +1,762 @@
+{
+  "clock_ticks": 100,
+  "page_size": 4096,
+  "rows": [
+    {
+      "elapsed_seconds": 0.2509757021907717,
+      "user_ticks": 22,
+      "system_ticks": 0,
+      "threads": 1,
+      "rss_pages": 3726
+    },
+    {
+      "elapsed_seconds": 0.5013828850351274,
+      "user_ticks": 50,
+      "system_ticks": 9,
+      "threads": 5,
+      "rss_pages": 230862
+    },
+    {
+      "elapsed_seconds": 0.7517206640914083,
+      "user_ticks": 147,
+      "system_ticks": 9,
+      "threads": 5,
+      "rss_pages": 231374
+    },
+    {
+      "elapsed_seconds": 1.0019724210724235,
+      "user_ticks": 247,
+      "system_ticks": 9,
+      "threads": 5,
+      "rss_pages": 231374
+    },
+    {
+      "elapsed_seconds": 1.252226023003459,
+      "user_ticks": 347,
+      "system_ticks": 9,
+      "threads": 5,
+      "rss_pages": 232429
+    },
+    {
+      "elapsed_seconds": 1.5025751071516424,
+      "user_ticks": 447,
+      "system_ticks": 9,
+      "threads": 5,
+      "rss_pages": 231517
+    },
+    {
+      "elapsed_seconds": 1.752913230098784,
+      "user_ticks": 547,
+      "system_ticks": 9,
+      "threads": 5,
+      "rss_pages": 231421
+    },
+    {
+      "elapsed_seconds": 2.0033321601804346,
+      "user_ticks": 648,
+      "system_ticks": 9,
+      "threads": 5,
+      "rss_pages": 231421
+    },
+    {
+      "elapsed_seconds": 2.2536258490290493,
+      "user_ticks": 748,
+      "system_ticks": 9,
+      "threads": 5,
+      "rss_pages": 231421
+    },
+    {
+      "elapsed_seconds": 2.503896272042766,
+      "user_ticks": 848,
+      "system_ticks": 9,
+      "threads": 5,
+      "rss_pages": 231421
+    },
+    {
+      "elapsed_seconds": 2.7542719000484794,
+      "user_ticks": 948,
+      "system_ticks": 9,
+      "threads": 5,
+      "rss_pages": 231461
+    },
+    {
+      "elapsed_seconds": 3.0045386510901153,
+      "user_ticks": 1048,
+      "system_ticks": 9,
+      "threads": 5,
+      "rss_pages": 231461
+    },
+    {
+      "elapsed_seconds": 3.25481039006263,
+      "user_ticks": 1148,
+      "system_ticks": 9,
+      "threads": 5,
+      "rss_pages": 231461
+    },
+    {
+      "elapsed_seconds": 3.505238129058853,
+      "user_ticks": 1248,
+      "system_ticks": 9,
+      "threads": 5,
+      "rss_pages": 231461
+    },
+    {
+      "elapsed_seconds": 3.7555108370725065,
+      "user_ticks": 1299,
+      "system_ticks": 9,
+      "threads": 5,
+      "rss_pages": 231461
+    },
+    {
+      "elapsed_seconds": 4.005788289010525,
+      "user_ticks": 1353,
+      "system_ticks": 9,
+      "threads": 5,
+      "rss_pages": 231461
+    },
+    {
+      "elapsed_seconds": 4.2560672832187265,
+      "user_ticks": 1453,
+      "system_ticks": 9,
+      "threads": 5,
+      "rss_pages": 231461
+    },
+    {
+      "elapsed_seconds": 4.506334648001939,
+      "user_ticks": 1553,
+      "system_ticks": 9,
+      "threads": 5,
+      "rss_pages": 231461
+    },
+    {
+      "elapsed_seconds": 4.756834140047431,
+      "user_ticks": 1654,
+      "system_ticks": 9,
+      "threads": 5,
+      "rss_pages": 231461
+    },
+    {
+      "elapsed_seconds": 5.007153356214985,
+      "user_ticks": 1754,
+      "system_ticks": 9,
+      "threads": 5,
+      "rss_pages": 231461
+    },
+    {
+      "elapsed_seconds": 5.257431501056999,
+      "user_ticks": 1854,
+      "system_ticks": 9,
+      "threads": 5,
+      "rss_pages": 231461
+    },
+    {
+      "elapsed_seconds": 5.507697085151449,
+      "user_ticks": 1954,
+      "system_ticks": 9,
+      "threads": 5,
+      "rss_pages": 231461
+    },
+    {
+      "elapsed_seconds": 5.758126391097903,
+      "user_ticks": 2054,
+      "system_ticks": 9,
+      "threads": 5,
+      "rss_pages": 231501
+    },
+    {
+      "elapsed_seconds": 6.008467053063214,
+      "user_ticks": 2154,
+      "system_ticks": 9,
+      "threads": 5,
+      "rss_pages": 231501
+    },
+    {
+      "elapsed_seconds": 6.258838382083923,
+      "user_ticks": 2254,
+      "system_ticks": 9,
+      "threads": 5,
+      "rss_pages": 231501
+    },
+    {
+      "elapsed_seconds": 6.509218726074323,
+      "user_ticks": 2354,
+      "system_ticks": 9,
+      "threads": 5,
+      "rss_pages": 231501
+    },
+    {
+      "elapsed_seconds": 6.7596290512010455,
+      "user_ticks": 2454,
+      "system_ticks": 9,
+      "threads": 5,
+      "rss_pages": 231453
+    },
+    {
+      "elapsed_seconds": 7.009995619067922,
+      "user_ticks": 2555,
+      "system_ticks": 9,
+      "threads": 5,
+      "rss_pages": 231453
+    },
+    {
+      "elapsed_seconds": 7.260345400078222,
+      "user_ticks": 2655,
+      "system_ticks": 9,
+      "threads": 5,
+      "rss_pages": 231453
+    },
+    {
+      "elapsed_seconds": 7.510635253041983,
+      "user_ticks": 2755,
+      "system_ticks": 9,
+      "threads": 5,
+      "rss_pages": 231453
+    },
+    {
+      "elapsed_seconds": 7.7609861001838,
+      "user_ticks": 2855,
+      "system_ticks": 9,
+      "threads": 5,
+      "rss_pages": 232093
+    },
+    {
+      "elapsed_seconds": 8.011357709998265,
+      "user_ticks": 2955,
+      "system_ticks": 9,
+      "threads": 5,
+      "rss_pages": 232093
+    },
+    {
+      "elapsed_seconds": 8.26174848107621,
+      "user_ticks": 3055,
+      "system_ticks": 9,
+      "threads": 5,
+      "rss_pages": 232093
+    },
+    {
+      "elapsed_seconds": 8.512113689212129,
+      "user_ticks": 3155,
+      "system_ticks": 9,
+      "threads": 5,
+      "rss_pages": 232093
+    },
+    {
+      "elapsed_seconds": 8.762388684088364,
+      "user_ticks": 3255,
+      "system_ticks": 9,
+      "threads": 5,
+      "rss_pages": 231895
+    },
+    {
+      "elapsed_seconds": 9.01277049118653,
+      "user_ticks": 3355,
+      "system_ticks": 9,
+      "threads": 5,
+      "rss_pages": 231895
+    },
+    {
+      "elapsed_seconds": 9.263210710138083,
+      "user_ticks": 3455,
+      "system_ticks": 9,
+      "threads": 5,
+      "rss_pages": 231895
+    },
+    {
+      "elapsed_seconds": 9.513798404019326,
+      "user_ticks": 3556,
+      "system_ticks": 9,
+      "threads": 5,
+      "rss_pages": 231895
+    },
+    {
+      "elapsed_seconds": 9.764113534009084,
+      "user_ticks": 3631,
+      "system_ticks": 9,
+      "threads": 5,
+      "rss_pages": 231895
+    },
+    {
+      "elapsed_seconds": 10.014494030037895,
+      "user_ticks": 3666,
+      "system_ticks": 9,
+      "threads": 5,
+      "rss_pages": 231895
+    },
+    {
+      "elapsed_seconds": 10.264833425171673,
+      "user_ticks": 3754,
+      "system_ticks": 9,
+      "threads": 5,
+      "rss_pages": 231895
+    },
+    {
+      "elapsed_seconds": 10.515258636092767,
+      "user_ticks": 3854,
+      "system_ticks": 9,
+      "threads": 5,
+      "rss_pages": 231895
+    },
+    {
+      "elapsed_seconds": 10.76559654599987,
+      "user_ticks": 3954,
+      "system_ticks": 9,
+      "threads": 5,
+      "rss_pages": 236091
+    },
+    {
+      "elapsed_seconds": 11.015910526039079,
+      "user_ticks": 4022,
+      "system_ticks": 9,
+      "threads": 5,
+      "rss_pages": 236091
+    },
+    {
+      "elapsed_seconds": 11.266268474049866,
+      "user_ticks": 4085,
+      "system_ticks": 9,
+      "threads": 5,
+      "rss_pages": 236091
+    },
+    {
+      "elapsed_seconds": 11.516549633117393,
+      "user_ticks": 4160,
+      "system_ticks": 9,
+      "threads": 5,
+      "rss_pages": 233179
+    },
+    {
+      "elapsed_seconds": 11.76696562813595,
+      "user_ticks": 4261,
+      "system_ticks": 9,
+      "threads": 5,
+      "rss_pages": 233179
+    },
+    {
+      "elapsed_seconds": 12.017309838207439,
+      "user_ticks": 4361,
+      "system_ticks": 9,
+      "threads": 5,
+      "rss_pages": 233179
+    },
+    {
+      "elapsed_seconds": 12.267726535210386,
+      "user_ticks": 4461,
+      "system_ticks": 9,
+      "threads": 5,
+      "rss_pages": 233179
+    },
+    {
+      "elapsed_seconds": 12.51814503618516,
+      "user_ticks": 4561,
+      "system_ticks": 9,
+      "threads": 5,
+      "rss_pages": 232987
+    },
+    {
+      "elapsed_seconds": 12.768504073144868,
+      "user_ticks": 4661,
+      "system_ticks": 9,
+      "threads": 5,
+      "rss_pages": 232987
+    },
+    {
+      "elapsed_seconds": 13.01893003913574,
+      "user_ticks": 4761,
+      "system_ticks": 9,
+      "threads": 5,
+      "rss_pages": 232987
+    },
+    {
+      "elapsed_seconds": 13.269287068163976,
+      "user_ticks": 4860,
+      "system_ticks": 9,
+      "threads": 5,
+      "rss_pages": 232987
+    },
+    {
+      "elapsed_seconds": 13.51989510608837,
+      "user_ticks": 4960,
+      "system_ticks": 9,
+      "threads": 5,
+      "rss_pages": 232987
+    },
+    {
+      "elapsed_seconds": 13.77027952321805,
+      "user_ticks": 5062,
+      "system_ticks": 9,
+      "threads": 5,
+      "rss_pages": 233347
+    },
+    {
+      "elapsed_seconds": 14.020561406156048,
+      "user_ticks": 5161,
+      "system_ticks": 9,
+      "threads": 5,
+      "rss_pages": 234241
+    },
+    {
+      "elapsed_seconds": 14.270932987099513,
+      "user_ticks": 5261,
+      "system_ticks": 9,
+      "threads": 5,
+      "rss_pages": 234241
+    },
+    {
+      "elapsed_seconds": 14.521383923012763,
+      "user_ticks": 5361,
+      "system_ticks": 10,
+      "threads": 5,
+      "rss_pages": 232434
+    },
+    {
+      "elapsed_seconds": 14.771691829198971,
+      "user_ticks": 5461,
+      "system_ticks": 10,
+      "threads": 5,
+      "rss_pages": 232434
+    },
+    {
+      "elapsed_seconds": 15.022044351091608,
+      "user_ticks": 5561,
+      "system_ticks": 10,
+      "threads": 5,
+      "rss_pages": 232434
+    },
+    {
+      "elapsed_seconds": 15.273505277000368,
+      "user_ticks": 5651,
+      "system_ticks": 10,
+      "threads": 5,
+      "rss_pages": 232936
+    },
+    {
+      "elapsed_seconds": 15.523795845219865,
+      "user_ticks": 5672,
+      "system_ticks": 10,
+      "threads": 5,
+      "rss_pages": 232002
+    },
+    {
+      "elapsed_seconds": 15.774081989191473,
+      "user_ticks": 5754,
+      "system_ticks": 10,
+      "threads": 5,
+      "rss_pages": 232002
+    },
+    {
+      "elapsed_seconds": 16.024456612067297,
+      "user_ticks": 5854,
+      "system_ticks": 10,
+      "threads": 5,
+      "rss_pages": 232002
+    },
+    {
+      "elapsed_seconds": 16.27484435401857,
+      "user_ticks": 5938,
+      "system_ticks": 10,
+      "threads": 4,
+      "rss_pages": 233050
+    },
+    {
+      "elapsed_seconds": 16.525223147124052,
+      "user_ticks": 6013,
+      "system_ticks": 10,
+      "threads": 4,
+      "rss_pages": 211752
+    },
+    {
+      "elapsed_seconds": 16.775809813058004,
+      "user_ticks": 6088,
+      "system_ticks": 10,
+      "threads": 4,
+      "rss_pages": 211752
+    },
+    {
+      "elapsed_seconds": 17.02621613512747,
+      "user_ticks": 6163,
+      "system_ticks": 10,
+      "threads": 4,
+      "rss_pages": 211752
+    },
+    {
+      "elapsed_seconds": 17.27658575307578,
+      "user_ticks": 6238,
+      "system_ticks": 10,
+      "threads": 4,
+      "rss_pages": 177347
+    },
+    {
+      "elapsed_seconds": 17.526995565043762,
+      "user_ticks": 6313,
+      "system_ticks": 10,
+      "threads": 4,
+      "rss_pages": 177235
+    },
+    {
+      "elapsed_seconds": 17.77731576305814,
+      "user_ticks": 6388,
+      "system_ticks": 10,
+      "threads": 4,
+      "rss_pages": 176715
+    },
+    {
+      "elapsed_seconds": 18.027632385026664,
+      "user_ticks": 6434,
+      "system_ticks": 10,
+      "threads": 4,
+      "rss_pages": 176035
+    },
+    {
+      "elapsed_seconds": 18.278027626220137,
+      "user_ticks": 6474,
+      "system_ticks": 10,
+      "threads": 4,
+      "rss_pages": 176035
+    },
+    {
+      "elapsed_seconds": 18.528304493054748,
+      "user_ticks": 6549,
+      "system_ticks": 10,
+      "threads": 4,
+      "rss_pages": 175932
+    },
+    {
+      "elapsed_seconds": 18.778576315147802,
+      "user_ticks": 6624,
+      "system_ticks": 10,
+      "threads": 4,
+      "rss_pages": 175932
+    },
+    {
+      "elapsed_seconds": 19.028842573054135,
+      "user_ticks": 6685,
+      "system_ticks": 10,
+      "threads": 3,
+      "rss_pages": 175910
+    },
+    {
+      "elapsed_seconds": 19.27918964321725,
+      "user_ticks": 6735,
+      "system_ticks": 10,
+      "threads": 3,
+      "rss_pages": 175910
+    },
+    {
+      "elapsed_seconds": 19.529456792166457,
+      "user_ticks": 6785,
+      "system_ticks": 10,
+      "threads": 3,
+      "rss_pages": 124091
+    },
+    {
+      "elapsed_seconds": 19.779724857071415,
+      "user_ticks": 6835,
+      "system_ticks": 10,
+      "threads": 3,
+      "rss_pages": 124091
+    },
+    {
+      "elapsed_seconds": 20.03000794700347,
+      "user_ticks": 6885,
+      "system_ticks": 10,
+      "threads": 3,
+      "rss_pages": 119724
+    },
+    {
+      "elapsed_seconds": 20.280264648143202,
+      "user_ticks": 6935,
+      "system_ticks": 10,
+      "threads": 3,
+      "rss_pages": 119724
+    },
+    {
+      "elapsed_seconds": 20.530626411084086,
+      "user_ticks": 6985,
+      "system_ticks": 10,
+      "threads": 3,
+      "rss_pages": 119678
+    },
+    {
+      "elapsed_seconds": 20.781034352025017,
+      "user_ticks": 7035,
+      "system_ticks": 10,
+      "threads": 3,
+      "rss_pages": 119678
+    },
+    {
+      "elapsed_seconds": 21.031304259086028,
+      "user_ticks": 7085,
+      "system_ticks": 10,
+      "threads": 3,
+      "rss_pages": 119678
+    },
+    {
+      "elapsed_seconds": 21.281574871158227,
+      "user_ticks": 7135,
+      "system_ticks": 10,
+      "threads": 3,
+      "rss_pages": 119678
+    },
+    {
+      "elapsed_seconds": 21.53193463315256,
+      "user_ticks": 7185,
+      "system_ticks": 10,
+      "threads": 3,
+      "rss_pages": 119678
+    },
+    {
+      "elapsed_seconds": 21.782364113023505,
+      "user_ticks": 7235,
+      "system_ticks": 10,
+      "threads": 3,
+      "rss_pages": 119678
+    },
+    {
+      "elapsed_seconds": 22.032740290043876,
+      "user_ticks": 7285,
+      "system_ticks": 10,
+      "threads": 3,
+      "rss_pages": 119678
+    },
+    {
+      "elapsed_seconds": 22.283085310133174,
+      "user_ticks": 7335,
+      "system_ticks": 10,
+      "threads": 3,
+      "rss_pages": 119678
+    },
+    {
+      "elapsed_seconds": 22.533367291092873,
+      "user_ticks": 7386,
+      "system_ticks": 10,
+      "threads": 3,
+      "rss_pages": 119678
+    },
+    {
+      "elapsed_seconds": 22.783644322073087,
+      "user_ticks": 7436,
+      "system_ticks": 10,
+      "threads": 3,
+      "rss_pages": 119678
+    },
+    {
+      "elapsed_seconds": 23.03406009916216,
+      "user_ticks": 7486,
+      "system_ticks": 10,
+      "threads": 3,
+      "rss_pages": 119718
+    },
+    {
+      "elapsed_seconds": 23.2844662561547,
+      "user_ticks": 7536,
+      "system_ticks": 10,
+      "threads": 3,
+      "rss_pages": 119718
+    },
+    {
+      "elapsed_seconds": 23.534851075150073,
+      "user_ticks": 7586,
+      "system_ticks": 10,
+      "threads": 3,
+      "rss_pages": 119718
+    },
+    {
+      "elapsed_seconds": 23.785243921214715,
+      "user_ticks": 7636,
+      "system_ticks": 10,
+      "threads": 3,
+      "rss_pages": 119718
+    },
+    {
+      "elapsed_seconds": 24.035741853993386,
+      "user_ticks": 7686,
+      "system_ticks": 10,
+      "threads": 3,
+      "rss_pages": 119718
+    },
+    {
+      "elapsed_seconds": 24.286036860197783,
+      "user_ticks": 7736,
+      "system_ticks": 10,
+      "threads": 3,
+      "rss_pages": 119718
+    },
+    {
+      "elapsed_seconds": 24.536417856113985,
+      "user_ticks": 7786,
+      "system_ticks": 10,
+      "threads": 3,
+      "rss_pages": 119718
+    },
+    {
+      "elapsed_seconds": 24.78679158515297,
+      "user_ticks": 7836,
+      "system_ticks": 10,
+      "threads": 3,
+      "rss_pages": 119718
+    },
+    {
+      "elapsed_seconds": 25.03714256710373,
+      "user_ticks": 7886,
+      "system_ticks": 10,
+      "threads": 3,
+      "rss_pages": 119718
+    },
+    {
+      "elapsed_seconds": 25.287517744116485,
+      "user_ticks": 7936,
+      "system_ticks": 10,
+      "threads": 3,
+      "rss_pages": 119718
+    },
+    {
+      "elapsed_seconds": 25.537937181070447,
+      "user_ticks": 7986,
+      "system_ticks": 10,
+      "threads": 3,
+      "rss_pages": 119674
+    },
+    {
+      "elapsed_seconds": 25.788282689172775,
+      "user_ticks": 8036,
+      "system_ticks": 10,
+      "threads": 3,
+      "rss_pages": 119674
+    },
+    {
+      "elapsed_seconds": 26.038610770134255,
+      "user_ticks": 8086,
+      "system_ticks": 10,
+      "threads": 3,
+      "rss_pages": 119674
+    },
+    {
+      "elapsed_seconds": 26.288880560081452,
+      "user_ticks": 8136,
+      "system_ticks": 10,
+      "threads": 3,
+      "rss_pages": 119674
+    },
+    {
+      "elapsed_seconds": 26.539261693134904,
+      "user_ticks": 8186,
+      "system_ticks": 10,
+      "threads": 3,
+      "rss_pages": 119674
+    },
+    {
+      "elapsed_seconds": 26.78953712619841,
+      "user_ticks": 8220,
+      "system_ticks": 10,
+      "threads": 2,
+      "rss_pages": 119604
+    },
+    {
+      "elapsed_seconds": 27.039899666095152,
+      "user_ticks": 8238,
+      "system_ticks": 10,
+      "threads": 2,
+      "rss_pages": 119604
+    }
+  ]
+}

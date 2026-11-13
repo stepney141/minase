@@ -1,0 +1,23 @@
+	Command being timed: "perf stat -x, -o /home/stepney141/board-games/minase/target/teacher-profile-20261113/runs/baseline-3.stat -e task-clock,context-switches,cpu-migrations,page-faults,cpu_core/cycles/u,cpu_core/instructions/u,cpu_core/branches/u,cpu_core/branch-misses/u -- /home/stepney141/board-games/minase/target/teacher-profile-20261113/bin/minase-baseline data selfplay generate --output /home/stepney141/board-games/minase/target/teacher-profile-20261113/runs/baseline-3.mnsd --seed 9010200000 --games 2 --concurrency 1 --nodes 20000 --random-moves 0 --max-ply 4000 --hash-mb 16 --allow-dirty"
+	User time (seconds): 22.07
+	System time (seconds): 0.23
+	Percent of CPU this job got: 94%
+	Elapsed (wall clock) time (h:mm:ss or m:ss): 0:23.69
+	Average shared text size (kbytes): 0
+	Average unshared data size (kbytes): 0
+	Average stack size (kbytes): 0
+	Average total size (kbytes): 0
+	Maximum resident set size (kbytes): 260100
+	Average resident set size (kbytes): 0
+	Major (requiring I/O) page faults: 6
+	Minor (reclaiming a frame) page faults: 41971
+	Voluntary context switches: 40
+	Involuntary context switches: 398
+	Swaps: 0
+	File system inputs: 240
+	File system outputs: 48
+	Socket messages sent: 0
+	Socket messages received: 0
+	Signals delivered: 0
+	Page size (bytes): 4096
+	Exit status: 0

@@ -62,6 +62,7 @@ Rustのコードやテストを書くとき、およびそれらをcodexへ委�
 - [インライン展開されたSHA-256はSSEとAVXの混在の罰で遅くなる](sse-avx-transition-penalty-in-inlined-sha.md) — SSE形式しかない命令（SHA-NIなど）で計算するクレートの処理は`#[inline(never)]`の薄い関数に閉じ込め、検査和が遅いときは`assists.sse_avx_mix`を数えて`vzeroupper`の有無を機械語で確かめる。
 - [探索木を変えない高速化は親との交互測定5回で選別する](alternate-speed-rounds-against-parent.md) — 段階ごとの速度による選別では`bench_compare.py`で局面別の一致を確かめ、候補と親を`--rounds 5`で交互に測って増分が親の幅を超える段階だけを残し、まとめた版を段階ゲートにかける。
 - [ビルド設定を変えた後はコミットのビルドを混ぜて比べない](do-not-mix-builds-across-cargo-config-changes.md) — `.cargo/config.toml`のビルド設定が変わった後は、キャッシュ済みのビルドと新しいビルドを混ぜて比べず、変更前の設定のビルドが要るときはリポジトリの外のworktreeでビルドする。
+- [perfの採取周期はイベントごとに指定する](set-perf-sampling-period-per-event.md)。異なる周期で複数のイベントを採取するときは各イベントの`period=`で指定し、集計前に`perf evlist -v`で実際の周期を確認する。
 
 ## 評価関数の学習とGPU
 

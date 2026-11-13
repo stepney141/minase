@@ -1,0 +1,8 @@
+{
+  "sha256": "987f060d545c09f0a42b4c668ea8b24cbf83c1770d11d663a94e4b82601274cd",
+  "body_sha256": "5ca0cfb84de5b72903eeebea0d372f551782d827290b4bb6e423bcb054af6b00",
+  "architecture": "features=P;ft=256;linear=tapered2;head=pairwise-l16-l32",
+  "width": 256,
+  "cp_per_logit": 1072.6529541015625,
+  "rules": "L0,P0,R1,E0"
+}

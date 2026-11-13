@@ -1,0 +1,126 @@
+diff --git a/crates/minase/src/bin/minase/selfplay_gen/generate.rs b/crates/minase/src/bin/minase/selfplay_gen/generate.rs
+index d0494f7d..a21cba1d 100644
+--- a/crates/minase/src/bin/minase/selfplay_gen/generate.rs
++++ b/crates/minase/src/bin/minase/selfplay_gen/generate.rs
+@@ -178,8 +178,13 @@ fn write_training_data(
+ 
+     let (total, recorded) = total;
+ 
++    let diagnostic_finish_start = Instant::now();
+     let file = writer.finish().map_err(data_error)?;
+     file.sync_all()?;
++    eprintln!(
++        "[TEACHER_PROFILE_20261113_FINISH] finish_ns={}",
++        diagnostic_finish_start.elapsed().as_nanos(),
++    );
+     print_generation_summary(
+         arguments,
+         rule_set,
+diff --git a/crates/minase/src/bin/minase/selfplay_gen/play.rs b/crates/minase/src/bin/minase/selfplay_gen/play.rs
+index fa96b259..c9f31fed 100644
+--- a/crates/minase/src/bin/minase/selfplay_gen/play.rs
++++ b/crates/minase/src/bin/minase/selfplay_gen/play.rs
+@@ -67,6 +67,9 @@ pub(super) fn play_game_from_opening(
+     table: &mut TranspositionTable,
+     opening: Option<&Opening>,
+ ) -> io::Result<CompletedGame> {
++    let diagnostic_start = std::time::Instant::now();
++    let mut diagnostic_search = std::time::Duration::ZERO;
++    let mut diagnostic_snapshot = std::time::Duration::ZERO;
+     let game_seed = derive_seed(settings.base_seed, u64::from(game_number));
+     let (mut game, opening_moves) = starting_game(rules, game_seed, opening)?;
+     let start_position = if opening.is_some() {
+@@ -100,6 +103,7 @@ pub(super) fn play_game_from_opening(
+         ..Statistics::default()
+     };
+     let generator = MoveGenerator::new(rules.moves);
++    let diagnostic_setup = diagnostic_start.elapsed();
+ 
+     while game.result().is_none() && game.ply_count() + ply_offset < u32::from(settings.max_ply) {
+         if injection_plan
+@@ -136,11 +140,14 @@ pub(super) fn play_game_from_opening(
+             continue;
+         }
+ 
++        let diagnostic_snapshot_start = std::time::Instant::now();
+         let snapshot = SearchSnapshot::from_game(&game).map_err(|_| {
+             invalid_data(format!(
+                 "game {game_number} is ongoing but has no legal moves"
+             ))
+         })?;
++        diagnostic_snapshot += diagnostic_snapshot_start.elapsed();
++        let diagnostic_search_start = std::time::Instant::now();
+         let search_result = search(
+             nnue,
+             &snapshot,
+@@ -150,6 +157,7 @@ pub(super) fn play_game_from_opening(
+             &mut histories,
+         )
+         .map_err(|error| invalid_data(error.to_string()))?;
++        diagnostic_search += diagnostic_search_start.elapsed();
+         stats.searched_positions += 1;
+         stats.searched_nodes = stats
+             .searched_nodes
+@@ -250,6 +258,17 @@ pub(super) fn play_game_from_opening(
+         }
+     };
+ 
++    eprintln!(
++        "[TEACHER_PROFILE_20261113_GAME] game={} total_ns={} setup_ns={} snapshot_ns={} search_ns={} positions={} nodes={} recorded={}",
++        game_number,
++        diagnostic_start.elapsed().as_nanos(),
++        diagnostic_setup.as_nanos(),
++        diagnostic_snapshot.as_nanos(),
++        diagnostic_search.as_nanos(),
++        stats.searched_positions,
++        stats.searched_nodes,
++        stats.recorded_positions,
++    );
+     Ok(CompletedGame {
+         game_number,
+         record,
+diff --git a/crates/minase/src/datagen/game.rs b/crates/minase/src/datagen/game.rs
+index f2e547f5..4ba070ce 100644
+--- a/crates/minase/src/datagen/game.rs
++++ b/crates/minase/src/datagen/game.rs
+@@ -50,14 +50,21 @@ where
+     let mut completed_count = 0_u64;
+     let mut total = Statistics::default();
+     let mut recorded = RecordedStatistics::default();
++    let mut diagnostic_write = std::time::Duration::ZERO;
++    let mut diagnostic_statistics = std::time::Duration::ZERO;
+     for message in messages {
+         let completed = message?;
+         pending.insert(completed.game_number, completed);
+         while let Some(completed) = pending.remove(&(next_to_write as u32)) {
+             if let Some(game) = &completed.record {
++                let diagnostic_write_start = std::time::Instant::now();
+                 writer.write_game(game).map_err(data_error)?;
++                diagnostic_write += diagnostic_write_start.elapsed();
++                let diagnostic_statistics_start = std::time::Instant::now();
+                 recorded.record_exclusions(game);
++                diagnostic_statistics += diagnostic_statistics_start.elapsed();
+             }
++            let diagnostic_statistics_start = std::time::Instant::now();
+             for record in &completed.records {
+                 recorded.record(record);
+             }
+@@ -65,6 +72,7 @@ where
+             completed_count += 1;
+             on_completed(completed_count, &total);
+             next_to_write += 1;
++            diagnostic_statistics += diagnostic_statistics_start.elapsed();
+         }
+     }
+     if next_to_write != u64::from(games) + 1 {
+@@ -74,5 +82,10 @@ where
+             games
+         )));
+     }
++    eprintln!(
++        "[TEACHER_PROFILE_20261113_MERGE] write_ns={} statistics_ns={}",
++        diagnostic_write.as_nanos(),
++        diagnostic_statistics.as_nanos(),
++    );
+     Ok((total, recorded))
+ }

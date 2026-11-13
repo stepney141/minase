@@ -1,0 +1,11 @@
+# started on Fri Nov 13 23:39:15 2026
+
+3352552278512,,cpu_core/slots/u,79442793438,100.00,,
+1258719172398,,cpu_core/topdown-retiring/u,79442793438,100.00,,
+387251577413,,cpu_core/topdown-bad-spec/u,79442793438,100.00,,
+791603696240,,cpu_core/topdown-fe-bound/u,79442793438,100.00,,
+902822163272,,cpu_core/topdown-be-bound/u,79442793438,100.00,,
+365876303637,,cpu_core/topdown-mem-bound/u,79442793438,100.00,,
+419069034814,,cpu_core/cycles/u,79442793438,100.00,,
+1273308005070,,cpu_core/instructions/u,79442793438,100.00,,
+2861682236,,cpu_core/branch-misses/u,79442793438,100.00,,

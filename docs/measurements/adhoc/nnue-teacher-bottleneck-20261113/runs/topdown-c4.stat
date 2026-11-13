@@ -1,0 +1,11 @@
+# started on Fri Nov 13 23:46:16 2026
+
+3400509507896,,cpu_core/slots/u,82017127029,100.00,,
+1216012048065,,cpu_core/topdown-retiring/u,82017127029,100.00,,
+438800022702,,cpu_core/topdown-bad-spec/u,82017127029,100.00,,
+844465954731,,cpu_core/topdown-fe-bound/u,82017127029,100.00,,
+913337233955,,cpu_core/topdown-be-bound/u,82017127029,100.00,,
+404651926606,,cpu_core/topdown-mem-bound/u,82017127029,100.00,,
+425063688487,,cpu_core/cycles/u,82017127029,100.00,,
+1273365732368,,cpu_core/instructions/u,82017127029,100.00,,
+2869935418,,cpu_core/branch-misses/u,82017127029,100.00,,

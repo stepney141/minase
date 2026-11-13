@@ -1,0 +1,18 @@
+[TEACHER_PROFILE_20261113_GAME] game=4 total_ns=7132942331 setup_ns=50627850 snapshot_ns=2785873 search_ns=7077837231 positions=333 nodes=6660000 recorded=268
+[TEACHER_PROFILE_20261113_GAME] game=2 total_ns=10092423672 setup_ns=25262171 snapshot_ns=4859997 search_ns=10059824361 positions=485 nodes=9700000 recorded=391
+[TEACHER_PROFILE_20261113_GAME] game=3 total_ns=13187670785 setup_ns=61091283 snapshot_ns=9269590 search_ns=13114117771 positions=765 nodes=15300000 recorded=666
+[TEACHER_PROFILE_20261113_GAME] game=1 total_ns=13421648452 setup_ns=44223013 snapshot_ns=7547185 search_ns=13366944332 positions=665 nodes=13300000 recorded=564
+progress: games=1/8 records=564 elapsed_seconds=13.441
+progress: games=2/8 records=955 elapsed_seconds=13.443
+progress: games=3/8 records=1621 elapsed_seconds=13.449
+progress: games=4/8 records=1889 elapsed_seconds=13.450
+[TEACHER_PROFILE_20261113_GAME] game=5 total_ns=8549802416 setup_ns=13279973 snapshot_ns=2673727 search_ns=8532277031 positions=321 nodes=6420000 recorded=249
+progress: games=5/8 records=2138 elapsed_seconds=15.699
+[TEACHER_PROFILE_20261113_GAME] game=6 total_ns=8372160611 setup_ns=13712779 snapshot_ns=18462999 search_ns=8338102517 positions=361 nodes=7220000 recorded=292
+progress: games=6/8 records=2430 elapsed_seconds=18.469
+[TEACHER_PROFILE_20261113_GAME] game=8 total_ns=12784008626 setup_ns=14192708 snapshot_ns=7248707 search_ns=12759589098 positions=648 nodes=12960000 recorded=558
+[TEACHER_PROFILE_20261113_GAME] game=7 total_ns=13498702799 setup_ns=13241027 snapshot_ns=7230188 search_ns=13475156085 positions=626 nodes=12520000 recorded=544
+progress: games=7/8 records=2974 elapsed_seconds=26.693
+progress: games=8/8 records=3532 elapsed_seconds=26.695
+[TEACHER_PROFILE_20261113_MERGE] write_ns=27922903 statistics_ns=161345
+[TEACHER_PROFILE_20261113_FINISH] finish_ns=1333519

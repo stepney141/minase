@@ -1,0 +1,10 @@
+# started on Fri Nov 13 23:35:24 2026
+
+22897.32,msec,task-clock:u,22897324764,100.00,,
+0,,context-switches:u,22897324764,100.00,,
+0,,cpu-migrations:u,22897324764,100.00,,
+56698,,page-faults:u,22897324764,100.00,,
+116972274651,,cpu_core/cycles/u,22897324764,100.00,,
+340012140660,,cpu_core/instructions/u,22897324764,100.00,,
+43626821155,,cpu_core/branches/u,22897324764,100.00,,
+759623512,,cpu_core/branch-misses/u,22897324764,100.00,,

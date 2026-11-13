@@ -1,0 +1,12 @@
+Lowering default frequency rate from 4000 to 2700.
+Please consider tweaking /proc/sys/kernel/perf_event_max_sample_rate.
+progress: games=1/8 records=564 elapsed_seconds=11.727
+progress: games=2/8 records=955 elapsed_seconds=20.850
+progress: games=3/8 records=1621 elapsed_seconds=35.174
+progress: games=4/8 records=1889 elapsed_seconds=42.000
+progress: games=5/8 records=2138 elapsed_seconds=50.037
+progress: games=6/8 records=2430 elapsed_seconds=57.293
+progress: games=7/8 records=2974 elapsed_seconds=71.630
+progress: games=8/8 records=3532 elapsed_seconds=84.178
+[ perf record: Woken up 242 times to write data ]
+[ perf record: Captured and wrote 51.682 MB /home/stepney141/board-games/minase/target/teacher-profile-20261113/runs/samples-validated-c1.data (124332 samples) ]
