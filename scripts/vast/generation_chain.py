@@ -137,7 +137,7 @@ def read_header(path: Path) -> dict[str, Any]:
 
 
 def output_fields(output: str) -> dict[str, str]:
-    """inspectと生成ログの「項目: 値」を読む。"""
+    """inspectと生成ログを読み、同名の欄は最後に書かれた値を返す。"""
     fields = {}
     for line in output.splitlines():
         key, separator, value = line.partition(':')
@@ -405,7 +405,7 @@ class Chain:
                'generation_seed': self.seed(generation, 0), 'book_step': self.args.seed_book_step,
                'target_books': self.args.books_per_generation,
                'skip_books': sorted(books), 'concurrency': self.concurrency}
-        for key in ('games', 'nodes', 'random_moves', 'max_ply', 'hash_mb'):
+        for key in ('games', 'nodes', 'random_moves', 'max_ply', 'hash_mb', 'chunk_games'):
             job[key] = getattr(self.args, key)
         with tempfile.TemporaryDirectory() as temporary:
             path = Path(temporary) / 'job.json'
@@ -934,7 +934,7 @@ def arguments(argv: list[str]) -> argparse.Namespace:
     for name in ('gen0-commit', 'ref-prefix', 'feature-set', 'head', 'device', 'lr-schedule', 'image', 'cpu-pattern'):
         run.add_argument('--' + name, required=True, help='実行条件を明示する')
     for name in ('first-generation', 'last-generation', 'books-per-generation', 'games', 'nodes',
-                 'max-ply', 'hash-mb', 'calibration-books', 'width', 'batch', 'epochs', 'patience',
+                 'max-ply', 'hash-mb', 'chunk-games', 'calibration-books', 'width', 'batch', 'epochs', 'patience',
                  'train-threads', 'removal-sample', 'bench-depth',
                  'disk', 'min-cpu-cores'):
         run.add_argument('--' + name, required=True, type=positive_int, help='正の整数')
