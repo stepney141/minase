@@ -21,8 +21,8 @@ minaseの数値は[診断の測定記録](../measurements/adhoc/alphazero-rl-c00
 
 | 候補 | 扱い |
 |---|---|
-| αβとの対局の局面の固定集合 | 未決 |
-| 方策の下位の手の測定 | 未決 |
+| αβとの対局の局面の固定集合 | 不採用（2026年11月13日の利用者の決定。この固定集合で測る探索なしの勝率の偏りは2回目の実行の判断に使わないと決まっており、サイクルごとに追う用途がない。[自己対局の分布の提案](alphazero-selfplay-distribution.md)の「起案の前に決めたこと」の節の第4の点） |
+| 方策の下位の手の測定 | 取り下げ（温度の調整の前提を確かめるための測定だったが、温度は2026年11月9日に対局の測定で1.4と決まり、以後の調整も対局の勝敗で行うので、その前提を確かめる必要がなくなった。[温度のADR](../adr/divide-mcts-policy-logits-by-a-temperature-of-1-4.md)、[PUCTの係数と方策の温度をSPSAで調整する設計書](../plans/mcts-puct-spsa.md)） |
 | 新しい節点で最後の王駒を取れるかの判定 | 設計書へ（[MCTSの葉での王駒の捕獲の判定と方策の温度の設計書](../plans/archived/mcts-royal-capture-temperature.md)） |
 | 方策の温度 | 設計書へ（[MCTSの葉での王駒の捕獲の判定と方策の温度の設計書](../plans/archived/mcts-royal-capture-temperature.md)） |
 | PUCT係数の同時調整 | 設計書へ（[PUCTの係数と方策の温度をSPSAで調整する設計書](../plans/mcts-puct-spsa.md)） |
@@ -33,7 +33,7 @@ minaseの数値は[診断の測定記録](../measurements/adhoc/alphazero-rl-c00
 | 葉の詰み探索 | 未決 |
 | 根とPVのdf-pn | 未決 |
 | 同一局面の反復の近似判定による確定で根の探索を止めない | 未決 |
-| 対局の葉にNNUEや静止探索を混ぜる | 未決 |
+| 対局の葉にNNUEや静止探索を混ぜる | 不採用（2026年11月13日の利用者の決定。[戦術の局面と静かな局面に分ける診断](../measurements/adhoc/alphazero-rl-c0032-tactical-split.md)で、価値の偏りは読み筋に捕獲のない静かな局面でも同じ大きさで残ったので、静止探索では消えない。NNUEを混ぜると、[統括計画](../plans/alphazero.md)の目標の意味が変わる） |
 | 初期配置を組み替えた局面からの自己対局 | 設計書へ（[2回目の実行の準備の設計書](../plans/archived/alphazero-rl-2-prep.md)、[2回目の実行の設計書](../plans/alphazero-rl-2.md)） |
 | 棋風の異なる自前の棋譜を混ぜる | 未決 |
 | 同じネットの深い探索と浅い探索で評価が割れる局面を開始局面にする | 未決 |
@@ -41,7 +41,7 @@ minaseの数値は[診断の測定記録](../measurements/adhoc/alphazero-rl-c00
 | 探索回数の増加 | 設計書へ（[2回目の実行の設計書](../plans/alphazero-rl-2.md)の「伸びが止まったとき」の段階2） |
 | αβとの対局の局面を自己対局の開始局面にする | 不採用（2026年11月9日の利用者の決定。[自己対局の分布の提案](alphazero-selfplay-distribution.md)の「起案の前に決めたこと」の節） |
 | 10b128cで局面を増やす間に15b192cを同じ教師で並行して学ぶ | 不採用（2026年11月9日の利用者の決定。サイクル0からやり直す2回目の学習は最初から20b256cで始め、ネットを大きくする段階を持たない。[ネットの構成のADR](../adr/start-the-zero-network-as-a-20-block-256-channel-resnet-with-global-pooling-and-a-32-channel-value-head.md)） |
-| 入力に駒の損得と駒数の面を足す | 未決 |
+| 入力に駒の損得と駒数の面を足す | 不採用（2026年11月13日の利用者の決定。効果の報告は人間の棋譜で教師あり学習したチェスの1件に限られ、[価値の調査](../research/alphazero-strength-gap/value-bias.md)でも「ネットが駒の損得を追えない」という仮説が否定されたので、2回目の学習の入力は[入力のADR](../adr/encode-zero-network-inputs-as-159-planes-with-pseudo-control-from-the-side-to-move.md)の159面のままとする） |
 | リプレイバッファをKataGoの式で決める分岐を本線と並べて回す | 未決 |
 
 ## 結論
