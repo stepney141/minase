@@ -1659,6 +1659,18 @@ class WorkerTests(unittest.TestCase):
         self.fail = None
         self.head = None
         self.publications = []
+        self.preserved_output_files: dict[Path, dict[str, bytes]] = {}
+
+    def seed_resumable_output(self, directory: Path) -> None:
+        files = {
+            'config.json': b'{"unfinished": true}\n',
+            'chunk-00000.json': b'{"chunk": 0, "first_game": 1}\n',
+            'chunk-00000.mnsd': '確定済みの塊'.encode(),
+        }
+        directory.mkdir(parents=True)
+        for name, content in files.items():
+            (directory / name).write_bytes(content)
+        self.preserved_output_files[directory] = files
 
     def command(self, command: list[str], **kwargs: object) -> subprocess.CompletedProcess:
         self.calls.append(command)
@@ -1676,6 +1688,8 @@ class WorkerTests(unittest.TestCase):
             self.assertTrue(directory.is_absolute())
             self.assertTrue(directory.is_relative_to(self.root / 'work'))
             self.assertTrue(directory.is_dir())
+            for name, content in self.preserved_output_files.get(directory, {}).items():
+                self.assertEqual((directory / name).read_bytes(), content)
             self.assertEqual(kwargs['cwd'], self.root / 'minase')
             self.assertNotIn('--output', command)
             self.assertNotIn('--allow-dirty', command)
@@ -1736,8 +1750,7 @@ class WorkerTests(unittest.TestCase):
         (self.root / 'job.json').write_text(json.dumps(self.job))
         work = self.root / 'work/gen-1/book-1'
         next_work = self.root / 'work/gen-1/book-2'
-        work.mkdir(parents=True)
-        (work / 'config.json').write_text('{"unfinished": true}\n')
+        self.seed_resumable_output(work)
         working_log = work.parent / 'book-1.log'
         working_log.write_text('前回の生成ログ\n')
         logs = self.root / 'logs'
@@ -1774,6 +1787,8 @@ class WorkerTests(unittest.TestCase):
     def test_worker_resumes_after_log_publication_before_book_publication(self) -> None:
         self.job['target_books'] = 2
         (self.root / 'job.json').write_text(json.dumps(self.job))
+        work = self.root / 'work/gen-1/book-1'
+        self.seed_resumable_output(work)
         published_book = self.root / 'teacher/gen-1/book-1.mnsd'
         replace = Path.replace
         interrupted = False
@@ -1788,12 +1803,12 @@ class WorkerTests(unittest.TestCase):
         with self.assertRaises(KeyboardInterrupt), patch.object(subprocess, 'run', side_effect=self.command), \
                 patch.object(Path, 'replace', stop_before_book):
             worker.run_worker(self.root)
-        work = self.root / 'work/gen-1/book-1'
         working_log = work.parent / 'book-1.log'
         self.assertTrue((self.root / 'logs/gen-1/book-1.log').is_file())
         self.assertFalse(published_book.exists())
         self.assertTrue((work / 'teacher.mnsd').is_file())
         self.assertTrue(working_log.is_file())
+        self.preserved_output_files[work]['teacher.mnsd'] = (work / 'teacher.mnsd').read_bytes()
 
         with patch.object(subprocess, 'run', side_effect=self.command), \
                 patch.object(worker, 'stop_instance', return_value=0):
