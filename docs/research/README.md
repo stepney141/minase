@@ -58,6 +58,7 @@ Stockfishのコミットを引用するときは、ローカルにクローン�
 | 2026年11月2日 | [AlphaZero型探索の規模の調査：学習量、持ち時間、ネットの大きさ](alphazero-strength-gap/scale.md) | KataGo、AobaZero、技巧、nshogi、dlshogi、およびlc0の学習量、ネットの大きさ、探索回数、および持ち時間と強さの関係を、αβ探索に大敗したサイクル32のminaseと並べる。[大敗の原因の調査](../proposals/alphazero-strength-gap.md)の付属として書き、2026年11月13日に調査メモへ移した。 |
 | 2026年11月2日 | [対局用の探索の先行実装調査](alphazero-strength-gap/search.md) | dlshogiとふかうら王を中心に、葉の詰み判定、PUCTの係数と方策の温度の既定値と調整の記録、バッチと推論の重ね合わせ、NNキャッシュ、および指す手の決定を一次資料で調べ、minaseとの差を一覧にする。同じ提案の付属から移した。 |
 | 2026年11月2日 | [価値の過大評価と分布のずれの先行調査](alphazero-strength-gap/value-bias.md) | 自己対局の外の局面で価値を過大評価する現象について、KataGo、AobaZero、AlphaZeroなどの先行報告、保存局面で安く行える診断、および分布を広げる対策を一次資料で調べる。同じ提案の付属から移した。 |
+| 2026年11月13日 | [AlphaZero型のエンジンがネットへ入力する情報の先行実装調査：履歴、反復、手数、および規則から導く特徴](zero-network-input-prior-art.md) | AlphaZero、dlshogi、lc0、KataGo、AobaZero、およびCrazyAraがネットの入力に入れる過去の局面、反復の回数、手数、および利きや王手などの特徴を論文とソースで比べ、履歴の有無を対局で比べた報告が見つからないことと、規則から導く特徴の効果を測った3件の報告を記す。 |
 
 ## 詰み探索
 
