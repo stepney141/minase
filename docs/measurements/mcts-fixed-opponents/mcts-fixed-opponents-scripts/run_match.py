@@ -15,14 +15,14 @@ import subprocess
 import sys
 
 
-# docs/plans/mcts-fixed-opponents.md「HaChuとの対局の条件」に従う。
+# docs/plans/archived/mcts-fixed-opponents.md「HaChuとの対局の条件」に従う。
 # αβとの対局にも同じMCTS条件を使う。
 MCTS_NODES = 800
 NN_BATCH_SIZE = 16
 HACHU_HASH_MB = 256
 HACHU_RULES = "L1,L3,P0,P5,P6,R2,E1,E2"
 HACHU_MAX_PLY = 1900
-# docs/plans/mcts-fixed-opponents.md「固定したαβ探索との対局の条件」に従う。
+# docs/plans/archived/mcts-fixed-opponents.md「固定したαβ探索との対局の条件」に従う。
 ALPHABETA_COMMIT = "45d5db5498e1739b2307b3719891a1eec24f7fbd"
 ALPHABETA_RULES = "lishogi"
 ALPHABETA_MAX_PLY = 4096
@@ -66,7 +66,7 @@ def parser():
 def build_argv(args):
     """設計書の対局条件をハーネスの引数列へ変換する。
 
-    docs/plans/mcts-fixed-opponents.mdの「HaChuとの対局の条件」と
+    docs/plans/archived/mcts-fixed-opponents.mdの「HaChuとの対局の条件」と
     「固定したαβ探索との対局の条件」に従う。
     """
     run_dir = f"data/matches/{measurement_name(args.name)}"

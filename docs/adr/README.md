@@ -384,3 +384,4 @@ PSTは駒の種類と升ごとの値の表による評価、FMはFactorization M
 - 2026年11月12日 [プロトコルの種類、探索方式、入出力の記録は起動引数に残し、ONNX Runtimeの場所は環境変数に残す](keep-protocol-search-method-and-io-log-as-startup-arguments.md)
 - 2026年11月13日 [AlphaZero型探索の実行環境は、借りる機械では導入スクリプトで導入し、作業機の開発用のコンテナは同じスクリプトから作る](install-the-zero-toolchain-with-setup-sh-on-rented-machines-and-build-the-workstation-image-from-it.md)
 - 2026年11月13日 [対局用MCTSは、成りの保留をネットの入力に入れないまま、全部の規則コードで探索する](search-all-rule-codes-in-mcts-without-encoding-deferred-promotion.md)
+- 2026年11月14日 [AlphaZero型探索のネットの強さは、コミットを固定したαβ探索との対局を主に、深さ3のHaChuとの対局を副に測る](measure-zero-networks-against-a-pinned-alphabeta-search-first-and-depth-3-hachu-second.md)

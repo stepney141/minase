@@ -1,0 +1,21 @@
+[
+  {
+    "pair_number": 11,
+    "game_index": 1,
+    "candidate_color": "white",
+    "reason": "illegal_move",
+    "loser": "baseline",
+    "loser_color": "black",
+    "ply": 1113,
+    "cecp": "h6g6",
+    "usi": "5g6g",
+    "hachu_response_lines": [
+      "move h6g6"
+    ],
+    "minase_response_lines": [
+      "Illegal move (repetition): h6g6"
+    ],
+    "repetition_distance": 222,
+    "classification": "history_window"
+  }
+]

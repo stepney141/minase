@@ -1,6 +1,6 @@
 """設計書、`stats.rs`、および記録の型から導いた期待値でスクリプトを試験する。
 
-対局条件はdocs/plans/mcts-fixed-opponents.mdの「HaChuとの対局の条件」と
+対局条件はdocs/plans/archived/mcts-fixed-opponents.mdの「HaChuとの対局の条件」と
 「固定したαβ探索との対局の条件」に従う。
 
 使い方: python3 -I -m unittest discover

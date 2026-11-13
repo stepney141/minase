@@ -1,0 +1,228 @@
+[
+  {
+    "pair_number": 4,
+    "game_index": 1,
+    "candidate_color": "white",
+    "reason": "illegal_move",
+    "loser": "baseline",
+    "loser_color": "black",
+    "ply": 933,
+    "cecp": "g7g6",
+    "usi": "6f6g",
+    "hachu_response_lines": [
+      "move g7g6"
+    ],
+    "minase_response_lines": [
+      "Illegal move (repetition): g7g6"
+    ],
+    "repetition_distance": 202,
+    "classification": "history_window"
+  },
+  {
+    "pair_number": 21,
+    "game_index": 1,
+    "candidate_color": "white",
+    "reason": "illegal_move",
+    "loser": "baseline",
+    "loser_color": "black",
+    "ply": 1475,
+    "cecp": "d4d5",
+    "usi": "9i9h",
+    "hachu_response_lines": [
+      "move d4d5"
+    ],
+    "minase_response_lines": [
+      "Illegal move (repetition): d4d5"
+    ],
+    "repetition_distance": 234,
+    "classification": "history_window"
+  },
+  {
+    "pair_number": 22,
+    "game_index": 0,
+    "candidate_color": "black",
+    "reason": "illegal_move",
+    "loser": "baseline",
+    "loser_color": "white",
+    "ply": 702,
+    "cecp": "k9g9",
+    "usi": "2d6d",
+    "hachu_response_lines": [
+      "move k9g9"
+    ],
+    "minase_response_lines": [
+      "Illegal move (repetition): k9g9"
+    ],
+    "repetition_distance": 208,
+    "classification": "history_window"
+  },
+  {
+    "pair_number": 27,
+    "game_index": 0,
+    "candidate_color": "black",
+    "reason": "illegal_move",
+    "loser": "baseline",
+    "loser_color": "white",
+    "ply": 806,
+    "cecp": "g6g7",
+    "usi": "6g6f",
+    "hachu_response_lines": [
+      "move g6g7"
+    ],
+    "minase_response_lines": [
+      "Illegal move (repetition): g6g7"
+    ],
+    "repetition_distance": 202,
+    "classification": "history_window"
+  },
+  {
+    "pair_number": 30,
+    "game_index": 0,
+    "candidate_color": "black",
+    "reason": "illegal_move",
+    "loser": "baseline",
+    "loser_color": "white",
+    "ply": 1328,
+    "cecp": "i7j8",
+    "usi": "4f3e",
+    "hachu_response_lines": [
+      "move i7j8"
+    ],
+    "minase_response_lines": [
+      "Illegal move (repetition): i7j8"
+    ],
+    "repetition_distance": 288,
+    "classification": "history_window"
+  },
+  {
+    "pair_number": 33,
+    "game_index": 0,
+    "candidate_color": "black",
+    "reason": "rejected_move",
+    "loser": "baseline",
+    "loser_color": "white",
+    "ply": 351,
+    "cecp": "@@@@",
+    "usi": "10e11f10e",
+    "hachu_response_lines": [
+      "Illegal move"
+    ],
+    "minase_response_lines": [],
+    "repetition_distance": 4,
+    "classification": "placement_only_repetition"
+  },
+  {
+    "pair_number": 34,
+    "game_index": 1,
+    "candidate_color": "white",
+    "reason": "illegal_move",
+    "loser": "baseline",
+    "loser_color": "black",
+    "ply": 1095,
+    "cecp": "@@@@",
+    "usi": "6f7g6f",
+    "hachu_response_lines": [
+      "move @@@@"
+    ],
+    "minase_response_lines": [
+      "Illegal move (repetition): g7f6,f6g7"
+    ],
+    "repetition_distance": 262,
+    "classification": "history_window"
+  },
+  {
+    "pair_number": 40,
+    "game_index": 0,
+    "candidate_color": "black",
+    "reason": "illegal_move",
+    "loser": "baseline",
+    "loser_color": "white",
+    "ply": 1722,
+    "cecp": "g9l9",
+    "usi": "6d1d",
+    "hachu_response_lines": [
+      "move g9l9"
+    ],
+    "minase_response_lines": [
+      "Illegal move (repetition): g9l9"
+    ],
+    "repetition_distance": 228,
+    "classification": "history_window"
+  },
+  {
+    "pair_number": 51,
+    "game_index": 1,
+    "candidate_color": "white",
+    "reason": "illegal_move",
+    "loser": "baseline",
+    "loser_color": "black",
+    "ply": 1107,
+    "cecp": "j9j5",
+    "usi": "3d3h",
+    "hachu_response_lines": [
+      "move j9j5"
+    ],
+    "minase_response_lines": [
+      "Illegal move (repetition): j9j5"
+    ],
+    "repetition_distance": 344,
+    "classification": "history_window"
+  },
+  {
+    "pair_number": 70,
+    "game_index": 0,
+    "candidate_color": "black",
+    "reason": "illegal_move",
+    "loser": "baseline",
+    "loser_color": "white",
+    "ply": 822,
+    "cecp": "k3k12",
+    "usi": "2j2a",
+    "hachu_response_lines": [
+      "move k3k12"
+    ],
+    "minase_response_lines": [
+      "Illegal move (repetition): k3k12"
+    ],
+    "repetition_distance": 208,
+    "classification": "history_window"
+  },
+  {
+    "pair_number": 71,
+    "game_index": 0,
+    "candidate_color": "black",
+    "reason": "illegal_move",
+    "loser": "baseline",
+    "loser_color": "white",
+    "ply": 1380,
+    "cecp": "e6c6",
+    "usi": "8g10g",
+    "hachu_response_lines": [
+      "move e6c6"
+    ],
+    "minase_response_lines": [
+      "Illegal move (repetition): e6c6"
+    ],
+    "repetition_distance": 204,
+    "classification": "history_window"
+  },
+  {
+    "pair_number": 97,
+    "game_index": 0,
+    "candidate_color": "black",
+    "reason": "illegal_move",
+    "loser": "baseline",
+    "loser_color": "white",
+    "ply": 1806,
+    "cecp": "h5c5",
+    "usi": "5h10h",
+    "hachu_response_lines": [
+      "move h5c5"
+    ],
+    "minase_response_lines": [
+      "Illegal move (repetition): h5c5"
+    ],
+    "repetition_distance": 218,
+    "classification": "history_window"
+  }
+]
