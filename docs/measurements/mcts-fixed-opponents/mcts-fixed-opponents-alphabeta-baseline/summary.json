@@ -1,0 +1,416 @@
+[
+  {
+    "run_name": "mcts-fixed-opponents-alphabeta-baseline-c0010",
+    "baseline": {
+      "kind": "alphabeta",
+      "limit": {
+        "nodes": 500
+      }
+    },
+    "rules_source": "lishogi",
+    "seed": 20261113100000,
+    "max_ply": 4096,
+    "nn_model": "/home/stepney141/board-games/minase/data/mcts-fixed-opponents/nets/cycle-0010.onnx",
+    "network_sha256": "55a4859f46f1a02232ee31546e13f53f1cd56f6db272406c240cd595e7a5cf08",
+    "attempted_pairs": 100,
+    "valid_pairs": 100,
+    "discarded_pairs": 0,
+    "discarded_pair_numbers": [],
+    "valid": {
+      "pentanomial": [
+        93,
+        0,
+        7,
+        0,
+        0
+      ],
+      "elo": {
+        "elo": -576.1837075974067,
+        "lower": -798.3314361844551,
+        "upper": -477.9770658572209
+      },
+      "score_rate": 0.035
+    },
+    "terminations": [
+      {
+        "kind": "adjudicated_win",
+        "reason": "BareKing",
+        "winner": "baseline",
+        "count": 25
+      },
+      {
+        "kind": "adjudicated_win",
+        "reason": "RoyalCapture",
+        "winner": "baseline",
+        "count": 168
+      },
+      {
+        "kind": "adjudicated_win",
+        "reason": "RoyalCapture",
+        "winner": "candidate",
+        "count": 7
+      }
+    ],
+    "forfeits": {
+      "illegal_move": {
+        "candidate": 0,
+        "baseline": 0
+      },
+      "crash": {
+        "candidate": 0,
+        "baseline": 0
+      },
+      "timeout": {
+        "candidate": 0,
+        "baseline": 0
+      },
+      "time_forfeit": {
+        "candidate": 0,
+        "baseline": 0
+      },
+      "rejected_move": {
+        "candidate": 0,
+        "baseline": 0
+      }
+    },
+    "move_forfeit_pair_numbers": [],
+    "without_move_forfeits": {
+      "pentanomial": [
+        93,
+        0,
+        7,
+        0,
+        0
+      ],
+      "elo": {
+        "elo": -576.1837075974067,
+        "lower": -798.3314361844551,
+        "upper": -477.9770658572209
+      },
+      "score_rate": 0.035
+    },
+    "discarded_as_losses": {
+      "pentanomial": [
+        93,
+        0,
+        7,
+        0,
+        0
+      ],
+      "elo": {
+        "elo": -576.1837075974067,
+        "lower": -798.3314361844551,
+        "upper": -477.9770658572209
+      },
+      "score_rate": 0.035
+    },
+    "discarded_as_wins": {
+      "pentanomial": [
+        93,
+        0,
+        7,
+        0,
+        0
+      ],
+      "elo": {
+        "elo": -576.1837075974067,
+        "lower": -798.3314361844551,
+        "upper": -477.9770658572209
+      },
+      "score_rate": 0.035
+    },
+    "affected_pairs": 0,
+    "affected_pair_fraction": 0.0,
+    "affected_pair_fraction_exceeds_5_percent": false,
+    "plies": {
+      "min": 55,
+      "median": 207.0,
+      "max": 590
+    },
+    "active_wall_time_seconds": 750.683666669
+  },
+  {
+    "run_name": "mcts-fixed-opponents-alphabeta-baseline-c0020",
+    "baseline": {
+      "kind": "alphabeta",
+      "limit": {
+        "nodes": 500
+      }
+    },
+    "rules_source": "lishogi",
+    "seed": 20261113100000,
+    "max_ply": 4096,
+    "nn_model": "/home/stepney141/board-games/minase/data/mcts-fixed-opponents/nets/cycle-0020.onnx",
+    "network_sha256": "a27e4e749b2cba4cd540f0e15a0f10398fd0c7be04386ca749670ee2bb44a961",
+    "attempted_pairs": 100,
+    "valid_pairs": 100,
+    "discarded_pairs": 0,
+    "discarded_pair_numbers": [],
+    "valid": {
+      "pentanomial": [
+        45,
+        0,
+        46,
+        2,
+        7
+      ],
+      "elo": {
+        "elo": -134.95200708113003,
+        "lower": -187.20946324743997,
+        "upper": -87.9604056762538
+      },
+      "score_rate": 0.315
+    },
+    "terminations": [
+      {
+        "kind": "adjudicated_draw",
+        "reason": "Repetition",
+        "winner": null,
+        "count": 2
+      },
+      {
+        "kind": "adjudicated_win",
+        "reason": "BareKing",
+        "winner": "baseline",
+        "count": 11
+      },
+      {
+        "kind": "adjudicated_win",
+        "reason": "BareKing",
+        "winner": "candidate",
+        "count": 6
+      },
+      {
+        "kind": "adjudicated_win",
+        "reason": "RoyalCapture",
+        "winner": "baseline",
+        "count": 125
+      },
+      {
+        "kind": "adjudicated_win",
+        "reason": "RoyalCapture",
+        "winner": "candidate",
+        "count": 56
+      }
+    ],
+    "forfeits": {
+      "illegal_move": {
+        "candidate": 0,
+        "baseline": 0
+      },
+      "crash": {
+        "candidate": 0,
+        "baseline": 0
+      },
+      "timeout": {
+        "candidate": 0,
+        "baseline": 0
+      },
+      "time_forfeit": {
+        "candidate": 0,
+        "baseline": 0
+      },
+      "rejected_move": {
+        "candidate": 0,
+        "baseline": 0
+      }
+    },
+    "move_forfeit_pair_numbers": [],
+    "without_move_forfeits": {
+      "pentanomial": [
+        45,
+        0,
+        46,
+        2,
+        7
+      ],
+      "elo": {
+        "elo": -134.95200708113003,
+        "lower": -187.20946324743997,
+        "upper": -87.9604056762538
+      },
+      "score_rate": 0.315
+    },
+    "discarded_as_losses": {
+      "pentanomial": [
+        45,
+        0,
+        46,
+        2,
+        7
+      ],
+      "elo": {
+        "elo": -134.95200708113003,
+        "lower": -187.20946324743997,
+        "upper": -87.9604056762538
+      },
+      "score_rate": 0.315
+    },
+    "discarded_as_wins": {
+      "pentanomial": [
+        45,
+        0,
+        46,
+        2,
+        7
+      ],
+      "elo": {
+        "elo": -134.95200708113003,
+        "lower": -187.20946324743997,
+        "upper": -87.9604056762538
+      },
+      "score_rate": 0.315
+    },
+    "affected_pairs": 0,
+    "affected_pair_fraction": 0.0,
+    "affected_pair_fraction_exceeds_5_percent": false,
+    "plies": {
+      "min": 114,
+      "median": 343.0,
+      "max": 3351
+    },
+    "active_wall_time_seconds": 1436.319169
+  },
+  {
+    "run_name": "mcts-fixed-opponents-alphabeta-baseline-c0032",
+    "baseline": {
+      "kind": "alphabeta",
+      "limit": {
+        "nodes": 500
+      }
+    },
+    "rules_source": "lishogi",
+    "seed": 20261113100000,
+    "max_ply": 4096,
+    "nn_model": "/home/stepney141/board-games/minase/data/mcts-fixed-opponents/nets/cycle-0032.onnx",
+    "network_sha256": "cdc64e02fbd3ff54a935775c1bfe7610e33b02e498d41270a55bc705792d76a6",
+    "attempted_pairs": 100,
+    "valid_pairs": 100,
+    "discarded_pairs": 0,
+    "discarded_pair_numbers": [],
+    "valid": {
+      "pentanomial": [
+        23,
+        1,
+        47,
+        1,
+        28
+      ],
+      "elo": {
+        "elo": 17.386277512436145,
+        "lower": -31.46425747915023,
+        "upper": 66.93819763807817
+      },
+      "score_rate": 0.525
+    },
+    "terminations": [
+      {
+        "kind": "adjudicated_draw",
+        "reason": "Repetition",
+        "winner": null,
+        "count": 2
+      },
+      {
+        "kind": "adjudicated_win",
+        "reason": "BareKing",
+        "winner": "baseline",
+        "count": 10
+      },
+      {
+        "kind": "adjudicated_win",
+        "reason": "BareKing",
+        "winner": "candidate",
+        "count": 20
+      },
+      {
+        "kind": "adjudicated_win",
+        "reason": "RoyalCapture",
+        "winner": "baseline",
+        "count": 84
+      },
+      {
+        "kind": "adjudicated_win",
+        "reason": "RoyalCapture",
+        "winner": "candidate",
+        "count": 84
+      }
+    ],
+    "forfeits": {
+      "illegal_move": {
+        "candidate": 0,
+        "baseline": 0
+      },
+      "crash": {
+        "candidate": 0,
+        "baseline": 0
+      },
+      "timeout": {
+        "candidate": 0,
+        "baseline": 0
+      },
+      "time_forfeit": {
+        "candidate": 0,
+        "baseline": 0
+      },
+      "rejected_move": {
+        "candidate": 0,
+        "baseline": 0
+      }
+    },
+    "move_forfeit_pair_numbers": [],
+    "without_move_forfeits": {
+      "pentanomial": [
+        23,
+        1,
+        47,
+        1,
+        28
+      ],
+      "elo": {
+        "elo": 17.386277512436145,
+        "lower": -31.46425747915023,
+        "upper": 66.93819763807817
+      },
+      "score_rate": 0.525
+    },
+    "discarded_as_losses": {
+      "pentanomial": [
+        23,
+        1,
+        47,
+        1,
+        28
+      ],
+      "elo": {
+        "elo": 17.386277512436145,
+        "lower": -31.46425747915023,
+        "upper": 66.93819763807817
+      },
+      "score_rate": 0.525
+    },
+    "discarded_as_wins": {
+      "pentanomial": [
+        23,
+        1,
+        47,
+        1,
+        28
+      ],
+      "elo": {
+        "elo": 17.386277512436145,
+        "lower": -31.46425747915023,
+        "upper": 66.93819763807817
+      },
+      "score_rate": 0.525
+    },
+    "affected_pairs": 0,
+    "affected_pair_fraction": 0.0,
+    "affected_pair_fraction_exceeds_5_percent": false,
+    "plies": {
+      "min": 75,
+      "median": 377.0,
+      "max": 2961
+    },
+    "active_wall_time_seconds": 1540.10590451
+  }
+]
