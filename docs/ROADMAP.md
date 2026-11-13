@@ -65,6 +65,9 @@
 | AlphaZero型探索の強化学習の実行 | [plans/archived/alphazero-rl.md](plans/archived/alphazero-rl.md) | 中断 | 2026年11月9日 |
 | AlphaZero型探索の強化学習の2回目の実行の準備 | [plans/archived/alphazero-rl-2-prep.md](plans/archived/alphazero-rl-2-prep.md) | 完了（採用） | 2026年11月10日 |
 | AlphaZero型探索の強化学習の2回目の実行 | [plans/alphazero-rl-2.md](plans/alphazero-rl-2.md) | 起案 | |
+| 対局用MCTSを全部の規則コードで探索できるようにする | [plans/mcts-rule-codes.md](plans/mcts-rule-codes.md) | 起案 | |
+| AlphaZero型探索の強さを測る固定の相手 | [plans/mcts-fixed-opponents.md](plans/mcts-fixed-opponents.md) | 起案 | |
+| AlphaZero型探索のネットを診断する固定の検証用データ | [plans/zero-validation-games.md](plans/zero-validation-games.md) | 起案 | |
 | 対局用MCTSのPUCTの係数と方策の温度のSPSAによる調整 | [plans/mcts-puct-spsa.md](plans/mcts-puct-spsa.md) | 起案 | |
 | AlphaZero型探索の学習と自己対局生成の複数GPU化 | [plans/archived/alphazero-multi-gpu.md](plans/archived/alphazero-multi-gpu.md) | 完了（採用） | 2026年11月11日 |
 | AlphaZero型探索の推論で、ホストとGPUの間の転送を減らす | [plans/archived/alphazero-inference-transfer.md](plans/archived/alphazero-inference-transfer.md) | 完了（採用） | 2026年11月11日 |
@@ -164,22 +167,23 @@
 [統括計画](plans/alphazero.md)は、ゼロから強化学習で育てたネットのMCTSを、αβ探索とNNUEの組合せと同等以上に強くすることを目標とする。
 統括計画のサブタスクは、実行環境、ネットの入出力と推論、探索方式の共存とMCTS、自己対局生成器、学習器、および強化学習の実行の6本であり、状態表のそのほかのAlphaZero型探索の行は、サブタスクを補う設計書である。
 サブタスク1〜5は完了し、強化学習の[1回目の実行](plans/archived/alphazero-rl.md)はサイクル32で中断したので、次は2回目の実行で、20ブロック256チャネルのネットをランダムに初期化してやり直す。
+2回目の実行のための初期ネット、複数GPU化、推論の転送の削減、および導入スクリプトは用意が済んでいる（状態表の完了の行）。
 
-2回目の実行は、次の5本の設計書で進める。
-1本目の準備は2026年11月10日に、2本目の複数GPU化は11月11日に完了した。3本目の推論の転送の削減も11月11日に完了した。4本目のDockerイメージは11月13日に完了した。5本目の2回目の実行は起案の段階で、利用者の承認を待っている。
+2回目の実行は、次の4本の設計書で進める。
+1本目から3本目は、2026年11月13日に、2回目の実行の設計書から、学習の実行と独立に進められる準備を分けて起案したものである。
+4本とも起案の段階で、利用者の承認を待っている。
 
 | 順 | 設計書 | 内容 | 前提 |
 |---|---|---|---|
-| 1 | [2回目の実行の準備](plans/archived/alphazero-rl-2-prep.md)（完了） | 組み替えた初期配置の開始局面、20ブロック256チャネルの初期ネット、および実行器と測定のスクリプトの変更 | なし |
-| 2 | [複数GPU化](plans/archived/alphazero-multi-gpu.md)（完了） | 学習器と生成器の複数GPU化、vast.aiの機械への対応、およびColabのG4との1サイクルの料金の比較 | 1の完了（済み） |
-| 3 | [推論の転送の削減](plans/archived/alphazero-inference-transfer.md)（完了） | 推論の入出力の転送を減らす4つの候補（ピン留めメモリ、uint8の入力、FP16の方策、方策の固定の表による詰め）の採否 | 2の完了（済み） |
-| 4 | [Dockerイメージ](plans/archived/docker-environment.md)（完了） | 作業機の開発用のコンテナのイメージと、導入先を1つのディレクトリに閉じた導入スクリプト。vast.aiの機械をイメージで借りる方式は採用せず、借りる機械は導入スクリプトを使い続ける | 2の完了（済み）。3と並行できる |
-| 5 | [2回目の実行](plans/alphazero-rl-2.md) | 開始局面の偏りの確認、USIへの移行に合わせた定例の測定のスクリプトの置き換え、自己対局の規則の`lishogi`への切り替え、機械の選択、およびサイクルの実行 | 偏りの確認は1の完了（済み）の後、サイクル1は2の完了（済み）と3の完了（済み）の後。4の完了（済み）の後 |
+| 1 | [対局用MCTSの規則コードへの対応](plans/mcts-rule-codes.md) | 成りの保留を追跡する規則P1、P2、およびP5でもMCTSが探索できるようにし、外部エンジンHaChuと対局できるようにする変更 | なし |
+| 2 | [強さを測る固定の相手](plans/mcts-fixed-opponents.md) | HaChuと、コミットを固定したαβ探索との対局の条件の決定と、1回目の学習のネットによる基準の測定 | HaChuとの対局は1の完了の後。αβ探索との基準は前提なし |
+| 3 | [固定の検証用データ](plans/zero-validation-games.md) | lishogiの人間同士の棋譜から作る検証用データと、診断の道具の対応 | なし。1と2と並行できる |
+| 4 | [2回目の実行](plans/alphazero-rl-2.md) | 自己対局の規則の`lishogi`への切り替え、定例の測定のスクリプトの用意、3サイクルの試走、機械の選択、およびサイクルの実行 | 規則の切り替えと試走は前提なし。サイクル1は1、2、および3の完了の後 |
 
 次の2件は、2回目の実行と独立に進められる。
 
-- [対局用MCTSのPUCTの係数と方策の温度のSPSAによる調整](plans/mcts-puct-spsa.md)は起案の段階で、利用者の承認を待っている。道具の変更はすぐに始められるが、本番の調整は、2回目の実行のネットのうち利用者が指定するものを使う。自己対局の探索はPUCTの係数を使わず、進捗測定はサイクル1を始めたときのバイナリに固定するので、調整しても2回目の学習の途中で条件が変わることはない。
-- 2回目の実行と[NNUEの標準レシピv1](plans/nnue-standard-recipe.md)は、借りる計算機が競合しないので並行して進め、作業機での対局の測定だけを重ならないように順番を調整する。どちらも、自己対局とネットの強さを測る対局を規則セット`lishogi`で行う（2026年11月13日の利用者の決定、[統括計画](plans/alphazero.md)の「自己対局と測定の規則」の節）。
+- [対局用MCTSのPUCTの係数と方策の温度のSPSAによる調整](plans/mcts-puct-spsa.md)は起案の段階で、利用者の承認を待っている。道具の変更はすぐに始められるが、本番の調整は、2回目の実行のネットのうち利用者が指定するものを使う。自己対局の探索はPUCTの係数を使わず、定例の測定はサイクル1を始めたときのバイナリに固定するので、調整しても2回目の学習の途中で条件が変わることはない。
+- 2回目の実行と[NNUEの標準レシピv1](plans/nnue-standard-recipe.md)は、借りる計算機が競合しないので並行して進め、作業機での対局の測定だけを重ならないように順番を調整する。どちらも、自己対局とネットの強さを測る対局を規則セット`lishogi`で行う（2026年11月13日の利用者の決定、[統括計画](plans/alphazero.md)の「自己対局と測定の規則」の節）。2回目の実行のHaChuとの対局だけは、HaChuの規則で行う。
 
 統括計画の完了の後には、AlphaZero型のネットで教師の値を付け直す案（「教師生成」の節）を起案する。到達の判定でMCTSがαβ探索と同等以上とされた場合は、既定の探索方式の変更とlishogi Botへの配備も別の設計書で扱う。
 
