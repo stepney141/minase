@@ -1,0 +1,59 @@
+2026-11-13T10:20:09+09:00
+ 10:20:09 up 14 days,  3:22,  4 users,  load average: 3.95, 4.48, 4.27
+chunks: 1/8 games: 1268 positions: 39495 elapsed_seconds: 434.079
+chunks: 2/8 games: 1305 positions: 40916 elapsed_seconds: 444.444
+chunks: 3/8 games: 1711 positions: 55098 elapsed_seconds: 558.553
+chunks: 4/8 games: 1894 positions: 63484 elapsed_seconds: 601.211
+chunks: 5/8 games: 2000 positions: 69708 elapsed_seconds: 616.245
+chunks: 6/8 games: 2040 positions: 72798 elapsed_seconds: 622.059
+chunks: 7/8 games: 2044 positions: 73141 elapsed_seconds: 622.945
+chunks: 8/8 games: 2048 positions: 73594 elapsed_seconds: 630.469
+seed: 9100000000
+start_position: shuffled-setup
+rules: L0,P0,R1,E0
+commit: de8ab9ab3c48b3794493b4fa370d21e8dc155d0a
+network_sha256: 7a9f3ec7827b832830fe5da0eceae91a2dd12ce0b1b94b81e37401d436d43d76
+simulations: 32
+max_ply: 3000
+black_wins: 1033
+chunks: 8
+discarded_max_ply: 0
+draw_reason_agreement: 0
+draw_reason_bare_king: 0
+draw_reason_piece_exhaustion: 0
+draw_reason_repetition: 0
+draws: 0
+false_resignation_rate: null
+false_resignations: 0
+fast_searches: 222809
+full_searches: 73594
+games: 2048
+games_file_games: 2048
+mate_in_three_games: 2048
+playthrough_games: 2048
+plies: 296403
+positions: 73594
+resign_triggered_playthrough_games: 0
+resigned_games: 0
+resigned_games_excluded: false
+resigned_positions: 0
+target_positions: 1000000000
+training_files: ["chunk-00000.mnsd","chunk-00000.resigned.mnsd","chunk-00001.mnsd","chunk-00001.resigned.mnsd","chunk-00002.mnsd","chunk-00002.resigned.mnsd","chunk-00003.mnsd","chunk-00003.resigned.mnsd","chunk-00004.mnsd","chunk-00004.resigned.mnsd","chunk-00005.mnsd","chunk-00005.resigned.mnsd","chunk-00006.mnsd","chunk-00006.resigned.mnsd","chunk-00007.mnsd","chunk-00007.resigned.mnsd"]
+training_positions: 73594
+white_wins: 1015
+win_reason_bare_king: 0
+win_reason_mate: 0
+win_reason_piece_exhaustion: 0
+win_reason_repetition: 0
+win_reason_resignation: 0
+win_reason_royal_capture: 0
+win_reason_stalemate: 0
+generated_games: 2048
+generated_positions: 73594
+elapsed_seconds: 630.471295
+positions_per_second: 116.728550
+[ perf record: Woken up 891 times to write data ]
+[ perf record: Captured and wrote 224.753 MB /tmp/claude-1000/-home-stepney141-board-games-minase/5d64a7bd-b48d-402a-8996-974908afa082/scratchpad/leaf-profile/perf.data (1255882 samples) ]
+nice -n 19 perf record -F 499 -e cpu-clock:u --call-graph fp --user-callchain  2516.60s user 1.95s system 398% cpu 10:32.74 total
+2026-11-13T10:30:41+09:00
+ 10:30:41 up 14 days,  3:33,  4 users,  load average: 7.77, 8.35, 6.64

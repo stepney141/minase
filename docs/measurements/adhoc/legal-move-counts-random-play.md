@@ -3,7 +3,7 @@
 ## 目的
 
 `Game::legal_moves`が返す合法手の数の分布を乱数対局で数え、生成器の出力バッファの容量の目安と、成りの展開および獅子の捕獲制限の検査が実際に働く着手の割合を得る。
-この測定は、[やねうら王の合法手生成の構造をMCTSの葉の全件生成へ応用する調査](../../proposals/yaneuraou-movegen-for-leaf-legal-moves.md)のために行い、どの設計書も計画していない。
+この測定は、[やねうら王の合法手生成の構造をMCTSの葉の全件生成へ応用する調査](../../proposals/archived/yaneuraou-movegen-for-leaf-legal-moves.md)のために行い、どの設計書も計画していない。
 
 ## コマンドライン
 

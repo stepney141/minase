@@ -41,4 +41,4 @@
 ノード数の一括反映は[ノード数の数え方](count-nodes-per-move-on-shared-counter.md)が、対局履歴の`HashSet`化は[反復検出の方式](filter-the-game-history-before-the-repetition-scan.md)が、置換表の先読みは[置換表の行を先読みしない](do-not-prefetch-transposition-table-entries.md)が扱う。
 
 公開の全手生成は、今も歩兵と仲人を1枚ずつ生成する。
-MCTSの葉が使う公開の全手生成に同種の変更を入れる案は、[やねうら王の合法手生成の構造をMCTSの葉の全件生成へ応用する調査](../proposals/yaneuraou-movegen-for-leaf-legal-moves.md)が候補E2との関係を整理しており、葉の負荷で測り直すまでは、本決定が実装しないとする変更に含める。
+MCTSの葉が使う公開の全手生成に同種の変更を入れる案は、[やねうら王の合法手生成の構造をMCTSの葉の全件生成へ応用する調査](../proposals/archived/yaneuraou-movegen-for-leaf-legal-moves.md)が候補E2との関係を整理しており、葉の負荷で測り直すまでは、本決定が実装しないとする変更に含める。

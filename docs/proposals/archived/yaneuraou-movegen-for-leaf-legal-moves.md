@@ -1,18 +1,22 @@
 # やねうら王の合法手生成の構造をMCTSの葉の全件生成へ応用する調査
 
+本提案は、2026年11月13日に、利用者が3つの候補をすべて不採用と決めて決着した。
+ニューラルネットワークの推論を使う実際の自己対局の生成を作業機でプロファイルしたところ、`Game::legal_moves`は生成スレッドの時間の0.42%であり、借りた機械に換算しても1.3〜2.5%にとどまった（[測定記録](../../measurements/adhoc/zero-selfplay-legal-moves-share.md)）。
+本書が示す命令数の割合は、推論を行わない一様評価器で駆動した探索に対するものであり、生成の時間に対する割合ではない。
+
 ## 候補の扱い
 
 「minaseへの当てはめ」の節で述べる3つの候補の扱いは次のとおりである。
 
 | 候補 | 扱い |
 |---|---|
-| 候補1　成りの選択肢を駒1枚ごとの集合で決める | 未決 |
-| 候補2　獅子の捕獲制限の検査を獅子を取る着手に限る | 未決 |
-| 候補3　出力と作業領域の確保を生成のたびに繰り返さない | 未決 |
+| 候補1　成りの選択肢を駒1枚ごとの集合で決める | 不採用。2026年11月13日に利用者が決めた。実際の自己対局の生成では`Game::legal_moves`が生成スレッドの時間の0.42%にとどまり、半分にしても生成の速さがほとんど変わらないためである（[測定記録](../../measurements/adhoc/zero-selfplay-legal-moves-share.md)）。 |
+| 候補2　獅子の捕獲制限の検査を獅子を取る着手に限る | 不採用。2026年11月13日に利用者が決めた。実際の自己対局の生成では`Game::legal_moves`が生成スレッドの時間の0.42%にとどまり、半分にしても生成の速さがほとんど変わらないためである（[測定記録](../../measurements/adhoc/zero-selfplay-legal-moves-share.md)）。 |
+| 候補3　出力と作業領域の確保を生成のたびに繰り返さない | 不採用。2026年11月13日に利用者が決めた。実際の自己対局の生成では`Game::legal_moves`が生成スレッドの時間の0.42%にとどまり、半分にしても生成の速さがほとんど変わらないためである（[測定記録](../../measurements/adhoc/zero-selfplay-legal-moves-share.md)）。 |
 
 ## 結論
 
-[審判層の裁定が繰り返す合法手生成の削減](../plans/archived/referee-adjudication-movegen.md)の完了後、MCTS（モンテカルロ木探索）の探索では、終局、反復の打ち切り、および深さの上限に当たらない新しい節点を作るたびに呼ぶ`Game::legal_moves`の全件生成が、探索の命令数の37.9%（`Game::legal_moves`の全呼び出しの合計）を占める最大の項目になった（[測定記録](../measurements/referee-adjudication-movegen/referee-adjudication-movegen-driver-cost.md)）。
+[審判層の裁定が繰り返す合法手生成の削減](../../plans/archived/referee-adjudication-movegen.md)の完了後、MCTS（モンテカルロ木探索）の探索では、終局、反復の打ち切り、および深さの上限に当たらない新しい節点を作るたびに呼ぶ`Game::legal_moves`の全件生成が、探索の命令数の37.9%（`Game::legal_moves`の全呼び出しの合計）を占める最大の項目になった（[測定記録](../../measurements/referee-adjudication-movegen/referee-adjudication-movegen-driver-cost.md)）。
 本書は、将棋エンジンのやねうら王が合法手の生成をどう速くしているかをソースコードで調べ、minaseの全件生成へ持ち込める考え方を整理した。
 
 結論は、生成器の費用の大半が駒の利きの計算ではなく、着手1つごとに行う判定にあるということである。
@@ -20,12 +24,12 @@
 全件生成1回は平均38駒、約88手で約31,200命令であり、着手1つの判定と出力に約218命令、駒1枚の利きの計算と列挙に約280命令を使っている。
 やねうら王の生成器は、この着手ごとの判定を持たない。
 成りの可否は駒1枚ごとに敵陣の集合との積で決め、捕獲の有無は到達升の集合の選び方で決まり、着手の出力は固定長のバッファへの1回の書き込みである。
-一方、乱数対局では、成りの選択肢が生じる着手は全体の2.0%、獅子の捕獲制限が関係する着手は0.52%にとどまる（[合法手数の測定記録](../measurements/adhoc/legal-move-counts-random-play.md)）。
+一方、乱数対局では、成りの選択肢が生じる着手は全体の2.0%、獅子の捕獲制限が関係する着手は0.52%にとどまる（[合法手数の測定記録](../../measurements/adhoc/legal-move-counts-random-play.md)）。
 したがって、やねうら王の方式を持ち込む候補は、成りの判定を駒ごとの集合演算へ変えること、獅子の捕獲制限の検査を獅子を取る着手だけに限ること、および出力バッファの確保を生成のたびに繰り返さないことの3つである。
 3つとも生成する着手の集合と順序を変えないので、既存の契約テストと参照実装との突き合わせで正しさを固定できる。
 命令数の勘定では、3つを合わせると全件生成の費用は半分前後になり、MCTSの探索全体では2割前後の削減に当たるが、これは概算であり、採否は実際の探索の時間で判断する。
 
-なお、同じ方向の変更は、αβ探索の速度測定で2026年9月に一度試され、約1.8%遅くなって棄却されている（[ADR](../adr/shift-pawn-origins-and-skip-other-low-yield-movegen-and-see-speedups.md)）。
+なお、同じ方向の変更は、αβ探索の速度測定で2026年9月に一度試され、約1.8%遅くなって棄却されている（[ADR](../../adr/shift-pawn-origins-and-skip-other-low-yield-movegen-and-see-speedups.md)）。
 本書では、ライブラリの公開API`MoveGenerator::generate_moves`による全合法手の生成を「公開の全手生成」と呼ぶ。
 その棄却は、公開の全手生成の費用が小さいαβ探索の負荷で測られたものであり、全件生成が最大の項目であるMCTSの葉では費用の配分が異なる。
 本書はこれを根拠に、同じADRが認める「測り直し」として候補を挙げる。
@@ -43,21 +47,21 @@
 `git status --short`で改変がないことを確かめてから読み、行番号はすべてこのコミットの`source/`以下のものである。
 ライセンスはGPL-3.0であり、本書の引用は要旨にとどめ、逐語の引用には出所を添える。
 minaseはmasterの`936530b4`（2026年10月28日）である。
-プロファイルは、審判層の削減の測定記録に付属する変更後の[callgrindの出力](../measurements/referee-adjudication-movegen/referee-adjudication-movegen-driver-cost/callgrind-after.out)を`callgrind_annotate --inclusive=yes`と`--tree=caller`で読み直したものであり、新しい測定は行っていない。
+プロファイルは、審判層の削減の測定記録に付属する変更後の[callgrindの出力](../../measurements/referee-adjudication-movegen/referee-adjudication-movegen-driver-cost/callgrind-after.out)を`callgrind_annotate --inclusive=yes`と`--tree=caller`で読み直したものであり、新しい測定は行っていない。
 したがって、本書のプロファイルの数値は2026年10月28日の版のものであり、2026年11月5日に探索側の経路へ入った生成と合法性検査の変更を含まない。
 その変更の範囲は「minaseへの当てはめ」の節の冒頭に記す。
-また、本書のプロファイルの数値は、2026年11月8日にMCTSの新しい節点を作る処理へ加えた最後の王駒の捕獲の判定も含まないが、この判定による毎秒の探索回数の低下は、測定のばらつきの範囲に収まった（[費用の記録](../measurements/mcts-royal-capture-temperature/mcts-royal-capture-temperature-royal-cost.md)）。
-合法手数の分布だけは、本書のために乱数対局で数えた（[測定記録](../measurements/adhoc/legal-move-counts-random-play.md)）。
+また、本書のプロファイルの数値は、2026年11月8日にMCTSの新しい節点を作る処理へ加えた最後の王駒の捕獲の判定も含まないが、この判定による毎秒の探索回数の低下は、測定のばらつきの範囲に収まった（[費用の記録](../../measurements/mcts-royal-capture-temperature/mcts-royal-capture-temperature-royal-cost.md)）。
+合法手数の分布だけは、本書のために乱数対局で数えた（[測定記録](../../measurements/adhoc/legal-move-counts-random-play.md)）。
 本書の典拠の行番号、プロファイルの数値、および成りの集合の導出は、別のエージェント（codex）がソースと`callgrind`の生データに照合し、その指摘を反映した。
 文章は、初見の読者への分かりやすさの観点でGemini 3.8 Flashに推敲させ、意味と数値を変えない指摘だけを採った。
 
-やねうら王の王手判定と1手の合法性の検査を審判層へ応用する調査は[別の調査メモ](archived/yaneuraou-check-detection-for-referee.md)にあり、その内容は審判層の削減の設計書に取り込まれて完了した。
+やねうら王の王手判定と1手の合法性の検査を審判層へ応用する調査は[別の調査メモ](yaneuraou-check-detection-for-referee.md)にあり、その内容は審判層の削減の設計書に取り込まれて完了した。
 本書は、その調査が扱わなかった「全件生成そのものの速さ」を対象にする。
-やねうら王とminaseのビットボードの表現と利きの算法の比較は[既存エンジンとminaseのビットボードの比較](../research/bitboard-comparison.md)にあり、本書では繰り返さない。
+やねうら王とminaseのビットボードの表現と利きの算法の比較は[既存エンジンとminaseのビットボードの比較](../../research/bitboard-comparison.md)にあり、本書では繰り返さない。
 
 ## 葉の全件生成の費用の内訳
 
-MCTSの駆動部は、新しい節点を作るとき、根の`Game`の複製に経路の着手を再生し、終局、反復の打ち切り、および深さの上限に当たらなければ、その局面の`Game::legal_moves`で子の辺を作る（[driver.rs](../../crates/minase/src/search/mcts/driver.rs)）。
+MCTSの駆動部は、新しい節点を作るとき、根の`Game`の複製に経路の着手を再生し、終局、反復の打ち切り、および深さの上限に当たらなければ、その局面の`Game::legal_moves`で子の辺を作る（[driver.rs](../../../crates/minase/src/search/mcts/driver.rs)）。
 方策の出力を全合法手へ対応させるので、αβ探索のように必要な手だけを段階的に生成することはできず、全件生成が節点ごとに1回要る。
 
 変更後のプロファイルで、`Game::legal_moves`から呼ばれた`MoveGenerator::generate_moves`は71,589回、22.4億命令であり、1回あたり約31,200命令、平均38.0駒である。
@@ -82,17 +86,17 @@ MCTSの駆動部は、新しい節点を作るとき、根の`Game`の複製に�
 着手ごとの判定と出力の27.0%のうち、成りの判定と獅子の捕獲制限の検査が合わせて約21%（全呼び出しの合計21.6%から捕獲限定の生成の分を除いた概算）、出力の`Vec`の拡張が2.0%、残りの着手の書き込みと分岐が3%から4%を占める。
 `generate_moves_from`自体の費用は4.3億命令（7.3%）であり、表の7.1%との差は駒ごとの生成の外側の処理である。
 着手1つあたりの判定と出力は約218命令、駒1枚あたりの利きの計算と列挙は約280命令である。
-この2つの単価と2つの経路の駒数から全件生成1回の着手数を逆算すると約88手になり、乱数対局で数えた合法手数の平均87.9手（[測定記録](../measurements/adhoc/legal-move-counts-random-play.md)）と一致する。
+この2つの単価と2つの経路の駒数から全件生成1回の着手数を逆算すると約88手になり、乱数対局で数えた合法手数の平均87.9手（[測定記録](../../measurements/adhoc/legal-move-counts-random-play.md)）と一致する。
 
 着手ごとの判定の内側では、捕獲升を盤面から読む`Position::captured_squares`が、獅子の捕獲制限の検査と成りの判定からそれぞれ1回ずつ、原則として着手ごとに2回呼ばれる。
 この2箇所からの呼び出しは4.1億命令（探索全体の6.9%）であり、獅子の判定の補助からの呼び出しを含めた全体では7.0%である。
-成りの判定`promotion_choice`は、成れない駒種の判定より前に移動元の駒と捕獲升を読む（[promotion.rs](../../crates/minase-core/src/promotion.rs) 34行から61行）。
-獅子の捕獲制限の検査は、取る獅子がなければ真を返すが、その判定のために毎回捕獲升を読む（[lion_capture.rs](../../crates/minase-core/src/movegen/lion_capture.rs) 23行から32行）。
-出力の`Vec`の拡張は、`Game::legal_moves`が出力の`Vec`を、`MoveGenerator::generate_moves`が作業領域の`Vec`を、呼び出しごとに空の`Vec::new()`から始める（[referee.rs](../../crates/minase-core/src/game/referee.rs) 164行、[movegen/mod.rs](../../crates/minase-core/src/movegen/mod.rs) 71行）ことによる。
+成りの判定`promotion_choice`は、成れない駒種の判定より前に移動元の駒と捕獲升を読む（[promotion.rs](../../../crates/minase-core/src/promotion.rs) 34行から61行）。
+獅子の捕獲制限の検査は、取る獅子がなければ真を返すが、その判定のために毎回捕獲升を読む（[lion_capture.rs](../../../crates/minase-core/src/movegen/lion_capture.rs) 23行から32行）。
+出力の`Vec`の拡張は、`Game::legal_moves`が出力の`Vec`を、`MoveGenerator::generate_moves`が作業領域の`Vec`を、呼び出しごとに空の`Vec::new()`から始める（[referee.rs](../../../crates/minase-core/src/game/referee.rs) 164行、[movegen/mod.rs](../../../crates/minase-core/src/movegen/mod.rs) 71行）ことによる。
 空の`Vec`はこの時点ではヒープを確保せず、着手を追加して容量を超えるたびに倍の容量へ再確保する。
 審判層では、着手の合法性検査`try_make_move_with_undo`が呼び出しごとに2つの空の`Vec`から始める一方、詰み判定`stalemate_or_mate`は駒ごとの生成の間で作業領域を使い回す。
 
-一方、αβ探索の速度測定の[最終の残存負荷](../measurements/movegen-speedup-2/movegen-speedup-2-final-profile-depth5.md)（2026年9月17日）では、同じ4つの処理の自己時間は、呼び出し元を問わない集計で`captured_squares`が2.6%、`push_with_promotion`が2.3%、`special_move_is_legal`が1.7%、`promotion_choice_for`が1.4%であり、合計で約8%にとどまる。
+一方、αβ探索の速度測定の[最終の残存負荷](../../measurements/movegen-speedup-2/movegen-speedup-2-final-profile-depth5.md)（2026年9月17日）では、同じ4つの処理の自己時間は、呼び出し元を問わない集計で`captured_squares`が2.6%、`push_with_promotion`が2.3%、`special_move_is_legal`が1.7%、`promotion_choice_for`が1.4%であり、合計で約8%にとどまる。
 これは自己時間の割合であり、本書の包含命令数の割合とは単位が異なるが、大小の比較には足りる。
 αβ探索は静止探索の捕獲を専用の経路で生成し、非捕獲手は必要になったノードでだけ生成するので、公開の全手生成（`generate_moves`）の費用が探索に占める割合が小さい。
 MCTSの葉では全件生成が最大の項目なので、同じ処理の削減が探索全体に効く。
@@ -108,7 +112,7 @@ MCTSの葉では全件生成が最大の項目なので、同じ処理の削減�
 生成の条件を実行時に切り替える設定は、USIオプション`GenerateAllLegalMoves`だけである。
 この真偽値は、手の選択器`MovePicker`がコンパイル済みの2つの変種（`CAPTURES`と`CAPTURES_ALL`など）のどちらを呼ぶかを選び（`movepick.cpp` 486行から492行、570行、656行）、根の候補手でも`LEGAL`と`LEGAL_ALL`を選ぶ（`thread.cpp` 439行から443行）。
 条件を数値のレベルで段階的に切り替える機構は、生成器にはない。
-minaseの生成器も`CAPTURES_ONLY`と`QUIETS_ONLY`の定数ジェネリクスで到達升の集合を選ぶ（[generate.rs](../../crates/minase-core/src/movegen/generate.rs) 44行から52行）ので、この点の構造は同じである。
+minaseの生成器も`CAPTURES_ONLY`と`QUIETS_ONLY`の定数ジェネリクスで到達升の集合を選ぶ（[generate.rs](../../../crates/minase-core/src/movegen/generate.rs) 44行から52行）ので、この点の構造は同じである。
 手番は実行時の値であり、固定利きの表引きと走りの方向の変換に手番の分岐が入るが、プロファイルではこの部分の費用は小さい。
 
 やねうら王の設定のうち「レベル」の語が付くのは、このテンプレート引数ではなく`ASSERT_LV`である。
@@ -141,7 +145,7 @@ minaseの成りの判定は着手ごとに行い、移動元の駒、捕獲升�
 取る手だけを生成するときは到達升の集合を相手駒の升に限り、全手を生成するときは成りの判定に捕獲の有無を使わないので、捕獲升を求める処理が生成の中に存在しない（`movegen.cpp` 586行から600行）。
 取られた駒の記録は、着手を実際に適用する`do_move`が`StateInfo`へ書く。
 
-minaseの正準形の着手は、経由升`mid`を第1段階で相手駒を取る場合にだけ持つ（[mv.rs](../../crates/minase-core/src/mv.rs)、[ADR](../adr/represent-moves-in-canonical-form.md)）。
+minaseの正準形の着手は、経由升`mid`を第1段階で相手駒を取る場合にだけ持つ（[mv.rs](../../../crates/minase-core/src/mv.rs)、[ADR](../../adr/represent-moves-in-canonical-form.md)）。
 したがって、生成の時点では、経由升があればそこで取ることが表現から分かり、到達升で取るかどうかは相手駒の集合に到達升が含まれるかで分かる。
 `captured_squares`が盤面の駒コードを読んで求めている情報は、生成器の中では集合の演算で得られる。
 
@@ -155,16 +159,16 @@ minaseの`Game::legal_moves`は、呼び出しごとに出力の`Vec`を空か�
 出力は約90手まで倍々に伸び、作業領域は駒ごとに消去と再利用をするが最初の駒で伸びる。
 審判層の着手の合法性検査も呼び出しごとに空の`Vec`から始めるので、再確保は生成器の全呼び出しで約231万回（出力125万回、作業領域106万回）起こり、探索全体の命令数の3.3%を占める。
 `minase-core`は`unsafe`を使わない方針なので、固定長の配列と長さの組を自前で実装する利点は小さく、容量をあらかじめ確保するか、呼び出し側の作業領域を受け取る関数を加えるのが対応になる。
-後者は、αβ探索のために`generate_captures_with_scratch`として既にある形である（[movegen/mod.rs](../../crates/minase-core/src/movegen/mod.rs) 110行から117行）。
+後者は、αβ探索のために`generate_captures_with_scratch`として既にある形である（[movegen/mod.rs](../../../crates/minase-core/src/movegen/mod.rs) 110行から117行）。
 
 ### 歩は集合全体のシフトで生成する
 
 やねうら王は、歩の着手を駒ごとに生成せず、手番側の歩の集合全体を1段シフトして到達升の集合との積を取り、到達升から移動元を逆算して着手を書く（`movegen.cpp` 226行から260行）。
 歩は同じ動きをする駒が最も多いので、駒ごとの表引きを1回の集合演算に置き換える効果が大きい。
 中将棋では歩兵と仲人が同じ性質を持つが、歩兵は12枚で前進1升、仲人は2枚で前後1升であり、将棋の歩9枚に対して枚数の差は大きくない。
-この方式は[合法手生成の高速化計画への追加候補](archived/movegen-speedup-ideas.md)が副候補として挙げ、αβ探索の速度測定では「自己時間として分離できる負荷が見えない」として着手しなかった（[単位Eの記録](../measurements/movegen-speedup/movegen-speedup-unit-e-bench-depth5.md)）。
+この方式は[合法手生成の高速化計画への追加候補](movegen-speedup-ideas.md)が副候補として挙げ、αβ探索の速度測定では「自己時間として分離できる負荷が見えない」として着手しなかった（[単位Eの記録](../../measurements/movegen-speedup/movegen-speedup-unit-e-bench-depth5.md)）。
 プロファイルでも、駒ごとの利きの計算と候補の列挙は駒ごとの生成の費用の37%にとどまり、その中で歩兵と仲人が占める分はさらに小さいので、本書でも優先しない。
-その後、2026年11月5日に[NNUE教師生成を探索結果を変えずに速くする設計書](../plans/archived/teacher-generation-speedup.md)が、αβ探索が使う捕獲限定と非捕獲限定の生成に限って、到達升の集合をずらして歩兵と仲人の移動元を一括で選ぶ処理を入れた。
+その後、2026年11月5日に[NNUE教師生成を探索結果を変えずに速くする設計書](../../plans/archived/teacher-generation-speedup.md)が、αβ探索が使う捕獲限定と非捕獲限定の生成に限って、到達升の集合をずらして歩兵と仲人の移動元を一括で選ぶ処理を入れた。
 公開の全手生成は、今も歩兵と仲人を1枚ずつ生成する。
 
 ### 合法性の検査は手を指す直前に1手ずつ行う
@@ -172,7 +176,7 @@ minaseの`Game::legal_moves`は、呼び出しごとに出力の`Vec`を空か�
 やねうら王の探索は、擬似合法手を段階的に生成し、候補手ごとに枝刈りより前に`pos.legal(move)`で自殺手を除く（`engine/yaneuraou-engine/yaneuraou-search.cpp` 3486行から3496行）。
 以前は着手の適用の直前まで遅らせていたが、適用までの枝刈りが増えたので前へ移したという注記がある。
 不成を含む全合法手を一括で生成する`generate<LEGAL_ALL>`は、全擬似合法手を生成してから`legal()`で篩い落とす実装で、「かなり重い。ゆえにLEGALは特殊な状況でしか使うべきではない」と注記されている（`movegen.cpp` 935行から949行）。
-この原則は[別の調査メモ](archived/yaneuraou-check-detection-for-referee.md)が審判層へ応用した。
+この原則は[別の調査メモ](yaneuraou-check-detection-for-referee.md)が審判層へ応用した。
 MCTSの葉は方策のために全合法手を必要とするので、生成を省くことはできない。
 ただし、minaseの生成器が作った候補を除く規則は獅子の捕獲制限だけであり（成りの規則は着手の変種の有無を決め、反復規則R2とR3の禁止は`Game`側で除く）、その検査が要るのは相手の獅子を取る着手に限られる。
 全件を生成しつつ、検査を該当する着手だけに限る形で、同じ原則を部分的に適用できる。
@@ -180,11 +184,11 @@ MCTSの葉は方策のために全合法手を必要とするので、生成を�
 ## minaseへの当てはめ
 
 次の3つの候補は、いずれも`MoveGenerator::generate_moves`の出力の集合と順序を変えない。
-出力の順序は、生成器のdocコメントが契約として定め（[movegen/mod.rs](../../crates/minase-core/src/movegen/mod.rs) 58行から69行）、αβ探索のbenchの局面別の一致とMCTSの測定`driver_cost`の出力の一致がこの順序に依存する。
+出力の順序は、生成器のdocコメントが契約として定め（[movegen/mod.rs](../../../crates/minase-core/src/movegen/mod.rs) 58行から69行）、αβ探索のbenchの局面別の一致とMCTSの測定`driver_cost`の出力の一致がこの順序に依存する。
 候補ごとに、置き換える処理、同値である理由、および正しさを固定する検査を示す。
 
 3つの候補は、MCTSの葉が使う公開の全手生成に対しては未着手であり、`Game::legal_moves`は今も駒ごとの生成と着手ごとの`push_with_promotion`を通る。
-一方、αβ探索が使う非捕獲限定の生成は、2026年11月5日に[NNUE教師生成を探索結果を変えずに速くする設計書](../plans/archived/teacher-generation-speedup.md)で、獅子の捕獲制限の検査を省き、成りの判定に使う駒の成否と保留状態を駒1枚ごとに1回だけ求める形になった。
+一方、αβ探索が使う非捕獲限定の生成は、2026年11月5日に[NNUE教師生成を探索結果を変えずに速くする設計書](../../plans/archived/teacher-generation-speedup.md)で、獅子の捕獲制限の検査を省き、成りの判定に使う駒の成否と保留状態を駒1枚ごとに1回だけ求める形になった。
 これは候補2の考え方を非捕獲手に限って適用したものであり、公開の全手生成の処理は変わっていない。
 
 ### 候補1　成りの選択肢を駒1枚ごとの集合で決める
@@ -214,8 +218,8 @@ P1では、成り権を保留中でなく移動元が敵陣にあれば、到達
 P6は、ここまでで作った成りを選べる集合（P1とP2の追加を含む）と`last`の積を、歩兵と香車について必ず成る集合へ移す。
 P2と併用する場合に敵陣内の香車が最奥段の空升へ進む着手が必ず成ることは、この順序で初めて正しく出る。
 P5の保留中の歩兵は、成れる着手のうち到達升が最奥段のものだけで必ず成り、他の着手では成れないので、必ず成る集合を「捕獲による成りの集合（`from_in_zone`が真なら`enemy`、偽なら`enemy & zone`）と、P2を併用する場合の非捕獲の集合の和に`last`を掛けたもの」とし、成りを選べる集合を空にする。
-この導出は`promotion_choice_for`（[promotion.rs](../../crates/minase-core/src/promotion.rs) 72行から145行）の条件を到達升の集合へ書き直したものであり、正しさの固定は導出の読み合わせではなく、乱数局面と全規則セットの組合せで現行の`promotion_choice`による生成と出力を突き合わせる参照試験で行う。
-条文ごとの境界局面の試験は[promotion.rs](../../crates/minase-core/src/movegen/tests/promotion.rs)に、規則セットを横断する乱数対局の突き合わせは審判層の削減で加えた参照実装の型にある。
+この導出は`promotion_choice_for`（[promotion.rs](../../../crates/minase-core/src/promotion.rs) 72行から145行）の条件を到達升の集合へ書き直したものであり、正しさの固定は導出の読み合わせではなく、乱数局面と全規則セットの組合せで現行の`promotion_choice`による生成と出力を突き合わせる参照試験で行う。
+条文ごとの境界局面の試験は[promotion.rs](../../../crates/minase-core/src/movegen/tests/promotion.rs)に、規則セットを横断する乱数対局の突き合わせは審判層の削減で加えた参照実装の型にある。
 
 この候補の効果の上限は、成りの判定に属する探索全体の14.7%である。
 集合の構築は駒1枚につき数回のビットボード演算なので、置き換え後の費用は駒数に比例する小さな値になる。
@@ -226,14 +230,14 @@ P5の保留中の歩兵は、成れる着手のうち到達升が最奥段のも
 ### 候補2　獅子の捕獲制限の検査を獅子を取る着手に限る
 
 `special_move_is_legal`は、着手が相手の獅子を取らなければ真を返す。
-取る獅子があるときに働く規則は、動かす駒が獅子である場合の第14条と第16条、および先獅子の状態（`Position::lion_taken_by_non_lion`）がある場合の第15条の2つである（[lion_capture.rs](../../crates/minase-core/src/movegen/lion_capture.rs) 23行から73行）。
+取る獅子があるときに働く規則は、動かす駒が獅子である場合の第14条と第16条、および先獅子の状態（`Position::lion_taken_by_non_lion`）がある場合の第15条の2つである（[lion_capture.rs](../../../crates/minase-core/src/movegen/lion_capture.rs) 23行から73行）。
 したがって、動かす駒が獅子でなく、先獅子の状態もなければ、その駒の全着手について検査を省いても結果は変わらない。
 この判定は駒1枚につき1回である。
 検査が要る駒でも、到達升または経由升が相手の獅子の升である着手だけが対象なので、相手の獅子の集合`pieces_of_kind(opponent, Lion)`への所属を2回調べるだけで、残りの着手は検査を省ける。
 乱数対局では、相手の獅子の升へ届く着手は0.52%である。
 
 この置き換えは、やねうら王が1手の合法性の検査で、王手の回避の条件を王手を受けている局面でだけ調べ、王手を受けていなければ`pseudo_legal_s`の基本の検査と`legal`のピンの判定だけで済ませる構造（`position.cpp` 1387行から1590行）と同じ考え方であり、「規則が働き得る条件を安い状態の判定で先に除く」ことに当たる。
-正しさの固定は、既存の[lion_capture.rs](../../crates/minase-core/src/movegen/tests/lion_capture.rs)の条文ごとの試験に加えて、置き換えの誤りを入れて試験が失敗することを確かめる[教訓](../lessons/pin-rule-exceptions-when-replacing-generation-with-attacks.md)の手順で行う。
+正しさの固定は、既存の[lion_capture.rs](../../../crates/minase-core/src/movegen/tests/lion_capture.rs)の条文ごとの試験に加えて、置き換えの誤りを入れて試験が失敗することを確かめる[教訓](../../lessons/pin-rule-exceptions-when-replacing-generation-with-attacks.md)の手順で行う。
 効果の上限は、獅子の捕獲制限の検査に属する探索全体の6.9%である。
 候補1と候補2を合わせると、相手の獅子を取らない着手では着手ごとの`captured_squares`の2回の呼び出しも消え、獅子を取る着手の検査だけが残る。
 
@@ -241,9 +245,9 @@ P5の保留中の歩兵は、成れる着手のうち到達升が最奥段のも
 
 `Game::legal_moves`は出力の`Vec`を、`MoveGenerator::generate_moves`は作業領域の`Vec`を、呼び出しごとに空の`Vec`から始める。
 対応は2つある。
-1つは、出力を`Vec::with_capacity`で確保することであり、容量は乱数対局の99パーセンタイル151手と最大206手（[測定記録](../measurements/adhoc/legal-move-counts-random-play.md)）から、実際の探索の局面で測り直して決める。
+1つは、出力を`Vec::with_capacity`で確保することであり、容量は乱数対局の99パーセンタイル151手と最大206手（[測定記録](../../measurements/adhoc/legal-move-counts-random-play.md)）から、実際の探索の局面で測り直して決める。
 もう1つは、`generate_captures_with_scratch`と同じ形で、呼び出し側の作業領域を受け取る`Game::legal_moves_into`のような関数を加え、MCTSの駆動部が節点ごとに同じ`Vec`を使い回すことである。
-MCTSの駆動部は`Game`の複製に対して`legal_moves`を呼び、返った`Vec`を評価の依頼`EvaluationRequest`へ移して推論が終わるまで保持し、推論の後に探索木が`Box<[Edge]>`へ写す（[driver.rs](../../crates/minase/src/search/mcts/driver.rs)の`EvaluationRequest`、[tree.rs](../../crates/minase/src/search/mcts/tree.rs)の`Node::new`）。
+MCTSの駆動部は`Game`の複製に対して`legal_moves`を呼び、返った`Vec`を評価の依頼`EvaluationRequest`へ移して推論が終わるまで保持し、推論の後に探索木が`Box<[Edge]>`へ写す（[driver.rs](../../../crates/minase/src/search/mcts/driver.rs)の`EvaluationRequest`、[tree.rs](../../../crates/minase/src/search/mcts/tree.rs)の`Node::new`）。
 1回の推論には複数の依頼が同時に存在するので、作業領域を1つ使い回すだけでは確保を消せず、依頼ごとの`Vec`を推論の後に回収して再利用する仕組みが要る。
 前者は変更が小さい一方、後者は確保そのものをなくせるが、依頼の保持の仕組みに手が入る。
 効果の上限は`Vec`の拡張に属する探索全体の3.3%であり、確保の回数の削減がどれだけ時間に効くかは測定で確かめる。
@@ -256,35 +260,35 @@ MCTSの駆動部は`Game`の複製に対して`legal_moves`を呼び、返った
 置き換え後に残るのは、駒ごとの集合の構築と、着手ごとの所属の判定と書き込みである。
 命令数の勘定では、駒ごとの生成の費用は半分前後になり、葉の全件生成（探索の37.9%）と審判層の駒1枚の着手の生成（同7.1%）を合わせて、MCTSの探索全体の命令数が2割前後減る見込みである。
 この割合は、GPUの推論を使わない一様評価器で駆動した測定のCPUの命令数に対するものであり、実際の推論を含む自己対局での時間の割合はこれより小さい。
-ただし、[段階生成の固定費の教訓](../lessons/staged-generation-fixed-cost.md)が示すように、件数の削減率から時間の削減率は導けず、[局所最適化で呼び出し元の機械語を比較する教訓](../lessons/check-caller-codegen-for-local-optimizations.md)が示すように、関数の大きさの変化でインライン展開が変わると周辺の費用も変わる。
+ただし、[段階生成の固定費の教訓](../../lessons/staged-generation-fixed-cost.md)が示すように、件数の削減率から時間の削減率は導けず、[局所最適化で呼び出し元の機械語を比較する教訓](../../lessons/check-caller-codegen-for-local-optimizations.md)が示すように、関数の大きさの変化でインライン展開が変わると周辺の費用も変わる。
 採否は、審判層の削減と同じく、MCTSの駆動部を一様評価器で動かす測定道具`driver_cost`で、出力の一致を確かめたうえで再生1手あたりの探索時間を比べて判断する。
-この道具は2026年11月2日に削除されているので（[測定用の道具を削除したADR](../adr/delete-finished-zero-measurement-tools-and-estimate-cycles-by-running-one.md)）、同ADRの「結果」の節のとおり、測るときは現行の駆動部に合わせて作り直す。
+この道具は2026年11月2日に削除されているので（[測定用の道具を削除したADR](../../adr/delete-finished-zero-measurement-tools-and-estimate-cycles-by-running-one.md)）、同ADRの「結果」の節のとおり、測るときは現行の駆動部に合わせて作り直す。
 
 ### 過去に棄却した候補との関係
 
-[歩兵と仲人の移動元は到達升の集合のシフトで選び、効果が小さいと見込まれたほかの生成とSEEの高速化は実装しない](../adr/shift-pawn-origins-and-skip-other-low-yield-movegen-and-see-speedups.md)は、「公開の全手生成の判定省略と固定利き専用経路」を実装しない変更に挙げている。
-[単位Eの記録](../measurements/movegen-speedup/movegen-speedup-unit-e-bench-depth5.md)によれば、この候補E2は、公開の全手生成でも捕獲升を1回だけ求めて獅子規則と成りの判定を省き、走りを持たない駒では利き線の検査を省いて固定利きと対象升の積を直接使う変更であり、αβ探索のbench（深さ5）で約1.8%遅くなった。
+[歩兵と仲人の移動元は到達升の集合のシフトで選び、効果が小さいと見込まれたほかの生成とSEEの高速化は実装しない](../../adr/shift-pawn-origins-and-skip-other-low-yield-movegen-and-see-speedups.md)は、「公開の全手生成の判定省略と固定利き専用経路」を実装しない変更に挙げている。
+[単位Eの記録](../../measurements/movegen-speedup/movegen-speedup-unit-e-bench-depth5.md)によれば、この候補E2は、公開の全手生成でも捕獲升を1回だけ求めて獅子規則と成りの判定を省き、走りを持たない駒では利き線の検査を省いて固定利きと対象升の積を直接使う変更であり、αβ探索のbench（深さ5）で約1.8%遅くなった。
 本書の候補1と候補2は、E2のうち判定の省略に当たる部分と目的が重なる。
 
 それでも本書が候補に挙げる理由は3つある。
 第1に、αβ探索の最終の残存負荷（2026年9月17日）では公開の全手生成に関わる4つの処理の自己時間が合計で約8%にとどまるのに対し、MCTSの葉では全件生成が探索の命令数の37.9%を占め、その6割が着手ごとの判定である。
-第2に、上記のADRが置き換えた[古いADR](../adr/archive/skip-low-yield-movegen-and-see-speedups.md)は「いずれの測定も評価関数がNNUEへ置き換わる前のものであり、ノードあたりの費用の配分が変わっているので、再提案には現行の評価関数での測り直しが要る」と記しており、置き換え後のADRも、残る候補の再提案に同じ測り直しを求めている。
+第2に、上記のADRが置き換えた[古いADR](../../adr/archive/skip-low-yield-movegen-and-see-speedups.md)は「いずれの測定も評価関数がNNUEへ置き換わる前のものであり、ノードあたりの費用の配分が変わっているので、再提案には現行の評価関数での測り直しが要る」と記しており、置き換え後のADRも、残る候補の再提案に同じ測り直しを求めている。
 置き換え後のADRは、MCTSの葉が使う公開の全手生成への同種の変更も、葉の負荷で測り直すまでは実装しないとしている。
 本書の提案はこの測り直しを計画するものであり、本書自身は新しい速度の測定を含まない。
 第3に、E2は判定の省略と走りを持たない駒の専用経路を1つの候補にまとめて測ったので、どの部分が遅くした原因かは分かっていない。
 本書の候補は判定の省略だけを対象にし、専用経路は含めない。
 測定はMCTSの`driver_cost`で行い、αβ探索のbenchでは局面別の出力の一致と速度が落ちていないことを確かめる。
-E2が遅くなった原因が関数の肥大によるインライン展開の変化であった可能性は、[教訓](../lessons/check-caller-codegen-for-local-optimizations.md)に従って呼び出し元の機械語を比べて切り分ける。
+E2が遅くなった原因が関数の肥大によるインライン展開の変化であった可能性は、[教訓](../../lessons/check-caller-codegen-for-local-optimizations.md)に従って呼び出し元の機械語を比べて切り分ける。
 
 ## 全件生成以外のプロファイルの所見
 
 プロファイルには、全件生成の外にも目立つ項目がある。
 いずれも合法手生成の構造とは別の問題なので本書では扱わないが、次の作業の候補として記す。
 
-- 探索木が保留中のシミュレーションの経路（`Vec<usize>`）を線形に比べる`memcmp`が、探索の命令数の6.3%を占める。呼び出し元は`create_child`と`select_leaf`が各2.1%、`finish`と`evaluate`が各1.1%であり、比較の箇所は`pending_index`（[tree.rs](../../crates/minase/src/search/mcts/tree.rs) 712行）が約3分の2、`select_leaf`の衝突の判定（同484行）が約3分の1である。
+- 探索木が保留中のシミュレーションの経路（`Vec<usize>`）を線形に比べる`memcmp`が、探索の命令数の6.3%を占める。呼び出し元は`create_child`と`select_leaf`が各2.1%、`finish`と`evaluate`が各1.1%であり、比較の箇所は`pending_index`（[tree.rs](../../../crates/minase/src/search/mcts/tree.rs) 712行）が約3分の2、`select_leaf`の衝突の判定（同484行）が約3分の1である。
 - 審判層の合法手なしと詰みの判定`stalemate_or_mate`は17.3%であり、そのうち利きの逆引きが4.4%を占める。その内訳は、逃れる手を早く見つけるために駒を王駒、攻撃駒を取れる駒、残りの駒の3群に分ける処理が1.9%、候補手の後に相手が最後の王駒を取れるかの判定が2.5%である。
 - 駒枯れの判定`piece_exhaustion_transition`は5.2%であり、再生する1手ごとに両側の駒の集合を数え直している。
-- 再生する着手の合法性検査`is_legal_move`は4.1%であり、1回あたり約840命令だった。やねうら王の`pseudo_legal`のように着手1つを直接検査する方式は、2026年11月5日に[NNUE教師生成を探索結果を変えずに速くする設計書](../plans/archived/teacher-generation-speedup.md)で、獅子、角鷹、および飛鷲を除く駒について採られた。審判層の再生も同じ関数を使うので、この項目の現在の費用は測り直さないと分からない。
+- 再生する着手の合法性検査`is_legal_move`は4.1%であり、1回あたり約840命令だった。やねうら王の`pseudo_legal`のように着手1つを直接検査する方式は、2026年11月5日に[NNUE教師生成を探索結果を変えずに速くする設計書](../../plans/archived/teacher-generation-speedup.md)で、獅子、角鷹、および飛鷲を除く駒について採られた。審判層の再生も同じ関数を使うので、この項目の現在の費用は測り直さないと分からない。
 
 ## 今後の進め方
 
@@ -297,11 +301,11 @@ E2が遅くなった原因が関数の肥大によるインライン展開の変
 ## 参考資料
 
 - やねうら王（コミット`c1b80eaa`、GPL-3.0）：`source/movegen.h`、`source/movegen.cpp`、`source/position.h`、`source/position.cpp`、`source/types.h`、`source/config.h`。[GitHubのリポジトリ](https://github.com/yaneurao/YaneuraOu/tree/c1b80eaa09fe13d5f12b1599d1ae4d53c224de30)。
-- [審判層の裁定が繰り返す合法手生成の削減の設計書](../plans/archived/referee-adjudication-movegen.md)と[その測定記録](../measurements/referee-adjudication-movegen/referee-adjudication-movegen-driver-cost.md)：本書が読み直したプロファイルの出所。
-- [乱数対局における合法手数の分布](../measurements/adhoc/legal-move-counts-random-play.md)：成りと獅子の捕獲制限が働く着手の割合と、合法手数の分布。
-- [やねうら王の王手判定と合法手生成の使い分けを審判層の裁定へ応用する調査](archived/yaneuraou-check-detection-for-referee.md)：審判層への応用を扱った先行の調査。
-- [既存エンジンとminaseのビットボードの比較](../research/bitboard-comparison.md)：ビットボードと利きの算法の比較。
-- [合法手生成の高速化計画への追加候補](archived/movegen-speedup-ideas.md)：固定利きを移動量ごとにまとめる案の初出。
-- [歩兵と仲人の移動元は到達升の集合のシフトで選び、効果が小さいと見込まれたほかの生成とSEEの高速化は実装しない](../adr/shift-pawn-origins-and-skip-other-low-yield-movegen-and-see-speedups.md)と[単位Eの測定記録](../measurements/movegen-speedup/movegen-speedup-unit-e-bench-depth5.md)：棄却された候補E2の内容と条件。
-- [αβ探索の最終の残存負荷](../measurements/movegen-speedup-2/movegen-speedup-2-final-profile-depth5.md)：αβ探索での着手ごとの判定の割合。
-- [MCTSは新しい節点を審判層の裁定で終局させるADR](../adr/adjudicate-mcts-leaves-by-the-referee-before-the-repetition-approximation.md)：葉で全件生成が要る理由。
+- [審判層の裁定が繰り返す合法手生成の削減の設計書](../../plans/archived/referee-adjudication-movegen.md)と[その測定記録](../../measurements/referee-adjudication-movegen/referee-adjudication-movegen-driver-cost.md)：本書が読み直したプロファイルの出所。
+- [乱数対局における合法手数の分布](../../measurements/adhoc/legal-move-counts-random-play.md)：成りと獅子の捕獲制限が働く着手の割合と、合法手数の分布。
+- [やねうら王の王手判定と合法手生成の使い分けを審判層の裁定へ応用する調査](yaneuraou-check-detection-for-referee.md)：審判層への応用を扱った先行の調査。
+- [既存エンジンとminaseのビットボードの比較](../../research/bitboard-comparison.md)：ビットボードと利きの算法の比較。
+- [合法手生成の高速化計画への追加候補](movegen-speedup-ideas.md)：固定利きを移動量ごとにまとめる案の初出。
+- [歩兵と仲人の移動元は到達升の集合のシフトで選び、効果が小さいと見込まれたほかの生成とSEEの高速化は実装しない](../../adr/shift-pawn-origins-and-skip-other-low-yield-movegen-and-see-speedups.md)と[単位Eの測定記録](../../measurements/movegen-speedup/movegen-speedup-unit-e-bench-depth5.md)：棄却された候補E2の内容と条件。
+- [αβ探索の最終の残存負荷](../../measurements/movegen-speedup-2/movegen-speedup-2-final-profile-depth5.md)：αβ探索での着手ごとの判定の割合。
+- [MCTSは新しい節点を審判層の裁定で終局させるADR](../../adr/adjudicate-mcts-leaves-by-the-referee-before-the-repetition-approximation.md)：葉で全件生成が要る理由。

@@ -1,0 +1,1415 @@
+[
+ {
+  "tid": 1279653,
+  "comm": "zero-selfplay-1",
+  "total_s": 627.671337664,
+  "inclusive_s": {
+   "selfplay": 17.212424712,
+   "mcts": 7.27454904,
+   "legal_moves": 2.701402784,
+   "piece_moves_full": 2.639278536,
+   "push_with_promotion": 1.086172336,
+   "special_move_is_legal": 0.3006012,
+   "records": 0.226452904,
+   "promotion_choice_for": 0.004008016
+  },
+  "legal_moves_caller_s": {
+   "<minase::search::mcts::driver::Driver>::select_leaf": 2.232464912,
+   "minase::search::mate_in_three::winning_attack": 0.322645288,
+   "<minase::search::snapshot::SearchSnapshot>::from_game": 0.098196392,
+   "minase::training::records::sorted_legal_moves": 0.048096192
+  },
+  "leaf_dso_s": {
+   "libcuda.so.615.78.08": 536.210416552,
+   "[vdso]": 69.182364176,
+   "inlined": 14.472945776,
+   "libc.so.6": 4.206412792,
+   "libnvinfer.so.10": 1.697394776,
+   "minase": 1.360721432,
+   "libonnxruntime.so.1.31.1": 0.252505008,
+   "libm.so.6": 0.122244488
+  },
+  "self_top_s": {
+   "[unknown]": 539.75951472,
+   "__vdso_clock_gettime": 69.182364176,
+   "must_use<[f32; 4]>": 1.747494976,
+   "clock_gettime@plt": 1.43286572,
+   "clock_gettime": 1.252505,
+   "pop_lsb": 1.21242484,
+   "encode_control": 1.050100192,
+   "mi_page_malloc_zero": 0.759519032,
+   "fixed": 0.629258512,
+   "lll_mutex_lock_optimized": 0.396793584,
+   "as_ref<alloc::boxed::Box<minase::search::mcts::tree::Node, alloc::alloc::Global>>": 0.39078156,
+   "minase_core::movegen::generate::generate_piece_moves::<false, false>": 0.382765528,
+   "drop_glue<core::option::Option<alloc::boxed::Box<minase::search::mcts::tree::Node, alloc::alloc::Global>>>": 0.336673344,
+   "movement_profile": 0.238476952,
+   "ok_or<usize, minase::nn::error::NnError>": 0.236472944,
+   "new": 0.214428856,
+   "next": 0.202404808,
+   "piece_at": 0.18036072,
+   "bitor": 0.174348696,
+   "fixed_index": 0.17034068,
+   "promotion_choice_for": 0.168336672,
+   "color": 0.166332664,
+   "dense_index": 0.164328656,
+   "rposition<u64, minase::search::mcts::driver::{impl#2}::repetition::{closure_env#1}>": 0.158316632,
+   "bitand": 0.152304608
+  }
+ },
+ {
+  "tid": 1279652,
+  "comm": "zero-selfplay-0",
+  "total_s": 623.639273568,
+  "inclusive_s": {
+   "selfplay": 17.25450888,
+   "mcts": 7.170340624,
+   "piece_moves_full": 2.579158296,
+   "legal_moves": 2.569138256,
+   "push_with_promotion": 1.07214428,
+   "special_move_is_legal": 0.324649296,
+   "records": 0.216432864,
+   "promotion_choice_for": 0.004008016
+  },
+  "legal_moves_caller_s": {
+   "<minase::search::mcts::driver::Driver>::select_leaf": 2.066132248,
+   "minase::search::mate_in_three::winning_attack": 0.382765528,
+   "<minase::search::snapshot::SearchSnapshot>::from_game": 0.086172344,
+   "minase::training::records::sorted_legal_moves": 0.034068136
+  },
+  "leaf_dso_s": {
+   "libcuda.so.615.78.08": 532.963923592,
+   "[vdso]": 68.324648752,
+   "inlined": 14.354709304,
+   "libc.so.6": 4.33867732,
+   "libnvinfer.so.10": 1.657314616,
+   "minase": 1.4529058,
+   "libonnxruntime.so.1.31.1": 0.252505008,
+   "libm.so.6": 0.118236472
+  },
+  "self_top_s": {
+   "[unknown]": 536.43286144,
+   "__vdso_clock_gettime": 68.324648752,
+   "must_use<[f32; 4]>": 1.781563112,
+   "clock_gettime": 1.414829648,
+   "clock_gettime@plt": 1.386773536,
+   "pop_lsb": 1.120240472,
+   "encode_control": 1.078156304,
+   "mi_page_malloc_zero": 0.695390776,
+   "fixed": 0.69138276,
+   "as_ref<alloc::boxed::Box<minase::search::mcts::tree::Node, alloc::alloc::Global>>": 0.376753504,
+   "minase_core::movegen::generate::generate_piece_moves::<false, false>": 0.36072144,
+   "lll_mutex_lock_optimized": 0.338677352,
+   "drop_glue<core::option::Option<alloc::boxed::Box<minase::search::mcts::tree::Node, alloc::alloc::Global>>>": 0.322645288,
+   "movement_profile": 0.244488976,
+   "ok_or<usize, minase::nn::error::NnError>": 0.222444888,
+   "mixed_value": 0.194388776,
+   "new": 0.186372744,
+   "fixed_index": 0.184368736,
+   "next": 0.184368736,
+   "color": 0.18036072,
+   "promotion_choice_for": 0.166332664,
+   "piece_at": 0.162324648,
+   "piece_control_without_special": 0.158316632,
+   "bitand": 0.158316632,
+   "rposition<u64, minase::search::mcts::driver::{impl#2}::repetition::{closure_env#1}>": 0.152304608
+  }
+ },
+ {
+  "tid": 1279655,
+  "comm": "zero-selfplay-3",
+  "total_s": 620.553101248,
+  "inclusive_s": {
+   "selfplay": 17.086172208,
+   "mcts": 7.20440876,
+   "legal_moves": 2.67535068,
+   "piece_moves_full": 2.619238456,
+   "push_with_promotion": 1.070140272,
+   "special_move_is_legal": 0.266533064,
+   "records": 0.186372744,
+   "promotion_choice_for": 0.008016032
+  },
+  "legal_moves_caller_s": {
+   "<minase::search::mcts::driver::Driver>::select_leaf": 2.17434868,
+   "minase::search::mate_in_three::winning_attack": 0.394789576,
+   "<minase::search::snapshot::SearchSnapshot>::from_game": 0.074148296,
+   "minase::training::records::sorted_legal_moves": 0.032064128
+  },
+  "leaf_dso_s": {
+   "libcuda.so.615.78.08": 530.545085936,
+   "[vdso]": 68.002003464,
+   "inlined": 14.206412712,
+   "libc.so.6": 4.196392752,
+   "libnvinfer.so.10": 1.635270528,
+   "minase": 1.444889768,
+   "libonnxruntime.so.1.31.1": 0.238476952,
+   "libm.so.6": 0.116232464
+  },
+  "self_top_s": {
+   "[unknown]": 533.945887512,
+   "__vdso_clock_gettime": 68.002003464,
+   "must_use<[f32; 4]>": 1.81362724,
+   "clock_gettime": 1.43286572,
+   "clock_gettime@plt": 1.316633256,
+   "encode_control": 1.1523046,
+   "pop_lsb": 1.076152296,
+   "mi_page_malloc_zero": 0.745490976,
+   "fixed": 0.633266528,
+   "minase_core::movegen::generate::generate_piece_moves::<false, false>": 0.386773544,
+   "as_ref<alloc::boxed::Box<minase::search::mcts::tree::Node, alloc::alloc::Global>>": 0.352705408,
+   "lll_mutex_lock_optimized": 0.324649296,
+   "drop_glue<core::option::Option<alloc::boxed::Box<minase::search::mcts::tree::Node, alloc::alloc::Global>>>": 0.29058116,
+   "movement_profile": 0.27054108,
+   "next": 0.236472944,
+   "ok_or<usize, minase::nn::error::NnError>": 0.218436872,
+   "new": 0.198396792,
+   "mixed_value": 0.178356712,
+   "bitor": 0.164328656,
+   "piece_at": 0.162324648,
+   "fixed_index": 0.162324648,
+   "color": 0.156312624,
+   "rposition<u64, minase::search::mcts::driver::{impl#2}::repetition::{closure_env#1}>": 0.138276552,
+   "piece_control_without_special": 0.134268536,
+   "promotion_choice_for": 0.132264528
+  }
+ },
+ {
+  "tid": 1279654,
+  "comm": "zero-selfplay-2",
+  "total_s": 620.282560168,
+  "inclusive_s": {
+   "selfplay": 16.86372732,
+   "mcts": 7.128256456,
+   "legal_moves": 2.611222424,
+   "piece_moves_full": 2.571142264,
+   "push_with_promotion": 1.024048088,
+   "special_move_is_legal": 0.296593184,
+   "records": 0.2004008,
+   "promotion_choice_for": 0.006012024
+  },
+  "legal_moves_caller_s": {
+   "<minase::search::mcts::driver::Driver>::select_leaf": 2.116232448,
+   "minase::search::mate_in_three::winning_attack": 0.358717432,
+   "<minase::search::snapshot::SearchSnapshot>::from_game": 0.104208416,
+   "minase::training::records::sorted_legal_moves": 0.028056112,
+   "minase::zero_selfplay::worker::run": 0.004008016
+  },
+  "leaf_dso_s": {
+   "libcuda.so.615.78.08": 529.631258288,
+   "[vdso]": 69.234468384,
+   "inlined": 13.795591072,
+   "libc.so.6": 4.064128224,
+   "libnvinfer.so.10": 1.585170328,
+   "minase": 1.456913816,
+   "libonnxruntime.so.1.31.1": 0.198396792,
+   "libm.so.6": 0.124248496
+  },
+  "self_top_s": {
+   "[unknown]": 532.82564704,
+   "__vdso_clock_gettime": 69.234468384,
+   "must_use<[f32; 4]>": 1.78356712,
+   "clock_gettime@plt": 1.41282564,
+   "clock_gettime": 1.374749488,
+   "pop_lsb": 1.11222444,
+   "encode_control": 1.014028048,
+   "mi_page_malloc_zero": 0.755511016,
+   "fixed": 0.695390776,
+   "minase_core::movegen::generate::generate_piece_moves::<false, false>": 0.402805608,
+   "drop_glue<core::option::Option<alloc::boxed::Box<minase::search::mcts::tree::Node, alloc::alloc::Global>>>": 0.328657312,
+   "as_ref<alloc::boxed::Box<minase::search::mcts::tree::Node, alloc::alloc::Global>>": 0.314629256,
+   "new": 0.234468936,
+   "lll_mutex_lock_optimized": 0.232464928,
+   "ok_or<usize, minase::nn::error::NnError>": 0.208416832,
+   "next": 0.204408816,
+   "movement_profile": 0.194388776,
+   "mixed_value": 0.184368736,
+   "piece_at": 0.182364728,
+   "fixed_index": 0.168336672,
+   "bitand": 0.168336672,
+   "bitor": 0.154308616,
+   "rposition<u64, minase::search::mcts::driver::{impl#2}::repetition::{closure_env#1}>": 0.142284568,
+   "piece_control_without_special": 0.14028056,
+   "color": 0.138276552
+  }
+ },
+ {
+  "tid": 1279504,
+  "comm": "minase",
+  "total_s": 2.609218416,
+  "inclusive_s": {
+   "selfplay": 1.671342672,
+   "records": 1.635270528,
+   "legal_moves": 0.563126248,
+   "piece_moves_full": 0.53106212,
+   "push_with_promotion": 0.238476952,
+   "special_move_is_legal": 0.112224448
+  },
+  "legal_moves_caller_s": {
+   "minase::training::records::write_entry::<alloc::vec::Vec<u8>>": 0.563126248
+  },
+  "leaf_dso_s": {
+   "inlined": 1.509018024,
+   "libc.so.6": 0.679358712,
+   "minase": 0.194388776,
+   "libnvinfer.so.10": 0.094188376,
+   "libcuda.so.615.78.08": 0.046092184,
+   "libstdc++.so.6.0.36": 0.034068136,
+   "libonnxruntime.so.1.31.1": 0.03006012,
+   "libcublasLt.so.13": 0.01002004
+  },
+  "self_top_s": {
+   "[unknown]": 0.853707408,
+   "swap_if_less<minase_core::mv::Move, core::slice::{impl#0}::sort_unstable_by_key::{closure_env#0}<minase_core::mv::Move, u32, minase::training::records::sorted_legal_moves::{closure_env#0}>>": 0.1503006,
+   "lt": 0.084168336,
+   "dense_index": 0.078156312,
+   "minase_core::movegen::generate::generate_piece_moves::<false, false>": 0.078156312,
+   "swap_bytes": 0.078156312,
+   "pop_lsb": 0.072144288,
+   "copy<minase_core::mv::Move>": 0.068136272,
+   "file": 0.054108216,
+   "read<minase_core::mv::Move>": 0.0501002,
+   "copy_nonoverlapping<minase_core::mv::Move>": 0.046092184,
+   "fixed": 0.042084168,
+   "captured_squares": 0.038076152,
+   "map_or<minase_core::board::square::Square, u8, minase::training::records::move_key::{closure_env#0}>": 0.034068136,
+   "merge_down<minase_core::mv::Move, core::slice::{impl#0}::sort_unstable_by_key::{closure_env#0}<minase_core::mv::Move, u32, minase::training::records::sorted_legal_moves::{closure_env#0}>>": 0.03006012,
+   "<minase_core::rules::set::MoveRules>::special_move_is_legal": 0.028056112,
+   "bitand": 0.026052104,
+   "trailing_zeros": 0.026052104,
+   "select_unpredictable<*mut minase_core::mv::Move>": 0.024048096,
+   "new": 0.022044088,
+   "generate_moves<false, false>": 0.022044088,
+   "insert_tail<minase_core::mv::Move, core::slice::{impl#0}::sort_unstable_by_key::{closure_env#0}<minase_core::mv::Move, u32, minase::training::records::sorted_legal_moves::{closure_env#0}>>": 0.022044088,
+   "movement_profile": 0.02004008,
+   "promotion_choice_for": 0.02004008,
+   "then_some<minase_core::piece::code::PieceCode>": 0.02004008
+  }
+ },
+ {
+  "tid": 1279582,
+  "comm": "minase",
+  "total_s": 0.322645288,
+  "inclusive_s": {},
+  "legal_moves_caller_s": {},
+  "leaf_dso_s": {
+   "libonnxruntime.so.1.31.1": 0.322645288
+  },
+  "self_top_s": {
+   "[unknown]": 0.322645288
+  }
+ },
+ {
+  "tid": 1279571,
+  "comm": "minase",
+  "total_s": 0.316633264,
+  "inclusive_s": {},
+  "legal_moves_caller_s": {},
+  "leaf_dso_s": {
+   "libonnxruntime.so.1.31.1": 0.316633264
+  },
+  "self_top_s": {
+   "[unknown]": 0.316633264
+  }
+ },
+ {
+  "tid": 1279592,
+  "comm": "minase",
+  "total_s": 0.316633264,
+  "inclusive_s": {},
+  "legal_moves_caller_s": {},
+  "leaf_dso_s": {
+   "libonnxruntime.so.1.31.1": 0.316633264
+  },
+  "self_top_s": {
+   "[unknown]": 0.316633264
+  }
+ },
+ {
+  "tid": 1279632,
+  "comm": "minase",
+  "total_s": 0.316633264,
+  "inclusive_s": {},
+  "legal_moves_caller_s": {},
+  "leaf_dso_s": {
+   "libonnxruntime.so.1.31.1": 0.316633264
+  },
+  "self_top_s": {
+   "[unknown]": 0.316633264
+  }
+ },
+ {
+  "tid": 1279514,
+  "comm": "minase",
+  "total_s": 0.314629256,
+  "inclusive_s": {},
+  "legal_moves_caller_s": {},
+  "leaf_dso_s": {
+   "libonnxruntime.so.1.31.1": 0.314629256
+  },
+  "self_top_s": {
+   "[unknown]": 0.314629256
+  }
+ },
+ {
+  "tid": 1279522,
+  "comm": "minase",
+  "total_s": 0.314629256,
+  "inclusive_s": {},
+  "legal_moves_caller_s": {},
+  "leaf_dso_s": {
+   "libonnxruntime.so.1.31.1": 0.314629256
+  },
+  "self_top_s": {
+   "[unknown]": 0.314629256
+  }
+ },
+ {
+  "tid": 1279570,
+  "comm": "minase",
+  "total_s": 0.314629256,
+  "inclusive_s": {},
+  "legal_moves_caller_s": {},
+  "leaf_dso_s": {
+   "libonnxruntime.so.1.31.1": 0.314629256
+  },
+  "self_top_s": {
+   "[unknown]": 0.314629256
+  }
+ },
+ {
+  "tid": 1279595,
+  "comm": "minase",
+  "total_s": 0.314629256,
+  "inclusive_s": {},
+  "legal_moves_caller_s": {},
+  "leaf_dso_s": {
+   "libonnxruntime.so.1.31.1": 0.314629256
+  },
+  "self_top_s": {
+   "[unknown]": 0.314629256
+  }
+ },
+ {
+  "tid": 1279639,
+  "comm": "minase",
+  "total_s": 0.314629256,
+  "inclusive_s": {},
+  "legal_moves_caller_s": {},
+  "leaf_dso_s": {
+   "libonnxruntime.so.1.31.1": 0.314629256
+  },
+  "self_top_s": {
+   "[unknown]": 0.314629256
+  }
+ },
+ {
+  "tid": 1279637,
+  "comm": "minase",
+  "total_s": 0.314629256,
+  "inclusive_s": {},
+  "legal_moves_caller_s": {},
+  "leaf_dso_s": {
+   "libonnxruntime.so.1.31.1": 0.314629256
+  },
+  "self_top_s": {
+   "[unknown]": 0.314629256
+  }
+ },
+ {
+  "tid": 1279649,
+  "comm": "minase",
+  "total_s": 0.314629256,
+  "inclusive_s": {},
+  "legal_moves_caller_s": {},
+  "leaf_dso_s": {
+   "libonnxruntime.so.1.31.1": 0.314629256
+  },
+  "self_top_s": {
+   "[unknown]": 0.314629256
+  }
+ },
+ {
+  "tid": 1279650,
+  "comm": "minase",
+  "total_s": 0.314629256,
+  "inclusive_s": {},
+  "legal_moves_caller_s": {},
+  "leaf_dso_s": {
+   "libonnxruntime.so.1.31.1": 0.314629256
+  },
+  "self_top_s": {
+   "[unknown]": 0.314629256
+  }
+ },
+ {
+  "tid": 1279520,
+  "comm": "minase",
+  "total_s": 0.312625248,
+  "inclusive_s": {},
+  "legal_moves_caller_s": {},
+  "leaf_dso_s": {
+   "libonnxruntime.so.1.31.1": 0.312625248
+  },
+  "self_top_s": {
+   "[unknown]": 0.312625248
+  }
+ },
+ {
+  "tid": 1279519,
+  "comm": "minase",
+  "total_s": 0.312625248,
+  "inclusive_s": {},
+  "legal_moves_caller_s": {},
+  "leaf_dso_s": {
+   "libonnxruntime.so.1.31.1": 0.312625248
+  },
+  "self_top_s": {
+   "[unknown]": 0.312625248
+  }
+ },
+ {
+  "tid": 1279532,
+  "comm": "minase",
+  "total_s": 0.312625248,
+  "inclusive_s": {},
+  "legal_moves_caller_s": {},
+  "leaf_dso_s": {
+   "libonnxruntime.so.1.31.1": 0.312625248
+  },
+  "self_top_s": {
+   "[unknown]": 0.312625248
+  }
+ },
+ {
+  "tid": 1279533,
+  "comm": "minase",
+  "total_s": 0.312625248,
+  "inclusive_s": {},
+  "legal_moves_caller_s": {},
+  "leaf_dso_s": {
+   "libonnxruntime.so.1.31.1": 0.312625248
+  },
+  "self_top_s": {
+   "[unknown]": 0.312625248
+  }
+ },
+ {
+  "tid": 1279521,
+  "comm": "minase",
+  "total_s": 0.312625248,
+  "inclusive_s": {},
+  "legal_moves_caller_s": {},
+  "leaf_dso_s": {
+   "libonnxruntime.so.1.31.1": 0.312625248
+  },
+  "self_top_s": {
+   "[unknown]": 0.312625248
+  }
+ },
+ {
+  "tid": 1279572,
+  "comm": "minase",
+  "total_s": 0.312625248,
+  "inclusive_s": {},
+  "legal_moves_caller_s": {},
+  "leaf_dso_s": {
+   "libonnxruntime.so.1.31.1": 0.312625248
+  },
+  "self_top_s": {
+   "[unknown]": 0.312625248
+  }
+ },
+ {
+  "tid": 1279581,
+  "comm": "minase",
+  "total_s": 0.312625248,
+  "inclusive_s": {},
+  "legal_moves_caller_s": {},
+  "leaf_dso_s": {
+   "libonnxruntime.so.1.31.1": 0.312625248
+  },
+  "self_top_s": {
+   "[unknown]": 0.312625248
+  }
+ },
+ {
+  "tid": 1279564,
+  "comm": "minase",
+  "total_s": 0.312625248,
+  "inclusive_s": {},
+  "legal_moves_caller_s": {},
+  "leaf_dso_s": {
+   "libonnxruntime.so.1.31.1": 0.312625248
+  },
+  "self_top_s": {
+   "[unknown]": 0.312625248
+  }
+ },
+ {
+  "tid": 1279604,
+  "comm": "minase",
+  "total_s": 0.312625248,
+  "inclusive_s": {},
+  "legal_moves_caller_s": {},
+  "leaf_dso_s": {
+   "libonnxruntime.so.1.31.1": 0.312625248
+  },
+  "self_top_s": {
+   "[unknown]": 0.312625248
+  }
+ },
+ {
+  "tid": 1279640,
+  "comm": "minase",
+  "total_s": 0.312625248,
+  "inclusive_s": {},
+  "legal_moves_caller_s": {},
+  "leaf_dso_s": {
+   "libonnxruntime.so.1.31.1": 0.312625248
+  },
+  "self_top_s": {
+   "[unknown]": 0.312625248
+  }
+ },
+ {
+  "tid": 1279638,
+  "comm": "minase",
+  "total_s": 0.312625248,
+  "inclusive_s": {},
+  "legal_moves_caller_s": {},
+  "leaf_dso_s": {
+   "libonnxruntime.so.1.31.1": 0.312625248
+  },
+  "self_top_s": {
+   "[unknown]": 0.312625248
+  }
+ },
+ {
+  "tid": 1279569,
+  "comm": "minase",
+  "total_s": 0.31062124,
+  "inclusive_s": {},
+  "legal_moves_caller_s": {},
+  "leaf_dso_s": {
+   "libonnxruntime.so.1.31.1": 0.31062124
+  },
+  "self_top_s": {
+   "[unknown]": 0.31062124
+  }
+ },
+ {
+  "tid": 1279594,
+  "comm": "minase",
+  "total_s": 0.31062124,
+  "inclusive_s": {},
+  "legal_moves_caller_s": {},
+  "leaf_dso_s": {
+   "libonnxruntime.so.1.31.1": 0.31062124
+  },
+  "self_top_s": {
+   "[unknown]": 0.31062124
+  }
+ },
+ {
+  "tid": 1279593,
+  "comm": "minase",
+  "total_s": 0.31062124,
+  "inclusive_s": {},
+  "legal_moves_caller_s": {},
+  "leaf_dso_s": {
+   "libonnxruntime.so.1.31.1": 0.31062124
+  },
+  "self_top_s": {
+   "[unknown]": 0.31062124
+  }
+ },
+ {
+  "tid": 1279587,
+  "comm": "minase",
+  "total_s": 0.31062124,
+  "inclusive_s": {},
+  "legal_moves_caller_s": {},
+  "leaf_dso_s": {
+   "libonnxruntime.so.1.31.1": 0.31062124
+  },
+  "self_top_s": {
+   "[unknown]": 0.31062124
+  }
+ },
+ {
+  "tid": 1279605,
+  "comm": "minase",
+  "total_s": 0.302605208,
+  "inclusive_s": {},
+  "legal_moves_caller_s": {},
+  "leaf_dso_s": {
+   "libonnxruntime.so.1.31.1": 0.302605208
+  },
+  "self_top_s": {
+   "[unknown]": 0.302605208
+  }
+ },
+ {
+  "tid": 1279529,
+  "comm": "minase",
+  "total_s": 0.278557112,
+  "inclusive_s": {},
+  "legal_moves_caller_s": {},
+  "leaf_dso_s": {
+   "libonnxruntime.so.1.31.1": 0.278557112
+  },
+  "self_top_s": {
+   "[unknown]": 0.278557112
+  }
+ },
+ {
+  "tid": 1279515,
+  "comm": "minase",
+  "total_s": 0.272545088,
+  "inclusive_s": {},
+  "legal_moves_caller_s": {},
+  "leaf_dso_s": {
+   "libonnxruntime.so.1.31.1": 0.272545088
+  },
+  "self_top_s": {
+   "[unknown]": 0.272545088
+  }
+ },
+ {
+  "tid": 1279524,
+  "comm": "minase",
+  "total_s": 0.272545088,
+  "inclusive_s": {},
+  "legal_moves_caller_s": {},
+  "leaf_dso_s": {
+   "libonnxruntime.so.1.31.1": 0.272545088
+  },
+  "self_top_s": {
+   "[unknown]": 0.272545088
+  }
+ },
+ {
+  "tid": 1279516,
+  "comm": "minase",
+  "total_s": 0.272545088,
+  "inclusive_s": {},
+  "legal_moves_caller_s": {},
+  "leaf_dso_s": {
+   "libonnxruntime.so.1.31.1": 0.272545088
+  },
+  "self_top_s": {
+   "[unknown]": 0.272545088
+  }
+ },
+ {
+  "tid": 1279525,
+  "comm": "minase",
+  "total_s": 0.272545088,
+  "inclusive_s": {},
+  "legal_moves_caller_s": {},
+  "leaf_dso_s": {
+   "libonnxruntime.so.1.31.1": 0.272545088
+  },
+  "self_top_s": {
+   "[unknown]": 0.272545088
+  }
+ },
+ {
+  "tid": 1279518,
+  "comm": "minase",
+  "total_s": 0.272545088,
+  "inclusive_s": {},
+  "legal_moves_caller_s": {},
+  "leaf_dso_s": {
+   "libonnxruntime.so.1.31.1": 0.272545088
+  },
+  "self_top_s": {
+   "[unknown]": 0.272545088
+  }
+ },
+ {
+  "tid": 1279517,
+  "comm": "minase",
+  "total_s": 0.272545088,
+  "inclusive_s": {},
+  "legal_moves_caller_s": {},
+  "leaf_dso_s": {
+   "libonnxruntime.so.1.31.1": 0.272545088
+  },
+  "self_top_s": {
+   "[unknown]": 0.272545088
+  }
+ },
+ {
+  "tid": 1279523,
+  "comm": "minase",
+  "total_s": 0.272545088,
+  "inclusive_s": {},
+  "legal_moves_caller_s": {},
+  "leaf_dso_s": {
+   "libonnxruntime.so.1.31.1": 0.272545088
+  },
+  "self_top_s": {
+   "[unknown]": 0.272545088
+  }
+ },
+ {
+  "tid": 1279527,
+  "comm": "minase",
+  "total_s": 0.272545088,
+  "inclusive_s": {},
+  "legal_moves_caller_s": {},
+  "leaf_dso_s": {
+   "libonnxruntime.so.1.31.1": 0.272545088
+  },
+  "self_top_s": {
+   "[unknown]": 0.272545088
+  }
+ },
+ {
+  "tid": 1279528,
+  "comm": "minase",
+  "total_s": 0.272545088,
+  "inclusive_s": {},
+  "legal_moves_caller_s": {},
+  "leaf_dso_s": {
+   "libonnxruntime.so.1.31.1": 0.272545088
+  },
+  "self_top_s": {
+   "[unknown]": 0.272545088
+  }
+ },
+ {
+  "tid": 1279530,
+  "comm": "minase",
+  "total_s": 0.272545088,
+  "inclusive_s": {},
+  "legal_moves_caller_s": {},
+  "leaf_dso_s": {
+   "libonnxruntime.so.1.31.1": 0.272545088
+  },
+  "self_top_s": {
+   "[unknown]": 0.272545088
+  }
+ },
+ {
+  "tid": 1279531,
+  "comm": "minase",
+  "total_s": 0.272545088,
+  "inclusive_s": {},
+  "legal_moves_caller_s": {},
+  "leaf_dso_s": {
+   "libonnxruntime.so.1.31.1": 0.272545088
+  },
+  "self_top_s": {
+   "[unknown]": 0.272545088
+  }
+ },
+ {
+  "tid": 1279574,
+  "comm": "minase",
+  "total_s": 0.272545088,
+  "inclusive_s": {},
+  "legal_moves_caller_s": {},
+  "leaf_dso_s": {
+   "libonnxruntime.so.1.31.1": 0.272545088
+  },
+  "self_top_s": {
+   "[unknown]": 0.272545088
+  }
+ },
+ {
+  "tid": 1279566,
+  "comm": "minase",
+  "total_s": 0.272545088,
+  "inclusive_s": {},
+  "legal_moves_caller_s": {},
+  "leaf_dso_s": {
+   "libonnxruntime.so.1.31.1": 0.272545088
+  },
+  "self_top_s": {
+   "[unknown]": 0.272545088
+  }
+ },
+ {
+  "tid": 1279567,
+  "comm": "minase",
+  "total_s": 0.272545088,
+  "inclusive_s": {},
+  "legal_moves_caller_s": {},
+  "leaf_dso_s": {
+   "libonnxruntime.so.1.31.1": 0.272545088
+  },
+  "self_top_s": {
+   "[unknown]": 0.272545088
+  }
+ },
+ {
+  "tid": 1279577,
+  "comm": "minase",
+  "total_s": 0.272545088,
+  "inclusive_s": {},
+  "legal_moves_caller_s": {},
+  "leaf_dso_s": {
+   "libonnxruntime.so.1.31.1": 0.272545088
+  },
+  "self_top_s": {
+   "[unknown]": 0.272545088
+  }
+ },
+ {
+  "tid": 1279575,
+  "comm": "minase",
+  "total_s": 0.272545088,
+  "inclusive_s": {},
+  "legal_moves_caller_s": {},
+  "leaf_dso_s": {
+   "libonnxruntime.so.1.31.1": 0.272545088
+  },
+  "self_top_s": {
+   "[unknown]": 0.272545088
+  }
+ },
+ {
+  "tid": 1279578,
+  "comm": "minase",
+  "total_s": 0.272545088,
+  "inclusive_s": {},
+  "legal_moves_caller_s": {},
+  "leaf_dso_s": {
+   "libonnxruntime.so.1.31.1": 0.272545088
+  },
+  "self_top_s": {
+   "[unknown]": 0.272545088
+  }
+ },
+ {
+  "tid": 1279565,
+  "comm": "minase",
+  "total_s": 0.272545088,
+  "inclusive_s": {},
+  "legal_moves_caller_s": {},
+  "leaf_dso_s": {
+   "libonnxruntime.so.1.31.1": 0.272545088
+  },
+  "self_top_s": {
+   "[unknown]": 0.272545088
+  }
+ },
+ {
+  "tid": 1279580,
+  "comm": "minase",
+  "total_s": 0.272545088,
+  "inclusive_s": {},
+  "legal_moves_caller_s": {},
+  "leaf_dso_s": {
+   "libonnxruntime.so.1.31.1": 0.272545088
+  },
+  "self_top_s": {
+   "[unknown]": 0.272545088
+  }
+ },
+ {
+  "tid": 1279573,
+  "comm": "minase",
+  "total_s": 0.272545088,
+  "inclusive_s": {},
+  "legal_moves_caller_s": {},
+  "leaf_dso_s": {
+   "libonnxruntime.so.1.31.1": 0.272545088
+  },
+  "self_top_s": {
+   "[unknown]": 0.272545088
+  }
+ },
+ {
+  "tid": 1279591,
+  "comm": "minase",
+  "total_s": 0.272545088,
+  "inclusive_s": {},
+  "legal_moves_caller_s": {},
+  "leaf_dso_s": {
+   "libonnxruntime.so.1.31.1": 0.272545088
+  },
+  "self_top_s": {
+   "[unknown]": 0.272545088
+  }
+ },
+ {
+  "tid": 1279588,
+  "comm": "minase",
+  "total_s": 0.272545088,
+  "inclusive_s": {},
+  "legal_moves_caller_s": {},
+  "leaf_dso_s": {
+   "libonnxruntime.so.1.31.1": 0.272545088
+  },
+  "self_top_s": {
+   "[unknown]": 0.272545088
+  }
+ },
+ {
+  "tid": 1279589,
+  "comm": "minase",
+  "total_s": 0.272545088,
+  "inclusive_s": {},
+  "legal_moves_caller_s": {},
+  "leaf_dso_s": {
+   "libonnxruntime.so.1.31.1": 0.272545088
+  },
+  "self_top_s": {
+   "[unknown]": 0.272545088
+  }
+ },
+ {
+  "tid": 1279602,
+  "comm": "minase",
+  "total_s": 0.272545088,
+  "inclusive_s": {},
+  "legal_moves_caller_s": {},
+  "leaf_dso_s": {
+   "libonnxruntime.so.1.31.1": 0.272545088
+  },
+  "self_top_s": {
+   "[unknown]": 0.272545088
+  }
+ },
+ {
+  "tid": 1279600,
+  "comm": "minase",
+  "total_s": 0.272545088,
+  "inclusive_s": {},
+  "legal_moves_caller_s": {},
+  "leaf_dso_s": {
+   "libonnxruntime.so.1.31.1": 0.272545088
+  },
+  "self_top_s": {
+   "[unknown]": 0.272545088
+  }
+ },
+ {
+  "tid": 1279601,
+  "comm": "minase",
+  "total_s": 0.272545088,
+  "inclusive_s": {},
+  "legal_moves_caller_s": {},
+  "leaf_dso_s": {
+   "libonnxruntime.so.1.31.1": 0.272545088
+  },
+  "self_top_s": {
+   "[unknown]": 0.272545088
+  }
+ },
+ {
+  "tid": 1279603,
+  "comm": "minase",
+  "total_s": 0.272545088,
+  "inclusive_s": {},
+  "legal_moves_caller_s": {},
+  "leaf_dso_s": {
+   "libonnxruntime.so.1.31.1": 0.272545088
+  },
+  "self_top_s": {
+   "[unknown]": 0.272545088
+  }
+ },
+ {
+  "tid": 1279633,
+  "comm": "minase",
+  "total_s": 0.272545088,
+  "inclusive_s": {},
+  "legal_moves_caller_s": {},
+  "leaf_dso_s": {
+   "libonnxruntime.so.1.31.1": 0.272545088
+  },
+  "self_top_s": {
+   "[unknown]": 0.272545088
+  }
+ },
+ {
+  "tid": 1279635,
+  "comm": "minase",
+  "total_s": 0.272545088,
+  "inclusive_s": {},
+  "legal_moves_caller_s": {},
+  "leaf_dso_s": {
+   "libonnxruntime.so.1.31.1": 0.272545088
+  },
+  "self_top_s": {
+   "[unknown]": 0.272545088
+  }
+ },
+ {
+  "tid": 1279636,
+  "comm": "minase",
+  "total_s": 0.272545088,
+  "inclusive_s": {},
+  "legal_moves_caller_s": {},
+  "leaf_dso_s": {
+   "libonnxruntime.so.1.31.1": 0.272545088
+  },
+  "self_top_s": {
+   "[unknown]": 0.272545088
+  }
+ },
+ {
+  "tid": 1279634,
+  "comm": "minase",
+  "total_s": 0.272545088,
+  "inclusive_s": {},
+  "legal_moves_caller_s": {},
+  "leaf_dso_s": {
+   "libonnxruntime.so.1.31.1": 0.272545088
+  },
+  "self_top_s": {
+   "[unknown]": 0.272545088
+  }
+ },
+ {
+  "tid": 1279646,
+  "comm": "minase",
+  "total_s": 0.272545088,
+  "inclusive_s": {},
+  "legal_moves_caller_s": {},
+  "leaf_dso_s": {
+   "libonnxruntime.so.1.31.1": 0.272545088
+  },
+  "self_top_s": {
+   "[unknown]": 0.272545088
+  }
+ },
+ {
+  "tid": 1279647,
+  "comm": "minase",
+  "total_s": 0.272545088,
+  "inclusive_s": {},
+  "legal_moves_caller_s": {},
+  "leaf_dso_s": {
+   "libonnxruntime.so.1.31.1": 0.272545088
+  },
+  "self_top_s": {
+   "[unknown]": 0.272545088
+  }
+ },
+ {
+  "tid": 1279643,
+  "comm": "minase",
+  "total_s": 0.272545088,
+  "inclusive_s": {},
+  "legal_moves_caller_s": {},
+  "leaf_dso_s": {
+   "libonnxruntime.so.1.31.1": 0.272545088
+  },
+  "self_top_s": {
+   "[unknown]": 0.272545088
+  }
+ },
+ {
+  "tid": 1279644,
+  "comm": "minase",
+  "total_s": 0.272545088,
+  "inclusive_s": {},
+  "legal_moves_caller_s": {},
+  "leaf_dso_s": {
+   "libonnxruntime.so.1.31.1": 0.272545088
+  },
+  "self_top_s": {
+   "[unknown]": 0.272545088
+  }
+ },
+ {
+  "tid": 1279645,
+  "comm": "minase",
+  "total_s": 0.272545088,
+  "inclusive_s": {},
+  "legal_moves_caller_s": {},
+  "leaf_dso_s": {
+   "libonnxruntime.so.1.31.1": 0.272545088
+  },
+  "self_top_s": {
+   "[unknown]": 0.272545088
+  }
+ },
+ {
+  "tid": 1279642,
+  "comm": "minase",
+  "total_s": 0.272545088,
+  "inclusive_s": {},
+  "legal_moves_caller_s": {},
+  "leaf_dso_s": {
+   "libonnxruntime.so.1.31.1": 0.272545088
+  },
+  "self_top_s": {
+   "[unknown]": 0.272545088
+  }
+ },
+ {
+  "tid": 1279576,
+  "comm": "minase",
+  "total_s": 0.27054108,
+  "inclusive_s": {},
+  "legal_moves_caller_s": {},
+  "leaf_dso_s": {
+   "libonnxruntime.so.1.31.1": 0.27054108
+  },
+  "self_top_s": {
+   "[unknown]": 0.27054108
+  }
+ },
+ {
+  "tid": 1279579,
+  "comm": "minase",
+  "total_s": 0.27054108,
+  "inclusive_s": {},
+  "legal_moves_caller_s": {},
+  "leaf_dso_s": {
+   "libonnxruntime.so.1.31.1": 0.27054108
+  },
+  "self_top_s": {
+   "[unknown]": 0.27054108
+  }
+ },
+ {
+  "tid": 1279568,
+  "comm": "minase",
+  "total_s": 0.27054108,
+  "inclusive_s": {},
+  "legal_moves_caller_s": {},
+  "leaf_dso_s": {
+   "libonnxruntime.so.1.31.1": 0.27054108
+  },
+  "self_top_s": {
+   "[unknown]": 0.27054108
+  }
+ },
+ {
+  "tid": 1279596,
+  "comm": "minase",
+  "total_s": 0.27054108,
+  "inclusive_s": {},
+  "legal_moves_caller_s": {},
+  "leaf_dso_s": {
+   "libonnxruntime.so.1.31.1": 0.27054108
+  },
+  "self_top_s": {
+   "[unknown]": 0.27054108
+  }
+ },
+ {
+  "tid": 1279599,
+  "comm": "minase",
+  "total_s": 0.27054108,
+  "inclusive_s": {},
+  "legal_moves_caller_s": {},
+  "leaf_dso_s": {
+   "libonnxruntime.so.1.31.1": 0.27054108
+  },
+  "self_top_s": {
+   "[unknown]": 0.27054108
+  }
+ },
+ {
+  "tid": 1279598,
+  "comm": "minase",
+  "total_s": 0.27054108,
+  "inclusive_s": {},
+  "legal_moves_caller_s": {},
+  "leaf_dso_s": {
+   "libonnxruntime.so.1.31.1": 0.27054108
+  },
+  "self_top_s": {
+   "[unknown]": 0.27054108
+  }
+ },
+ {
+  "tid": 1279641,
+  "comm": "minase",
+  "total_s": 0.27054108,
+  "inclusive_s": {},
+  "legal_moves_caller_s": {},
+  "leaf_dso_s": {
+   "libonnxruntime.so.1.31.1": 0.27054108
+  },
+  "self_top_s": {
+   "[unknown]": 0.27054108
+  }
+ },
+ {
+  "tid": 1279590,
+  "comm": "minase",
+  "total_s": 0.268537072,
+  "inclusive_s": {},
+  "legal_moves_caller_s": {},
+  "leaf_dso_s": {
+   "libonnxruntime.so.1.31.1": 0.268537072
+  },
+  "self_top_s": {
+   "[unknown]": 0.268537072
+  }
+ },
+ {
+  "tid": 1279597,
+  "comm": "minase",
+  "total_s": 0.268537072,
+  "inclusive_s": {},
+  "legal_moves_caller_s": {},
+  "leaf_dso_s": {
+   "libonnxruntime.so.1.31.1": 0.268537072
+  },
+  "self_top_s": {
+   "[unknown]": 0.268537072
+  }
+ },
+ {
+  "tid": 1279648,
+  "comm": "minase",
+  "total_s": 0.266533064,
+  "inclusive_s": {},
+  "legal_moves_caller_s": {},
+  "leaf_dso_s": {
+   "libonnxruntime.so.1.31.1": 0.266533064
+  },
+  "self_top_s": {
+   "[unknown]": 0.266533064
+  }
+ },
+ {
+  "tid": 1279561,
+  "comm": "minase",
+  "total_s": 0.09018036,
+  "inclusive_s": {},
+  "legal_moves_caller_s": {},
+  "leaf_dso_s": {
+   "libc.so.6": 0.036072144,
+   "libcuda.so.615.78.08": 0.032064128,
+   "inlined": 0.02004008,
+   "[vdso]": 0.002004008
+  },
+  "self_top_s": {
+   "[unknown]": 0.038076152,
+   "cfree": 0.022044088,
+   "internal_syscall_cancel": 0.014028056,
+   "tcache_put_n": 0.004008016,
+   "pthread_mutex_unlock": 0.002004008,
+   "__vdso_clock_gettime": 0.002004008,
+   "pthread_mutex_lock": 0.002004008,
+   "clock_gettime": 0.002004008,
+   "__poll": 0.002004008,
+   "syscall_cancel": 0.002004008
+  }
+ },
+ {
+  "tid": 1279555,
+  "comm": "cuda-EvtHandlr",
+  "total_s": 0.084168336,
+  "inclusive_s": {},
+  "legal_moves_caller_s": {},
+  "leaf_dso_s": {
+   "libcuda.so.615.78.08": 0.056112224,
+   "libc.so.6": 0.02004008,
+   "inlined": 0.008016032
+  },
+  "self_top_s": {
+   "[unknown]": 0.066132264,
+   "internal_syscall_cancel": 0.006012024,
+   "cfree": 0.004008016,
+   "clock_gettime": 0.004008016,
+   "tcache_put_n": 0.002004008,
+   "pthread_mutex_lock": 0.002004008
+  }
+ },
+ {
+  "tid": 1279923,
+  "comm": "minase",
+  "total_s": 0.014028056,
+  "inclusive_s": {},
+  "legal_moves_caller_s": {},
+  "leaf_dso_s": {
+   "libonnxruntime.so.1.31.1": 0.014028056
+  },
+  "self_top_s": {
+   "[unknown]": 0.014028056
+  }
+ },
+ {
+  "tid": 1279562,
+  "comm": "nvidia-smi",
+  "total_s": 0.006012024,
+  "inclusive_s": {},
+  "legal_moves_caller_s": {},
+  "leaf_dso_s": {
+   "libc.so.6": 0.004008016,
+   "ld-linux-x86-64.so.2": 0.002004008
+  },
+  "self_top_s": {
+   "[unknown]": 0.006012024
+  }
+ },
+ {
+  "tid": 1279554,
+  "comm": "minase",
+  "total_s": 0.006012024,
+  "inclusive_s": {},
+  "legal_moves_caller_s": {},
+  "leaf_dso_s": {
+   "libc.so.6": 0.004008016,
+   "inlined": 0.002004008
+  },
+  "self_top_s": {
+   "[unknown]": 0.004008016,
+   "__pthread_cond_wait_common": 0.002004008
+  }
+ },
+ {
+  "tid": 1279505,
+  "comm": "nvidia-smi",
+  "total_s": 0.002004008,
+  "inclusive_s": {},
+  "legal_moves_caller_s": {},
+  "leaf_dso_s": {
+   "libc.so.6": 0.002004008
+  },
+  "self_top_s": {
+   "[unknown]": 0.002004008
+  }
+ },
+ {
+  "tid": 1279508,
+  "comm": "nvidia-smi",
+  "total_s": 0.002004008,
+  "inclusive_s": {},
+  "legal_moves_caller_s": {},
+  "leaf_dso_s": {
+   "libc.so.6": 0.002004008
+  },
+  "self_top_s": {
+   "[unknown]": 0.002004008
+  }
+ },
+ {
+  "tid": 1279585,
+  "comm": "nvidia-smi",
+  "total_s": 0.002004008,
+  "inclusive_s": {},
+  "legal_moves_caller_s": {},
+  "leaf_dso_s": {
+   "libc.so.6": 0.002004008
+  },
+  "self_top_s": {
+   "[unknown]": 0.002004008
+  }
+ },
+ {
+  "tid": 1279630,
+  "comm": "nvidia-smi",
+  "total_s": 0.002004008,
+  "inclusive_s": {},
+  "legal_moves_caller_s": {},
+  "leaf_dso_s": {
+   "libc.so.6": 0.002004008
+  },
+  "self_top_s": {
+   "[unknown]": 0.002004008
+  }
+ }
+]
