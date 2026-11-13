@@ -8,10 +8,8 @@ use minase::datagen::data_error;
 use minase::datagen::opening::generate_opening;
 use minase_core::{Color, Game, Move, Position, Rules};
 use std::{
-    fs::File,
     io::{self, BufRead, BufReader},
     num::NonZeroU64,
-    path::Path,
 };
 
 /// 開始局面を特定する元棋譜の手数。
@@ -65,11 +63,15 @@ impl std::error::Error for OpeningError {
     }
 }
 
-/// 一覧の全行を検査し、先獅子の状態を含めて復元する。
-pub(super) fn read_openings(path: &Path) -> io::Result<Vec<Opening>> {
+/// 与えたバイト列から一覧を読み、同じ内容のチェックサムを呼び出し側で保存できるようにする。
+pub(super) fn read_openings(bytes: &[u8]) -> io::Result<Vec<Opening>> {
+    read_openings_from(BufReader::new(bytes))
+}
+
+fn read_openings_from(reader: impl BufRead) -> io::Result<Vec<Opening>> {
     use minase_core::notation::sfen::parse_extended_sfen;
     let mut openings = Vec::new();
-    for (index, line) in BufReader::new(File::open(path)?).lines().enumerate() {
+    for (index, line) in reader.lines().enumerate() {
         let parse = || -> Result<Opening, Box<dyn std::error::Error + Send + Sync>> {
             let line = line?;
             let mut fields = line.split_whitespace();
@@ -129,6 +131,10 @@ mod tests {
     use super::*;
     use minase_core::rng::derive_seed;
 
+    fn read_path(path: &std::path::Path) -> io::Result<Vec<Opening>> {
+        read_openings(&std::fs::read(path)?)
+    }
+
     #[test]
     fn read_openings_rejects_fields_move_number_deferred_missing_royal_and_empty() {
         use crate::selfplay_gen::test_support::TemporaryDirectory;
@@ -156,7 +162,7 @@ mod tests {
             format!("source 59 {}\n", to_extended_sfen(&setup)),
         ] {
             std::fs::write(&path, text).unwrap();
-            let error = read_openings(&path).err().unwrap();
+            let error = read_path(&path).err().unwrap();
             let Some(OpeningError::Line { line: 1, source }) =
                 error.get_ref().unwrap().downcast_ref::<OpeningError>()
             else {
@@ -180,7 +186,7 @@ mod tests {
         builder.mark_promotion_deferred(sq(4, 9)).unwrap();
         let setup = SetupPosition::new(builder.finish().unwrap(), None, 61).unwrap();
         std::fs::write(&path, format!("source 60 {}\n", to_extended_sfen(&setup))).unwrap();
-        let error = read_openings(&path).err().unwrap();
+        let error = read_path(&path).err().unwrap();
         let Some(OpeningError::Line { line: 1, source }) =
             error.get_ref().unwrap().downcast_ref::<OpeningError>()
         else {
@@ -196,7 +202,7 @@ mod tests {
         ] {
             let setup = SetupPosition::new(position(Black, &pieces), None, 61).unwrap();
             std::fs::write(&path, format!("source 60 {}\n", to_extended_sfen(&setup))).unwrap();
-            let error = read_openings(&path).err().unwrap();
+            let error = read_path(&path).err().unwrap();
             let Some(OpeningError::Line { line: 1, source }) =
                 error.get_ref().unwrap().downcast_ref::<OpeningError>()
             else {
@@ -208,7 +214,7 @@ mod tests {
             ));
         }
         std::fs::write(&path, "").unwrap();
-        let error = read_openings(&path).err().unwrap();
+        let error = read_path(&path).err().unwrap();
         assert!(matches!(
             error.get_ref().unwrap().downcast_ref::<OpeningError>(),
             Some(OpeningError::Empty)
@@ -249,7 +255,7 @@ mod tests {
         .unwrap();
         let path = directory.0.join("openings.txt");
         fs::write(&path, format!("source 60 {}\n", to_extended_sfen(&setup))).unwrap();
-        let openings = read_openings(&path).unwrap();
+        let openings = read_path(&path).unwrap();
         let (start, moves) =
             starting_game(Rules::JCSA, derive_seed(42, 1), Some(&openings[0])).unwrap();
         assert_eq!(start.position(), original.position());

@@ -4,6 +4,7 @@ mod cli;
 mod generate;
 mod inspect;
 mod opening;
+mod output;
 mod play;
 mod statistics;
 

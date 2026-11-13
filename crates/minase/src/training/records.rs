@@ -364,26 +364,28 @@ impl Header {
         self.entry_count
     }
 
-    fn write(&self, w: &mut impl Write) -> Result<(), Error> {
-        w.write_all(&MAGIC)?;
-        w.write_all(&FORMAT_VERSION.to_le_bytes())?;
-        let mut name = [0; 32];
-        for (dst, src) in name.iter_mut().zip(self.rule_set.bytes()) {
+    /// 指定した件数を持つ152バイトの符号化済みヘッダを返す。
+    ///
+    /// 元のヘッダが保持する件数は変更しない。
+    pub fn encode_with_counts(&self, game_count: u64, entry_count: u64) -> [u8; HEADER_LEN] {
+        let mut bytes = [0; HEADER_LEN];
+        bytes[..4].copy_from_slice(&MAGIC);
+        bytes[4..8].copy_from_slice(&FORMAT_VERSION.to_le_bytes());
+        for (dst, src) in bytes[8..40].iter_mut().zip(self.rule_set.bytes()) {
             *dst = src;
         }
-        w.write_all(&name)?;
-        w.write_all(self.generation_commit.as_bytes())?;
-        w.write_all(&self.network_checksum)?;
-        w.write_all(&[self.teacher_kind as u8])?;
-        w.write_all(&[0; 7])?;
-        for value in [
-            self.teacher_search_budget,
-            self.seed,
-            self.game_count,
-            self.entry_count,
-        ] {
-            w.write_all(&value.to_le_bytes())?;
-        }
+        bytes[40..80].copy_from_slice(self.generation_commit.as_bytes());
+        bytes[80..112].copy_from_slice(&self.network_checksum);
+        bytes[112] = self.teacher_kind as u8;
+        bytes[120..128].copy_from_slice(&self.teacher_search_budget.to_le_bytes());
+        bytes[128..136].copy_from_slice(&self.seed.to_le_bytes());
+        bytes[136..144].copy_from_slice(&game_count.to_le_bytes());
+        bytes[144..152].copy_from_slice(&entry_count.to_le_bytes());
+        bytes
+    }
+
+    fn write(&self, w: &mut impl Write) -> Result<(), Error> {
+        w.write_all(&self.encode_with_counts(self.game_count, self.entry_count))?;
         Ok(())
     }
     fn read(r: &mut impl Read) -> Result<Self, Error> {
@@ -1304,6 +1306,28 @@ impl<R: Read> Reader<R> {
 mod tests {
     use super::*;
     use std::io::Cursor;
+
+    #[test]
+    fn header_encoding_uses_requested_counts_without_changing_the_header() {
+        let header = Header::new(
+            "JCSA".into(),
+            "a".repeat(40),
+            [3; 32],
+            TeacherKind::AlphaBeta,
+            100,
+            7,
+        )
+        .unwrap();
+
+        let bytes = header.encode_with_counts(11, 29);
+
+        assert_eq!(bytes.len(), HEADER_LEN);
+        assert_eq!(u64::from_le_bytes(bytes[136..144].try_into().unwrap()), 11);
+        assert_eq!(u64::from_le_bytes(bytes[144..152].try_into().unwrap()), 29);
+        assert_eq!(header.game_count(), 0);
+        assert_eq!(header.entry_count(), 0);
+        assert_eq!(bytes[..136], header.encode_with_counts(0, 0)[..136]);
+    }
 
     #[test]
     fn mate_in_three_round_trips_with_reason_twelve_and_rejects_a_draw() {

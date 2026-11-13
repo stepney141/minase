@@ -13,7 +13,7 @@ pub const INJECTION_HISTOGRAM_BINS: usize = 8;
 pub const SCORE_VALUE_COUNT: usize = 65_536;
 
 /// データ生成全体または1局分の統計。
-#[derive(Default, PartialEq, Eq, Debug)]
+#[derive(Clone, Default, PartialEq, Eq, Debug, serde::Serialize, serde::Deserialize)]
 pub struct Statistics {
     /// 手数上限で破棄した対局数。
     pub discarded_games: u64,
@@ -72,41 +72,55 @@ pub struct Statistics {
 }
 
 impl Statistics {
-    /// 1局分の統計を合計へ加える。
-    pub(super) fn merge(&mut self, other: &Self) {
-        self.discarded_games += other.discarded_games;
-        self.black_wins += other.black_wins;
-        self.white_wins += other.white_wins;
-        self.draws += other.draws;
-        self.royal_capture_wins += other.royal_capture_wins;
-        self.repetition_wins += other.repetition_wins;
-        self.piece_exhaustion_wins += other.piece_exhaustion_wins;
-        self.bare_king_wins += other.bare_king_wins;
-        self.stalemate_wins += other.stalemate_wins;
-        self.mate_wins += other.mate_wins;
-        self.resignation_wins += other.resignation_wins;
-        self.repetition_draws += other.repetition_draws;
-        self.piece_exhaustion_draws += other.piece_exhaustion_draws;
-        self.bare_king_draws += other.bare_king_draws;
-        self.agreement_draws += other.agreement_draws;
-        self.searched_positions += other.searched_positions;
-        self.recordable_positions += other.recordable_positions;
-        self.recorded_positions += other.recorded_positions;
-        self.excluded_mate_band += other.excluded_mate_band;
-        self.excluded_tactical += other.excluded_tactical;
-        self.excluded_repetition += other.excluded_repetition;
-        self.total_plies += other.total_plies;
-        self.searched_plies += other.searched_plies;
-        self.searched_nodes += other.searched_nodes;
-        self.planned_injections += other.planned_injections;
-        self.performed_injections += other.performed_injections;
-        for (total, count) in self
+    /// 各欄を桁あふれなしで合計し、成功した場合だけ自身を更新する。
+    pub fn checked_merge(&mut self, other: &Self) -> bool {
+        let mut merged = self.clone();
+        macro_rules! add {
+            ($field:ident) => {
+                let Some(value) = merged.$field.checked_add(other.$field) else {
+                    return false;
+                };
+                merged.$field = value;
+            };
+        }
+        add!(discarded_games);
+        add!(black_wins);
+        add!(white_wins);
+        add!(draws);
+        add!(royal_capture_wins);
+        add!(repetition_wins);
+        add!(piece_exhaustion_wins);
+        add!(bare_king_wins);
+        add!(stalemate_wins);
+        add!(mate_wins);
+        add!(resignation_wins);
+        add!(repetition_draws);
+        add!(piece_exhaustion_draws);
+        add!(bare_king_draws);
+        add!(agreement_draws);
+        add!(searched_positions);
+        add!(recordable_positions);
+        add!(recorded_positions);
+        add!(excluded_mate_band);
+        add!(excluded_tactical);
+        add!(excluded_repetition);
+        add!(total_plies);
+        add!(searched_plies);
+        add!(searched_nodes);
+        add!(planned_injections);
+        add!(performed_injections);
+        for (total, count) in merged
             .injection_offset_histogram
             .iter_mut()
             .zip(other.injection_offset_histogram)
         {
-            *total += count;
+            let Some(value) = total.checked_add(count) else {
+                return false;
+            };
+            *total = value;
         }
+        *self = merged;
+        true
     }
 
     /// 終局理由と勝敗を集計する。
@@ -141,6 +155,7 @@ impl Statistics {
 }
 
 /// 書き出したレコードから対局横断で求める統計。
+#[derive(PartialEq, Eq, Debug)]
 pub struct RecordedStatistics {
     /// 保存した対局の除外理由別の項目数。添字は除外理由のコード。
     pub exclusions: [u64; 4],
@@ -184,6 +199,5 @@ impl RecordedStatistics {
 
 /// i16の探索値を昇順の度数表添字へ変換する。
 pub fn score_index(score: i16) -> usize {
-    usize::try_from(i32::from(score) - i32::from(i16::MIN))
-        .expect("an i16 score index must be non-negative")
+    usize::from(u16::from_ne_bytes(score.to_ne_bytes()) ^ 0x8000)
 }
