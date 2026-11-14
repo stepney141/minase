@@ -142,6 +142,7 @@
 | 起動引数と診断ツールをUSIへ移す | [plans/archived/cli-to-usi.md](plans/archived/cli-to-usi.md) | 完了（採用） | 2026年11月12日 |
 | NNUEの教師生成を中断の後に再開できるようにする | [plans/archived/resumable-nnue-teacher-generation.md](plans/archived/resumable-nnue-teacher-generation.md) | 完了（採用） | 2026年11月14日 |
 | 中断可能な計算機での教師生成 | [plans/archived/interruptible-teacher-generation.md](plans/archived/interruptible-teacher-generation.md) | 完了（採用） | 2026年11月14日 |
+| 複数の読み筋を同時に示すMultiPV | [plans/multipv.md](plans/multipv.md) | 起案 | |
 
 ## 現在地
 
@@ -216,6 +217,7 @@ NNUEの作業の本線は、教師の生成と学習の標準の条件（標準�
 
 - [棋力向上の段階計画](plans/strength-stages.md)は、段階11（並列度、終盤処理）が未着手である。
 - [詰み探索（df-pn）](plans/mate-search.md)は、攻め方の手を王手に限る標準df-pnのソルバを、`go mate`と対局探索の両方から呼べるライブラリとして作る。αβ探索とPV-MCTSへの組み込みは、発動率を測ってから別の設計書で起案する。
+- [複数の読み筋を同時に示すMultiPV](plans/multipv.md)は、USIのオプション`MultiPV`で根の上位N手の読み筋を出す機能を、αβ探索とPV-MCTSの両方に加える。起案の段階で、利用者の承認を待っている。既定値1では探索と出力を変えず、開発用GUIでの表示は完了の後に`minase-gui`で別に計画する。
 
 ### 合法手生成と対局ハーネス
 
