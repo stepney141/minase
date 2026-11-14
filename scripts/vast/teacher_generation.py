@@ -297,7 +297,11 @@ class TeacherGeneration:
         record['deleted_at'] = self.clock.time()
         self.state['current'] = None
         self.save()
-        self.event('deleted', rental=record['number'], instance_id=record['instance_id'], reason=reason)
+        cpu_fields = {}
+        if 'cpu_info' in record:
+            cpu_fields = {'cpu_cores': record['offer']['cpu_cores'], 'cpu_info': record['cpu_info']}
+        self.event('deleted', rental=record['number'], instance_id=record['instance_id'], reason=reason,
+                   **cpu_fields)
 
     def clean_work(self, record: dict) -> None:
         """片側だけの塊を除き、旧機の作業ログを借用ごとに退避する。"""
@@ -483,6 +487,8 @@ class TeacherGeneration:
                 cores, limit = info['nproc'], info['cpu_limit']
             except (ValueError, KeyError, TypeError) as error:
                 raise common.InvalidResponse('cpu-infoの応答を読めません') from error
+            self.current['cpu_info'] = info
+            self.save()
             expected = self.current['offer']['cpu_cores']
             if (type(cores) is not int or cores != expected or
                     (limit is not None and (type(limit) not in (int, float) or not math.isfinite(limit)

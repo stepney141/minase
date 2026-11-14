@@ -564,14 +564,29 @@ class TeacherTests(unittest.TestCase):
         self.assertFalse(self.commands.instances)
 
     def test_bad_cpu_assignments_are_deleted_and_machine_ids_excluded(self) -> None:
-        """事例12: cpusetの差と90%未満の上限を拒否し、同じmachine_idを選ばない。"""
+        """事例12・追加指示2: CPUの検査値を保存し、不合格機を削除して選択から除く。"""
         self.commands.cpus = {42: {'nproc': 255, 'cpu_limit': None},
-                              43: {'nproc': 256, 'cpu_limit': 230.39}}
+                              43: {'nproc': 256, 'cpu_limit': 230.39},
+                              45: {'nproc': 256, 'cpu_limit': 230.4}}
         self.commands.offers.extend([offer(44, machine_id=142, min_bid=0.4), offer(45, min_bid=0.7)])
+        def check_saved_cpu_info() -> None:
+            state = self.state()
+            record = next(item for item in state['rentals'] if item['number'] == state['current'])
+            self.assertEqual(record['cpu_info'], self.commands.cpus[record['offer']['id']])
+        self.commands.on_destroy = check_saved_cpu_info
+        self.commands.on_start = check_saved_cpu_info
         self.assertEqual(self.execute(), 0, self.errors.getvalue())
         self.assertEqual([int(c[3]) for c in self.commands.creations], [42, 43, 45])
         self.assertEqual(self.state()['excluded_machine_ids'], [142, 143])
         self.assertEqual(len(self.commands.jobs), 1)
+        records = self.state()['rentals']
+        for record in records:
+            self.assertEqual(record['cpu_info'], self.commands.cpus[record['offer']['id']])
+        deleted = {event['rental']: event for event in self.events() if event['event'] == 'deleted'}
+        for record in records[:2]:
+            event = deleted[record['number']]
+            self.assertEqual(event['cpu_cores'], 256)
+            self.assertEqual(event['cpu_info'], self.commands.cpus[record['offer']['id']])
 
     def test_bid_and_fixed_machine_settings_are_sent(self) -> None:
         """事例13: 最低入札額と固定のイメージ、ディスク、自己停止期限を渡す。"""
