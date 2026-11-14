@@ -31,7 +31,7 @@ pub struct Args {
     #[command(flatten)]
     #[serde(flatten)]
     pub training: TrainingOptions,
-    /// 更新ごとに学習率へ掛ける倍率。constant:<c>、exponential:<半減期superbatch>:<下限>、cosine:<総長superbatch>:<下限>。
+    /// 更新ごとに学習率へ掛ける倍率。`constant:<c>`、`exponential:<半減期superbatch>:<下限>`、`cosine:<総長superbatch>:<下限>`。
     #[arg(long, value_parser = clap::value_parser!(LrSchedule))]
     pub lr_schedule: LrSchedule,
     /// 入力の特徴集合を指定する。

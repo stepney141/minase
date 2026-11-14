@@ -1,7 +1,17 @@
 //! CUDAまたはCPUで、指定したsuperbatch数だけNNUEを学習する。
-//! 各周の順列は1回だけ作り、周の最後の短いバッチも1更新と数える。
-//! superbatchの終了時は結果回収、snapshot、必要な検証、ログ、latest.npzの順に進む。
-//! latest.npzの保存を確定の時点とし、時間切れのsuperbatchは採用しない。
+//!
+//! 1 superbatchは`--batches-per-superbatch`回の更新であり、教師の1周とは独立した単位である。
+//! 間引き後の訓練局面数をM、`--batch`の局面数をmとすると、1周の更新回数は`U = ceil(M/m)`となる。
+//! 周ごとに訓練集合の全体を一様に並べ替える。
+//! superbatchの境界は周の途中に来てよく、同じ周の順列を境界を越えて保持する。
+//! 周の最後の短いバッチも1更新と数え、次の周の局面で埋めない。
+//! 学習率の倍率は、`--lr-schedule`、完了した更新回数、`--batches-per-superbatch`だけで決まる。
+//!
+//! 新規実行では学習前に全検証集合を評価し、更新0回の行を`training.jsonl`に記録する。
+//! 予定のsuperbatch数をN、`--validation-superbatches`の間隔をVとすると、k番目のsuperbatchの終了時に、kがVで割り切れるか`k = N`なら全検証集合を評価する。
+//! 検証しなかったsuperbatchの検証損失は`null`とし、検証損失は停止や重みの選択には用いない。
+//! superbatchの終了時は計算結果を回収して重みと最適化器の状態を取得し、必要な検証、ログの追記、`latest.npz`の保存の順に進む。
+//! この保存を確定の時点とし、先読みしただけのバッチと、検証を含めて時間内に完了しなかったsuperbatchの更新は採用しない。
 //!
 //! | ファイル | 内容 |
 //! | --- | --- |
@@ -13,7 +23,9 @@
 //!
 //! 新規実行の出力先は存在しないか空でなければならない。
 //! 累積時間には前処理と検証、再開前の実行を含む。
-//! 検証損失は記録だけに用い、停止と重みの選択には用いない。
+//! 時間の上限で予定の更新を完了できなければ、`summary.json`の状態を`incomplete`とし、CLIは終了コード1を返す。
+//! この場合は`nnue.bin`を書かず、確定済みの`latest.npz`があれば残して再開に用いる。
+//! 学習前の検証も完了していなければ、チェックポイントは作らない。
 
 use crate::nn::atomic_write;
 mod args;
@@ -108,7 +120,6 @@ impl fmt::Display for StopReason {
 
 /// 予定と確定済みの進捗、および最終の検査結果。
 /// candidateだけが終了コード0であり、それ以外は1で終了する。
-/// incompleteではネットを書き出さず、最後の確定済みチェックポイントを残す。
 #[derive(Debug, Serialize)]
 pub struct Summary {
     /// candidate、quantization_error、incomplete、errorのいずれか。
@@ -172,8 +183,23 @@ struct Session {
 
 impl Session {
     /// 初期値と前処理を再計算し、照合を通った保存状態から再開する。
-    /// 更新数は完了したsuperbatch数と1 superbatchの更新数の積に一致しなければならない。
-    /// 予算と実行資源を除いた設定、入力、前処理、デバイス名は既存の照合で検査する。
+    ///
+    /// 再開では`--resume`と`--output-dir`が正規化後に同じディレクトリを指すことを要求する。
+    /// 変更できる引数は`--superbatches`、`--validation-superbatches`、`--time-limit-hours`、`--threads`、`--bucket-positions`、`--scratch-dir`である。
+    /// `--batches-per-superbatch`と`--lr-schedule`を含むほかの学習設定は変更できない。
+    /// 入力は正規化したパスと識別情報を、前処理は教師の勝率尺度の値と出所も含めて照合し、デバイス名も一致を要求する。
+    ///
+    /// 保存済みのsuperbatch数をk、更新回数をtとし、`t = k × batches_per_superbatch`を要求する。
+    /// `--superbatches`がkより小さければエラーとし、等しければ追加の更新をせず、保存済みの重みを書き出す。
+    /// ただし、kで未検証なら書き出す前に最終検証を行い、時間内に終わらなければ`incomplete`とする。
+    /// 1周の更新回数をU、バッチの局面数をmとすると、更新を再開する周は`floor(t/U)+1`番目である。
+    /// その周の順列を同じシードで作り直し、`(t mod U) × m`局面を読み飛ばして続きから学ぶ。
+    /// `--buckets`が2以上の場合も一時ファイルを作り直して同じ位置まで読み飛ばす。
+    /// 進捗を`epoch`や`best`で表す旧形式のNNUEチェックポイントは読み替えずに拒否する。
+    ///
+    /// `training.jsonl`は保存済みのkまで照合し、未確定の末尾の行を捨てる。
+    /// 再開の照合を通った後、更新や書き出しを始める前に、既存の`nnue.bin`と`summary.json`を削除する。
+    /// 学習前の検証はログから引き継ぎ、再実行しない。
     fn new(args: Args) -> Result<Self> {
         let started = Instant::now();
         let resumed_at = SystemTime::now();

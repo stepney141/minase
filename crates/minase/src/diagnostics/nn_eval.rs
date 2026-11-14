@@ -1,6 +1,6 @@
 //! 固定局面集をセッションの推論器で評価し、PyTorchとの照合用JSONを書き出す。
 //!
-//! 出力JSONの形式の正本は、本モジュールの[`Evaluation`]と[`PositionEvaluation`]である。
+//! 出力JSONの形式の正本は、本モジュールの`Evaluation`と`PositionEvaluation`である。
 //! 学習器の`minase_zero fixture-eval`も同じ形式を出力し、`backend`を`"pytorch"`とする。
 //! この形式は`tools/train/zero/nn_compare.py`が読み、推論結果の照合に使う。
 

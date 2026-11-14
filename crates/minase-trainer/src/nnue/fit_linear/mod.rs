@@ -22,7 +22,9 @@
 //! 持ち主の段を反転してその負値として足す。対象外の状態、終盤の列、先獅子、非線形部分は変えない。
 //! 判定は書き出したバイト列を復号した整数評価e′を用いる。対局ごとの平均BCEをさらに対局について平均し、
 //! `D = corrected_loss − base_loss`とする。再標本化は行わず、判定対局ごとの損失をJSONへ残す。
-//! 方式を選んだ理由は`docs/adr/correct-the-nnue-linear-path-by-regressing-on-game-outcomes.md`にある。
+//! 方式を選んだ理由は`docs/adr/archive/correct-the-nnue-linear-path-by-regressing-on-game-outcomes.md`にある。
+//! 標準レシピv1では学習後の補正を行わず、この処理は偏りを調べる診断にだけ用いる。
+//! この決定は`docs/adr/do-not-correct-the-nnue-linear-path-after-training.md`にある。
 
 mod error;
 mod solver;
