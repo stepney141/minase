@@ -27,7 +27,7 @@ vast.aiは、個人や事業者が貸し出す計算機を時間単位で借り�
 
 中断の理由は、本書が作る予定だった仕組みの役割を、別の設計書が受け持ったことである。
 2026年11月4日に着手した設計書[NNUEの世代反復のやり直し](nnue-generation-reset.md)では、教師生成の後に学習まで続けて行う必要があったので、生成、取得、検査、および学習を順に行う専用のスクリプト`scripts/vast/generation_chain.py`と`scripts/vast/generation_worker.py`を作った。
-その後の教師生成はこのスクリプトで行っており、[NNUEの標準レシピの設計書](../nnue-standard-recipe.md)もこれを使う。
+その後の教師生成はこのスクリプトで行っており、[NNUEの標準レシピの設計書](nnue-standard-recipe.md)もこれを使う。
 生成が途中で止まった場合への対応は、[教師生成の中断と再開の設計書](../resumable-nnue-teacher-generation.md)と、その完了後に起案する設計書（スポットの計算機での教師生成）で扱う。
 
 後の設計書と調査へ引き継いだものは3つある。

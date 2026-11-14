@@ -1,7 +1,7 @@
 # NNUEの再挑戦に向けたアーキテクチャの考察
 
 本提案は、2026年10月12日に[NNUEの共通土台と初代のネットによるPST＋FMの完全代替の設計書](../../plans/archived/nnue-replacement.md)が、PSTを移した線形の経路と隠れ層のない直接内積の和を初代のネットとして採用したことで決着した（[NNUEの出力を、PSTを移した線形の経路と隠れ層のない直接内積の和にする](../../adr/archive/compose-the-nnue-of-a-pst-path-and-a-direct-screlu-head.md)）。
-この構成は2026年10月26日と11月4日に改められて現在は[NNUEを、探索用駒価値で初期化した線形の経路と、要素積と2段の隠れ層を持つ非線形の経路で組み立てる](../../adr/compose-the-nnue-of-a-piece-value-initialized-linear-path-and-pairwise-products-with-two-hidden-layers.md)のとおりであり、本書が強さの源泉とした世代反復は[NNUEの標準レシピv1を対局で決め、v0から世代反復をやり直す設計書](../../plans/nnue-standard-recipe.md)に引き継がれている。
+この構成は2026年10月26日と11月4日に改められて現在は[NNUEを、探索用駒価値で初期化した線形の経路と、要素積と2段の隠れ層を持つ非線形の経路で組み立てる](../../adr/compose-the-nnue-of-a-piece-value-initialized-linear-path-and-pairwise-products-with-two-hidden-layers.md)のとおりであり、本書が強さの源泉とした世代反復は[NNUEの標準レシピv1を対局で決め、v0から世代反復をやり直す設計書](../../plans/archived/nnue-standard-recipe.md)に引き継がれている。
 
 本書は、「現行のPST＋FMより汎用的な表現力を持つNNUEを学習したいが、P型NNUEは過去に不採用になっている。どのアーキテクチャにすべきか」という問いに対する、2026年10月8日のClaudeとcodexの3ラウンドの議論の記録である。
 第1ラウンドと第2ラウンドは敗因の順位づけと、現行評価を凍結した上に残差を積む構成を扱った。

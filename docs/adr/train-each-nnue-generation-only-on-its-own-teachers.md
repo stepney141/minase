@@ -10,7 +10,7 @@ NNUEの世代反復では、第N−1世代のネットで生成した教師（�
 学習に使う教師の世代の範囲をリプレイバッファと呼ぶ。
 自己生成で育てたチェスのエンジンAstraは、前の世代のデータを併合して約+14 Eloを得ている（[調査](../research/teacher-generation-strong-engines/zero-chess-and-variants.md)）。
 
-[標準レシピv1の設計書](../plans/nnue-standard-recipe.md)では、中断した世代反復の第1世代と第2世代の教師を併せて学んだネットを候補、第2世代の教師だけで学んだネットを対照としてSTCで比べた（[測定記録](../measurements/nnue-standard-recipe/nnue-standard-recipe-window-stc.md)）。
+[標準レシピv1の設計書](../plans/archived/nnue-standard-recipe.md)では、中断した世代反復の第1世代と第2世代の教師を併せて学んだネットを候補、第2世代の教師だけで学んだネットを対照としてSTCで比べた（[測定記録](../measurements/nnue-standard-recipe/nnue-standard-recipe-window-stc.md)）。
 結果は149ペアで`H0`（得点率36.4%）であり、併せて学んだネットのほうが大きく負けた。
 
 ## 決定

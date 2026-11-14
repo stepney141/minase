@@ -161,7 +161,7 @@ CPUの固定とメモリの配置方針の指定を分けて比べれば、ど�
 末尾では新たに配る対局が残らないため、この方式でもワーカーが余る。
 [第2世代の生成記録](../measurements/nnue-generation-reset/nnue-generation-reset-gen2-training.md)にある384並列での未使用CPU時間13.25%は、対象機での損失を調べる根拠として扱い、少数並列の損失率へ換算しない。
 
-[NNUEの標準レシピ](../plans/nnue-standard-recipe.md)は生成の規則を`lishogi`へ切り替える計画を含む。
+[NNUEの標準レシピ](../plans/archived/nnue-standard-recipe.md)は生成の規則を`lishogi`へ切り替える計画を含む。
 今回の比率は日本中将棋連盟の規則で測った値なので、規則とネットが変われば、候補の働く頻度も測り直す必要がある。
 複数の条件を同時に変えた速度差を、この提案のコード変更だけの効果とは扱えない。
 

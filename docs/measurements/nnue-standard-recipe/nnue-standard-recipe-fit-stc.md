@@ -2,7 +2,7 @@
 
 ## 目的
 
-[標準レシピv1の設計書](../../plans/nnue-standard-recipe.md)の測定2として、学習後に線形の経路を対局結果へのロジスティック回帰で補正する工程（outcome regression）を外したネットが、補正したネットより強いかをSTCで判定する。
+[標準レシピv1の設計書](../../plans/archived/nnue-standard-recipe.md)の測定2として、学習後に線形の経路を対局結果へのロジスティック回帰で補正する工程（outcome regression）を外したネットが、補正したネットより強いかをSTCで判定する。
 `H1`なら標準レシピv1では補正を行わず、それ以外は補正を続ける。
 ネットは、[測定1](nnue-standard-recipe-lr-linear-stc.md)で選んだ線形の経路の学習率0.03で学んだものである。
 

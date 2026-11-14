@@ -73,14 +73,14 @@ Spot VMは、空いた資源を割安で貸す代わりに、GCPがいつでも�
 - 1局の途中状態は保存しない。1局を終えられないほど短い稼働しか得られない機械では、生成は進まない。
 - 本の末尾で計算資源が遊ぶ問題は扱わない。[第2世代の生成記録](../../measurements/nnue-generation-reset/nnue-generation-reset-gen2-training.md)では、1本の末尾で、最後の長い対局を待つ間に計算資源の13.25%が使われなかった。本書は塊を本の内側に置き、この遊休を減らす変更は行わない。
 - 教師データの内容、MNSD形式、および学習器は変更しない。
-- 規則セットを`JCSA`から`lishogi`へ切り替える変更は行わない。規則セットは、反復（同一局面の繰り返し）や駒枯れなどの規則の流儀を表す規則コードの組である。`JCSA`は日本中将棋連盟の規則、`lishogi`はオンライン対局サイトlishogiの規則に近い組であり、切り替えは[NNUEの標準レシピの計画](../nnue-standard-recipe.md)が行う。
+- 規則セットを`JCSA`から`lishogi`へ切り替える変更は行わない。規則セットは、反復（同一局面の繰り返し）や駒枯れなどの規則の流儀を表す規則コードの組である。`JCSA`は日本中将棋連盟の規則、`lishogi`はオンライン対局サイトlishogiの規則に近い組であり、切り替えは[NNUEの標準レシピの計画](nnue-standard-recipe.md)が行う。
 
 ## 依存関係
 
 塊の確定と再開の手順は、`zero-selfplay`の[出力の実装](../../../crates/minase/src/bin/minase/zero_selfplay/output.rs)と、[塊ごとに確定させる設計判断の記録（ADR）](../../adr/commit-zero-self-play-in-fixed-game-chunks-up-to-the-first-prefix-reaching-the-target-positions.md)に従う。
 NNUEの教師生成には局面数の目標で塊を締める規則がないので、そのADRのうち、塊の配置、一時ファイルからの確定、生成条件の照合、および再開の部分だけを使う。
 
-[NNUEの標準レシピの計画](../nnue-standard-recipe.md)は、フェーズ3で第1世代の37本を生成する前に、生成器と生成チェーンの規則セットを`lishogi`へ切り替える。
+[NNUEの標準レシピの計画](nnue-standard-recipe.md)は、フェーズ3で第1世代の37本を生成する前に、生成器と生成チェーンの規則セットを`lishogi`へ切り替える。
 本書の変更と規則セットの切り替えは、どちらも`crates/minase/src/bin/minase/selfplay_gen/generate.rs`と`scripts/vast/generation_chain.py`を変えるので、後からマージする側が先の変更に合わせる。
 どちらを先にマージするかは、着手の順として利用者が決める。
 本書は教師データの内容を変えないので、同書が定めた1世代の本数、シードの式、および生成の引数は、塊の局数の引数を足すほかは変わらない。

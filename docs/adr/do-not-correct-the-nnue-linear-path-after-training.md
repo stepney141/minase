@@ -9,7 +9,7 @@
 [以前の決定](archive/correct-the-nnue-linear-path-by-regressing-on-game-outcomes.md)は、世代反復の各世代で、学習したネットの第1層と出力部を固定し、線形の経路（駒と升ごとの点数の表）の序中盤の列を対局結果へのロジスティック回帰（Texel tuningと同種、`minase-trainer nnue fit-linear`）で補正すると定めていた。
 [中断した世代反復](../plans/archived/nnue-generation-reset.md)の第1世代の教師で学んだネットでは、補正したネットが補正しないネットに対してSTCで`H1`（得点率92.1%）だった。
 
-[標準レシピv1の設計書](../plans/nnue-standard-recipe.md)では、同じ系列の第2世代の教師で学んだネットについて、補正前のネットを候補、補正後のネットを対照としてSTCで比べた（[測定記録](../measurements/nnue-standard-recipe/nnue-standard-recipe-fit-stc.md)）。
+[標準レシピv1の設計書](../plans/archived/nnue-standard-recipe.md)では、同じ系列の第2世代の教師で学んだネットについて、補正前のネットを候補、補正後のネットを対照としてSTCで比べた（[測定記録](../measurements/nnue-standard-recipe/nnue-standard-recipe-fit-stc.md)）。
 補正前のネットは、376ペアで`H1`（得点率57.1%）となった。
 補正後のネットでは、盤上の仲人を取り除いたときに駒を失った側の評価がかえって上がる局面の割合が、0.2%から55.9%へ増えていた。
 2026年11月14日にエンジンの開発者は、学習の後に線形の経路を補正する先行例がないことを確かめ、先行の複数のエンジンに共通する方法に合わせると決めた（[学習レシピの調査](../research/nnue-training-recipes.md)）。

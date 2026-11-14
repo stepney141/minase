@@ -15,7 +15,7 @@ tataraのPSQTは第1層の重みと同じパラメータ群に入り、Fairy-Sto
 minaseのロジットは`(線形の経路の値)/(勝率尺度) + (非線形部分の出力)`であり、線形の経路の値はcp単位で持つ。
 このため、ロジットの単位で第1層の学習率1×10⁻³にそろえると、cp単位の学習率は勝率尺度679.03 cpを掛けた0.67903になる。
 
-[標準レシピv1の設計書](../plans/nnue-standard-recipe.md)では、中断した系列の第2世代の教師で、学習率0.67903で学んだネットを候補、0.03で学んだネットを対照としてSTCで比べた（[測定記録](../measurements/nnue-standard-recipe/nnue-standard-recipe-lr-linear-stc.md)）。
+[標準レシピv1の設計書](../plans/archived/nnue-standard-recipe.md)では、中断した系列の第2世代の教師で、学習率0.67903で学んだネットを候補、0.03で学んだネットを対照としてSTCで比べた（[測定記録](../measurements/nnue-standard-recipe/nnue-standard-recipe-lr-linear-stc.md)）。
 結果は1,607ペアで`H0`（得点率49.4%）だった。
 
 ## 決定
