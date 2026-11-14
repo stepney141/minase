@@ -70,7 +70,7 @@ MCTSを対局させる手順は、同じ手引きの「エンジンの指定方�
 2回目の実行は、2026年11月13日の時点で利用者の承認を待っている。
 
 借りる機械の操作は、[借りる機械の操作の手引き](../guides/alphazero-machines.md)と`scripts/vast-spsa/`に従う。
-GPUを持つ開発用の機械（以下作業機、GPUはRTX 3060 Ti 8 GB）で行う対局の測定は、[NNUEの標準レシピv1の計画](nnue-standard-recipe.md)が作業機で行う対局と重ならないように順番を調整する。
+GPUを持つ開発用の機械（以下作業機、GPUはRTX 3060 Ti 8 GB）で行う対局の測定は、[NNUEの世代反復のやり直しの計画](nnue-generation-iteration.md)が作業機で行う対局と重ならないように順番を調整する。
 NNUEは、αβ探索の評価関数である。
 
 ## 設計判断
