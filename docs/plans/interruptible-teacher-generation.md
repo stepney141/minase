@@ -19,7 +19,9 @@ vast.aiは個人や事業者が貸し出す計算機を時間単位で借りら�
 
 2026年11月14日に起案し、同日にフェーズ0の測定を終えた。
 フェーズ0の結果から、機種の条件をEPYC 7B13またはEPYC 9654で256スレッド以上とし、同時に指す対局の数（同時対局数）をコンテナが使えるCPUの集合（cpuset）の論理スレッド数、メモリの下限を同時対局数×220 MiB×1.25と決めた（[測定記録](../measurements/interruptible-teacher-generation/interruptible-teacher-generation-candidates.md)）。
-次はフェーズ1の実装である。
+フェーズ1も同日に終え、制御スクリプト`scripts/vast/teacher_generation.py`の作業機の試験187件が通り、vast.aiでの復旧試験が合格の条件を満たした（[測定記録](../measurements/interruptible-teacher-generation/interruptible-teacher-generation-recovery.md)）。
+復旧試験では、停止の要求から生成の再開までが6分27秒、失った計算の推定値が1,343局分で、「損失の見積もり」の近似式の約3倍であった。
+次はフェーズ2の2つの借り方での生成である。
 以後のフェーズで機械を借りる前には、口座の操作（機械の作成、状態の照会、削除）が通ることを確かめ、通らなければvast.aiの2段階認証のログイン（`vastai tfa login`）を利用者に依頼する。
 
 ## 目的
