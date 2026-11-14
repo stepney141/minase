@@ -49,7 +49,7 @@ NNUEの学習器が`--buckets`を2以上にしたときに作業ディレクト�
 
 | 形式 | 識別と版 | 書き手 | 読み手 | 仕様 |
 |---|---|---|---|---|
-| NNUEのチェックポイント`latest.npz`、`best.npz` | NPZ、`meta`の`kind = "nnue"` | `nnue train` | `nnue train`（終了時の書き出しと`--resume`）、`diag nnue-removal --float` | `crates/minase-trainer/src/nnue/model/checkpoint.rs` |
+| NNUEのチェックポイント`latest.npz` | NPZ、`meta`の`kind = "nnue"`、進捗は完了したsuperbatch数 | `nnue train` | `nnue train`（終了時の書き出しと`--resume`）、`diag nnue-removal --float` | `crates/minase-trainer/src/nnue/model/checkpoint.rs` |
 | PSTのチェックポイント`latest.npz`、`best.npz` | NPZ、`meta`の`kind = "pst"` | `pst train` | `pst train`（終了時の書き出しと`--resume`） | `crates/minase-trainer/src/pst/checkpoint.rs` |
 | FMのチェックポイント`latest.npz`、`best.npz` | NPZ、`meta`の`kind = "fm"` | `fm train` | `fm train`（終了時の書き出しと`--resume`） | `crates/minase-trainer/src/fm/checkpoint.rs` |
 | 同時学習のチェックポイント`latest.npz`、`best.npz` | NPZ、`meta`の`kind = "joint"` | `joint train` | `joint train`（終了時の書き出しと`--resume`） | `crates/minase-trainer/src/joint/checkpoint.rs` |
@@ -57,7 +57,7 @@ NNUEの学習器が`--buckets`を2以上にしたときに作業ディレクト�
 | PSTの学習の設定`config.json` | なし | `pst train` | `pst train --resume` | `crates/minase-trainer/src/pst/record.rs` |
 | FMの学習の設定`config.json` | なし | `fm train` | `fm train --resume` | `crates/minase-trainer/src/fm/record.rs` |
 | 同時学習の設定`config.json` | なし | `joint train` | `joint train --resume` | `crates/minase-trainer/src/joint/record.rs` |
-| NNUEのエポックの記録`training.jsonl` | なし | `nnue train` | `nnue train --resume` | `crates/minase-trainer/src/nnue/train/record.rs`の`EpochRecord` |
+| NNUEのsuperbatchの記録`training.jsonl` | なし | `nnue train` | `nnue train --resume` | `crates/minase-trainer/src/nnue/train/record.rs`の`SuperbatchRecord` |
 | PSTのエポックの記録`training.jsonl` | なし | `pst train` | `pst train --resume` | `crates/minase-trainer/src/pst/record.rs`の`EpochRecord` |
 | FMのエポックの記録`training.jsonl` | なし | `fm train` | `fm train --resume` | `crates/minase-trainer/src/fm/record.rs`の`EpochRecord` |
 | 同時学習のエポックの記録`training.jsonl` | なし | `joint train` | `joint train --resume` | `crates/minase-trainer/src/joint/record.rs`の`EpochRecord` |
@@ -142,4 +142,4 @@ ONNXのネットそのものとTensorRTのエンジンのキャッシュは、ON
 - `summary.json`は、対局ハーネスでは累計実行時間と中断状態だけを持ち、学習器では学習の終了報告である。学習器の`summary.json`の欄は学習器ごとに異なり、AlphaZero型探索の学習器`minase_zero`の`summary.json`も`init`と`train`で欄が異なる。
 - `config.json`と`training.jsonl`は4種の学習器がそれぞれ書き、欄は学習器ごとに異なる。`config.json`は、教師の生成器`minase data selfplay generate`と`minase data zero-selfplay`の出力先にもあり、こちらは生成条件を持つ。
 - `pst-float.npz`は、PSTの学習器が書くと2つの配列、同時学習が書くと5つの配列を持つ。PSTの2つの配列だけを使う読み手は、5つの配列を持つファイルからも同じ名前の2つの配列を読む。
-- `latest.npz`と`best.npz`は4種の学習器がそれぞれ書き、収める配列は学習器ごとに異なる。`meta`の`kind`で学習器を見分ける。
+- `latest.npz`は4種の学習器がそれぞれ書き、`best.npz`はPST、FM、同時学習の学習器だけが書く。収める配列と`meta`の進捗の欄は学習器ごとに異なり、`meta`の`kind`で学習器を見分ける。NNUEの学習器は、エポック数で進捗を表していた変更前の学習器のチェックポイントを読まない。
