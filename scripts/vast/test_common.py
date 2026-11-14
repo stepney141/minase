@@ -285,5 +285,165 @@ class CommonTests(unittest.TestCase):
             pass
 
 
+class TeacherCommonTests(unittest.TestCase):
+    """フェーズ1の入札、CLI応答、転送上限、および受け入れ条件を検証する。"""
+
+    def test_plain_authentication_errors_stop_without_polling(self) -> None:
+        message = 'Failed with error 401: Two Factor Authentication\n'
+        for action in ('stop', 'destroy'):
+            for code in (0, 1):
+                for stream in ('stdout', 'stderr'):
+                    with self.subTest(action=action, code=code, stream=stream):
+                        output, errors = (message, '') if stream == 'stdout' else ('', message)
+                        result = subprocess.CompletedProcess(['vastai'], code, output, errors)
+                        failure = subprocess.CalledProcessError(code, ['vastai'], output=output, stderr=errors)
+                        with patch.object(common, 'run_timed', side_effect=failure if code else None,
+                                          return_value=result) as run, patch.object(common.time, 'sleep') as sleep, \
+                                redirect_stderr(io.StringIO()):
+                            with self.assertRaises(common.AuthenticationExpired):
+                                common.change_state(17, action)
+                        run.assert_called_once()
+                        sleep.assert_not_called()
+
+    def test_plain_rate_limit_errors_retry_then_confirm_stop_or_deletion(self) -> None:
+        message = 'Failed with error 429: API requests too frequent\n'
+        for action in ('stop', 'destroy'):
+            state = [] if action == 'destroy' else [
+                {'id': 17, 'actual_status': 'stopped', 'intended_status': 'stopped'}]
+            for code in (0, 1):
+                for stream in ('stdout', 'stderr'):
+                    with self.subTest(action=action, code=code, stream=stream):
+                        output, errors = (message, '') if stream == 'stdout' else ('', message)
+                        failure = (subprocess.CalledProcessError(code, ['vastai'], output=output, stderr=errors)
+                                   if code else subprocess.CompletedProcess(['vastai'], code, output, errors))
+                        responses = [failure, subprocess.CompletedProcess(['vastai'], 0, 'accepted\n', ''),
+                                     subprocess.CompletedProcess(['vastai'], 0, json.dumps(state), '')]
+                        with patch.object(common, 'run_timed', side_effect=responses) as run, \
+                                patch.object(common.time, 'sleep') as sleep, redirect_stderr(io.StringIO()):
+                            common.change_state(17, action)
+                        self.assertEqual(run.call_count, 3)
+                        self.assertEqual(run.call_args_list[0].args, run.call_args_list[1].args)
+                        self.assertNotIn('--raw', run.call_args_list[0].args[0])
+                        sleep.assert_called_once_with(60)
+
+    def test_plain_rate_limit_errors_exhaust_without_polling(self) -> None:
+        for action in ('stop', 'destroy'):
+            with self.subTest(action=action), patch.object(common, 'run_timed', return_value=
+                    subprocess.CompletedProcess(['vastai'], 0, '', 'Failed with error 429: too frequent\n')) as run, \
+                    patch.object(common.time, 'sleep') as sleep, redirect_stderr(io.StringIO()):
+                with self.assertRaisesRegex(common.RateLimitExceeded, '429'):
+                    common.change_state(17, action)
+                self.assertEqual(run.call_count, 5)
+                self.assertEqual([call.args for call in sleep.call_args_list], [(60,)] * 4)
+
+    def test_rate_limit_on_either_stream_retries_four_times_then_fails(self) -> None:
+        response = '{"error": true, "status_code": 429, "msg": "API requests too frequent"}'
+        for stream in ('stdout', 'stderr'):
+            with self.subTest(stream=stream):
+                result = subprocess.CompletedProcess(['vastai'], 0,
+                                                     response if stream == 'stdout' else '',
+                                                     response if stream == 'stderr' else '')
+                with patch.object(common, 'run_timed', return_value=result) as run, \
+                        patch.object(common.time, 'sleep') as sleep, redirect_stderr(io.StringIO()):
+                    with self.assertRaises(common.RateLimitExceeded):
+                        common.call(60, 'show', 'instances', '--raw')
+                self.assertEqual(run.call_count, 5)
+                self.assertEqual([call.args for call in sleep.call_args_list], [(60,)] * 4)
+                self.assertTrue(all(call.args == run.call_args_list[0].args for call in run.call_args_list))
+
+    def test_rate_limit_nonzero_exit_then_success_preserves_stderr(self) -> None:
+        message = '{"status_code": 429}\n'
+        failure = subprocess.CalledProcessError(1, ['vastai'], output='', stderr=message)
+        result = subprocess.CompletedProcess(['vastai'], 0, '[]', '照会が完了しました\n')
+        errors = io.StringIO()
+        with patch.object(common, 'run_timed', side_effect=[failure, result]), \
+                patch.object(common.time, 'sleep') as sleep, redirect_stderr(errors):
+            self.assertEqual(common.call(60, 'show', 'instances', '--raw'), '[]')
+        sleep.assert_called_once_with(60)
+        self.assertEqual(errors.getvalue(), message + '照会が完了しました\n')
+
+    def test_authentication_expiry_on_either_stream_never_retries(self) -> None:
+        message = '{"status_code": 401, "msg": "Two Factor Authentication"}'
+        for code in (0, 1):
+            for stream in ('stdout', 'stderr'):
+                with self.subTest(code=code, stream=stream):
+                    output, errors = (message, '') if stream == 'stdout' else ('', message)
+                    result = subprocess.CompletedProcess(['vastai'], code, output, errors)
+                    failure = subprocess.CalledProcessError(code, ['vastai'], output=output, stderr=errors)
+                    with patch.object(common, 'run_timed', side_effect=failure if code else None,
+                                      return_value=result) as run, patch.object(common.time, 'sleep') as sleep, \
+                            redirect_stderr(io.StringIO()):
+                        with self.assertRaises(common.AuthenticationExpired):
+                            common.call(60, 'show', 'instances', '--raw')
+                    run.assert_called_once()
+                    sleep.assert_not_called()
+
+    def test_successful_exit_requires_json_for_raw_response(self) -> None:
+        for output in ('', 'not json', '{'):
+            with self.subTest(output=output), patch.object(common, 'run_timed', return_value=
+                    subprocess.CompletedProcess(['vastai'], 0, output, '')):
+                with self.assertRaises(common.InvalidResponse):
+                    common.call(60, 'search', 'offers', 'rentable=true', '--raw')
+
+    def test_bid_price_is_passed_only_for_interruptible_rental(self) -> None:
+        for price in (None, 0.4):
+            with self.subTest(price=price), patch.object(common, 'run_timed', return_value=
+                    subprocess.CompletedProcess(['vastai'], 0, '{"new_contract": 17}', '')) as run:
+                self.assertEqual(common.create('42', 'label', Path('/start'), 'rust:1.98.0-bookworm',
+                                               30, bid_price=price), 17)
+                command = run.call_args.args[0]
+                if price is None:
+                    self.assertNotIn('--bid_price', command)
+                else:
+                    self.assertEqual(command[command.index('--bid_price') + 1], '0.4')
+
+    def test_transfer_limit_uses_decimal_megabytes_and_reserves_ten_minutes(self) -> None:
+        self.assertEqual(common.transfer_seconds(53_000_000, 3600), 173)
+        self.assertEqual(common.transfer_seconds(53_000_000, 700), 100)
+        self.assertEqual(common.transfer_seconds(0, 1000), 120)
+        self.assertEqual(common.transfer_seconds(0, 600.25), 0.25)
+        for remaining in (600, 599, -1):
+            with self.subTest(remaining=remaining), self.assertRaises(common.VastError):
+                common.transfer_seconds(1, remaining)
+        for size in (-1, True, 1.5):
+            with self.subTest(size=size), self.assertRaises(common.VastError):
+                common.transfer_seconds(size, 1000)
+
+    def test_inspection_validates_every_header_and_summary_field(self) -> None:
+        expected = {'generation_commit': 'a' * 40, 'network_checksum': '12' * 32,
+                    'rule_set': 'L0,P0,R1,E0', 'seed': 9700100000, 'teacher_search_budget': 20000}
+        settings = {'games': 10, 'nodes': 20000, 'max_ply': 4000, 'hash_mb': 16, 'random_moves': 0}
+        header = expected | {'game_count': 9, 'eligible_positions': 120}
+        summary = {'games_completed': 10, 'nodes': 20000, 'max_ply': 4000, 'hash_mb': 16,
+                   'random_moves_max': 0, 'games_discarded_max_ply': 1, 'recorded_positions': 120}
+        def lines(values: dict) -> str:
+            return ''.join(f'{key}: {value}\n' for key, value in values.items())
+        with tempfile.TemporaryDirectory() as directory:
+            log = Path(directory) / 'book-1.log'
+            cases = [(None, None)]
+            cases += [('header', key) for key in header]
+            cases += [('log', key) for key in summary]
+            for location, key in cases:
+                with self.subTest(location=location, key=key):
+                    actual, reported = header.copy(), summary.copy()
+                    if location == 'header':
+                        actual[key] = -1 if key in ('game_count', 'eligible_positions') else '違う値'
+                    if location == 'log':
+                        reported[key] -= 1
+                    log.write_text(lines(summary | {'nodes': 1}) + lines(reported))
+                    def run(command: list, **kwargs: object) -> subprocess.CompletedProcess:
+                        self.assertEqual(command, ['/minase', 'data', 'selfplay', 'inspect', '/book-1.mnsd'])
+                        with patch.object(common.os, 'nice') as nice:
+                            kwargs['preexec_fn']()
+                        nice.assert_called_once_with(19)
+                        return subprocess.CompletedProcess(command, 0, lines(actual))
+                    if location is None:
+                        self.assertEqual(common.inspect_teacher(Path('/minase'), Path('/book-1.mnsd'), log,
+                                                                expected, settings, run), (9, 120))
+                    else:
+                        with self.assertRaises(common.VastError):
+                            common.inspect_teacher(Path('/minase'), Path('/book-1.mnsd'), log, expected, settings, run)
+
+
 if __name__ == '__main__':
     unittest.main()
