@@ -49,7 +49,7 @@
 - 記録率と安い探索のノード数の組を複数比べる調整。本書は1つの組だけを段階ゲートにかける。
 - 基準の教師と候補の教師を混ぜた学習。
 - 現行のmasterのネットによる教師の再生成。
-- 先読み教師との組み合わせ。先読み教師は記録が欠けた手数を飛ばして残った将来の記録から計算できるが、参照する将来の局面が減って教師の性質が変わる。NNUEの標準の教師は先読みを使わない（[ADR](../adr/train-the-nnue-on-search-value-teachers-without-lookahead.md)）。
+- 先読み教師との組み合わせ。先読み教師は記録が欠けた手数を飛ばして残った将来の記録から計算できるが、参照する将来の局面が減って教師の性質が変わる。NNUEの標準の教師は先読みを使わない（[ADR](../adr/train-the-nnue-on-search-value-teachers-with-the-squared-win-rate-difference.md)）。
 
 ## 依存関係
 

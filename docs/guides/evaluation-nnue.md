@@ -341,14 +341,14 @@ z_\theta(p) = \frac{ \phi(p) \sum_{i \in \mathcal{A}_0(p)} w_i^{\mathrm{mg}} + \
 ```
 
 予測する勝率は $`\sigma(z_\theta(p))`$ であり、cp単位の評価値は $`K z_\theta(p)`$ に当たる。
-勝率尺度 $`K`$ は、学習器に基準の重みファイルとして与えた `pst.bin` のヘッダの値を引き継ぎ、データから推定し直さない（[勝率尺度を重みファイルの1定数とし、教師の勝率尺度は較正コマンドで求めて学習の引数で与える](../adr/hold-cp-per-logit-in-the-weight-header-and-pass-the-teacher-scale-explicitly.md)）。
+勝率尺度 $`K`$ は、学習器に基準の重みファイルとして与えた `pst.bin` のヘッダの値を引き継ぎ、データから推定し直さない（[勝率尺度を重みファイルの1定数とし、NNUEの教師の探索値も既定ではその尺度で勝率へ換算する](../adr/convert-nnue-teacher-values-with-the-network-win-rate-scale-by-default.md)）。
 評価値100 cpは勝率約52%、500 cpは約61%に対応する。
 
 ### 教師値
 
 学習データは、自己対局で現れた各局面について、盤面、手番側が着手を選ぶために行った探索の値（cp、手番側から見た値）、および対局の最終結果を記録したものである。
 NNUEの教師値は、探索値だけを使い、最終結果を混ぜない。
-対局結果は同じ対局の全ての局面で同じ値を取るので、非線形の経路が結果を対局ごとの記憶として学ぶおそれがあるからである（[NNUEは先読みを使わない探索値だけの教師で学ぶ](../adr/train-the-nnue-on-search-value-teachers-without-lookahead.md)）。
+対局結果は同じ対局の全ての局面で同じ値を取るので、非線形の経路が結果を対局ごとの記憶として学ぶおそれがあるからである（[NNUEは先読みを使わない探索値だけの教師で、勝率の差の2乗を損失として学ぶ](../adr/train-the-nnue-on-search-value-teachers-with-the-squared-win-rate-difference.md)）。
 
 探索値には、記録した局面自身の値 $`s_t`$ をそのまま使い、PSTとFMの学習で使う先読み値（[PSTとFMの解説の「先読み教師」](evaluation-pst-fm.md#先読み教師)）には置き換えない。
 添字 $`t`$ は対局の何手目の局面かを表す。
@@ -496,7 +496,10 @@ GPUの学習器を設計した理由は、[NNUEの学習器をRustのホスト�
 - [NNUEの入力特徴集合に王の位置で条件付けないP型を使う](../adr/use-p-type-input-features-for-the-nnue.md)
 - [NNUEを、探索用駒価値で初期化した線形の経路と、要素積と2段の隠れ層を持つ非線形の経路で組み立てる](../adr/compose-the-nnue-of-a-piece-value-initialized-linear-path-and-pairwise-products-with-two-hidden-layers.md)
 - [P型のNNUEは左右鏡映の対で第1層の重みを半幅だけ回して共有する](../adr/share-p-type-mirror-weights-by-half-width-rotation.md)
-- [NNUEは先読みを使わない探索値だけの教師と二値交差エントロピーで学ぶ](../adr/train-the-nnue-on-search-value-teachers-without-lookahead.md)
+- [NNUEは先読みを使わない探索値だけの教師で、勝率の差の2乗を損失として学ぶ](../adr/train-the-nnue-on-search-value-teachers-with-the-squared-win-rate-difference.md)
+- [NNUEは64 superbatchを余弦の学習率の予定で学び、学び終えた最後のネットを書き出す](../adr/train-the-nnue-for-64-superbatches-and-export-the-last-network.md)
+- [勝率尺度を重みファイルの1定数とし、NNUEの教師の探索値も既定ではその尺度で勝率へ換算する](../adr/convert-nnue-teacher-values-with-the-network-win-rate-scale-by-default.md)
+- [NNUEの学習では、どのパラメータ群にも重み減衰を掛けない](../adr/apply-no-weight-decay-to-the-nnue.md)
 - [NNUEの学習器から駒除去差分の補助損失を外し、書き出し時に符号反転の割合を記録する](../adr/drop-the-piece-removal-auxiliary-loss-from-the-nnue-trainer.md)
 - [線形の評価の2組の重みを盤上総駒数で補間する](../adr/interpolate-the-linear-path-by-total-piece-count.md)
 - [NNUEによるPST＋FMの完全代替](../plans/archived/nnue-replacement.md)

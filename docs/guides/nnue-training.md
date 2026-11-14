@@ -307,7 +307,7 @@ minase-trainer nnue fit-linear --base <出力ディレクトリ>/nnue.bin \
 - Dの95%区間は、`decision.games`から対局単位のブートストラップで求める（例は[`fit_report.py`](../measurements/nnue-outcome-regression/nnue-outcome-regression-fit/fit_report.py)）。上限が0未満なら予測の改善を確認できる。
 - 補正は`--base`のネットに対して求めるので、ネットを学び直したら求め直す。
 - Dと補正の大きさは、教師や`--lambda`を変えたときに残る偏りの目安になる。
-- 式と局面の選び方は`crates/minase-trainer/src/nnue/fit_linear/mod.rs`に、方式の理由は[ADR](../adr/correct-the-nnue-linear-path-by-regressing-on-game-outcomes.md)にある。
+- 式と局面の選び方は`crates/minase-trainer/src/nnue/fit_linear/mod.rs`に、標準レシピで補正しない理由は[ADR](../adr/do-not-correct-the-nnue-linear-path-after-training.md)にある。
 
 ## 学習器を変更したとき
 
@@ -520,4 +520,4 @@ done
 | 保存物の各項目 | `crates/minase-trainer/src/nnue/train/record.rs` |
 | チェックポイントの形式 | `crates/minase-trainer/src/nnue/model/checkpoint.rs`の`Checkpoint` |
 | 学習データの形式、教師値、検証集合の分け方 | `crates/minase/src/training/`と`crates/minase-trainer/src/data/`（PSTとFMの学習器と共通） |
-| 方式を選んだ理由 | ADRの[カーネルの書き方](../adr/write-trainer-kernels-in-cuda-cpp-via-nvrtc.md)、[第1層の勾配](../adr/backpropagate-the-first-layer-through-a-reverse-index.md)、[AdamWの式](../adr/use-pytorch-adamw-with-bias-correction.md)、[教師と損失](../adr/train-the-nnue-on-search-value-teachers-without-lookahead.md) |
+| 方式を選んだ理由 | ADRの[カーネルの書き方](../adr/write-trainer-kernels-in-cuda-cpp-via-nvrtc.md)、[第1層の勾配](../adr/backpropagate-the-first-layer-through-a-reverse-index.md)、[AdamWの式](../adr/use-pytorch-adamw-with-bias-correction.md)、[教師と損失](../adr/train-the-nnue-on-search-value-teachers-with-the-squared-win-rate-difference.md)、[学習の長さと書き出すネット](../adr/train-the-nnue-for-64-superbatches-and-export-the-last-network.md)、[教師の勝率尺度](../adr/convert-nnue-teacher-values-with-the-network-win-rate-scale-by-default.md) |

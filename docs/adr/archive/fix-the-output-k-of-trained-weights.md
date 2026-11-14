@@ -2,7 +2,7 @@
 
 ## ステータス
 
-置き換え済み。決定日は2026年9月14日。[勝率尺度を重みファイルの1定数とし、教師の勝率尺度は較正コマンドで求めて学習の引数で与える](../hold-cp-per-logit-in-the-weight-header-and-pass-the-teacher-scale-explicitly.md)によって置き換えられた。
+置き換え済み。決定日は2026年9月14日。[勝率尺度を重みファイルの1定数とし、教師の勝率尺度は較正コマンドで求めて学習の引数で与える](hold-cp-per-logit-in-the-weight-header-and-pass-the-teacher-scale-explicitly.md)によって置き換えられた。
 
 ## コンテキスト
 

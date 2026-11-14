@@ -2,7 +2,7 @@
 
 ## ステータス
 
-置き換え済み。決定日は2026年10月12日。[NNUEは先読みを使わない探索値だけの教師と二値交差エントロピーで学ぶ](../train-the-nnue-on-search-value-teachers-without-lookahead.md)によって置き換えられた。
+置き換え済み。決定日は2026年10月12日。[NNUEは先読みを使わない探索値だけの教師と二値交差エントロピーで学ぶ](train-the-nnue-on-search-value-teachers-without-lookahead.md)によって置き換えられた。
 
 ## コンテキスト
 

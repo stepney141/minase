@@ -328,7 +328,7 @@ minaseの1局あたりの局面数が多いことは周回数を増やす側に�
 | 第1層の初期値をfan-in | tatara、LayerStack | +31.17 ±13.79 nElo（1,220ペア） | なし | [PR #363](https://github.com/SH11235/tatara/pull/363) |
 | 因子化を有効 | tatara | +8 ±10 nElo。40 superbatchの時点は+29 Elo | なし | [PR #303](https://github.com/SH11235/tatara/pull/303) |
 | 重複の除去、静止探索の末端への置換 | tatara公開実験、固定ノード | HalfKPで+29 ±15、+111 ±15 nElo、幅1536で−2 ±15、−5 ±15 nElo | なし | [リリース](https://github.com/SH11235/rshogi/releases/tag/nnue-experiments-202607) |
-| 同じデータの予定の比較（cosineと一定） | minase、STC | 281ペアで`H1`（候補の得点は[記録](../measurements/nnue-lr-schedule/nnue-lr-schedule-cosine-stc.md)のペンタノミアル度数[42, 2, 138, 3, 96]） | 幅128、先読みの教師の時代の比較である。現行の幅256、出力部、および教師では測っていない | [ADR](../adr/anneal-the-nnue-learning-rate-with-a-cosine-schedule.md) |
+| 同じデータの予定の比較（cosineと一定） | minase、STC | 281ペアで`H1`（候補の得点は[記録](../measurements/nnue-lr-schedule/nnue-lr-schedule-cosine-stc.md)のペンタノミアル度数[42, 2, 138, 3, 96]） | 幅128、先読みの教師の時代の比較である。現行の幅256、出力部、および教師では測っていない | [ADR](../adr/archive/anneal-the-nnue-learning-rate-with-a-cosine-schedule.md) |
 
 ### 慣習にすぎない設定
 

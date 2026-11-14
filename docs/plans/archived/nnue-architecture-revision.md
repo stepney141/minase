@@ -66,7 +66,7 @@ minaseの非線形の経路は$`\sum_j w_j\,\mathrm{clamp}(x_j,0,1)^2`$であり
 
 現在の構成に隠れ層がないのは、不要だと確かめたからではない。
 費用の小さい方から試すという理由で直接内積を選び（[考察](../../proposals/archived/nnue-architecture-discussion.md)）、幅16の隠れ層（以下S1）は検証損失がわずかに高いという理由で対局せずに見送った（[ADR](../../adr/archive/keep-the-direct-screlu-head-after-the-hidden-layer-candidates-did-not-lower-validation-loss.md)）。
-その比較で使った先読み教師は、訓練対局への過剰な適合を強めるとして翌日に廃止された（[ADR](../../adr/train-the-nnue-on-search-value-teachers-without-lookahead.md)）。
+その比較で使った先読み教師は、訓練対局への過剰な適合を強めるとして翌日に廃止された（[ADR](../../adr/archive/train-the-nnue-on-search-value-teachers-without-lookahead.md)）。
 
 本書で使う語を次のとおり定める。
 
@@ -83,7 +83,7 @@ minaseの非線形の経路は$`\sum_j w_j\,\mathrm{clamp}(x_j,0,1)^2`$であり
 - **dual activation**：同じ値を2乗とclipped ReLUの両方に通して連結することである。
 - **線形の経路**：駒の種類と升ごとの点数を足す表である。他のエンジンのPSQT（piece-square table）にあたる。
 - **P型**：入力特徴を駒と升の組だけで作るminaseの現行の入力特徴集合である（13,680個）。**HalfKP-hm-b8**は、自玉の位置の区分で条件付ける別の入力特徴集合である（109,440個）。
-- **結果回帰**：学習の後に線形の経路の一部を対局結果へ回帰する補正である（[ADR](../../adr/correct-the-nnue-linear-path-by-regressing-on-game-outcomes.md)）。現行のmasterのネットにはこの補正が入っている。
+- **結果回帰**：学習の後に線形の経路の一部を対局結果へ回帰する補正である（[ADR](../../adr/archive/correct-the-nnue-linear-path-by-regressing-on-game-outcomes.md)）。現行のmasterのネットにはこの補正が入っている。
 - **基準**：masterの探索のコードに、補正前の幅128のネット`5257f374…`（コミット`6d47da2a`で埋め込んだもの）を載せたコミットである。
 - **NPS**：1秒あたりの探索局面数である。**bench**は固定の局面を固定の深さで探索する速度の測定である。
 - **飽和率**：活性化の入力が0以下または1以上になって、勾配が流れない成分の割合である。**汎化差**は、検証の対局と訓練の対局の損失の差である。

@@ -2,19 +2,19 @@
 
 ## ステータス
 
-承認済み。決定日は2026年11月3日。
+置き換え済み。決定日は2026年11月3日。[NNUEの線形の経路を、学習の後に対局結果で補正しない](../do-not-correct-the-nnue-linear-path-after-training.md)によって置き換えられた。
 
 ## コンテキスト
 
 minaseのNNUEは探索値だけを教師として学び、対局結果を教師値に使わない（[ADR](train-the-nnue-on-search-value-teachers-without-lookahead.md)）。
-そのネットで指すと、20〜99手目の奔王は85.8%の手数で自陣の最下段から2段以内にいるなど、人間の上位者、HaChu、およびゼロから学んだAlphaZero型のネットがそろって示さない配置が複数の駒に現れた（[集計](../measurements/adhoc/piece-placement-census.md)）。
-保存済みの対局では、評価値と駒の枚数の差で条件付けても、配置が対局結果を予測した（[回帰の記録](../measurements/adhoc/nnue-placement-outcome-regression.md)）。
+そのネットで指すと、20〜99手目の奔王は85.8%の手数で自陣の最下段から2段以内にいるなど、人間の上位者、HaChu、およびゼロから学んだAlphaZero型のネットがそろって示さない配置が複数の駒に現れた（[集計](../../measurements/adhoc/piece-placement-census.md)）。
+保存済みの対局では、評価値と駒の枚数の差で条件付けても、配置が対局結果を予測した（[回帰の記録](../../measurements/adhoc/nnue-placement-outcome-regression.md)）。
 2026年11月3日にエンジンの開発者は、この偏りを減らしつつ強くする方法の検討を求め、採用の条件を棋力の向上と配置の偏りの減少の両方と決めた。
 
-[設計書](../plans/archived/nnue-outcome-regression.md)では、既存の教師と現行のネットから補正を求めた。
-判定の対局の予測の損失は0.0071（95%区間0.0052〜0.0088）下がった（[回帰の記録](../measurements/nnue-outcome-regression/nnue-outcome-regression-fit.md)）。
-配置の距離は0.4602から0.4332へ下がり、差の95%区間は−0.0324〜−0.0218だった（[配置の記録](../measurements/nnue-outcome-regression/nnue-outcome-regression-placement-stc.md)）。
-段階ゲートは[STC](../measurements/nnue-outcome-regression/nnue-outcome-regression-stc.md)が117ペア、[LTC](../measurements/nnue-outcome-regression/nnue-outcome-regression-ltc.md)が122ペアでともに`H1`となった。
+[設計書](../../plans/archived/nnue-outcome-regression.md)では、既存の教師と現行のネットから補正を求めた。
+判定の対局の予測の損失は0.0071（95%区間0.0052〜0.0088）下がった（[回帰の記録](../../measurements/nnue-outcome-regression/nnue-outcome-regression-fit.md)）。
+配置の距離は0.4602から0.4332へ下がり、差の95%区間は−0.0324〜−0.0218だった（[配置の記録](../../measurements/nnue-outcome-regression/nnue-outcome-regression-placement-stc.md)）。
+段階ゲートは[STC](../../measurements/nnue-outcome-regression/nnue-outcome-regression-stc.md)が117ペア、[LTC](../../measurements/nnue-outcome-regression/nnue-outcome-regression-ltc.md)が122ペアでともに`H1`となった。
 
 ## 決定
 
@@ -29,7 +29,7 @@ LTCの時間切れ1件は、機械の一時的な停止によるものと判断�
 ## 検討した代案
 
 ネット全体をλ<1で学ぶ案は、今回は採らなかった。
-非線形部分が対局を識別して結果を記憶するおそれがあり（[教訓](../lessons/game-constant-target-memorization.md)）、予測は混合の比に応じた分しか動かない。
+非線形部分が対局を識別して結果を記憶するおそれがあり（[教訓](../../lessons/game-constant-target-memorization.md)）、予測は混合の比に応じた分しか動かない。
 この案はNNUEでは対局で測っていないので、棄却ではなく未検証である。
 
 第1層を固定して出力重みだけを回帰する案は、保存済みの対局で損失の減少幅が0.00181にとどまり、段と筋の補正の0.00390より小さかった。

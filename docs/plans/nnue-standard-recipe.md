@@ -58,7 +58,7 @@ minase自身の対局の測定が先行例と食い違う項目は、測定に�
 - **本**：教師の生成の単位である1ファイルで、7,500局を生成する。手数の上限4,000手に達した対局は破棄するので、中断した系列では1本あたり約7,450局を保存し、約250万〜280万局面を記録した。本の番号は0から数え、「番号0〜69の70本」のように番号と本数を書き分ける。
 - **生成コミット**：本を生成したプログラムのコミット。本のヘッダに記録される。**第0世代のコミット**は、本書の変更をすべて含めてv0のネットを埋め込んだコミットであり、第1世代の本の生成に使う。世代反復の設計書が置く。中断した系列の第0世代の生成コミットは、v0を埋め込んだ`6f874692`であり、教師生成の高速化より前のコードである。
 - **線形の経路**と**非線形部分**：NNUEの評価値はこの2つの和である。線形の経路は駒状態、陣営、および升ごとの点数（cp）を序中盤用と終盤用の2列で持つ表であり、非線形部分は第1層と出力部である。
-- **補正**：`minase-trainer nnue fit-linear`による、線形の経路の対局結果へのロジスティック回帰（outcome regression、Texel tuningと同種）。採否は[ADR](../adr/correct-the-nnue-linear-path-by-regressing-on-game-outcomes.md)にある。**D**は、補正ありの予測の損失から補正なしの損失を引いた値で、負なら補正が予測の損失を下げている。**τ**は補正の正則化の強さで、格子{10, 20, 40, 80}から損失が最も小さい値を選ぶ。値が大きいほど正則化は弱い。
+- **補正**：`minase-trainer nnue fit-linear`による、線形の経路の対局結果へのロジスティック回帰（outcome regression、Texel tuningと同種）。採否は[ADR](../adr/archive/correct-the-nnue-linear-path-by-regressing-on-game-outcomes.md)にある。**D**は、補正ありの予測の損失から補正なしの損失を引いた値で、負なら補正が予測の損失を下げている。**τ**は補正の正則化の強さで、格子{10, 20, 40, 80}から損失が最も小さい値を選ぶ。値が大きいほど正則化は弱い。
 - **勝率尺度**：ネットの重みファイルが持つ、ネットの評価値を勝率へ換算する1ロジットあたりのcp。識別子は`cp_per_logit`である。新しい系列の第1世代の最初の4本から推定した値を、新しい系列の全世代で使う。中断した系列では、同じ方法で679.03 cpと推定した。
 - **教師の勝率尺度**：教師の探索値を教師値の勝率へ換算する1ロジットあたりのcp。識別子は`teacher_cp_per_logit`である。現行の学習器は、教師の分類（生成コミット、重みの検査和、探索のノード数などの組）ごとに、学習のたびに訓練集合から推定する。標準レシピv1では推定し直さず、勝率尺度と同じ値を使う。
 - **リプレイバッファ**：学習に使う教師の世代の範囲。1世代分ではその世代の教師だけを使い、2世代分では直前の世代の教師も併用する。
@@ -107,11 +107,11 @@ minase自身の対局の測定が先行例と食い違う項目は、測定に�
 
 ネットの構成と学習の引数の大半は、[NNUEの構成の見直し](archived/nnue-architecture-revision.md)で確定した構成（[ADR](../adr/compose-the-nnue-of-a-piece-value-initialized-linear-path-and-pairwise-products-with-two-hidden-layers.md)）と、中断した系列の第2世代の学習の引数をそのまま使う。
 
-本書の測定2の結果により、[線形の経路の結果回帰](../adr/correct-the-nnue-linear-path-by-regressing-on-game-outcomes.md)を毎世代の手順に含める決定は改める。
+本書の測定2の結果により、[線形の経路の結果回帰](../adr/archive/correct-the-nnue-linear-path-by-regressing-on-game-outcomes.md)を毎世代の手順に含める決定は改める。
 本書の完了のときに、フェーズ6でこのADRを新しいADRに置き換える。
 線形の経路の学習率0.03（[AdamWの設定のADR](../adr/use-pytorch-adamw-with-bias-correction.md)が記録する値）と、中断した系列の設計書が決めた「その世代の教師だけで学ぶ」ことは、測定1と測定3の結果により変えない。
-学習の長さと書き出すネットの変更は、[学習率の予定のADR](../adr/anneal-the-nnue-learning-rate-with-a-cosine-schedule.md)が記録する予定の総長の単位と、検証損失による早期終了を改める。これも、フェーズ6でADRに書く。
-損失の変更は、[教師と損失のADR](../adr/train-the-nnue-on-search-value-teachers-without-lookahead.md)が定める二値交差エントロピーを改めるので、同じくフェーズ6でADRに書く。
+学習の長さと書き出すネットの変更は、[学習率の予定のADR](../adr/archive/anneal-the-nnue-learning-rate-with-a-cosine-schedule.md)が記録する予定の総長の単位と、検証損失による早期終了を改める。これも、フェーズ6でADRに書く。
+損失の変更は、[教師と損失のADR](../adr/archive/train-the-nnue-on-search-value-teachers-without-lookahead.md)が定める二値交差エントロピーを改めるので、同じくフェーズ6でADRに書く。
 
 ## 設計判断
 

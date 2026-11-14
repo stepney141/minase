@@ -37,7 +37,7 @@ Eloとレーティング差Rは、対局から推定した強さの差の単位�
 
 現行の教師は、自分の評価関数だけで作られている。
 生成器`minase data selfplay generate`は、初期局面から8〜16手のランダムな手順で開始局面を作り、その後は1局面2万ノードの探索で規則上の終局まで指す。
-学習の教師値は探索値だけであり、対局結果を混ぜない（[ADR](../adr/train-the-nnue-on-search-value-teachers-without-lookahead.md)）。
+学習の教師値は探索値だけであり、対局結果を混ぜない（[ADR](../adr/train-the-nnue-on-search-value-teachers-with-the-squared-win-rate-difference.md)）。
 [NNUEの標準レシピの設計書](../plans/nnue-standard-recipe.md)は、規則セットを`JCSA`から`lishogi`へ改め、学習の条件を決め直したうえで、世代反復を最初からやり直す。
 やり直す世代反復も、教師の作り方はこのまま使う。
 

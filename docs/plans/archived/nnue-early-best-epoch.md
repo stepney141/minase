@@ -8,7 +8,7 @@
 まず、同じ対局の後続40手の探索値を教師値に混ぜる先読み教師（TD(λ)に似た目標値）が訓練の対局への適合を強めるという仮説は「支持」された。
 先読みを外すと、対局結果に対する訓練と検証の損失の差（汎化差）は学習前のネットと区別できなくなった。
 ただし検証の対局の結果に対する損失は先読み教師のほうが低く、事前に定めた判定基準により「先読み教師は頭打ちの一因である」とは結論しなかった（[学習の記録](../../measurements/nnue-early-best-epoch/nnue-no-lookahead-training.md)）。
-一方、先読みを外して学んだネットは、STCとLTCの段階ゲートで現行のネットに対して`H1`となり、採用した（[STC](../../measurements/nnue-early-best-epoch/nnue-no-lookahead-stc.md)、[LTC](../../measurements/nnue-early-best-epoch/nnue-no-lookahead-ltc.md)、[ADR](../../adr/train-the-nnue-on-search-value-teachers-without-lookahead.md)）。
+一方、先読みを外して学んだネットは、STCとLTCの段階ゲートで現行のネットに対して`H1`となり、採用した（[STC](../../measurements/nnue-early-best-epoch/nnue-no-lookahead-stc.md)、[LTC](../../measurements/nnue-early-best-epoch/nnue-no-lookahead-ltc.md)、[ADR](../../adr/archive/train-the-nnue-on-search-value-teachers-without-lookahead.md)）。
 次に、独立な単位である対局の数が少ないことが頭打ちの一因であるという仮説も「支持」された。
 同じ約2,000万局面で、全21万局から疎に採った学習の検証損失は、約5万3千局から全局面を採った学習より約0.0009低く、最良になるエポックも2から6〜8へ遅れた（[記録](../../measurements/nnue-early-best-epoch/nnue-train-subsample.md)）。
 この比較のため、学習器に訓練集合を対局単位または局面単位で間引く引数`--train-subsample`を加えた。

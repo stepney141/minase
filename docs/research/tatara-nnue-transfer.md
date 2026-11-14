@@ -108,7 +108,7 @@ tataraは2026年10月22日のコミット`1046cb7`で設計記録`docs/decisions
 | 活性化 | CReLUの後に前半と後半の要素積（同上） | SCReLU（[head.rs](../../crates/minase/src/eval/nnue/head.rs) 61〜77行） |
 | 累算値の型 | tataraは学習専用で推論部がない。Stockfishはi16（nnue_accumulator.h 44行） | i32（[accumulator.rs](../../crates/minase/src/eval/nnue/accumulator.rs) 18行） |
 | 最適化器 | Ranger（β1=0.99、k=6、α=0.5。optimizer.rs 96〜129行） | AdamW（[options.rs](../../crates/minase-trainer/src/nnue/options.rs) 26〜42行） |
-| 教師の混合 | 既定は探索値だけ、公開の標準レシピは対局結果を1/3（[記事](https://note.com/ramu_shogi_dev/n/ndb0d9f2f2187)） | 探索値だけ（[ADR](../adr/train-the-nnue-on-search-value-teachers-without-lookahead.md)） |
+| 教師の混合 | 既定は探索値だけ、公開の標準レシピは対局結果を1/3（[記事](https://note.com/ramu_shogi_dev/n/ndb0d9f2f2187)） | 探索値だけ（[ADR](../adr/archive/train-the-nnue-on-search-value-teachers-without-lookahead.md)） |
 | 損失 | 勝率空間の二乗誤差。素のシグモイドかWRM（cli.rs 535〜541行、wrm-loss-tuning.ja.md 15〜33行） | 二値交差エントロピー（同ADR） |
 
 1重みあたりの局面数は両者で近いが、独立な単位である対局の数はおそらく大きく違う。
@@ -168,7 +168,7 @@ Stockfishは利き特徴を入れた後に第1層を縮め、現行は幅1024で
 (d) 棋力の見込みはデータの規模次第である。
 minaseでHalfKP-hm-b8の検証損失がエポック1で最良になったこと（[記録](../measurements/nnue-early-best-epoch/halfkp-retrain-stc.md)）と、S1の訓練損失だけが下がったことは、容量より教師の対局数が先に尽きることを示唆する（推論）。
 ただし検証損失は棋力を予測しない。
-静止探索の末端への置換は符号一致率を下げてHalfKPで+111 ±15 nEloを得ており（[実験のリリース](https://github.com/SH11235/rshogi/releases/tag/nnue-experiments-202607)）、minaseでも検証の対局の結果に対する損失で負けた先読みなしのネットが対局で勝っている（[ADR](../adr/train-the-nnue-on-search-value-teachers-without-lookahead.md) 26行）。
+静止探索の末端への置換は符号一致率を下げてHalfKPで+111 ±15 nEloを得ており（[実験のリリース](https://github.com/SH11235/rshogi/releases/tag/nnue-experiments-202607)）、minaseでも検証の対局の結果に対する損失で負けた先読みなしのネットが対局で勝っている（[ADR](../adr/archive/train-the-nnue-on-search-value-teachers-without-lookahead.md) 26行）。
 そこで固定ノードの対局で「速度を除いた評価の質」を先に診断し、速度の損失を上回る利得が見えた構成だけを段階ゲートへ出す。
 容量を増やしても教師の癖を同じように学ぶので、偏りが減ると見込む理由はない。
 
@@ -327,7 +327,7 @@ tataraはMITなので式とカーネルの設計を参照でき、作業は1〜2
 公開の標準レシピは対局結果を1/3混ぜ（[記事](https://note.com/ramu_shogi_dev/n/ndb0d9f2f2187)）、nodchip氏の2026年2月の記事は探索値だけで学ぶ。
 Stockfishの2026年9月の設定はλを1から0.7へ下げて1へ戻すが、単独の効果は分離されていない（[チェス評価関数の教師と混合比](chess-evaluation-targets.md) 59〜78行）。
 
-(c) minaseはλ<1を、同じ対局の全局面で同じ値を取る対局結果をネットが対局ごとに覚えてしまう過学習（対局の記憶）を理由に、対局で測らずに退けた（[ADR](../adr/train-the-nnue-on-search-value-teachers-without-lookahead.md) 27行、[教訓](../lessons/game-constant-target-memorization.md)）。
+(c) minaseはλ<1を、同じ対局の全局面で同じ値を取る対局結果をネットが対局ごとに覚えてしまう過学習（対局の記憶）を理由に、対局で測らずに退けた（[ADR](../adr/archive/train-the-nnue-on-search-value-teachers-without-lookahead.md) 27行、[教訓](../lessons/game-constant-target-memorization.md)）。
 旧ADRは、混合の比を変える提案は対局で測って決めると書いている（[旧ADR](../adr/archive/train-the-nnue-on-search-value-lookahead-teachers.md)の結果の節）。
 `--lambda`は既存の引数なので、一定値ならコード変更は要らない。
 余弦の周期には学習率と同じ形の倍率が要り、Stockfishの形なら学習の終わりにλ=1へ戻るので、対局の記憶を最後に薄める狙いが立つ（推論）。
@@ -350,7 +350,7 @@ Stockfishの2026年9月の設定はλを1から0.7へ下げて1へ戻すが、�
 同じPRは、L1からL3の初期値の変更は+5.86 ±12.43 nEloで未決着と記す。
 学習率の減衰率は[PR #275](https://github.com/SH11235/tatara/pull/275)に見積もりがあるだけで、測られていない。
 
-(c) minaseの学習率は`cosine:3:0.1`で既に検証損失から選ばれており（[ADR](../adr/anneal-the-nnue-learning-rate-with-a-cosine-schedule.md)）、tataraから足す根拠はない。
+(c) minaseの学習率は`cosine:3:0.1`で既に検証損失から選ばれており（[ADR](../adr/archive/anneal-the-nnue-learning-rate-with-a-cosine-schedule.md)）、tataraから足す根拠はない。
 初期値は標準偏差0.05で（[model/mod.rs](../../crates/minase-trainer/src/nnue/model/mod.rs) 399〜401行）、fan-in則の0.00494の約10倍である（推論の計算）。
 fan-in則では初期局面の入力和の標準偏差が約0.05になり、[教訓](../lessons/nnue-first-layer-init-saturation.md)の下限0.2を下回る。
 
@@ -475,7 +475,7 @@ Pairwiseも同じ形で書けるので同様にベクトル化される見込み
 順序は、出典に対局の測定があるか、データの規模に依存しないか、推論費用が現行以下か、実装がどれだけ小さいか、偏りに働きかける仕組みがあるかの5つで決めた。
 採否はすべて[段階ゲート](../guides/sprt.md)のコミット対コミットで決め、検証損失や符号一致率だけでは見送らない。
 
-1回の所要時間の目安は、学習が約30分（1エポック71〜78秒、[採用したネットは22エポック](../adr/train-the-nnue-on-search-value-teachers-without-lookahead.md)）、STCが上限3,000ペアで約7時間（[記録](../measurements/nnue-material-linear-init/nnue-material-linear-init-noninferiority-stc.md)の8.2秒/ペア）、LTCが1,500ペアで約11時間（[記録](../measurements/nnue-material-linear-init/nnue-material-linear-init-noninferiority-ltc.md)の26秒/ペア）である。
+1回の所要時間の目安は、学習が約30分（1エポック71〜78秒、[採用したネットは22エポック](../adr/archive/train-the-nnue-on-search-value-teachers-without-lookahead.md)）、STCが上限3,000ペアで約7時間（[記録](../measurements/nnue-material-linear-init/nnue-material-linear-init-noninferiority-stc.md)の8.2秒/ペア）、LTCが1,500ペアで約11時間（[記録](../measurements/nnue-material-linear-init/nnue-material-linear-init-noninferiority-ltc.md)の26秒/ペア）である。
 大きな差が出れば早く止まり、先読みを外したネットのLTCは237ペア、55分で決着した（[記録](../measurements/nnue-early-best-epoch/nnue-no-lookahead-ltc.md)）。
 
 各候補のLTCの棋譜から、[集計](../measurements/adhoc/piece-placement-census.md)の5配置と[結果回帰の設計書](../plans/archived/nnue-outcome-regression.md)の距離を計算して記録する。
