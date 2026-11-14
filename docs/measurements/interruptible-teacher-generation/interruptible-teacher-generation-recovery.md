@@ -2,7 +2,7 @@
 
 ## 目的
 
-[中断可能な計算機での教師生成の設計書](../../plans/interruptible-teacher-generation.md)のフェーズ1として、制御スクリプト`scripts/vast/teacher_generation.py`が、生成機が止まったときに旧機を削除し、別の機械を借りて、回収済みの塊から同じ教師ファイルの続きを生成できることを確かめる。
+[中断可能な計算機での教師生成の設計書](../../plans/archived/interruptible-teacher-generation.md)のフェーズ1として、制御スクリプト`scripts/vast/teacher_generation.py`が、生成機が止まったときに旧機を削除し、別の機械を借りて、回収済みの塊から同じ教師ファイルの続きを生成できることを確かめる。
 制御スクリプトは手元の作業機で動き、計算機を時間単位で借りられる市場vast.aiで借りた機械（生成機）の上で、教師生成の生成器`minase data selfplay generate`を動かす。
 生成器は、教師ファイルの7,500局を250局ずつの塊に分けて確定させる。
 塊は、同じ番号のMNSDファイル（minaseの教師データのバイナリ形式）と集計JSONの組でできている。

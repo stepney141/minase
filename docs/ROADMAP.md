@@ -140,7 +140,7 @@
 | MCTSの葉での王駒の捕獲の判定と方策の温度 | [plans/archived/mcts-royal-capture-temperature.md](plans/archived/mcts-royal-capture-temperature.md) | 完了（採用） | 2026年11月9日 |
 | 起動引数と診断ツールをUSIへ移す | [plans/archived/cli-to-usi.md](plans/archived/cli-to-usi.md) | 完了（採用） | 2026年11月12日 |
 | NNUEの教師生成を中断の後に再開できるようにする | [plans/archived/resumable-nnue-teacher-generation.md](plans/archived/resumable-nnue-teacher-generation.md) | 完了（採用） | 2026年11月14日 |
-| 中断可能な計算機での教師生成 | [plans/interruptible-teacher-generation.md](plans/interruptible-teacher-generation.md) | 起案 | |
+| 中断可能な計算機での教師生成 | [plans/archived/interruptible-teacher-generation.md](plans/archived/interruptible-teacher-generation.md) | 完了（採用） | 2026年11月14日 |
 
 ## 現在地
 
@@ -158,12 +158,11 @@ NNUEの作業の本線は、標準の学習条件（標準レシピv1）で、�
 強くする手段に人間の棋譜は使わない（[設計判断の記録](adr/do-not-use-human-games-to-strengthen-the-engine.md)）。
 やり直す世代反復の自己対局と、世代ごとの強さを判定する対局は、オンライン対局サイトlishogiの実装に近い規則セット`lishogi`で行う（2026年11月13日の利用者の決定）。
 
-設計書は次の5本である。
+設計書は次の4本である。
 
 | 設計書 | 内容 | 状態と次の判断 | 前提 |
 |---|---|---|---|
 | [標準レシピv1と世代反復のやり直し](plans/nnue-standard-recipe.md) | 標準レシピv1で、v0から最大第4世代までの世代反復を行い、最終候補を、構成を見直す前のネットと比べる。 | 待機中である。学習条件を決める測定（フェーズ1）と生成スクリプトの変更（フェーズ2）を終えた。標準レシピv1は、線形の経路（駒と升ごとの点数の表）の学習率0.03、学習後の補正なし、およびその世代の教師だけでの学習と決まった。フェーズ3は、規則を`lishogi`へ切り替えて第1世代の教師ファイル37本を生成する。計算機を借りるので、利用者の着手の指示を待つ。 | なし |
-| [中断可能な計算機での教師生成](plans/interruptible-teacher-generation.md) | vast.aiの中断可能インスタンスで教師を生成する。作業機の制御スクリプトが確定した塊を60秒おきに回収し、生成機が止まったら別の機械を借りて続きから生成する。記録局面1億あたりの総費用を、止められない通常の借り方と比べる。 | 起案の段階で、候補の機械の速さを測るフェーズ0は、利用者の着手の指示を待つ。GCPのSpot VMは、vCPUの枠が全リージョン合計64と小さく、[予備測定](measurements/adhoc/gcp-spot-teacher-generation-speed.md)の1ファイル約0.25米ドルがvast.aiの見込みより高いので、使わない。 | なし |
 | [先読みなしの教師での間引きの比較](plans/nnue-subsample-no-lookahead.md) | 同じ局面数を少数の対局から採る学習と、多数の対局から採る学習を比べ、対局数が多いほど良いという効果が、後続の局面の探索値を混ぜない現行の教師（先読みなしの教師）でも残るかを確かめる。 | 起案の段階で、世代反復の結果を見て、続けるかを決める。 | なし |
 | [記録する局面の間引き](plans/sparse-teacher-recording.md) | 4手に1手だけを2万ノードで探索して記録し、残りの手を少ないノード数で指して、同じ計算量で対局数を増やす。 | 起案の段階である。日本中将棋連盟の規則に基づく規則セット`JCSA`の教師を使う前提で書かれているので、着手の前に`lishogi`の規則に合わせて改める。 | 「間引きの比較」が、現行の教師でも対局数の効果が残ると判定すること（同書の判定1が「支持」）、および世代反復の完了 |
 | [第1層の全再計算の差分化（Finny tables）](plans/nnue-finny-tables.md) | ネットの第1層の値の全再計算を、保存した値からの差分の更新に置き換える。 | 待機中である。全再計算は、入力特徴を自玉の位置で条件付けるネットで、自玉が別の区分へ動いたときに起きる。現行のネットは自玉の位置で条件付けないので、探索中に全再計算が起きない。 | 自玉の位置で条件付けるネットを対局で測ると決まること、または第1層の値の更新方式が変わること |
@@ -172,7 +171,7 @@ NNUEの作業の本線は、標準の学習条件（標準レシピv1）で、�
 「記録する局面の間引き」が「間引きの比較」の判定を前提とする。
 「記録する局面の間引き」に効果を見込めるのは、対局数の効果が現行の教師でも残ると確かめられた場合だからである。
 「記録する局面の間引き」は、標準レシピv1が固定した1世代の教師の作り方を変えるので、世代反復の後に扱う。
-「中断可能な計算機での教師生成」が終われば、世代反復の教師を安い計算機で生成できるが、世代反復は、通常料金で借りる今の計算機でも進められる。
+世代反復の教師ファイルは、[中断可能な計算機での教師生成](plans/archived/interruptible-teacher-generation.md)で作った制御スクリプトで、vast.aiの中断可能インスタンスを最低入札額で借りて生成する（[ADR](adr/rent-interruptible-instances-at-the-minimum-bid-for-teacher-generation.md)）。
 世代反復のフェーズ3の規則の切り替えは、「教師生成の中断と再開」が改めた生成器と生成スクリプトに合わせて行い、各世代の生成に使うコミットはこの変更を含むものにする。
 
 世代反復の最終候補は、[NNUEの構成の見直し](plans/archived/nnue-architecture-revision.md)をmasterへ統合する前のコミットを残したブランチ`nnue-width128-regressed`と比べる。

@@ -5,6 +5,7 @@
 | したいこと | 読む場所 |
 |---|---|
 | 学習を実行する | [標準レシピ](#標準レシピ)と[手順](#手順) |
+| vast.aiで教師ファイルを生成する | [vast.aiで教師ファイルを生成する](#vastaiで教師ファイルを生成する) |
 | 中断した学習を再開する | [中断した学習を再開する](#中断した学習を再開する) |
 | メモリに収まらない教師データで学習する | [メモリに収まらない教師データで学習する](#メモリに収まらない教師データで学習する) |
 | 学習器のコードを変更した | [学習器を変更したとき](#学習器を変更したとき) |
@@ -75,6 +76,7 @@ minase-trainer nnue fit-linear --base <学習の出力>/nnue.bin \
 **学習データ**
 
 - [PSTとFMの学習手順](pst-training.md)の2節と3節に従ってMNSDファイルを生成し、`--data`に入力順で指定する。教師の分類番号は初出順に付く。
+- 世代反復の教師ファイルをvast.aiで生成するときは、[vast.aiで教師ファイルを生成する](#vastaiで教師ファイルを生成する)に従う。
 - 学習器は開始時に全ファイルの手順を再生して局面を復元する。この時間は`config.json`の`preprocessing_seconds`に残る。
 
 **初期値（`--base`）**
@@ -249,6 +251,33 @@ minase-trainer nnue fit-linear --base <出力ディレクトリ>/nnue.bin \
 - 記録には、学習器のコミット、コマンドライン全体、入力のパスと記録数、重みのSHA-256、停止理由、診断の要点を書く。
 
 ## 必要なときの操作
+
+### vast.aiで教師ファイルを生成する
+
+教師ファイルは、計算機を時間単位で借りられる市場vast.aiの中断可能インスタンスを最低入札額で借りて生成する（[ADR](../adr/rent-interruptible-instances-at-the-minimum-bid-for-teacher-generation.md)）。
+作業機の制御スクリプト`scripts/vast/teacher_generation.py`が生成機を1台ずつ借り、確定した塊を60秒おきに回収し、生成機が止められたら別の機械を借りて続きから生成する（[ADR](../adr/generate-teacher-files-on-one-rented-machine-and-continue-from-collected-chunks-on-another.md)）。
+仕様はスクリプトのdocコメントにある。
+
+借りる前に`vastai show user`が残高を返すことを確かめ、2段階認証の要求で失敗すれば`vastai tfa login`でログインし直す。
+制御スクリプトは、作業機のセッションが終わっても動き続けるように`systemd-run --user`のサービスとして起動する。
+次は、第N世代の教師ファイル0〜36を生成する例である。
+
+```sh
+systemd-run --user --unit=<サービス名> --setenv=PATH="$PATH" -p WorkingDirectory=<worktree> \
+  /bin/bash -c "exec python3 scripts/vast/teacher_generation.py run --run-dir <実行ディレクトリ> \
+    --repo <リポジトリ> --ref <生成コミットを含む参照> --commit <生成コミット> --minase-bin <検査に使うminase> \
+    --generation <N> --first-book 0 --last-book 36 --seed-base <番号0のシード> --seed-book-step 100000 \
+    --games 7500 --nodes 20000 --random-moves 0 --max-ply 4000 --hash-mb 16 --chunk-games 250 \
+    --rental interruptible --max-price <時間単価の上限> --deadline <UTCの絶対期限> \
+    --max-cost <累計費用の上限> --max-rentals <借りる回数の上限> >> <ログ> 2>&1"
+```
+
+- 受け入れの検査に通った教師ファイルと生成ログは、実行ディレクトリの`gen-<N>/teacher/`と`gen-<N>/logs/`に置かれる。連続生成スクリプト`scripts/vast/generation_chain.py`で学習するときは、これらを連続生成スクリプトの実行ディレクトリの同じ位置へハードリンクで置き、`--train-place local`で再開する。
+- 連続生成スクリプトは、第N世代の番号iの教師ファイルのシードを`seed_base + seed_generation_step × N + seed_book_step × i`として照合する。制御スクリプトの`--seed-base`には、この式でiを0とした値（`seed_base + seed_generation_step × N`）を、`--seed-book-step`には連続生成スクリプトと同じ`seed_book_step`を渡す。生成コミットは第N−1世代のコミットとする。
+- 途中で止めるときは、`systemctl --user kill --kill-whom=main --signal=SIGTERM <サービス名>`で主プロセスに終了シグナルを送る。制御スクリプトは最後の回収と生成機の削除の確認を行ってから終わる。`systemctl --user stop`は90秒で強制終了するので使わない。
+- 同じ引数で起動し直すと、受け入れ済みの教師ファイルを飛ばして続きを生成する。累計費用、絶対期限、および借りる回数の上限は実行ディレクトリに保存され、起動し直しても初期化されない。
+- 費用を残高の差で記録するときは、削除した機械の課金が数分遅れて反映されるので、残高が変わらなくなるまで待ってから読む。
+- 2026年11月14日の試行では、1世代37本の換算は約17.2時間、約16.5米ドルであった（[測定記録](../measurements/interruptible-teacher-generation/interruptible-teacher-generation-trial.md)）。
 
 ### 中断した学習を再開する
 
