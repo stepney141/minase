@@ -123,15 +123,15 @@ def book_number(path: Path) -> int:
 
 
 def read_header(path: Path) -> dict[str, Any]:
-    """MNSD版2の公開形式から、検査済みの本のヘッダだけを読む。"""
+    """MNSD版3の公開形式から、検査済みの本のヘッダだけを読む。"""
     with path.open('rb') as stream:
         header = stream.read(152)
     if len(header) != 152:
         raise ChainStop(f'本のヘッダが途中で切れています: {path}')
     magic, version, rules, commit, checksum, kind, reserved, budget, seed, games, entries = struct.unpack(
         '<4sI32s40s32sB7sQQQQ', header)
-    if magic != b'MNSD' or version != 2:
-        raise ChainStop(f'MNSD版2の本ではありません: {path}')
+    if magic != b'MNSD' or version != 3:
+        raise ChainStop(f'MNSD版3の本ではありません: {path}')
     return {'generation_commit': commit.decode('ascii'), 'network_checksum': checksum.hex(),
             'rule_set': rules.rstrip(b'\0').decode('utf-8'), 'teacher_search_budget': budget,
             'seed': seed, 'game_count': games, 'entry_count': entries}
@@ -244,7 +244,7 @@ class Chain:
         return self.args.seed_base + self.args.seed_generation_step * generation + self.args.seed_book_step * number
 
     def expected_header(self, generation: int, number: int, commit: str, checksum: str) -> dict[str, Any]:
-        return {'generation_commit': commit, 'network_checksum': checksum, 'rule_set': 'L0,P0,R1,E0',
+        return {'generation_commit': commit, 'network_checksum': checksum, 'rule_set': 'L1,L2,P0,P3,R1,E1,E3',
                 'seed': self.seed(generation, number), 'teacher_search_budget': self.args.nodes}
 
     def check_header(self, header: dict[str, Any], generation: int, number: int,

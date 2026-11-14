@@ -40,6 +40,7 @@
 //! | `games` | 総対局数G。開始局面一覧を使う場合は一覧の行数。 |
 //! | `chunk_games` | 塊の局数M。 |
 //! | `nodes` | 1手の探索のノード数の上限。 |
+//! | `policy` | 開始局面の上限1,700 cp、裁定の下限4,250 cp、連続5回の固定条件。再開時にも一致を要求する。 |
 //! | `random_moves` | 1局に注入するランダム着手の上限。 |
 //! | `max_ply` | 1局の手数上限。 |
 //! | `hash_mb` | 生成器のスレッドごとの置換表の容量。1局の中で残る探索結果を変える。 |
@@ -133,7 +134,7 @@
 
 use super::{
     opening::Opening,
-    play::{PlaySettings, play_game, play_game_from_opening},
+    play::{GenerationPolicy, PlaySettings, play_game, play_game_from_opening},
     statistics::{format_rate_percent, score_mean_and_std, score_percentile},
 };
 use minase::datagen::output::{DirectoryLock, atomic_json, commit_files};
@@ -174,6 +175,7 @@ struct Config {
     chunk_games: NonZeroU32,
     nodes: NonZeroU32,
     random_moves: u8,
+    policy: GenerationPolicy,
     max_ply: NonZeroU16,
     hash_mb: NonZeroUsize,
     openings_sha256: Option<String>,
@@ -197,6 +199,7 @@ impl Config {
             (self.chunk_games != saved.chunk_games, "chunk_games"),
             (self.nodes != saved.nodes, "nodes"),
             (self.random_moves != saved.random_moves, "random_moves"),
+            (self.policy != saved.policy, "policy"),
             (self.max_ply != saved.max_ply, "max_ply"),
             (self.hash_mb != saved.hash_mb, "hash_mb"),
             (
@@ -263,6 +266,7 @@ impl GenerationConditions {
                 chunk_games,
                 nodes,
                 random_moves,
+                policy: GenerationPolicy::default(),
                 max_ply,
                 hash_mb,
                 openings_sha256,
@@ -527,6 +531,17 @@ impl RunReport {
         );
         println!("draw_reason_bare_king: {}", stats.bare_king_draws);
         println!("draw_reason_agreement: {}", stats.agreement_draws);
+        println!("rejected_openings: {}", stats.rejected_openings);
+        println!(
+            "win_reason_evaluation_adjudication: {}",
+            stats.evaluation_adjudication_wins
+        );
+        println!("excluded_check: {}", stats.excluded_check);
+        println!(
+            "excluded_check_rate_percent: {}",
+            format_rate_percent(stats.excluded_check, stats.recordable_positions)
+        );
+        println!("excluded_check_in_saved_games: {}", recorded.exclusions[4]);
         println!("black_wins: {}", stats.black_wins);
         println!("white_wins: {}", stats.white_wins);
         println!("draws: {}", stats.draws);
@@ -790,6 +805,7 @@ fn generate_chunks(
         base_seed: conditions.config.seed,
         nodes: conditions.config.nodes.get(),
         random_moves: conditions.config.random_moves,
+        policy: conditions.config.policy,
         max_ply: conditions.config.max_ply.get(),
     };
     let result = thread::scope(|scope| -> Result<GeneratedRun, OutputError> {
@@ -1037,7 +1053,7 @@ struct DecodedChunk {
 
 struct DecodedWorker {
     chunks: Vec<DecodedChunk>,
-    exclusions: [u64; 4],
+    exclusions: [u64; 5],
     score_frequencies: Vec<u64>,
     search_keys: Vec<u64>,
 }
@@ -1046,7 +1062,7 @@ impl DecodedWorker {
     fn new() -> Self {
         Self {
             chunks: Vec::new(),
-            exclusions: [0; 4],
+            exclusions: [0; 5],
             score_frequencies: vec![0; SCORE_VALUE_COUNT],
             search_keys: Vec::new(),
         }
@@ -1115,7 +1131,7 @@ fn reassemble(
 
     let mut game_count = 0_u64;
     let mut entry_count = 0_u64;
-    let mut exclusions = [0_u64; 4];
+    let mut exclusions = [0_u64; 5];
     let mut score_frequencies = vec![0_u64; SCORE_VALUE_COUNT];
     let mut search_keys = HashSet::new();
     let mut recorded_positions = 0_u64;

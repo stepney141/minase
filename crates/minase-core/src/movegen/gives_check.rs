@@ -9,6 +9,24 @@ use crate::piece::{Color, PieceKind};
 use crate::position::Position;
 
 impl Position {
+    /// 手番側の最後の王駒を、相手が次の1手で取れるかを返す（第8条）。
+    /// 王駒が2枚なら両方を取る合法手を要求し、0枚または3枚以上なら王手ではない。
+    pub fn is_in_check(&self, generator: &MoveGenerator) -> bool {
+        let attacker = self.side_to_move().opposite();
+        let royals = self.royal_pieces(self.side_to_move());
+        match royals.popcount() {
+            1 => !self
+                .attackers_to_by(
+                    attacker,
+                    royals.lsb().expect("one royal must have a square"),
+                    self.occupied(),
+                )
+                .is_empty(),
+            2 => can_capture_all_royals(&self.clone_with_side_to_move(attacker), generator, royals),
+            _ => false,
+        }
+    }
+
     /// `mv`を指した後に、着手側が相手の残存王駒を次の1手ですべて取れるかを返す。
     ///
     /// 相手の王駒が1枚なら、その王駒へ疑似利きが届くことと捕獲できることが一致する

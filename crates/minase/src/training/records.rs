@@ -1,4 +1,4 @@
-//! 対局と教師情報を保存するMNSD版2の二進形式。
+//! 対局と教師情報を保存するMNSD版3の二進形式。
 //! 多バイト数値はリトルエンディアンである。以下の範囲は区画の先頭を0とし、上端を含まない。
 //!
 //! # ヘッダ（152バイト）
@@ -6,7 +6,7 @@
 //! | 位置 | 型 | 内容と値域 |
 //! |---|---|---|
 //! | 0..4 | `u8[4]` | 識別子`MNSD` |
-//! | 4..8 | u32 | 版2 |
+//! | 4..8 | u32 | 版3 |
 //! | 8..40 | `u8[32]` | UTF-8の規則セット名。NULを含まない最大32バイトを0で埋める |
 //! | 40..80 | `u8[40]` | 生成コミット。大小文字を許す40桁のASCII 16進数字 |
 //! | 80..112 | `u8[32]` | 教師の重みの検査和。駒得評価では全0 |
@@ -28,7 +28,7 @@
 //! | 0..4 | u32 | 対局番号。0も許す。ファイル内では厳密な昇順 |
 //! | 4 | u8 | 由来。乱数開始の自己対局0、実戦開始の自己対局1、実戦対局2、合成3 |
 //! | 5 | u8 | 結果。先手勝ち0、後手勝ち1、引き分け2 |
-//! | 6 | u8 | 終局理由。下記の0〜12 |
+//! | 6 | u8 | 終局理由。下記の0〜13 |
 //! | 7 | u8 | 予約。0 |
 //! | 8..10 | u16 | 開始局面までの着手数。0〜65,535手 |
 //! | 10..14 | u32 | 項目数n。1以上で、開始手数+n−1が65,535以下 |
@@ -43,7 +43,8 @@
 //! 引き分けの理由は反復8、駒枯れ9、裸玉10、合意11で、結果2の場合に限る。
 //! 理由12は王手限定の3手以内の勝ちによる打ち切りで、結果0か1の場合に限る。
 //! この打ち切りは審判層の裁定ではなく、[`Outcome::MateInThree`]として保持する。
-//! 結果は来歴として保持する。投了・合意・理由12の打ち切りもあるため、再生結果との一致は要求しない。
+//! 理由13は評価値による裁定で、結果0か1に限り、[`Outcome::EvaluationAdjudication`]として保持する。
+//! 結果は来歴として保持する。投了・合意・理由12と13の打ち切りもあるため、再生結果との一致は要求しない。
 //!
 //! 空升は0、駒は`1 + PieceKind::index() + 29×成りビット + 64×陣営`で表す。
 //! 先手は1〜58、後手は65〜122のうち、`PieceCode`の検査付きコンストラクタが受理する組だけを許す。
@@ -61,12 +62,12 @@
 //! |---|---|---|
 //! | 0..2 | u16 | 指した手の番号。なしは65,535 |
 //! | 2..4 | i16 / u16 | 手番側の価値。αβはセンチポーン、MCTSは期待得点で1を65,535とする |
-//! | 4 | u8 | 下位2ビットは除外理由。なし0、詰みの帯1、戦術的な局面2、反復の局面3 |
-//! | 同上 | 同上 | ビット2は価値なし、ビット3は指した手が最善手、ビット4〜7は0 |
-//! | 5..7 | u16 | 方策の候補数。0なら方策なし、ただしビット3が立つ場合を除く |
+//! | 4 | u8 | 下位3ビットは除外理由。なし0、詰みの帯1、戦術的な局面2、反復の局面3、王手4。5〜7は拒否 |
+//! | 同上 | 同上 | ビット3は価値なし、ビット4は指した手が最善手、ビット5〜7は0 |
+//! | 5..7 | u16 | 方策の候補数。0なら方策なし、ただしビット4が立つ場合を除く |
 //! | 7..11 | u32 | MCTSだけの根の総訪問回数。探索しなかった局面では0 |
 //!
-//! 価値なしなら価値欄は0。ビット3は指した手がある場合だけ使い、候補数は0とする。
+//! 価値なしなら価値欄は0。ビット4は指した手がある場合だけ使い、候補数は0とする。
 //! この印は指した手を確率1とする方策である。価値の種類と訪問回数の有無はヘッダと一致させる。
 //! 候補1つは4バイトで、0..2が着手番号u16、2..4が確率u16である。
 //! 候補は着手番号の厳密な昇順で、重複、合法手数以上の番号、確率0、確率和が65,535でない列を拒否する。
@@ -101,7 +102,7 @@ use minase_core::{
 /// ファイル識別子。
 pub const MAGIC: [u8; 4] = *b"MNSD";
 /// 形式の版。
-pub const FORMAT_VERSION: u32 = 2;
+pub const FORMAT_VERSION: u32 = 3;
 /// ヘッダ長（バイト）。
 pub const HEADER_LEN: usize = 152;
 /// 対局ヘッダ長（バイト）。
@@ -145,7 +146,7 @@ pub enum Error {
     InvalidOrigin(u8),
     /// 結果が0〜2ではない。
     InvalidOutcome(u8),
-    /// 終局理由が0〜12ではない。
+    /// 終局理由が0〜13ではない。
     InvalidEndReason(u8),
     /// 結果と終局理由が整合しない。
     OutcomeReasonMismatch,
@@ -177,7 +178,7 @@ pub enum Error {
     MoveOnLastEntry,
     /// 最後以外の項目に指した手がない。
     MissingPlayedMove,
-    /// 項目の上位4ビットに未定義の印がある。
+    /// 項目の上位3ビットまたは除外理由に未定義の印がある。
     InvalidEntryFlags(u8),
     /// 価値なしの項目の価値欄が非0。
     NonzeroAbsentValue,
@@ -248,7 +249,7 @@ impl fmt::Display for Error {
             Self::Position(e) => write!(f, "invalid position: {e}"),
             Self::Replay(e) => write!(f, "cannot replay game: {e}"),
             Self::Io(e) => e.fmt(f),
-            _ => write!(f, "invalid MNSD v2 data: {self:?}"),
+            _ => write!(f, "invalid MNSD v3 data: {self:?}"),
         }
     }
 }
@@ -477,6 +478,11 @@ pub enum Outcome {
         /// 打ち切り時の手番側であり、勝ちが確認された側。
         winner: Color,
     },
+    /// 評価値による裁定。審判層の裁定とは区別する。
+    EvaluationAdjudication {
+        /// 連続して優勢だった側。
+        winner: Color,
+    },
     /// 合成局面であり対局結果がない。
     NotFromGame,
 }
@@ -485,6 +491,7 @@ impl Outcome {
         match self {
             Self::NotFromGame => (2, 0),
             Self::MateInThree { winner } => (winner as u8, 12),
+            Self::EvaluationAdjudication { winner } => (winner as u8, 13),
             Self::Game(GameResult::Win { winner, reason }) => (
                 winner as u8,
                 match reason {
@@ -540,6 +547,7 @@ impl Outcome {
                 },
             }),
             12 => Self::MateInThree { winner },
+            13 => Self::EvaluationAdjudication { winner },
             x => return Err(Error::InvalidEndReason(x)),
         };
         if value.codes().0 != result {
@@ -577,6 +585,8 @@ pub enum Exclusion {
     Tactical = 2,
     /// 反復の局面。
     Repetition = 3,
+    /// 手番側への王手。
+    Check = 4,
 }
 /// 方策の指定。候補の列は[`Entry::new`]で検査される。
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -1033,8 +1043,8 @@ fn write_entry(
     };
     w.write_all(&value)?;
     let flags = entry.exclusion as u8
-        | (u8::from(entry.value == Value::None) << 2)
-        | (u8::from(entry.policy == Policy::PlayedMove) << 3);
+        | (u8::from(entry.value == Value::None) << 3)
+        | (u8::from(entry.policy == Policy::PlayedMove) << 4);
     w.write_all(&[flags])?;
     w.write_all(
         &u16::try_from(candidates.len())
@@ -1067,10 +1077,10 @@ fn read_entry(
         TeacherKind::AlphaBeta => None,
         TeacherKind::Mcts => Some(u32::from_le_bytes(input(r, Section::Entry)?)),
     };
-    if flags & 0xf0 != 0 {
+    if flags & 0xe0 != 0 || flags & 7 > 4 {
         return Err(Error::InvalidEntryFlags(flags));
     }
-    let value = if flags & 4 != 0 {
+    let value = if flags & 8 != 0 {
         if value_bytes != [0; 2] {
             return Err(Error::NonzeroAbsentValue);
         }
@@ -1081,7 +1091,7 @@ fn read_entry(
             TeacherKind::Mcts => Value::Mcts(u16::from_le_bytes(value_bytes)),
         }
     };
-    if flags & 8 != 0 {
+    if flags & 16 != 0 {
         if played == u16::MAX {
             return Err(Error::BestMoveWithoutPlayedMove);
         }
@@ -1102,18 +1112,20 @@ fn read_entry(
         let probability = u16::from_le_bytes(input(r, Section::Candidate)?);
         candidates.push((move_at(&moves, index)?, probability));
     }
-    let policy = if flags & 8 != 0 {
+    let policy = if flags & 16 != 0 {
         Policy::PlayedMove
     } else if count == 0 {
         Policy::None
     } else {
         Policy::Candidates(candidates)
     };
-    let exclusion = match flags & 3 {
+    let exclusion = match flags & 7 {
         0 => Exclusion::None,
         1 => Exclusion::MateBand,
         2 => Exclusion::Tactical,
-        _ => Exclusion::Repetition,
+        3 => Exclusion::Repetition,
+        4 => Exclusion::Check,
+        _ => return Err(Error::InvalidEntryFlags(flags)),
     };
     let entry = Entry::new(played_move, value, exclusion, policy, visits)?;
     if let Some(mv) = played_move {
@@ -1331,7 +1343,7 @@ mod tests {
 
     #[test]
     fn mate_in_three_round_trips_with_reason_twelve_and_rejects_a_draw() {
-        // MNSD版2の対局ヘッダ: 結果は5バイト目、理由は6バイト目。
+        // MNSD版3の対局ヘッダ: 結果は5バイト目、理由は6バイト目。
         // 理由12は両陣営の勝ちを表せるが、結果2とは組み合わせられない。
         for winner in Color::ALL {
             let header = Header::new(
@@ -1357,7 +1369,7 @@ mod tests {
             let mut writer = Writer::new(Cursor::new(Vec::new()), header).unwrap();
             writer.write_game(&record).unwrap();
             let mut bytes = writer.finish().unwrap().into_inner();
-            assert_eq!(&bytes[4..8], &2_u32.to_le_bytes());
+            assert_eq!(&bytes[4..8], &3_u32.to_le_bytes());
             assert_eq!(bytes[HEADER_LEN + 5], winner as u8);
             assert_eq!(bytes[HEADER_LEN + 6], 12);
             let mut reader = Reader::new(bytes.as_slice()).unwrap();
@@ -1368,6 +1380,77 @@ mod tests {
             assert!(matches!(
                 Reader::new(bytes.as_slice()).unwrap().read_game(),
                 Err(Error::OutcomeReasonMismatch)
+            ));
+        }
+    }
+    #[test]
+    fn evaluation_adjudication_and_check_round_trip_in_v3_and_reject_invalid_codes() {
+        for winner in Color::ALL {
+            let header = Header::new(
+                "lishogi".into(),
+                "a".repeat(40),
+                [0; 32],
+                TeacherKind::AlphaBeta,
+                100,
+                7,
+            )
+            .unwrap();
+            let mut game = Game::new(Rules::LISHOGI);
+            let mv = game.legal_moves()[0];
+            game.play(mv).unwrap();
+            let record = GameRecord::new(
+                1,
+                Origin::RandomSelfplay,
+                Outcome::EvaluationAdjudication { winner },
+                0,
+                Position::initial(),
+                vec![
+                    Entry::new(
+                        Some(mv),
+                        Value::AlphaBeta(4250),
+                        Exclusion::Check,
+                        Policy::PlayedMove,
+                        None,
+                    )
+                    .unwrap(),
+                    Entry::new(None, Value::None, Exclusion::None, Policy::None, None).unwrap(),
+                ],
+            )
+            .unwrap();
+            let mut writer = Writer::new(Cursor::new(Vec::new()), header).unwrap();
+            writer.write_game(&record).unwrap();
+            let bytes = writer.finish().unwrap().into_inner();
+            assert_eq!(bytes[4..8], 3_u32.to_le_bytes());
+            assert_eq!(bytes[HEADER_LEN + 5], winner as u8);
+            assert_eq!(bytes[HEADER_LEN + 6], 13);
+            let flags = HEADER_LEN + GAME_HEADER_LEN + 4;
+            assert_eq!(bytes[flags], 0b0001_0100);
+            assert_eq!(bytes[flags + 7], 0b0000_1000);
+            let decoded = Reader::new(bytes.as_slice())
+                .unwrap()
+                .read_game()
+                .unwrap()
+                .unwrap();
+            assert_eq!(decoded.record(), &record);
+            assert_eq!(decoded.positions().last(), Some(game.position()));
+            for invalid in [5, 6, 7, 32, 64, 128] {
+                let mut malformed = bytes.clone();
+                malformed[flags] = invalid;
+                assert!(
+                    matches!(Reader::new(malformed.as_slice()).unwrap().read_game(), Err(Error::InvalidEntryFlags(value)) if value == invalid)
+                );
+            }
+            let mut malformed = bytes.clone();
+            malformed[HEADER_LEN + 5] = 2;
+            assert!(matches!(
+                Reader::new(malformed.as_slice()).unwrap().read_game(),
+                Err(Error::OutcomeReasonMismatch)
+            ));
+            let mut malformed = bytes;
+            malformed[4..8].copy_from_slice(&2_u32.to_le_bytes());
+            assert!(matches!(
+                Reader::new(malformed.as_slice()),
+                Err(Error::UnsupportedVersion(2))
             ));
         }
     }

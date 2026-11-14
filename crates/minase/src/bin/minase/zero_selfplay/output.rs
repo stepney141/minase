@@ -287,7 +287,7 @@ impl Counts {
                 }
             }
             Some(Outcome::MateInThree { .. }) => self.mate_in_three_games += 1,
-            Some(Outcome::NotFromGame) | None => {}
+            Some(Outcome::NotFromGame | Outcome::EvaluationAdjudication { .. }) | None => {}
         }
     }
 

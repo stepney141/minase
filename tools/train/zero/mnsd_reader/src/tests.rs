@@ -664,6 +664,12 @@ fn short_term_targets_include_fast_search_and_terminal_results_from_both_sides()
             Outcome::MateInThree {
                 winner: Color::Black,
             },
+            Outcome::EvaluationAdjudication {
+                winner: Color::Black,
+            },
+            Outcome::EvaluationAdjudication {
+                winner: Color::White,
+            },
             Outcome::Game(GameResult::Win {
                 winner: Color::White,
                 reason: WinReason::Resignation,
@@ -680,7 +686,9 @@ fn short_term_targets_include_fast_search_and_terminal_results_from_both_sides()
             assert_eq!(records.plies, [0, 2]);
             let last = match outcome {
                 Outcome::Game(GameResult::Draw { .. }) => 0.5,
-                Outcome::MateInThree { winner } | Outcome::Game(GameResult::Win { winner, .. }) => {
+                Outcome::MateInThree { winner }
+                | Outcome::EvaluationAdjudication { winner }
+                | Outcome::Game(GameResult::Win { winner, .. }) => {
                     if winner == side {
                         0.0
                     } else {
@@ -1273,7 +1281,15 @@ fn scan_rejects_truncation_counts_flags_and_trailing_bytes() {
     );
     let original = fs::read(&path).unwrap();
     let mut flags = original.clone();
-    flags[records::HEADER_LEN + records::GAME_HEADER_LEN + 4] = 16;
+    flags[records::HEADER_LEN + records::GAME_HEADER_LEN + 4] = 32;
+    for invalid in [5, 6, 7, 32, 64, 128] {
+        let mut malformed = original.clone();
+        malformed[records::HEADER_LEN + records::GAME_HEADER_LEN + 4] = invalid;
+        fs::write(&path, malformed).unwrap();
+        assert!(
+            matches!(scan_file(&path), Err(Error::Format(records::Error::InvalidEntryFlags(value))) if value == invalid)
+        );
+    }
     let mut counts = original.clone();
     counts[144..152].copy_from_slice(&8_u64.to_le_bytes());
     let mut trailing = original.clone();
@@ -1328,5 +1344,63 @@ fn diagnostic_selection_keeps_only_sample_games_and_merges_training_ordinals() {
                 Err(Error::InvalidSelection)
             ));
         }
+    }
+}
+
+#[test]
+fn scan_and_replay_exclude_check_and_accept_evaluation_adjudication() {
+    let fixture = Fixture::new();
+    for winner in Color::ALL {
+        let original = short_game(
+            Color::Black,
+            &[Some(40000), Some(30000), None],
+            &[true, true, false],
+            Outcome::EvaluationAdjudication { winner },
+        );
+        let entries = original
+            .entries()
+            .iter()
+            .enumerate()
+            .map(|(index, entry)| {
+                Entry::new(
+                    entry.played_move(),
+                    entry.value(),
+                    if index == 0 {
+                        Exclusion::Check
+                    } else {
+                        entry.exclusion()
+                    },
+                    entry.policy().clone(),
+                    entry.visits(),
+                )
+                .unwrap()
+            })
+            .collect();
+        let game = GameRecord::new(
+            original.game_number(),
+            original.origin(),
+            original.outcome(),
+            original.start_ply(),
+            original.start_position().clone(),
+            entries,
+        )
+        .unwrap();
+        let path = fixture.write(TeacherKind::Mcts, &[game]);
+        let info = scan_file(&path).unwrap();
+        assert_eq!(info.training_count + info.validation_count, 1);
+        let records = read_file(&path).unwrap();
+        assert_eq!(records.plies, [1]);
+        assert_eq!(records.outcomes, [winner as u8]);
+        let mut bytes = fs::read(&path).unwrap();
+        bytes[4..8].copy_from_slice(&2_u32.to_le_bytes());
+        fs::write(&path, bytes).unwrap();
+        assert!(matches!(
+            scan_file(&path),
+            Err(Error::Format(records::Error::UnsupportedVersion(2)))
+        ));
+        assert!(matches!(
+            read_file(&path),
+            Err(Error::Format(records::Error::UnsupportedVersion(2)))
+        ));
     }
 }

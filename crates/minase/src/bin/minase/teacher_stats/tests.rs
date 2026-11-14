@@ -146,6 +146,7 @@ fn summary_counts_games_positions_lengths_and_end_reasons_across_files() {
             "win_mate": 0,
             "win_resignation": 1,
             "win_mate_in_three": 0,
+            "win_evaluation_adjudication": 0,
             "draw_repetition": 0,
             "draw_piece_exhaustion": 0,
             "draw_bare_king": 0,
@@ -203,4 +204,34 @@ fn files_without_games_are_rejected() {
         assert!(error.to_string().contains(&path.display().to_string()));
     }
     assert!(matches!(error, Error::NoGames(inputs) if inputs == paths));
+}
+
+#[test]
+fn summary_counts_evaluation_adjudication_for_both_winners() {
+    let directory = TemporaryDirectory::new();
+    let path = directory.0.join("adjudicated.mnsd");
+    write_games(
+        &path,
+        &[
+            record(
+                1,
+                0,
+                0,
+                Outcome::EvaluationAdjudication {
+                    winner: Color::Black,
+                },
+            ),
+            record(
+                2,
+                0,
+                0,
+                Outcome::EvaluationAdjudication {
+                    winner: Color::White,
+                },
+            ),
+        ],
+    );
+    let summary = summarize(&[path]).unwrap();
+    assert_eq!(summary["games"], 2);
+    assert_eq!(summary["end_reasons"]["win_evaluation_adjudication"], 2);
 }

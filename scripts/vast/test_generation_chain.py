@@ -5,7 +5,7 @@
 本ファイルはgeneration_chain.py、generation_worker.pyと同じディレクトリに置く。
 引数と出品の拒否、教師の受理、学習と補正の再開、補正後のネットのコミット、
 停止と削除、作業者の公開順序と自己停止を検証する。
-期待値は指示書の式とコマンド、およびtraining/records.rsのMNSD版2の形式に基づく。
+期待値は指示書の式とコマンド、およびtraining/records.rsのMNSD版3の形式に基づく。
 外部コマンドは注入した実行関数で置き換え、時計も進めるだけにする。
 """
 
@@ -41,16 +41,16 @@ def network(generation: int) -> bytes:
 
 def header_fields(generation: int, number: int, entries: int) -> dict:
     """指示書のシードと、1本10局の試験条件を与える。"""
-    return {'rule_set': 'L0,P0,R1,E0', 'generation_commit': str(generation - 1) * 40,
+    return {'rule_set': 'L1,L2,P0,P3,R1,E1,E3', 'generation_commit': str(generation - 1) * 40,
             'network_checksum': (bytes([generation - 1]) * 32).hex(),
             'teacher_search_budget': 20000, 'seed': 9000000000 + 10000000 * generation + 100000 * number,
             'game_count': 9, 'entry_count': entries}
 
 
 def write_book(path: Path, fields: dict) -> None:
-    """公開されたMNSD版2のヘッダを組み立てる。本文の復号は偽inspectの担当とする。"""
+    """公開されたMNSD版3のヘッダを組み立てる。本文の復号は偽inspectの担当とする。"""
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_bytes(struct.pack('<4sI32s40s32sB7sQQQQ', b'MNSD', 2, fields['rule_set'].encode(),
+    path.write_bytes(struct.pack('<4sI32s40s32sB7sQQQQ', b'MNSD', 3, fields['rule_set'].encode(),
                                  fields['generation_commit'].encode(), bytes.fromhex(fields['network_checksum']),
                                  0, bytes(7), fields['teacher_search_budget'], fields['seed'],
                                  fields['game_count'], fields['entry_count']))
@@ -903,6 +903,20 @@ class ChainTests(ChainTestCase):
         self.assertEqual(self.commands.refs['refs/nnue-standard-recipe/gen-1'], '1' * 40)
         self.assertFalse(any(call[0] == 'cargo' or (call[0] == 'git' and call[3] == 'commit')
                              for call in self.commands.calls))
+
+    def test_books_reject_jcsa_and_version_two(self) -> None:
+        self.save_book(1, 0, 100)
+        path = self.root / 'run/gen-1/teacher/book-0.mnsd'
+        runner = chain.Chain(chain.arguments(argv(self.values)))
+        original = path.read_bytes()
+        for rules, version in [('L0,P0,R1,E0', 3), ('L1,L2,P0,P3,R1,E1,E3', 2)]:
+            with self.subTest(rules=rules, version=version):
+                data = bytearray(original)
+                data[4:8] = struct.pack('<I', version)
+                data[8:40] = rules.encode().ljust(32, b'\0')
+                path.write_bytes(data)
+                with self.assertRaises(chain.ChainStop):
+                    runner.books(1, '0' * 40, '00' * 32)
 
     def test_all_header_and_log_conditions_are_checked(self) -> None:
         """不正な各項目は、生成コミットの不一致と同じく入力への採用を阻止する。"""

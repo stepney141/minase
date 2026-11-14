@@ -511,7 +511,7 @@ fn inspect_dump_reports_entry_fields_and_summarizes_all_games() {
         let header = fields(header);
         for (key, expected) in [
             ("magic", "MNSD".to_owned()),
-            ("format_version", "2".to_owned()),
+            ("format_version", "3".to_owned()),
             ("rule_set", "L0,P0,R1,E0".to_owned()),
             ("generation_commit", "1".repeat(40)),
             ("network_checksum", "ab".repeat(32)),

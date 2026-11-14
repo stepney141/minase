@@ -825,7 +825,7 @@ fn moves_use_negamax_and_include_fm_while_empty_positions_have_null_statistics()
             common::position(&kings, Color::White, None),
             Position::empty(Color::Black),
         ];
-        f.data("data.mnsd", &positions, 11, &[1; 3], "L0,P0,R1,E0");
+        f.data("data.mnsd", &positions, 11, &[1; 3], "L1,L2,P0,P3,R1,E1,E3");
         f.baseline("base.bin", &vec![[0.0; 2]; FEATURE_COUNT], 2);
         f.network("net.bin", &tempo_model(set));
         let report = f.success(&moves_args(), "report.json");
@@ -912,7 +912,7 @@ fn moves_cover_captures_promotions_and_terminal_moves_using_library_games() {
             None,
         ),
     ];
-    f.data("data.mnsd", &positions, 11, &[1; 2], "JCSA");
+    f.data("data.mnsd", &positions, 11, &[1; 2], "lishogi");
     f.baseline("base.bin", &pawn_linear(50.0), 2);
     f.network("net.bin", &tempo_model(InputFeatureSet::P));
     let report = f.success(&moves_args(), "report.json");
@@ -920,7 +920,7 @@ fn moves_cover_captures_promotions_and_terminal_moves_using_library_games() {
     let mut promotion = false;
     let mut terminal = false;
     for (i, position) in positions.iter().enumerate() {
-        let game = Game::from_position(Rules::JCSA, position.clone());
+        let game = Game::from_position(Rules::LISHOGI, position.clone());
         let mut deltas = Vec::new();
         let mut pst_deltas = Vec::new();
         let before = if i == 0 { 50.0 } else { 0.0 };
@@ -962,14 +962,14 @@ fn moves_reject_nondefault_rules_and_empty_input() {
     let f = Fixture::new();
     f.baseline("base.bin", &vec![[0.0; 2]; FEATURE_COUNT], 0);
     f.network("net.bin", &tempo_model(InputFeatureSet::P));
-    f.data("data.mnsd", &[Position::initial()], 11, &[1], "L1,P0,R1,E0");
+    f.data("data.mnsd", &[Position::initial()], 11, &[1], "JCSA");
     let error = f.diagnose(&moves_args()).unwrap_err();
     assert_eq!(
         error.downcast_ref::<ContractError>(),
         Some(&ContractError::NondefaultRules)
     );
     assert!(!f.path("report.json").exists());
-    f.data("data.mnsd", &[], 11, &[], "JCSA");
+    f.data("data.mnsd", &[], 11, &[], "lishogi");
     let error = f.diagnose(&moves_args()).unwrap_err();
     assert_eq!(
         error.downcast_ref::<ContractError>(),
@@ -1025,7 +1025,7 @@ fn all_heads_support_distribution_moves_and_float_removal_diagnostics() {
         for head in HeadKind::ALL {
             let fixture = Fixture::new();
             let positions = common::positions();
-            fixture.data("data.mnsd", &positions, 11, &[4; 3], "L0,P0,R1,E0");
+            fixture.data("data.mnsd", &positions, 11, &[4; 3], "lishogi");
             fixture.baseline("base.bin", &pawn_linear(50.0), 0);
             fixture.data(
                 "distribution.mnsd",

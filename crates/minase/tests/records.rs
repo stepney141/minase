@@ -1,4 +1,4 @@
-//! MNSD版2の配置と公開関数の契約を検証する。
+//! MNSD版3の配置と公開関数の契約を検証する。
 
 use minase::training::records::*;
 use minase_core::test_util::{position, position_from_codes, sq};
@@ -122,13 +122,14 @@ fn all_header_game_and_entry_fields_round_trip_for_both_teachers() {
                 Exclusion::MateBand,
                 Exclusion::Tactical,
                 Exclusion::Repetition,
+                Exclusion::Check,
             ]
             .into_iter()
             .enumerate()
             {
                 positions.push(game.position().clone());
                 let moves = sorted_legal_moves(&game).unwrap();
-                let played = if k == 3 { None } else { Some(moves[2]) };
+                let played = if k == 4 { None } else { Some(moves[2]) };
                 let value = match (kind, k) {
                     (_, 0) => Value::None,
                     (TeacherKind::AlphaBeta, 1) => Value::AlphaBeta(i16::MIN),
@@ -157,7 +158,7 @@ fn all_header_game_and_entry_fields_round_trip_for_both_teachers() {
         }
         let data = bytes(h.clone(), &records);
         assert_eq!(&data[0..4], b"MNSD");
-        assert_eq!(&data[4..8], &2_u32.to_le_bytes());
+        assert_eq!(&data[4..8], &3_u32.to_le_bytes());
         assert_eq!(&data[8..19], b"L0,P0,R1,E0");
         assert!(data[19..40].iter().all(|b| *b == 0));
         assert_eq!(&data[40..80], COMMIT.as_bytes());
@@ -167,13 +168,13 @@ fn all_header_game_and_entry_fields_round_trip_for_both_teachers() {
         assert_eq!(&data[120..128], &(1_u64 << 40).to_le_bytes());
         assert_eq!(&data[128..136], &(u64::MAX - 1).to_le_bytes());
         assert_eq!(&data[136..144], &3_u64.to_le_bytes());
-        assert_eq!(&data[144..152], &12_u64.to_le_bytes());
+        assert_eq!(&data[144..152], &15_u64.to_le_bytes());
         assert_eq!(&data[H..H + 4], &1_u32.to_le_bytes());
         assert_eq!(&data[H + 4..H + 8], &[0, 2, 11, 0]);
         assert_eq!(&data[H + 8..H + 10], &42_u16.to_le_bytes());
-        assert_eq!(&data[H + 10..H + 14], &4_u32.to_le_bytes());
+        assert_eq!(&data[H + 10..H + 14], &5_u32.to_le_bytes());
         assert_eq!(&data[H + 158..E], &[0, 255, 0]);
-        assert_eq!(&data[E..E + 7], &[2, 0, 0, 0, 4, 0, 0]);
+        assert_eq!(&data[E..E + 7], &[2, 0, 0, 0, 8, 0, 0]);
         let mut reader = Reader::new(data.as_slice()).unwrap();
         let got = reader.header();
         assert_eq!(got.rule_set(), h.rule_set());
@@ -184,7 +185,7 @@ fn all_header_game_and_entry_fields_round_trip_for_both_teachers() {
         assert_eq!(got.teacher_search_budget(), h.teacher_search_budget());
         assert_eq!(got.seed(), h.seed());
         assert_eq!(got.game_count(), 3);
-        assert_eq!(got.entry_count(), 12);
+        assert_eq!(got.entry_count(), 15);
         for (record, positions) in records.iter().zip(expected_positions) {
             let actual = reader.read_game().unwrap().unwrap();
             assert_eq!(actual.record(), record);
@@ -224,6 +225,10 @@ fn every_end_reason_has_the_prescribed_byte_code() {
     for (i, reason) in draws.into_iter().enumerate() {
         outcomes.push((Outcome::Game(GameResult::Draw { reason }), 2, i as u8 + 8));
     }
+    for winner in [Color::Black, Color::White] {
+        outcomes.push((Outcome::MateInThree { winner }, winner as u8, 12));
+        outcomes.push((Outcome::EvaluationAdjudication { winner }, winner as u8, 13));
+    }
     for (outcome, result_code, reason_code) in outcomes {
         let origin = if outcome == Outcome::NotFromGame {
             Origin::Synthetic
@@ -253,6 +258,7 @@ fn every_end_reason_has_the_prescribed_byte_code() {
 fn corrupt_fields_are_classified_by_their_specific_error() {
     for (offset, value, error) in [
         (0, 0, Error::InvalidMagic([0; 4])),
+        (4, 2, Error::UnsupportedVersion(2)),
         (4, 9, Error::UnsupportedVersion(9)),
         (112, 2, Error::InvalidTeacherKind(2)),
         (113, 1, Error::NonzeroReservedBytes),
@@ -260,7 +266,8 @@ fn corrupt_fields_are_classified_by_their_specific_error() {
         (40, b'g', Error::InvalidGenerationCommit),
         (H + 4, 4, Error::InvalidOrigin(4)),
         (H + 5, 3, Error::InvalidOutcome(3)),
-        (H + 6, 13, Error::InvalidEndReason(13)),
+        (H + 6, 14, Error::InvalidEndReason(14)),
+        (H + 6, 13, Error::OutcomeReasonMismatch),
         (H + 6, 1, Error::OutcomeReasonMismatch),
         (H + 6, 0, Error::OriginOutcomeMismatch),
         (H + 4, 3, Error::OriginOutcomeMismatch),
@@ -270,10 +277,14 @@ fn corrupt_fields_are_classified_by_their_specific_error() {
         (H + 160, 2, Error::InvalidLionPromotionFlag(2)),
         (H + 160, 1, Error::LionPromotionWithoutSquare),
         (H + 14, 59, Error::InvalidPieceCode(59)),
-        (E + 4, 0x14, Error::InvalidEntryFlags(0x14)),
+        (E + 4, 5, Error::InvalidEntryFlags(5)),
+        (E + 4, 6, Error::InvalidEntryFlags(6)),
+        (E + 4, 7, Error::InvalidEntryFlags(7)),
+        (E + 4, 0x24, Error::InvalidEntryFlags(0x24)),
+        (E + 4, 0x44, Error::InvalidEntryFlags(0x44)),
         (E + 4, 0x84, Error::InvalidEntryFlags(0x84)),
         (E + 2, 1, Error::NonzeroAbsentValue),
-        (E + 4, 12, Error::BestMoveWithCandidates),
+        (E + 4, 24, Error::BestMoveWithCandidates),
     ] {
         let mut data = simple_file();
         data[offset] = value;
@@ -289,7 +300,7 @@ fn corrupt_fields_are_classified_by_their_specific_error() {
     data[E + 7..E + 9].copy_from_slice(&0_u16.to_le_bytes());
     assert_error(&data, Error::MoveOnLastEntry);
     let mut data = simple_file();
-    data[E + 11] = 12;
+    data[E + 11] = 24;
     assert_error(&data, Error::BestMoveWithoutPlayedMove);
     let mut data = simple_file();
     data[H + 10..H + 14].copy_from_slice(&0_u32.to_le_bytes());
@@ -663,7 +674,7 @@ fn synthetic_empty_position_and_deferred_on_empty_square() {
     let data = bytes(header(TeacherKind::AlphaBeta), &[r]);
     assert_eq!(data.len(), 152 + 161 + 7);
     assert_eq!(&data[H + 4..H + 8], &[3, 2, 0, 0]);
-    assert_eq!(&data[E..], &[255, 255, 0, 0, 4, 0, 0]);
+    assert_eq!(&data[E..], &[255, 255, 0, 0, 8, 0, 0]);
     assert_eq!(decode(&data).unwrap()[0].positions(), &[start]);
     let mut corrupt = data;
     corrupt[H + 14] = 128;
@@ -851,7 +862,7 @@ fn terminal_capture_is_restored_and_continuation_is_rejected() {
     corrupt[144..152].copy_from_slice(&3_u64.to_le_bytes());
     corrupt[H + 10..H + 14].copy_from_slice(&3_u32.to_le_bytes());
     corrupt[E + 7..E + 9].copy_from_slice(&0_u16.to_le_bytes());
-    corrupt.extend_from_slice(&[255, 255, 0, 0, 4, 0, 0]);
+    corrupt.extend_from_slice(&[255, 255, 0, 0, 8, 0, 0]);
     assert_error(&corrupt, Error::MoveAfterGameOver);
 }
 

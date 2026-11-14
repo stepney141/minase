@@ -1,7 +1,7 @@
 # minase-core
 
 `minase-core` is a Rust library that implements the rules of chu shogi.
-It provides the board, pieces, positions, legal-move generation, rule sets, game adjudication (checkmate, repetition, and bare-king endings), and the SFEN, USI, and CECP move notations.
+It provides the board, pieces, positions, legal-move generation, rule sets, check detection through `Position::is_in_check` and `Position::gives_check`, game adjudication (checkmate, repetition, and bare-king endings), and the SFEN, USI, and CECP move notations.
 The library contains no search or evaluation, and it is the rules layer of the [Minase](https://github.com/stepney141/minase) engine.
 
 ## Rules

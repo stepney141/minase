@@ -32,7 +32,7 @@ pub(super) fn generate(arguments: &GenerateArguments) -> io::Result<()> {
         .ok_or_else(|| invalid_data("node count must be greater than zero"))?;
     let max_ply = NonZeroU16::new(arguments.max_ply)
         .ok_or_else(|| invalid_data("maximum ply must be greater than zero"))?;
-    let rules = Rules::JCSA;
+    let rules = Rules::LISHOGI;
     let generation_commit = git_output(&["rev-parse", "HEAD"])?;
     validate_commit_hash(&generation_commit)?;
     let dirty = !git_output(&["status", "--porcelain"])?.is_empty();

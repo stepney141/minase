@@ -121,6 +121,7 @@ fn end_reason(outcome: Outcome) -> &'static str {
     match outcome {
         Outcome::NotFromGame => "not_from_game",
         Outcome::MateInThree { .. } => "win_mate_in_three",
+        Outcome::EvaluationAdjudication { .. } => "win_evaluation_adjudication",
         Outcome::Game(GameResult::Win { reason, .. }) => match reason {
             WinReason::RoyalCapture => "win_royal_capture",
             WinReason::Repetition => "win_repetition",
@@ -152,6 +153,7 @@ fn summarize(paths: &[PathBuf]) -> Result<Value, Error> {
         "win_mate",
         "win_resignation",
         "win_mate_in_three",
+        "win_evaluation_adjudication",
         "draw_repetition",
         "draw_piece_exhaustion",
         "draw_bare_king",

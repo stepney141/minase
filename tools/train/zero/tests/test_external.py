@@ -2,7 +2,7 @@
 
 抽出は再現性・重複なし・全対局を選ぶ境界、診断は選択対局ごとの既知の局面数と
 交差エントロピーの定義式を正とする。入力と出力の拒否は実ファイルで確かめる。
-MNSDの組み立てはrecords.rsの版2の仕様による。学習器の実装から期待値を写さない。
+MNSDの組み立てはrecords.rsの版3の仕様による。学習器の実装から期待値を写さない。
 """
 
 from contextlib import redirect_stderr
@@ -40,13 +40,13 @@ def write_alpha(path: Path, seed: int, games: list[tuple[int, tuple[int, ...], i
         header = struct.pack("<IBBBBHI", number, 0, outcome, reason, 0, 0, len(flags) + 1)
         # 指した手の番号0を確率1の教師とし、最後は価値のない終局項目にする。
         entries = b"".join(
-            struct.pack("<HhBH", 0, 0 if flag & 4 else -32768 + index, flag | 8, 0)
+            struct.pack("<HhBH", 0, 0 if flag & 8 else -32768 + index, flag | 16, 0)
             for index, flag in enumerate(flags)
-        ) + struct.pack("<HhBH", 65535, 0, 4, 0)
+        ) + struct.pack("<HhBH", 65535, 0, 8, 0)
         records.append(header + board + bytes([0, 255, 0]) + entries)
         entry_count += len(flags) + 1
     header = (
-        b"MNSD" + struct.pack("<I", 2) + b"JCSA".ljust(32, b"\0")
+        b"MNSD" + struct.pack("<I", 3) + b"JCSA".ljust(32, b"\0")
         + b"a" * 40 + bytes(32) + struct.pack("<B7xQQQQ", 0, 128, seed, len(games), entry_count)
     )
     path.write_bytes(header + b"".join(records))
@@ -62,7 +62,7 @@ class ExternalEvaluationTests(unittest.TestCase):
         self.addCleanup(torch.set_num_threads, previous)
         self.first, self.second = self.directory / "first.mnsd", self.directory / "second.mnsd"
         # seed=11のgame=4は既存の分割では検証対局である。game=9は全局面が選別で落ちる。
-        write_alpha(self.first, 11, [(1, (0,), 0), (4, (0, 0), 1), (9, (1, 4), 2)])
+        write_alpha(self.first, 11, [(1, (0,), 0), (4, (0, 0), 1), (9, (1, 8), 2)])
         write_alpha(self.second, 29, [(2, (0, 0), 2), (7, (0,), 0)])
         self.paths = [self.first, self.second]
         self.checkpoint = self.directory / "checkpoint.pt"
@@ -239,7 +239,7 @@ class ExternalEvaluationTests(unittest.TestCase):
         write_alpha(self.first, 11, [])
         with self.assertRaises(ValueError):
             external_eval(self.checkpoint, [self.first], 1, 42, "cpu", out)
-        write_alpha(self.first, 11, [(9, (1, 2, 3, 4), 2)])
+        write_alpha(self.first, 11, [(9, (1, 2, 3, 8), 2)])
         with self.assertRaisesRegex(ValueError, "contain positions"):
             external_eval(self.checkpoint, [self.first], 1, 42, "cpu", out)
         self.assertFalse(out.exists())

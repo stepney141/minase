@@ -97,7 +97,7 @@ mod test_support {
         use minase::training::records::{Header, Reader, TeacherKind, Writer};
         use std::io::Cursor;
         let header = Header::new(
-            "L0,P0,R1,E0".into(),
+            "L1,L2,P0,P3,R1,E1,E3".into(),
             "0".repeat(40),
             [0; 32],
             TeacherKind::AlphaBeta,

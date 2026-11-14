@@ -61,7 +61,7 @@ rsyncの終了コード24は転送中の送信元ファイルの消失として�
 終了コード24の場合を含め、rsyncの統計から転送量を読み取れなければ回収失敗とする。
 
 公開済みの教師ファイルと生成ログが両方そろうと、common.inspect_teacherで全対局を復号し、受け入れを検査する。
-ヘッダの生成コミット、重みのチェックサム、規則L0,P0,R1,E0、探索ノード数、およびseed_base + seed_book_step × iで求めるシードを照合する。
+ヘッダの生成コミット、重みのチェックサム、規則L1,L2,P0,P3,R1,E1,E3、探索ノード数、およびseed_base + seed_book_step × iで求めるシードを照合する。
 ログの完了局数、探索ノード数、手数上限、置換表の容量、およびランダム着手数も引数と照合し、保存局数と手数上限による破棄局数の和がgamesに一致することを確かめる。
 保存局数、破棄局数、および記録局面数は非負で、ログのrecorded_positionsと検査のeligible_positionsが一致しなければならない。
 受け入れた後はremote/work/book-<i>/とremote/work/book-<i>.logを削除し、remote/teacher/とremote/logs/の公開済みファイルは残す。
@@ -681,7 +681,7 @@ class TeacherGeneration:
             if self.checksum is None:
                 raise GenerationStop('受け入れに必要な重みのチェックサムがありません')
             expected = {'generation_commit': self.args.commit, 'network_checksum': self.checksum,
-                        'rule_set': 'L0,P0,R1,E0', 'teacher_search_budget': self.args.nodes,
+                        'rule_set': 'L1,L2,P0,P3,R1,E1,E3', 'teacher_search_budget': self.args.nodes,
                         'seed': self.args.seed_base + self.args.seed_book_step * number}
             def inspect(command: list[str], **kwargs: Any) -> subprocess.CompletedProcess:
                 return common.run_timed(command, 600, **kwargs)

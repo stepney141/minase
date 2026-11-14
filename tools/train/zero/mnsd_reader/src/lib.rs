@@ -432,9 +432,9 @@ fn read_positions(
         output.info.add_game(number, record.origin())?;
         let validation = is_validation(output.info.header.seed(), number);
         let outcome = match record.outcome() {
-            Outcome::Game(GameResult::Win { winner, .. }) | Outcome::MateInThree { winner } => {
-                winner as u8
-            }
+            Outcome::Game(GameResult::Win { winner, .. })
+            | Outcome::MateInThree { winner }
+            | Outcome::EvaluationAdjudication { winner } => winner as u8,
             Outcome::Game(GameResult::Draw { .. }) => 2,
             Outcome::NotFromGame => return Err(Error::SyntheticOrigin { game: number }),
         };
