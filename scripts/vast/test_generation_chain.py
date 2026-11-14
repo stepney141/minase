@@ -73,7 +73,8 @@ def cli_values(root: Path) -> dict[str, str | list[str]]:
             'gen0-commit': '0' * 40, 'first-generation': '1', 'last-generation': '2', 'train-place': 'local',
             'ref-prefix': 'refs/nnue-standard-recipe', 'books-per-generation': '1',
             'replay-buffer-generations': '1', 'fit': 'yes', 'lr-linear': '0.67903', 'games': '10', 'nodes': '20000',
-            'random-moves': '0', 'max-ply': '4000', 'hash-mb': '16', 'seed-base': '9000000000',
+            'random-moves': '0', 'max-ply': '4000', 'hash-mb': '16', 'chunk-games': '250',
+            'seed-base': '9000000000',
             'seed-generation-step': '10000000', 'seed-book-step': '100000',
             'calibration-books': '1', 'lambda': '1.0', 'feature-set': 'P', 'width': '256',
             'head': 'pairwise-l16-l32', 'batch': '16384', 'epochs': '50', 'patience': '5', 'train-seed': '1',
@@ -547,6 +548,7 @@ class ChainTests(ChainTestCase):
         self.assertEqual(self.commands.generated, [(1, 0), (2, 0)])
         self.assertEqual(self.commands.refs['refs/nnue-standard-recipe/gen-2'], '2' * 40)
         self.assertEqual(self.commands.jobs[-1]['commit'], '1' * 40)
+        self.assertTrue(all(job['chunk_games'] == 250 for job in self.commands.jobs))
         path = self.root / 'run/gen-2/teacher/book-0.mnsd'
         self.assertEqual(inspect_book(path)['network_checksum'], '01' * 32)
         self.assertEqual(path.stat().st_ino, (path.parent.parent / 'received/book-0.mnsd').stat().st_ino)
@@ -689,6 +691,28 @@ class ChainTests(ChainTestCase):
         self.commands.bad_log = {'games_discarded_max_ply': 0}
         self.assertNotEqual(self.execute(), 0)
         self.assertFalse(list((self.root / 'run').glob('gen-*/teacher/*.mnsd')))
+
+    def test_appended_generation_log_uses_the_last_summary(self) -> None:
+        """追記された生成ログは最後の要約で受理し、その値が本と違えば拒否する。"""
+        directory = self.root / 'run/gen-1'
+        path = directory / 'received/book-0.mnsd'
+        write_book(path, header_fields(1, 0, 120))
+        log = directory / 'logs/book-0.log'
+        log.parent.mkdir(parents=True)
+        old = {'games_completed': 9, 'nodes': 1, 'max_ply': 1, 'hash_mb': 1,
+               'random_moves_max': 1, 'games_discarded_max_ply': 0, 'recorded_positions': 1}
+        current = {'games_completed': 10, 'nodes': 20000, 'max_ply': 4000, 'hash_mb': 16,
+                   'random_moves_max': 0, 'games_discarded_max_ply': 1, 'recorded_positions': 120}
+        log.write_text(''.join(f'{key}: {value}\n' for values in (old, current)
+                               for key, value in values.items()))
+        runner = chain.Chain(chain.arguments(argv(self.values)))
+        books = {}
+        runner.accept_books(1, '0' * 40, '00' * 32, books, False)
+        self.assertEqual(books, {0: 120})
+        with log.open('a') as stream:
+            stream.write('recorded_positions: 119\n')
+        with self.assertRaises(chain.ChainStop):
+            runner.accept_books(1, '0' * 40, '00' * 32, {}, False)
 
     def test_resume_skips_verified_books_on_replacement_machine(self) -> None:
         """事例8: 作業機に保存済みの本はskip_booksへ入り、生成し直さない。"""
@@ -995,7 +1019,8 @@ class StandardRecipeTests(ChainTestCase):
         """事例2: リプレイバッファ、補正、学習率、検証間隔、参照名の不正を起動前に拒否する。"""
         cases = [('replay-buffer-generations', '3'), ('fit', 'maybe'), ('lr-linear', '0'), ('lr-linear', 'nan'),
                  ('lr-linear', 'inf'), ('lr-linear', '-1'), ('validation-interval', '-1'),
-                 ('books-per-generation', '0'), ('books-per-generation', '1.5')]
+                 ('books-per-generation', '0'), ('books-per-generation', '1.5'),
+                 ('chunk-games', '0'), ('chunk-games', '1.5')]
         cases.extend(('ref-prefix', prefix) for prefix in
                      ('nnue/x', 'refs/x/', 'refs//x', 'refs/a..b', 'refs/a b', 'refs/a\tb',
                       'refs/.x', 'refs/x.lock', 'refs/x@{y', 'refs/x:y', 'refs/x\\y', 'refs/x[y',
@@ -1625,7 +1650,8 @@ class WorkerTests(unittest.TestCase):
         self.job = {'generation': 1, 'commit': '0' * 40, 'bundle': '/workspace/job/bundles/gen-0.bundle',
                     'reference': 'refs/nnue-standard-recipe/gen-0',
                     'generation_seed': 9010000000, 'book_step': 100000, 'target_books': 3, 'skip_books': [0],
-                    'games': 10, 'nodes': 20000, 'random_moves': 0, 'max_ply': 4000, 'hash_mb': 16, 'concurrency': 384}
+                    'games': 10, 'nodes': 20000, 'random_moves': 0, 'max_ply': 4000, 'hash_mb': 16,
+                    'chunk_games': 3, 'concurrency': 384}
         (self.root / 'worker.json').write_text('{"idle_limit_seconds": 5}')
         self.environ = self.root / 'environ'
         self.environ.write_bytes(b'CONTAINER_ID=17\0CONTAINER_API_KEY=private-test-key\0')
@@ -1633,6 +1659,18 @@ class WorkerTests(unittest.TestCase):
         self.fail = None
         self.head = None
         self.publications = []
+        self.preserved_output_files: dict[Path, dict[str, bytes]] = {}
+
+    def seed_resumable_output(self, directory: Path) -> None:
+        files = {
+            'config.json': b'{"unfinished": true}\n',
+            'chunk-00000.json': b'{"chunk": 0, "first_game": 1}\n',
+            'chunk-00000.mnsd': '確定済みの塊'.encode(),
+        }
+        directory.mkdir(parents=True)
+        for name, content in files.items():
+            (directory / name).write_bytes(content)
+        self.preserved_output_files[directory] = files
 
     def command(self, command: list[str], **kwargs: object) -> subprocess.CompletedProcess:
         self.calls.append(command)
@@ -1646,14 +1684,19 @@ class WorkerTests(unittest.TestCase):
             return subprocess.CompletedProcess(command, 128 if self.head is None else 0,
                                                '' if self.head is None else self.head + '\n')
         if Path(command[0]).name == 'minase':
-            path = Path(command[command.index('--output') + 1])
-            self.assertTrue(path.is_absolute())
-            self.assertTrue(path.is_relative_to(self.root / 'work'))
+            directory = Path(command[command.index('--output-dir') + 1])
+            self.assertTrue(directory.is_absolute())
+            self.assertTrue(directory.is_relative_to(self.root / 'work'))
+            self.assertTrue(directory.is_dir())
+            for name, content in self.preserved_output_files.get(directory, {}).items():
+                self.assertEqual((directory / name).read_bytes(), content)
             self.assertEqual(kwargs['cwd'], self.root / 'minase')
+            self.assertNotIn('--output', command)
             self.assertNotIn('--allow-dirty', command)
             self.assertNotIn('--rules', command)
             self.assertEqual(command[command.index('--concurrency') + 1], '384')
-            path.write_bytes('本'.encode())
+            self.assertEqual(command[command.index('--chunk-games') + 1], '3')
+            (directory / 'teacher.mnsd').write_bytes('本'.encode())
             kwargs['stdout'].write('生成のログ\n')
             self.clock.now += 4
         return subprocess.CompletedProcess(command, 0, '')
@@ -1703,11 +1746,13 @@ class WorkerTests(unittest.TestCase):
             (teacher / f'book-{number}.mnsd').touch()
         self.assertIsNone(worker.next_book(self.job, self.root))
 
-    def test_worker_publishes_log_before_book_and_stops_after_idle(self) -> None:
+    def test_worker_resumes_book_publishes_log_before_book_and_stops_after_idle(self) -> None:
         (self.root / 'job.json').write_text(json.dumps(self.job))
-        work = self.root / 'work'
-        work.mkdir()
-        (work / 'partial.mnsd').touch()
+        work = self.root / 'work/gen-1/book-1'
+        next_work = self.root / 'work/gen-1/book-2'
+        self.seed_resumable_output(work)
+        working_log = work.parent / 'book-1.log'
+        working_log.write_text('前回の生成ログ\n')
         logs = self.root / 'logs'
         logs.mkdir()
         (logs / 'exit-status').write_text('99\n')
@@ -1717,6 +1762,8 @@ class WorkerTests(unittest.TestCase):
             self.publications.append(str(destination.relative_to(self.root)))
             if destination.suffix == '.mnsd':
                 self.assertTrue((self.root / 'logs/gen-1' / (destination.stem + '.log')).is_file())
+                self.assertEqual((self.root / 'logs/gen-1/book-1.log').read_text(),
+                                 '前回の生成ログ\n生成のログ\n')
             return replace(source, destination)
 
         with patch.object(subprocess, 'run', side_effect=self.command), patch.object(Path, 'replace', publish), \
@@ -1724,15 +1771,95 @@ class WorkerTests(unittest.TestCase):
             self.assertEqual(worker.run_worker(self.root), 0)
         self.assertEqual(self.publications, ['logs/gen-1/book-1.log', 'teacher/gen-1/book-1.mnsd',
                                             'logs/gen-1/book-2.log', 'teacher/gen-1/book-2.mnsd'])
-        self.assertFalse((work / 'partial.mnsd').exists())
+        self.assertFalse(work.exists())
+        self.assertFalse(working_log.exists())
         self.assertFalse((logs / 'exit-status').exists())
         stop.assert_called_once_with(Path('/proc/1/environ'))
         self.assertEqual(sum(self.clock.sleeps), 5)
         generated = [call for call in self.calls if Path(call[0]).name == 'minase']
         self.assertEqual([call[call.index('--seed') + 1] for call in generated], ['9010100000', '9010200000'])
+        self.assertEqual([call[call.index('--output-dir') + 1] for call in generated],
+                         [str(work), str(next_work)])
         self.assertEqual([call for call in self.calls if call[0] == 'cargo'],
                          [['cargo', 'build', '--release', '--locked', '--bin', 'minase']])
         self.assertIn(['git', 'fetch', '/workspace/job/bundles/gen-0.bundle', 'refs/nnue-standard-recipe/gen-0'], self.calls)
+
+    def test_worker_resumes_after_log_publication_before_book_publication(self) -> None:
+        self.job['target_books'] = 2
+        (self.root / 'job.json').write_text(json.dumps(self.job))
+        work = self.root / 'work/gen-1/book-1'
+        self.seed_resumable_output(work)
+        published_book = self.root / 'teacher/gen-1/book-1.mnsd'
+        replace = Path.replace
+        interrupted = False
+
+        def stop_before_book(source: Path, destination: Path) -> Path:
+            nonlocal interrupted
+            if destination == published_book and not interrupted:
+                interrupted = True
+                raise KeyboardInterrupt
+            return replace(source, destination)
+
+        with self.assertRaises(KeyboardInterrupt), patch.object(subprocess, 'run', side_effect=self.command), \
+                patch.object(Path, 'replace', stop_before_book):
+            worker.run_worker(self.root)
+        working_log = work.parent / 'book-1.log'
+        self.assertTrue((self.root / 'logs/gen-1/book-1.log').is_file())
+        self.assertFalse(published_book.exists())
+        self.assertTrue((work / 'teacher.mnsd').is_file())
+        self.assertTrue(working_log.is_file())
+        self.preserved_output_files[work]['teacher.mnsd'] = (work / 'teacher.mnsd').read_bytes()
+
+        with patch.object(subprocess, 'run', side_effect=self.command), \
+                patch.object(worker, 'stop_instance', return_value=0):
+            self.assertEqual(worker.run_worker(self.root), 0)
+        self.assertTrue(published_book.is_file())
+        self.assertEqual((self.root / 'logs/gen-1/book-1.log').read_text(), '生成のログ\n生成のログ\n')
+        generated = [call for call in self.calls if Path(call[0]).name == 'minase']
+        self.assertEqual([call[call.index('--output-dir') + 1] for call in generated], [str(work), str(work)])
+
+    def test_published_book_is_not_generated_again_when_cleanup_was_interrupted(self) -> None:
+        self.job['target_books'] = 2
+        (self.root / 'job.json').write_text(json.dumps(self.job))
+        work = self.root / 'work/gen-1/book-1'
+        remove = shutil.rmtree
+
+        def stop_before_cleanup(path: Path, *args: object, **kwargs: object) -> None:
+            if Path(path) == work:
+                raise KeyboardInterrupt
+            remove(path, *args, **kwargs)
+
+        with self.assertRaises(KeyboardInterrupt), patch.object(subprocess, 'run', side_effect=self.command), \
+                patch.object(shutil, 'rmtree', stop_before_cleanup):
+            worker.run_worker(self.root)
+        working_log = work.parent / 'book-1.log'
+        self.assertTrue((self.root / 'teacher/gen-1/book-1.mnsd').is_file())
+        self.assertTrue(work.is_dir())
+        self.assertTrue(working_log.is_file())
+        generated = len([call for call in self.calls if Path(call[0]).name == 'minase'])
+
+        with patch.object(subprocess, 'run', side_effect=self.command), \
+                patch.object(worker, 'stop_instance', return_value=0):
+            self.assertEqual(worker.run_worker(self.root), 0)
+        self.assertEqual(len([call for call in self.calls if Path(call[0]).name == 'minase']), generated)
+        self.assertFalse(work.exists())
+        self.assertFalse(working_log.exists())
+
+    def test_startup_cleans_only_work_for_published_books(self) -> None:
+        published = self.root / 'teacher/gen-1/book-1.mnsd'
+        published.parent.mkdir(parents=True)
+        published.touch()
+        generation = self.root / 'work/gen-1'
+        for number in (1, 2):
+            (generation / f'book-{number}').mkdir(parents=True)
+            (generation / f'book-{number}/config.json').touch()
+            (generation / f'book-{number}.log').write_text(f'本{number}\n')
+        with patch.object(worker, 'stop_instance', return_value=0):
+            self.assertEqual(worker.run_worker(self.root), 0)
+        self.assertFalse((generation / 'book-1').exists())
+        self.assertFalse((generation / 'book-1.log').exists())
+        self.assertTrue((generation / 'book-2/config.json').is_file())
+        self.assertTrue((generation / 'book-2.log').is_file())
 
     def test_preparation_failure_writes_failed_log_and_atomic_status(self) -> None:
         (self.root / 'job.json').write_text(json.dumps(self.job))
@@ -1742,6 +1869,10 @@ class WorkerTests(unittest.TestCase):
         self.assertEqual((self.root / 'logs/exit-status').read_text(), '7\n')
         self.assertFalse((self.root / 'logs/.exit-status.tmp').exists())
         self.assertTrue((self.root / 'logs/gen-1/book-1.failed.log').is_file())
+        self.assertTrue((self.root / 'work/gen-1/book-1').is_dir())
+        self.assertTrue((self.root / 'work/gen-1/book-1.log').is_file())
+        self.assertEqual((self.root / 'logs/gen-1/book-1.failed.log').read_text(),
+                         (self.root / 'work/gen-1/book-1.log').read_text())
         self.assertFalse(list((self.root / 'teacher').glob('**/*.mnsd')))
 
     def test_generation_failure_does_not_publish_book(self) -> None:
@@ -1750,7 +1881,41 @@ class WorkerTests(unittest.TestCase):
         with patch.object(subprocess, 'run', side_effect=self.command):
             self.assertEqual(worker.run_worker(self.root), 7)
         self.assertTrue((self.root / 'logs/gen-1/book-1.failed.log').is_file())
+        self.assertTrue((self.root / 'work/gen-1/book-1').is_dir())
+        self.assertTrue((self.root / 'work/gen-1/book-1.log').is_file())
         self.assertFalse(list((self.root / 'teacher').glob('**/*.mnsd')))
+
+    def test_publication_failure_preserves_work_and_publishes_failed_log(self) -> None:
+        self.job['target_books'] = 2
+        (self.root / 'job.json').write_text(json.dumps(self.job))
+        published_book = self.root / 'teacher/gen-1/book-1.mnsd'
+        replace = Path.replace
+
+        def fail_book_publication(source: Path, destination: Path) -> Path:
+            if destination == published_book:
+                raise OSError('本の公開に失敗')
+            return replace(source, destination)
+
+        with patch.object(subprocess, 'run', side_effect=self.command), \
+                patch.object(Path, 'replace', fail_book_publication):
+            self.assertEqual(worker.run_worker(self.root), 1)
+        work = self.root / 'work/gen-1/book-1'
+        working_log = work.parent / 'book-1.log'
+        self.assertTrue((work / 'teacher.mnsd').is_file())
+        self.assertTrue(working_log.is_file())
+        self.assertIn('本の公開に失敗', working_log.read_text())
+        self.assertEqual((self.root / 'logs/gen-1/book-1.failed.log').read_text(), working_log.read_text())
+        self.assertFalse(published_book.exists())
+
+    def test_missing_chunk_games_fails_without_running_the_generator(self) -> None:
+        del self.job['chunk_games']
+        (self.root / 'job.json').write_text(json.dumps(self.job))
+        with patch.object(subprocess, 'run', side_effect=self.command):
+            self.assertEqual(worker.run_worker(self.root), 1)
+        self.assertFalse(self.calls)
+        self.assertIn('chunk_games', (self.root / 'work/gen-1/book-1.log').read_text())
+        self.assertTrue((self.root / 'logs/gen-1/book-1.failed.log').is_file())
+        self.assertTrue((self.root / 'work/gen-1/book-1').is_dir())
 
     def test_restart_builds_even_if_checkout_was_finished(self) -> None:
         (self.root / 'job.json').write_text(json.dumps(self.job))

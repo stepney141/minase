@@ -290,9 +290,11 @@ fn opening_generation_cli_requires_zero_random_moves_and_one_game_per_line() {
             .args(["data", "selfplay"])
             .args(["generate", "--openings"])
             .arg(dir.path("openings.txt"))
-            .arg("--output")
+            .arg("--output-dir")
             .arg(dir.path(name))
             .args([
+                "--chunk-games",
+                "1",
                 "--random-moves",
                 random_moves,
                 "--seed",
@@ -323,7 +325,8 @@ fn opening_generation_cli_requires_zero_random_moves_and_one_game_per_line() {
         .count();
     assert_eq!(summary["games"].parse::<usize>().unwrap(), lines);
     success(output);
-    let mut reader = Reader::new(File::open(dir.path("selfplay.mnsd")).unwrap()).unwrap();
+    let mut reader =
+        Reader::new(File::open(dir.path("selfplay.mnsd/teacher.mnsd")).unwrap()).unwrap();
 
     while let Some(decoded) = reader.read_game().unwrap() {
         assert_eq!(decoded.record().origin(), Origin::HumanOpeningSelfplay);
@@ -625,11 +628,14 @@ fn inspect_dump_reports_entry_fields_and_summarizes_all_games() {
 fn selfplay_summary_counts_saved_entries_and_discards_capped_games() {
     let dir = Directory::new();
     for cap in [1200, 1] {
-        let path = dir.path(&format!("selfplay-{cap}.mnsd"));
+        let output_directory = dir.path(&format!("selfplay-{cap}"));
+        let path = output_directory.join("teacher.mnsd");
         let output = Command::new(env!("CARGO_BIN_EXE_minase"))
-            .args(["data", "selfplay", "generate", "--output"])
-            .arg(&path)
+            .args(["data", "selfplay", "generate", "--output-dir"])
+            .arg(&output_directory)
             .args([
+                "--chunk-games",
+                "1",
                 "--games",
                 "1",
                 "--seed",

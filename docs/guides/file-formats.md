@@ -32,7 +32,10 @@ NPZはNumPyの配列を名前つきで収めた無圧縮のZIPであり、コン
 | FMの浮動小数点の重み`fm-float.npz`（3配列） | NPZ、版なし | `minase-trainer fm train` | `joint train --fm-init` | `crates/minase-trainer/src/fm/npz.rs` |
 | 同時学習の浮動小数点の重み`pst-float.npz`（5配列） | NPZ、版なし | `minase-trainer joint train` | `fm scale --float`、`joint train`、`diag pst-compare` | `crates/minase-trainer/src/joint/export.rs` |
 
-教師データは付随ファイルを持たない。
+学習器に渡す教師データは付随ファイルを持たない。
+`minase data selfplay generate`と`minase data zero-selfplay`は、出力先のディレクトリに、MNSDのほか、再開のときに照合する生成条件`config.json`、対局番号を固定の局数ごとに区切った塊のMNSDと集計JSON、および排他ロック用の空ファイルを置く。
+`selfplay generate`は、全塊がそろうと塊を1つの教師ファイル`teacher.mnsd`へ組み直し、学習器にはこのファイルを渡す。
+出力先の構成と各ファイルの欄は、`crates/minase/src/bin/minase/selfplay_gen/output.rs`と`crates/minase/src/bin/minase/zero_selfplay/output.rs`のdocコメントにある。
 MNSDは1局ごとに開始局面を1回だけ書き、以後は1手ごとに指した手、価値、印、および方策を並べる対局単位の形式であり、読み手は手順を再生して各局面を復元する。
 教師の分類と検証集合は、MNSDのヘッダと対局の由来から決まる。
 
@@ -137,6 +140,6 @@ ONNXのネットそのものとTensorRTのエンジンのキャッシュは、ON
 
 - `manifest.json`と`invocations.json`は、対局ハーネスの実行ディレクトリとSPSAの実行ディレクトリの両方にある。SPSAの`manifest.json`は版の欄を持たず、係数とSPSAの設定を持つ。
 - `summary.json`は、対局ハーネスでは累計実行時間と中断状態だけを持ち、学習器では学習の終了報告である。学習器の`summary.json`の欄は学習器ごとに異なり、AlphaZero型探索の学習器`minase_zero`の`summary.json`も`init`と`train`で欄が異なる。
-- `config.json`と`training.jsonl`は4種の学習器がそれぞれ書き、欄は学習器ごとに異なる。
+- `config.json`と`training.jsonl`は4種の学習器がそれぞれ書き、欄は学習器ごとに異なる。`config.json`は、教師の生成器`minase data selfplay generate`と`minase data zero-selfplay`の出力先にもあり、こちらは生成条件を持つ。
 - `pst-float.npz`は、PSTの学習器が書くと2つの配列、同時学習が書くと5つの配列を持つ。PSTの2つの配列だけを使う読み手は、5つの配列を持つファイルからも同じ名前の2つの配列を読む。
 - `latest.npz`と`best.npz`は4種の学習器がそれぞれ書き、収める配列は学習器ごとに異なる。`meta`の`kind`で学習器を見分ける。

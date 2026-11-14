@@ -96,13 +96,13 @@
 //! 投了の較正は`docs/adr/resign-zero-self-play-games-below-one-percent-after-bounding-false-resignations.md`を参照。
 
 use std::collections::BTreeMap;
-use std::fs::{self, File, OpenOptions};
+use std::fs::{self, File};
 use std::io::{self, BufReader, BufWriter, Write};
 use std::num::NonZeroUsize;
 use std::path::Path;
 use std::time::{Duration, Instant};
 
-use fs2::FileExt;
+use minase::datagen::output::{DirectoryLock, atomic_json, commit_files};
 use minase::nn::Evaluator;
 use minase::training::records::{Header, Outcome, TeacherKind, Writer};
 use minase_core::{Color, DrawReason, GameResult, WinReason};
@@ -556,15 +556,6 @@ pub(super) fn generate(
     })
 }
 
-/// ファイルの存在ではなく、OSの排他ロックを生存中保持する。
-struct DirectoryLock(File);
-
-impl Drop for DirectoryLock {
-    fn drop(&mut self) {
-        let _ = FileExt::unlock(&self.0);
-    }
-}
-
 fn open_directory(directory: &Path, config: &Config) -> Result<DirectoryLock, Error> {
     if !directory.try_exists()? {
         fs::create_dir(directory)?;
@@ -578,17 +569,7 @@ fn open_directory(directory: &Path, config: &Config) -> Result<DirectoryLock, Er
             }
         }
     }
-    let file = OpenOptions::new()
-        .read(true)
-        .write(true)
-        .create(true)
-        .truncate(false)
-        .open(directory.join(".zero_selfplay.lock"))?;
-    file.try_lock_exclusive().map_err(|source| Error::Locked {
-        path: directory.to_owned(),
-        source,
-    })?;
-    let lock = DirectoryLock(file);
+    let lock = DirectoryLock::acquire(directory, ".zero_selfplay.lock")?;
     if config_path.try_exists()? {
         let saved: Config = serde_json::from_reader(BufReader::new(File::open(config_path)?))?;
         let differences = config.differences(&saved);
@@ -666,14 +647,20 @@ impl ChunkWriter {
         let mut resigned = self.resigned.finish()?;
         games.flush()?;
         resigned.flush()?;
-        games.get_ref().sync_all()?;
-        resigned.get_ref().sync_all()?;
         drop((games, resigned));
-        for resigned in [false, true] {
-            let name = games_filename(self.summary.chunk, resigned);
-            fs::rename(directory.join(format!("{name}.tmp")), directory.join(name))?;
-        }
-        File::open(directory)?.sync_all()?;
+        let games_name = games_filename(self.summary.chunk, false);
+        let resigned_name = games_filename(self.summary.chunk, true);
+        let games_temporary = directory.join(format!("{games_name}.tmp"));
+        let games_final = directory.join(games_name);
+        let resigned_temporary = directory.join(format!("{resigned_name}.tmp"));
+        let resigned_final = directory.join(resigned_name);
+        commit_files(
+            directory,
+            &[
+                (&games_temporary, &games_final),
+                (&resigned_temporary, &resigned_final),
+            ],
+        )?;
         atomic_json(
             directory,
             &format!("chunk-{:05}.json", self.summary.chunk),
@@ -698,19 +685,6 @@ fn games_filename(chunk: u32, resigned: bool) -> String {
     } else {
         format!("chunk-{chunk:05}.mnsd")
     }
-}
-
-fn atomic_json(directory: &Path, name: &str, value: &impl Serialize) -> Result<(), Error> {
-    let temporary = directory.join(format!("{name}.tmp"));
-    let mut writer = BufWriter::new(File::create(&temporary)?);
-    serde_json::to_writer_pretty(&mut writer, value)?;
-    writer.write_all(b"\n")?;
-    writer.flush()?;
-    writer.get_ref().sync_all()?;
-    drop(writer);
-    fs::rename(temporary, directory.join(name))?;
-    File::open(directory)?.sync_all()?;
-    Ok(())
 }
 
 #[cfg(test)]

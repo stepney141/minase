@@ -2,7 +2,10 @@
 
 use super::{DEFAULT_HASH_MB, DEFAULT_MAX_PLY, DEFAULT_NODES};
 use clap::{Parser, Subcommand};
-use std::{num::NonZeroUsize, path::PathBuf};
+use std::{
+    num::{NonZeroU32, NonZeroUsize},
+    path::PathBuf,
+};
 
 /// 自己対局データ生成器のコマンドライン引数。
 #[derive(Parser)]
@@ -25,9 +28,12 @@ pub(super) enum Operation {
 /// `generate`サブコマンドの引数。
 #[derive(clap::Args)]
 pub(super) struct GenerateArguments {
-    /// 新規作成する出力ファイル。
+    /// 塊と組み直した教師を置く出力先ディレクトリ。
     #[arg(long, required = true)]
-    pub(super) output: PathBuf,
+    pub(super) output_dir: PathBuf,
+    /// 1塊に割り当てる対局数。
+    #[arg(long, required = true, value_parser = parse_nonzero_u32)]
+    pub(super) chunk_games: NonZeroU32,
     /// 生成する対局数。
     #[arg(long, required_unless_present = "openings", conflicts_with = "openings", value_parser = parse_positive_u32)]
     pub(super) games: Option<u32>,
@@ -81,6 +87,14 @@ fn parse_positive_u32(text: &str) -> Result<u32, String> {
     }
 }
 
+/// 0より大きい`u32`を不変条件つきの値として解析する。
+fn parse_nonzero_u32(text: &str) -> Result<NonZeroU32, String> {
+    let value = text
+        .parse::<u32>()
+        .map_err(|error| format!("invalid positive integer '{text}': {error}"))?;
+    NonZeroU32::new(value).ok_or_else(|| "value must be greater than zero".to_owned())
+}
+
 /// 0より大きい`u16`を解析する。
 fn parse_positive_u16(text: &str) -> Result<u16, String> {
     let value = text
@@ -112,8 +126,10 @@ mod tests {
             let mut input = vec![
                 "selfplay_gen",
                 "generate",
-                "--output",
-                "unused.bin",
+                "--output-dir",
+                "unused",
+                "--chunk-games",
+                "1",
                 "--games",
                 "1",
                 "--seed",
@@ -130,5 +146,58 @@ mod tests {
         assert!(arguments(Some("81")).is_err());
         assert!(arguments(Some("-1")).is_err());
         assert!(arguments(None).is_err());
+    }
+
+    #[test]
+    fn output_directory_and_positive_chunk_size_are_required_without_output_alias() {
+        let base = [
+            "selfplay_gen",
+            "generate",
+            "--output-dir",
+            "unused",
+            "--chunk-games",
+            "2",
+            "--games",
+            "3",
+            "--seed",
+            "1",
+            "--random-moves",
+            "0",
+        ];
+        assert!(Arguments::try_parse_from(base).is_ok());
+        assert!(
+            Arguments::try_parse_from([
+                "selfplay_gen",
+                "generate",
+                "--output",
+                "unused.mnsd",
+                "--chunk-games",
+                "2",
+                "--games",
+                "3",
+                "--seed",
+                "1",
+                "--random-moves",
+                "0",
+            ])
+            .is_err()
+        );
+        assert!(
+            Arguments::try_parse_from([
+                "selfplay_gen",
+                "generate",
+                "--output-dir",
+                "unused",
+                "--chunk-games",
+                "0",
+                "--games",
+                "3",
+                "--seed",
+                "1",
+                "--random-moves",
+                "0",
+            ])
+            .is_err()
+        );
     }
 }

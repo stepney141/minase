@@ -38,12 +38,11 @@ pub(super) fn score_percentile(frequencies: &[u64], percentile: u8) -> Option<i1
     for (index, &frequency) in frequencies.iter().enumerate() {
         cumulative += u128::from(frequency);
         if cumulative >= target {
-            let score =
-                i32::try_from(index).expect("a score index fits in i32") + i32::from(i16::MIN);
-            return Some(i16::try_from(score).expect("a score-table index maps to i16"));
+            let encoded = u16::try_from(index).ok()? ^ 0x8000;
+            return Some(i16::from_ne_bytes(encoded.to_ne_bytes()));
         }
     }
-    unreachable!("the cumulative frequency reaches the total count")
+    None
 }
 
 /// 件数を百分率へ変換し、分母が0なら`n/a`を返す。

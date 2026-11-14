@@ -73,21 +73,29 @@ MNSDの形式と由来は`crates/minase/src/training/records.rs`、教師の分�
 
 シードごとに次を実行する。
 生成器は、基準コミットを固定したworktreeの中で起動する（[生成コミットを固定する教訓](../lessons/pin-generation-binary-to-worktree.md)）。
-数値は、これまでの実験で使った生成条件の例である（1ファイル7,500局、1手10万ノード、同時16局、4,000手で破棄、置換表16 MB、対局中のランダム着手なし）。
+数値は、これまでの実験で使った生成条件の例である（1ファイル7,500局、250局ごとの塊、1手10万ノード、同時16局、4,000手で破棄、置換表16 MB、対局中のランダム着手なし）。
 
 ```bash
 cd data/<実験名>/generator
-target/release/minase data selfplay generate --output ../generated-<シード>.bin --seed <シード> \
+target/release/minase data selfplay generate --output-dir ../generated-<シード> --chunk-games 250 --seed <シード> \
   --games 7500 --nodes 100000 --random-moves 0 --concurrency 16 --max-ply 4000 --hash-mb 16 \
-  2>&1 | tee ../generate-<シード>.log
-target/release/minase data selfplay inspect ../generated-<シード>.bin | tee ../inspect-<シード>.log
+  2>&1 | tee -a ../generate-<シード>.log
+target/release/minase data selfplay inspect ../generated-<シード>/teacher.mnsd | tee ../inspect-<シード>.log
 cd -
 ```
 
-生成器は`generated-<シード>.bin`を書く。
+生成器は、出力先のディレクトリ`generated-<シード>/`に、対局番号を`--chunk-games`局ごとに区切った塊を1つずつ確定させ、全塊がそろうと1つの教師ファイル`teacher.mnsd`へ組み直す。
+学習と診断に渡すのは`teacher.mnsd`であり、塊のファイルは渡さない。
 `inspect`の出力で、ヘッダの生成コミット、重みの検査和、規則、シード、探索ノード上限、および対局の由来が意図どおりであることを確かめる。
 生成終了後は、保存局面数と手数上限による破棄数をログで確認し、理由別の除外率、勝敗数、探索値の分布、および重複率も確かめる。
-途中で止まったファイルは完成品として扱わず、ログとともに別の場所へ退避してから同じシードで生成し直す。
+
+生成が途中で止まった場合は、同じコマンドを同じ出力先でもう一度実行する。
+生成器は確定済みの塊を飛ばして残りの対局だけを指し、同じ機械で同じバイナリを使う限り、止まらなかった場合と同じ`teacher.mnsd`を作る。
+ログは追記になるので、要約が2回以上書かれたログでは最後の要約を読む。
+生成条件（規則セット、生成コミット、埋め込みの重み、シード、局数、塊の局数、ノード数、ランダム着手の上限、手数上限、置換表の容量、開始局面一覧）を変えて同じ出力先を指定して起動すると、生成器は相違する欄の名前を示して止まる。
+同時対局数は、再開のときに変えてよい。
+`--allow-dirty`を付けて未コミットの変更があるまま始めた生成は、確定済みの塊が1つでもあると再開できないので、出力先を消して最初から生成し直す。
+出力先の構成と各ファイルの欄は`crates/minase/src/bin/minase/selfplay_gen/output.rs`のdocコメント、この方式を採った理由は[ADR](../adr/commit-nnue-teacher-files-in-fixed-game-chunks-and-reassemble-them-into-one-file.md)にある。
 目標の局面数に足りず生成条件を追加する場合は、別の実験として入力とシードを決め直す。
 
 ## 4. PSTを学習する
@@ -97,7 +105,7 @@ cd -
 
 ```bash
 minase-trainer pst train \
-  --data <既存データ...> data/<実験名>/generated-*.bin \
+  --data <既存データ...> data/<実験名>/generated-*/teacher.mnsd \
   --init data/<実験名>/pst-base.bin \
   --output-dir data/<実験名>/training \
   --lr 0.03 --epochs 200 --patience 5 --batch 16384 --seed 1 \
@@ -118,7 +126,7 @@ minase-trainer pst train \
 
 ```bash
 minase-trainer data calibrate \
-  --data <既存データ...> data/<実験名>/generated-*.bin \
+  --data <既存データ...> data/<実験名>/generated-*/teacher.mnsd \
   --lookahead-gamma 0.9 --lookahead-plies 40 \
   --output data/<実験名>/teacher-calibration.json
 ```
@@ -148,7 +156,7 @@ minase-trainer data calibrate \
 
 ```bash
 minase-trainer diag pst-compare \
-  --data <既存データ...> data/<実験名>/generated-*.bin \
+  --data <既存データ...> data/<実験名>/generated-*/teacher.mnsd \
   --lambda 0.75 --teacher-cp-per-logit calibrate \
   --lookahead-gamma 0.9 --lookahead-plies 40 \
   --base data/<実験名>/pst-base.bin \
@@ -183,7 +191,7 @@ FMの補正は、PSTを固定してFMだけを学習する`fm train`か、PSTと
 
 ```bash
 minase-trainer fm train \
-  --data <既存データ...> data/<実験名>/generated-*.bin --init data/<実験名>/training/pst.bin \
+  --data <既存データ...> data/<実験名>/generated-*/teacher.mnsd --init data/<実験名>/training/pst.bin \
   --output-dir data/<実験名>/fm \
   --epochs 200 --patience 3 --lambda 1.0 --teacher-cp-per-logit calibrate \
   --lookahead-gamma 0.9 --lookahead-plies 40
@@ -191,7 +199,7 @@ minase-trainer fm train \
 minase-trainer fm quarter --input data/<実験名>/fm/fm.bin --output data/<実験名>/fm-quarter.bin
 
 minase-trainer joint train \
-  --data <既存データ...> data/<実験名>/generated-*.bin --base data/<実験名>/fm-quarter.bin \
+  --data <既存データ...> data/<実験名>/generated-*/teacher.mnsd --base data/<実験名>/fm-quarter.bin \
   --pst-init data/<実験名>/training/pst-float.npz --fm-init data/<実験名>/fm/fm-float.npz \
   --fm-reference data/<実験名>/fm/fm.bin \
   --output-dir data/<実験名>/joint --lambda 0.75 --teacher-cp-per-logit calibrate \
@@ -211,7 +219,7 @@ FMの成分の数は、エンジンの重みファイルの読み込み処理に
 
 ```bash
 minase-trainer fm scale --input data/<実験名>/joint/pst.bin --float data/<実験名>/joint/pst-float.npz \
-  --fm-scale <倍率×1024> --output data/<実験名>/pst-scaled.bin --data <既存データ...> data/<実験名>/generated-*.bin
+  --fm-scale <倍率×1024> --output data/<実験名>/pst-scaled.bin --data <既存データ...> data/<実験名>/generated-*/teacher.mnsd
 ```
 
 `--float`には、PSTの2端点と`V`、`a`を持つNPZが必要であり、`joint train`の`pst-float.npz`を使える。
@@ -244,7 +252,7 @@ minase-trainer fm scale --input data/<実験名>/joint/pst.bin --float data/<実
 | 保存物 | 用途 |
 |---|---|
 | `pst-base.bin` | 学習の初期重みを保持する。 |
-| `generated-*.bin`、`generate-*.log`、`inspect-*.log` | 生成データと、生成と検査のログを保持する。 |
+| `generated-*/`、`generate-*.log`、`inspect-*.log` | 生成器の出力先（教師ファイル`teacher.mnsd`、塊、生成条件）と、生成と検査のログを保持する。 |
 | `training/`、`fm/`、`joint/` | 学習の条件と入力の識別（`config.json`）、各エポックの記録、重み、量子化前の重み、チェックポイント、停止理由と検査の結果を保持する。 |
 | `diagnostics/` | 基準との比較結果、教師の分類と盤上総駒数の帯ごとの診断用標本、標本と代表局面のMNSDファイルを保持する。 |
 

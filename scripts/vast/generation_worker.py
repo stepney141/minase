@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
-"""生成機で世代ごとの教師を生成し、別プロセスで学習・診断・補正を実行する。
+"""生成機で再開できる教師を生成し、別プロセスで学習・診断・補正を実行する。
 
 使い方: python3 /workspace/job/generation_worker.py {run,cpu-info,stop} または train <世代>
 generation_chain.pyが本ファイルとworker.jsonを/workspace/job/へ配置する。
-job.jsonを作業の入力とし、teacher/に本、logs/にログ、work/に生成中の出力を置く。
+job.jsonを作業の入力とし、teacher/に本、logs/に公開ログ、work/に再開用の出力と追記ログを置く。
+本ごとのwork/の内容は公開まで残し、同じ出力先と生成条件で中断後の処理を続ける。
 学習はtraining/gen-<世代>/job.jsonを読み、同じディレクトリに成果物とログを置く。
 doneがnullでないステップは、成功と成果物を確認してfinished/<名前>を作り、再開時はこの目印で完了を判定する。
 Python 3.11の標準ライブラリだけで動作し、作業機のcommon.pyは必要としない。
@@ -18,7 +19,6 @@ from pathlib import Path
 import shutil
 import subprocess
 import sys
-import tempfile
 import time
 from typing import Any
 import urllib.error
@@ -99,6 +99,39 @@ def next_book(job: dict[str, Any], root: Path) -> int | None:
     return None
 
 
+def sync_directory(directory: Path) -> None:
+    """ディレクトリ項目の変更をディスクへ書き切る。"""
+    descriptor = os.open(directory, os.O_RDONLY)
+    try:
+        os.fsync(descriptor)
+    finally:
+        os.close(descriptor)
+
+
+def publish_log(source: Path, destination: Path) -> None:
+    """ログの写しを同期してから一時名から公開名へ改名する。"""
+    temporary = destination.with_name(f'.{destination.name}.tmp')
+    with source.open('rb') as input_stream, temporary.open('wb') as output_stream:
+        shutil.copyfileobj(input_stream, output_stream)
+        output_stream.flush()
+        os.fsync(output_stream.fileno())
+    temporary.replace(destination)
+
+
+def remove_working_book(directory: Path, log_path: Path) -> None:
+    """公開済みの本に対応する作業用ディレクトリと追記ログを消す。"""
+    if directory.exists():
+        shutil.rmtree(directory)
+    log_path.unlink(missing_ok=True)
+
+
+def clean_published_work(root: Path) -> None:
+    """公開した本に対応する作業中の出力だけを起動時に清掃する。"""
+    for published in (root / 'teacher').glob('gen-*/book-*.mnsd'):
+        generation = root / 'work' / published.parent.name
+        remove_working_book(generation / published.stem, generation / f'{published.stem}.log')
+
+
 def prepare_commit(root: Path, job: dict[str, Any], log: Any) -> Path:
     """bundleから指定コミットを展開し、起動後の最初の本の前にビルドする。"""
     reference = job['reference']
@@ -125,37 +158,43 @@ def prepare_commit(root: Path, job: dict[str, Any], log: Any) -> Path:
 
 
 def generate_book(root: Path, job: dict[str, Any], number: int, prepared: str | None) -> str:
-    """本を生成し、ログ、本の順に同じファイルシステム内で公開する。"""
+    """固定した出力先で本を再開し、追記ログ、本の順に公開する。"""
     generation = job['generation']
     logs = root / 'logs' / f'gen-{generation}'
     teacher = root / 'teacher' / f'gen-{generation}'
+    work = root / 'work' / f'gen-{generation}'
+    directory = work / f'book-{number}'
+    log_path = work / f'book-{number}.log'
     logs.mkdir(parents=True, exist_ok=True)
     teacher.mkdir(parents=True, exist_ok=True)
-    with tempfile.TemporaryDirectory(dir=root / 'work') as temporary:
-        directory = Path(temporary)
-        output = directory / f'book-{number}.mnsd'
-        log_path = directory / f'book-{number}.log'
-        try:
-            with log_path.open('w') as log:
-                repository = root / 'minase'
-                if prepared != job['commit']:
-                    repository = prepare_commit(root, job, log)
-                command = [str(repository / 'target/release/minase'), 'data', 'selfplay', 'generate',
-                           '--output', str(output), '--seed', str(job['generation_seed'] + job['book_step'] * number)]
-                for key in ('games', 'nodes', 'random_moves', 'concurrency', 'max_ply', 'hash_mb'):
-                    command.extend(['--' + key.replace('_', '-'), str(job[key])])
-                subprocess.run(command, cwd=repository, check=True, stdout=log, stderr=subprocess.STDOUT)
-            if not output.is_file():
-                raise ValueError('生成が成功しましたが、本がありません')
-            log_path.replace(logs / log_path.name)
-            output.replace(teacher / output.name)
-        except Exception as error:
-            # 本の公開に失敗した場合には、先に移したログを失敗ログへ移し直す。
-            source = log_path if log_path.exists() else logs / log_path.name
-            with source.open('a') as log:
-                log.write(f'\n生成失敗: {error}\n')
-            source.replace(logs / f'book-{number}.failed.log')
-            raise
+    directory.mkdir(parents=True, exist_ok=True)
+    output = directory / 'teacher.mnsd'
+    try:
+        with log_path.open('a') as log:
+            if 'chunk_games' not in job:
+                raise ValueError('生成のジョブにchunk_gamesがありません')
+            repository = root / 'minase'
+            if prepared != job['commit']:
+                repository = prepare_commit(root, job, log)
+            command = [str(repository / 'target/release/minase'), 'data', 'selfplay', 'generate',
+                       '--output-dir', str(directory),
+                       '--seed', str(job['generation_seed'] + job['book_step'] * number)]
+            for key in ('games', 'nodes', 'random_moves', 'concurrency', 'max_ply', 'hash_mb', 'chunk_games'):
+                command.extend(['--' + key.replace('_', '-'), str(job[key])])
+            subprocess.run(command, cwd=repository, check=True, stdout=log, stderr=subprocess.STDOUT)
+        if not output.is_file():
+            raise ValueError('生成が成功しましたが、本がありません')
+        publish_log(log_path, logs / f'book-{number}.log')
+        output.replace(teacher / f'book-{number}.mnsd')
+        sync_directory(logs)
+        sync_directory(teacher)
+    except Exception as error:
+        with log_path.open('a') as log:
+            log.write(f'\n生成失敗: {error}\n')
+        publish_log(log_path, logs / f'book-{number}.failed.log')
+        sync_directory(logs)
+        raise
+    remove_working_book(directory, log_path)
     return job['commit']
 
 
@@ -244,13 +283,12 @@ def run_training(root: Path, generation: int) -> int:
 
 
 def run_worker(root: Path) -> int:
-    """未完成の出力を捨て、指示された本を生成し、仕事が途絶えたら自己停止する。"""
+    """未公開の出力を残して本を再開し、仕事が途絶えたら自己停止する。"""
     (root / 'logs').mkdir(parents=True, exist_ok=True)
     try:
         work = root / 'work'
-        if work.exists():
-            shutil.rmtree(work)
-        work.mkdir()
+        work.mkdir(exist_ok=True)
+        clean_published_work(root)
         (root / 'logs/exit-status').unlink(missing_ok=True)
         config = json.loads((root / 'worker.json').read_text())
         idle_limit = config['idle_limit_seconds']
