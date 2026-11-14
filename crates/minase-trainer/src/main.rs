@@ -126,7 +126,7 @@ fn run_nnue(command: NnueCommand) -> Result<(), Box<dyn std::error::Error>> {
         NnueCommand::ExportHandcrafted(args) => minase_trainer::nnue::handcrafted::run(args).map_err(Into::into),
         NnueCommand::FitLinear(args) => minase_trainer::nnue::fit_linear::run(args).map_err(Into::into),
         NnueCommand::Train(args) => minase_trainer::nnue::train::run(*args).map(|summary| {
-            eprintln!("superbatches: {}; updates: {}; stopped_by: {:?}; status: {}",
+            eprintln!("superbatches: {}; updates: {}; stopped_by: {}; status: {}",
                 summary.completed_superbatches, summary.completed_steps, summary.stopped_by, summary.status);
         }),
         NnueCommand::CheckEquivalence { feature_set, width, batch, seed, training, head } => {

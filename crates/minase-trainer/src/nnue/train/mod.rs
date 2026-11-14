@@ -97,6 +97,15 @@ pub enum StopReason {
     TimeLimit,
 }
 
+impl fmt::Display for StopReason {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str(match self {
+            Self::Completed => "completed",
+            Self::TimeLimit => "time_limit",
+        })
+    }
+}
+
 /// 予定と確定済みの進捗、および最終の検査結果。
 /// candidateだけが終了コード0であり、それ以外は1で終了する。
 /// incompleteではネットを書き出さず、最後の確定済みチェックポイントを残す。
@@ -539,11 +548,14 @@ impl Session {
         if let Some((validation, _)) = &validation {
             self.last_validation = Some((k, validation.loss()));
         }
+        let validation_loss = match &validation {
+            Some((validation, _)) => format!("{:.9}", validation.loss()),
+            None => "-".to_owned(),
+        };
         eprintln!(
-            "superbatch {k}: updates={} train_loss={:.9} validation_loss={:?}",
+            "superbatch {k}: updates={} train_loss={:.9} validation_loss={validation_loss}",
             self.checkpoint.optimizer.step(),
             training.loss / training.positions as f64,
-            validation.as_ref().map(|(v, _)| v.loss())
         );
         Ok(true)
     }
@@ -634,7 +646,7 @@ impl Session {
         if stopped_by == StopReason::TimeLimit {
             summary.status = "incomplete";
             eprintln!(
-                "superbatches: {completed}; updates: {}; status: incomplete",
+                "superbatches: {completed}; updates: {}; stopped_by: {stopped_by}; status: incomplete",
                 self.checkpoint.optimizer.step()
             );
             summary.reason = Some(Error::Incomplete.to_string());

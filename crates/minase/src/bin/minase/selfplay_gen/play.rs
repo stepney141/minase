@@ -9,8 +9,8 @@ use minase::datagen::{
 };
 use minase::eval::Nnue;
 use minase::search::{
-    DEFAULT_THREADS, HistoryTables, SearchLimits, SearchResult, SearchSnapshot, TranspositionTable,
-    search,
+    DEFAULT_THREADS, HistoryTables, SearchError, SearchLimits, SearchResult, SearchSnapshot,
+    TranspositionTable, search,
 };
 use minase::training::records::{Entry, Exclusion, GameRecord, Origin, Outcome, Policy, Value};
 use minase_core::rng::{XorShift64, derive_seed};
@@ -107,16 +107,23 @@ fn search_position(
     table: &mut TranspositionTable,
     histories: &mut HistoryTables,
     stats: &mut Statistics,
+    context: &str,
 ) -> io::Result<SearchResult> {
-    let snapshot = SearchSnapshot::from_game(game).map_err(data_error)?;
-    let limits = SearchLimits::new(None, Some(u64::from(nodes)), None, None).map_err(data_error)?;
-    let result =
-        search(nnue, &snapshot, &limits, DEFAULT_THREADS, table, histories).map_err(data_error)?;
+    let snapshot = SearchSnapshot::from_game(game).map_err(|error| match error {
+        SearchError::NoLegalMoves => {
+            invalid_data(format!("{context} is ongoing but has no legal moves"))
+        }
+        _ => invalid_data(format!("{context} could not prepare search: {error}")),
+    })?;
+    let limits = SearchLimits::new(None, Some(u64::from(nodes)), None, None)
+        .map_err(|error| invalid_data(format!("{context} invalid search limits: {error}")))?;
+    let result = search(nnue, &snapshot, &limits, DEFAULT_THREADS, table, histories)
+        .map_err(|error| invalid_data(format!("{context} search failed: {error}")))?;
     stats.searched_positions += 1;
     stats.searched_nodes = stats
         .searched_nodes
         .checked_add(result.nodes)
-        .ok_or_else(|| invalid_data("searched node count overflow"))?;
+        .ok_or_else(|| invalid_data(format!("{context} searched node count overflow")))?;
     Ok(result)
 }
 
@@ -185,7 +192,13 @@ pub(super) fn play_game_from_opening(
     } else {
         let mut opening_seed = derive_seed(game_seed.get(), 0);
         loop {
-            if let Some((candidate, moves)) = generate_opening_candidate(rules, opening_seed)? {
+            if let Some((candidate, moves)) = generate_opening_candidate(rules, opening_seed)
+                .map_err(|error| {
+                    invalid_data(format!(
+                        "game {game_number} could not generate opening candidate: {error}"
+                    ))
+                })?
+            {
                 if candidate.ply_count() >= u32::from(settings.max_ply) {
                     break (candidate, moves);
                 }
@@ -198,6 +211,7 @@ pub(super) fn play_game_from_opening(
                     table,
                     &mut histories,
                     &mut stats,
+                    &format!("game {game_number} opening candidate"),
                 )?;
                 if settings.policy.accepts_opening(result.score) {
                     first_search = Some(result);
@@ -260,7 +274,11 @@ pub(super) fn play_game_from_opening(
                 )
                 .map_err(data_error)?,
             );
-            game.play(selected).map_err(data_error)?;
+            game.play(selected).map_err(|error| {
+                invalid_data(format!(
+                    "game {game_number} rejected random injection move: {error}"
+                ))
+            })?;
             stats.performed_injections += 1;
             let offset = usize::try_from(game.ply_count() - 1 - opening_ply)
                 .expect("an injection offset below 80 must fit in usize");
@@ -277,6 +295,7 @@ pub(super) fn play_game_from_opening(
                 table,
                 &mut histories,
                 &mut stats,
+                &format!("game {game_number}"),
             )?,
         };
         if let Some(winner) = adjudication.update(
@@ -299,7 +318,9 @@ pub(super) fn play_game_from_opening(
                 )
                 .map_err(data_error)?,
             );
-            game.play(search_result.best_move).map_err(data_error)?;
+            game.play(search_result.best_move).map_err(|error| {
+                invalid_data(format!("game {game_number} rejected best move: {error}"))
+            })?;
             stats.searched_plies += 1;
             continue;
         }
@@ -311,7 +332,12 @@ pub(super) fn play_game_from_opening(
             &generator,
             search_result.score,
             search_result.best_move,
-        )?;
+        )
+        .map_err(|error| {
+            invalid_data(format!(
+                "game {game_number} search returned an illegal best move: {error}"
+            ))
+        })?;
         match exclusion {
             Exclusion::MateBand => stats.excluded_mate_band += 1,
             Exclusion::Check => stats.excluded_check += 1,
@@ -336,7 +362,9 @@ pub(super) fn play_game_from_opening(
             .map_err(data_error)?,
         );
 
-        game.play(search_result.best_move).map_err(data_error)?;
+        game.play(search_result.best_move).map_err(|error| {
+            invalid_data(format!("game {game_number} rejected best move: {error}"))
+        })?;
         stats.searched_plies += 1;
     }
 
@@ -465,6 +493,65 @@ mod tests {
                 adjudication_score: MATE_BAND_START,
                 ..GenerationPolicy::default()
             },
+        }
+    }
+
+    #[test]
+    fn search_input_errors_identify_the_game_and_failed_operation() {
+        let empty = Game::from_position(Rules::LISHOGI, Position::empty(Color::Black));
+        let mut finished = Game::new(Rules::LISHOGI);
+        finished.agree_draw().unwrap();
+        for (game, expected) in [
+            (&empty, "game 37 is ongoing but has no legal moves"),
+            (
+                &finished,
+                "game 37 could not prepare search: search requires an ongoing game",
+            ),
+        ] {
+            let error = search_position(
+                &crate::selfplay_gen::test_support::epoch_zero_nnue(),
+                game,
+                100,
+                &mut test_table(),
+                &mut HistoryTables::new(DEFAULT_THREADS),
+                &mut Statistics::default(),
+                "game 37",
+            )
+            .err()
+            .unwrap();
+            assert_eq!(error.kind(), io::ErrorKind::InvalidData);
+            assert_eq!(error.to_string(), expected);
+        }
+    }
+
+    #[test]
+    fn opening_and_regular_search_failures_identify_the_game_and_operation() {
+        let openings = opening_for_position(&Position::initial(), 0);
+        for (opening, expected) in [
+            (
+                None,
+                "game 37 opening candidate invalid search limits: search node limit must be non-zero",
+            ),
+            (
+                Some(&openings[0]),
+                "game 37 invalid search limits: search node limit must be non-zero",
+            ),
+        ] {
+            let error = play_game_from_opening(
+                &crate::selfplay_gen::test_support::epoch_zero_nnue(),
+                Rules::LISHOGI,
+                37,
+                PlaySettings {
+                    nodes: 0,
+                    ..test_settings(7, 0, 200)
+                },
+                &mut test_table(),
+                opening,
+            )
+            .err()
+            .unwrap();
+            assert_eq!(error.kind(), io::ErrorKind::InvalidData);
+            assert_eq!(error.to_string(), expected);
         }
     }
 

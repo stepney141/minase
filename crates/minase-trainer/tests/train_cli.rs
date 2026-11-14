@@ -1,4 +1,4 @@
-//! 学習コマンドの引数契約を、ファイルやGPUを使わず検査する。
+//! 学習コマンドの引数契約と、CPUでの進捗表示・再開を検査する。
 
 use clap::Parser;
 use minase_trainer::nnue::{data::InputFeatureSet, options::DeviceKind, train::Args};
@@ -440,14 +440,60 @@ fn time_limit_exit_one_and_resume_export_match_a_complete_cli_run() {
             "{}",
             String::from_utf8_lossy(&result.stderr)
         );
+        // 指示書の表示契約に従い、検証なしは「-」、数値は小数点以下9桁とする。
+        let stderr = String::from_utf8(result.stderr).unwrap();
+        let progress: Vec<_> = stderr
+            .lines()
+            .filter(|line| line.starts_with("superbatch "))
+            .collect();
+        let records = common::training::logs(&fixture.root.join(directory));
+        assert_eq!(progress.len(), count.parse::<usize>().unwrap());
+        for (line, record) in progress.iter().zip(&records[1..]) {
+            let validation = match record["validation_loss"].as_f64() {
+                Some(loss) => format!("{loss:.9}"),
+                None => "-".to_owned(),
+            };
+            assert_eq!(
+                *line,
+                format!(
+                    "superbatch {}: updates={} train_loss={:.9} validation_loss={validation}",
+                    record["superbatch"].as_u64().unwrap(),
+                    record["total_steps"].as_u64().unwrap(),
+                    record["train_loss"].as_f64().unwrap(),
+                )
+            );
+        }
+        if directory == "continuous" {
+            assert!(progress[0].ends_with("validation_loss=-"));
+            assert!(!progress[1].ends_with("validation_loss=-"));
+            assert!(!progress[2].ends_with("validation_loss=-"));
+        }
+        let summary = common::training::document(fixture.root.join(directory).join("summary.json"));
+        assert_eq!(summary["stopped_by"], "completed");
+        assert_eq!(
+            stderr.lines().last().unwrap(),
+            format!(
+                "superbatches: {count}; updates: {}; stopped_by: completed; status: candidate",
+                summary["completed_steps"].as_u64().unwrap()
+            )
+        );
     }
     let interrupted = invoke("resumed", "3", true, "1e-20");
     assert_eq!(interrupted.status.code(), Some(1));
     assert!(!fixture.root.join("resumed/nnue.bin").exists());
     let summary = common::training::document(fixture.root.join("resumed/summary.json"));
     assert_eq!(summary["status"], "incomplete");
+    assert_eq!(summary["stopped_by"], "time_limit");
     assert_eq!(summary["completed_steps"], 2);
     assert_eq!(summary["planned_steps"], 6);
+    assert!(
+        String::from_utf8(interrupted.stderr)
+            .unwrap()
+            .lines()
+            .any(|line| {
+                line == "superbatches: 1; updates: 2; stopped_by: time_limit; status: incomplete"
+            })
+    );
     let finished = invoke("resumed", "3", true, "24");
     assert!(
         finished.status.success(),
