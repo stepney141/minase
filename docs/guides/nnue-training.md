@@ -21,10 +21,10 @@
 
 ## 標準レシピ
 
-本節の手順は、[標準レシピv1の設計書](../plans/nnue-standard-recipe.md)が対局で決めた標準レシピv1である。
-前の世代のネットで教師を生成して次の世代のネットを学ぶ世代反復では、`scripts/vast/generation_chain.py`がこの手順を続けて実行する。
-設計書は、学習の長さをsuperbatch（約1億局面分の更新）で64と定め、最後のネットを書き出す形に学習器を改めると決めている。
-学習器を改めるまでは、下のコマンドのとおり、検証損失が5エポック改善しなければ止め、検証損失が最良のネットを書き出す。
+本節は、[標準レシピv1の設計書](../plans/archived/nnue-standard-recipe.md)が定めた標準レシピv1の学習と診断のコマンドと、中止の条件をまとめる。各段階の詳しい手順は[手順](#手順)にある。
+前の世代のネットで教師を生成して次の世代のネットを学習する世代反復では、`scripts/vast/generation_chain.py`がこの手順を続けて実行する。
+学習の長さは、教師の量によらない単位superbatch（バッチ6,104回分の更新で、16,384局面のバッチなら約1億局面にあたる）の数で事前に決め、予定の更新を終えた最後のネットを書き出す。
+検証損失（学習に使わない対局での予測の誤差）は記録するだけで、停止とネットの選択には使わない。
 
 **コマンド**
 
@@ -32,18 +32,19 @@
 # 学習
 minase-trainer nnue train \
   --data <教師...> --base <前の世代のネット> --output-dir <新規または空のディレクトリ> \
-  --lambda 1.0 --teacher-cp-per-logit calibrate \
+  --lambda 1.0 \
   --feature-set P --width 256 --head pairwise-l16-l32 \
-  --batch 16384 --lr-schedule cosine:3:0.1 --epochs 50 --patience 5 \
-  --seed 1 --device cuda --validation-interval 0 --threads <スレッド数>
+  --batch 16384 --superbatches 64 --lr-schedule cosine:64:0.027 --validation-superbatches 8 \
+  --seed 1 --device cuda --threads <スレッド数>
 
 # 診断
 minase-trainer diag nnue-removal \
-  --float <学習の出力>/best.npz --net <学習の出力>/nnue.bin \
+  --float <学習の出力>/latest.npz --net <学習の出力>/nnue.bin \
   --data <教師...> --sample 10000 --seed 1 --output <新規の報告.json>
 ```
 
 - `--data`には、その世代の教師だけを指定する。
+- `--teacher-cp-per-logit`は指定しない。教師の探索値は、`--base`のネットの勝率尺度で勝率へ換算される。
 - `--threads`の実績は、作業機（RTX 3060 Ti）で4、生成機（RTX 5090）で32である。
 - 学習で出力された`nnue.bin`をエンジンに埋め込む。
 - 診断は駒除去差分だけを示した。採否の測定の前に、[残りの2つの診断](#学習した重みを診断する)も行う。
@@ -79,7 +80,7 @@ minase-trainer diag nnue-removal \
 
 - `--base`のMNUEファイルから、勝率尺度（1ロジットあたりのcp）、探索用駒価値、規則セット名を引き継ぐ。
 - `--base`の規則セットは、学習データと一致していなければならない。
-- 手書きの評価関数v0から始めるときは、`nnue export-handcrafted`で書き出したネットを`--base`に与える。このネットを埋め込むと、探索はv0の評価で動く。
+- 手書きの評価関数v0から始めるときは、`nnue export-handcrafted`で書き出したネットを`--base`に与える。このネットを埋め込むと、探索はv0の評価で動く。書き出したネットの規則セットは、教師の生成器と同じ`lishogi`である。
 - `--base`の線形の経路、第1層、出力部の重みは使わない。線形の経路の初期値は、探索用駒価値から次のように作る。
   - 自駒の行に駒価値を、相手駒の行に符号を反転した値を置く。144升すべてと序中盤用・終盤用の2列に同じ値を置く。
   - 王駒と先獅子の対象升の行は0とする。
@@ -92,9 +93,10 @@ minase-trainer diag nnue-removal \
 
 **教師の勝率尺度（`--teacher-cp-per-logit`）**
 
-- 通常は`calibrate`を指定し、訓練集合から教師の分類ごとに推定する。
-- 使った値は、`config.json`の`preprocessing`（`teacher_cp_per_logit`、`teacher_score_multiplier`、`teacher_cp_per_logit_source`）に残る。
-- 入力を変えても教師値を固定したい比較では、間引く前の全入力から較正ファイルを作って各学習に渡す。
+- 標準レシピでは指定しない。省略すると、教師の探索値を`--base`のネットの勝率尺度と同じ値で勝率へ換算する。
+- 訓練集合から教師の分類ごとに推定するときは`calibrate`を、記録済みの値を使うときは較正ファイルのパスを指定する。
+- 使った値と出どころ（省略時は`base`）は、`config.json`の`preprocessing`（`teacher_cp_per_logit`、`teacher_score_multiplier`、`teacher_cp_per_logit_source`）に残る。
+- 訓練データの量や間引き方を変えても教師値を同じに保ちたい比較では、`calibrate`を各学習に指定せず、間引く前の全入力から較正ファイルを作って各学習に渡す。
 
 ```sh
 minase-trainer data calibrate --data <教師...> --output <新規の較正.json>
@@ -106,15 +108,17 @@ minase-trainer data calibrate --data <教師...> --output <新規の較正.json>
 
 ### 試走する
 
-本番の前に1ファイルと1エポックで試走し、前処理、更新、検証、保存が最後まで通ることを確かめる。
+本番の前に1ファイルと短い学習で試走し、前処理、更新、検証、保存が最後まで通ることを確かめる。
+`--batches-per-superbatch`を小さくすると、1 superbatchの更新回数を減らして短く試せる。
 
 ```sh
 for FEATURE_SET in P HalfKP-hm-b8; do
   minase-trainer nnue train \
     --feature-set "$FEATURE_SET" --width 256 \
     --data <1ファイル> --base crates/minase/nets/nnue.bin \
-    --lambda 1.0 --teacher-cp-per-logit calibrate \
-    --batch 16384 --epochs 1 --seed 1 \
+    --lambda 1.0 \
+    --batch 16384 --superbatches 1 --batches-per-superbatch 100 \
+    --lr-schedule cosine:1:0.027 --validation-superbatches 1 --seed 1 \
     --output-dir "/tmp/nnue-trial-${FEATURE_SET}"
 done
 ```
@@ -123,18 +127,19 @@ done
 
 ### 学習する
 
-- 試走のコマンドの`--data`に全入力を並べ、`--epochs`、`--patience`、`--time-limit-hours`で上限を決める。
+- 試走のコマンドの`--data`に全入力を並べ、`--superbatches`で学習の長さを、`--time-limit-hours`で時間の上限を決める。
 - 測定機を他の作業と共用するときは、`--threads`を明示して他の作業の分のコアを残す。
 
-**停止と最良の重み**
+**学習の長さと書き出すネット**
 
-- 検証損失が改善しないエポックが`--patience`回続くか、`--epochs`または`--time-limit-hours`の上限に達すると止まる。
-- 最良の重みは、学習したエポック（1以上）の中から検証損失で選ぶ。
+- 学習は、`--superbatches`×`--batches-per-superbatch`回の更新を終えたら止まり、そのときの重みを`nnue.bin`へ書き出す。教師の量を変えても、更新回数と学習率の進み方は変わらない。
+- 1エポック（教師の全訓練局面を1回ひととおり学ぶこと）の更新回数は`ceil(訓練局面数 / バッチ)`であり、superbatchの境界はエポックの途中に来てよい。70ファイルの教師（約1.9億局面）では、64 superbatchが約34エポックにあたる。
+- 検証は、学習の前と、`--validation-superbatches`のsuperbatchごとと、学習の終わりに行う。検証損失は記録だけに使う。
 
 **主な調整用オプション**（値域と式は[オプション一覧](#オプション一覧)）
 
-- `--lr-schedule`: 総長は`--epochs`と独立である。`cosine:<総長>:<下限>`で総長まで学ぶときは、`--patience`で先に止まらないように大きな値にする。
-- `--validation-interval`: 1回に数十秒かかるので、1エポックの更新回数（`ceil(訓練局面数 / バッチ)`）の数分の1程度を指定する。
+- `--lr-schedule`: 総長と半減期の単位はsuperbatchであり、`--superbatches`と独立に指定する。標準レシピでは総長を`--superbatches`と同じ64とし、学習の終わりで学習率の倍率が下限に達するようにする。
+- `--validation-superbatches`: 70ファイルの教師では、検証1回に約1分かかる見込みである。
 
 ### 結果を確認する
 
@@ -142,28 +147,26 @@ done
 
 | ファイル | 内容 |
 |---|---|
-| `nnue.bin` | エンジンが読む重み |
-| `best.npz` | 量子化前の最良モデル（再開用のチェックポイントを兼ねる） |
-| `latest.npz` | 最後に検証を終えたモデルの再開用のチェックポイント |
-| `summary.json` | 停止理由、最良エポック、量子化検査の結果、`removal_sign` |
-| `training.jsonl` | エポックごとの学習曲線（エポック0は学習前の検証） |
-| `validation-interval.jsonl` | `--validation-interval`による途中の検証 |
+| `nnue.bin` | エンジンが読む重み。予定の更新を終えたときだけ書き出される |
+| `latest.npz` | 最後に確定したsuperbatchの量子化前のモデルと最適化器の状態。再開に使う |
+| `summary.json` | 状態、停止理由、予定と完了のsuperbatch数と更新回数、最後の検証損失、量子化検査の結果、`removal_sign` |
+| `training.jsonl` | 学習前の検証と、superbatchごとの学習曲線（1行目は更新0回の検証） |
 | `config.json` | 引数、入力、前処理の結果、再開の履歴 |
 
 **確かめること**
 
-- `summary.json`: 停止理由、最良エポック、量子化検査の結果を確かめる。
+- `summary.json`: `status`が`candidate`であること、`completed_steps`が`planned_steps`に等しいこと、量子化検査の結果を確かめる。
   - `removal_sign`は、駒を1枚除いたときの評価差の符号が手書きの評価関数v0の駒価値の差と逆になる割合である。閾値はなく学習の成否に影響しない。採否の測定で負けたときの手がかりにする。
-- `training.jsonl`: 訓練損失、検証損失、符号一致率、非線形出力の標準偏差、飽和率、線形重みの移動量、学習率の倍率を読み、更新の不足や過学習がないかを点検する。
+- `training.jsonl`: 更新の不足や過学習がないかを点検する。訓練損失、学習率の倍率、エポック数、および線形重みの移動量はすべての行にある。検証損失、符号一致率、非線形出力の標準偏差、および飽和率は検証を行った行にあり、検証を行わなかった行では`null`になる。
   - GPUメモリの欄はGPU全体の使用量であり、他のプロセスの確保も含む。
+- 損失は勝率の差の2乗なので、二値交差エントロピーで学んだ過去の学習の損失とは値を比べられない。
 
 **失敗と時間切れの扱い**
 
-- 次の場合は終了コード1で終わる。
+- `summary.json`の`status`が`candidate`のときだけ終了コード0で終わり、次の場合は終了コード1で終わる。
   - 引数、入力、または再開の条件を満たさない（学習を始める前）。
-  - 時間の上限に達し、1エポックも検証を終えていない。
-  - 量子化した重みとCPUの浮動小数点参照の平均絶対誤差が上限を超えた（`summary.json`に`quantization_error`が記録される）。この重みは採否の測定にかけず、整数化の段を1つずつ適用して原因を調べる（[教訓](../lessons/check-quantization-scale-against-the-win-rate-scale.md)）。
-- 時間の上限で止まった学習は収束を確認していないので、測定記録にもそう書く。
+  - 予定の更新を終える前に時間の上限に達した（`status`は`incomplete`）。`nnue.bin`は書き出さず、最後に確定した`latest.npz`を残すので、[再開](#中断した学習を再開する)の手順で続きを学習する。予定の長さに達していないネットは、標準レシピのネットとして使わない。
+  - 量子化した重みとCPUの浮動小数点参照の平均絶対誤差が上限を超えた（`status`は`quantization_error`）。この重みは採否の測定にかけず、整数化の段を1つずつ適用して原因を調べる（[教訓](../lessons/check-quantization-scale-against-the-win-rate-scale.md)）。
 
 ### 学習した重みを診断する
 
@@ -195,13 +198,13 @@ minase-trainer diag nnue-distribution \
 
 ```sh
 minase-trainer diag nnue-removal \
-  --float <出力ディレクトリ>/best.npz --net <出力ディレクトリ>/nnue.bin \
+  --float <出力ディレクトリ>/latest.npz --net <出力ディレクトリ>/nnue.bin \
   --data <データ...> --sample <標本数> --seed <シード> \
   --output <報告.json>
 ```
 
 - `--sample`は1以上で検証集合の局面数以下とする。
-- `--float`と`--net`には、同じ学習で出力されたファイルの組を指定する。
+- `--float`と`--net`には、同じ学習で出力されたファイルの組を指定する。学習を終えた時点の`latest.npz`が、`nnue.bin`の量子化前のモデルである。
 - 報告の`reversals`は、手書きの評価関数v0の駒価値による参照と整数のネットで除去差分の符号が反転した件数と割合である。駒損を有利と評価する傾向の目安になる。
 - 量子化前の2つの計算経路の差が上限を超えると、`error`を含む報告を保存して終了コード1で終わる。学習器の不具合として調べる。
 
@@ -216,7 +219,7 @@ minase-trainer diag nnue-moves \
 ```
 
 - `--base`には、PSTとFMの両方を持つMNPTを与える。
-- `--positions`には、ヘッダの規則セットが`JCSA`（L0,P0,R1,E0）と同じ規則であるMNSDを指定する。由来が合成のMNSDも指定できる。
+- `--positions`には、ヘッダの規則セットが`lishogi`（L1,L2,P0,P3,R1,E1,E3）と同じ規則であるMNSDを指定する。由来が合成のMNSDも指定できる。
 - 片方のモデルにしかない合法手があると、`error`を含む報告を保存して終了コード1で終わる。規則か局面の復元の不一致として調べる。
 
 ### 採否を測定して記録する
@@ -259,11 +262,12 @@ systemd-run --user --unit=<サービス名> --setenv=PATH="$PATH" -p WorkingDire
 ### 中断した学習を再開する
 
 - 最初と同じコマンドに、`--output-dir`と同じパスで`--resume <出力ディレクトリ>`を加える。
-- 再開時に変えられるのは、`--epochs`、`--patience`、`--time-limit-hours`、`--threads`、`--validation-interval`、`--bucket-positions`、`--scratch-dir`だけである。
-- `--epochs`と`--time-limit-hours`は、再開前を含む総量の上限である。
+- 再開時に変えられるのは、`--superbatches`、`--validation-superbatches`、`--time-limit-hours`、`--threads`、`--bucket-positions`、`--scratch-dir`だけである。`--batches-per-superbatch`と`--lr-schedule`は学習率の進み方を変えるので、変えられない。
+- `--superbatches`と`--time-limit-hours`は、再開前を含む総量である。`--superbatches`を完了済みの数より小さくするとエラーになり、大きくすると完了した学習からさらに続きを学習できる。
 - それ以外の設定、入力ファイル（パス、バイト長、ヘッダ）、前処理の結果、またはデバイスが異なると、エラーになり再開できない。
-- 最後に確定した`latest.npz`から復元して未確定のエポックをやり直し、`validation-interval.jsonl`のそれより後の行を捨てる。
+- 最後に確定した`latest.npz`から復元し、エポックの途中であれば同じ並べ替えを作り直して続きの局面から学習する。`training.jsonl`の確定していない行は捨て、前の実行の`nnue.bin`と`summary.json`は再開の始めに消す。止めずに通した学習と同じネットになる。
 - 再開の履歴は`config.json`の`resumes`に残るので、測定記録に再開の回数と変更した上限を書く。
+- 変更前の学習器（エポック数で学習の長さを決めていたもの）が保存したチェックポイントからは再開できない。
 
 ### メモリに収まらない教師データで学習する
 
@@ -303,7 +307,7 @@ minase-trainer nnue fit-linear --base <出力ディレクトリ>/nnue.bin \
 - Dの95%区間は、`decision.games`から対局単位のブートストラップで求める（例は[`fit_report.py`](../measurements/nnue-outcome-regression/nnue-outcome-regression-fit/fit_report.py)）。上限が0未満なら予測の改善を確認できる。
 - 補正は`--base`のネットに対して求めるので、ネットを学び直したら求め直す。
 - Dと補正の大きさは、教師や`--lambda`を変えたときに残る偏りの目安になる。
-- 式と局面の選び方は`crates/minase-trainer/src/nnue/fit_linear/mod.rs`に、方式の理由は[ADR](../adr/correct-the-nnue-linear-path-by-regressing-on-game-outcomes.md)にある。
+- 式と局面の選び方は`crates/minase-trainer/src/nnue/fit_linear/mod.rs`に、標準レシピで補正しない理由は[ADR](../adr/do-not-correct-the-nnue-linear-path-after-training.md)にある。
 
 ## 学習器を変更したとき
 
@@ -333,8 +337,8 @@ done
 
 - `check-equivalence`は、GPUのカーネルがCPUの参照実装と一致することを確かめる。
 - `gpu_`のテストは、これに加えて次の2つを確かめる。
-  - CUDAで再開した学習が連続した学習と一致する。
-  - 途中検証の間隔によらず学習の軌跡が変わらない。
+  - CUDAでエポックの途中から再開した学習が、止めずに通した学習と一致する。
+  - `--validation-superbatches`によらず学習の軌跡が変わらない。
 - 許容誤差は`crates/minase-trainer/src/nnue/gpu/equivalence.rs`にある。
 
 ### GPUでの1更新の時間を測る
@@ -378,14 +382,14 @@ done
 - 同じ局面数で「少数の対局から全局面」（`games`）と「多数の対局から疎に」（`positions`）を比べるための引数である。
 - 式は`crates/minase-trainer/src/data/subsample.rs`の`TrainSubsample`にある。
 - 教師の勝率尺度の推定、先読み教師、観測マスク、初期値は間引く前の訓練集合全体から作る。検証集合は間引かない。
-- 1エポックの更新回数、学習率の倍率、`--validation-interval`は抽出後の局面数で決まる。
+- 1エポックの更新回数は抽出後の局面数で決まる。学習の更新回数と学習率の倍率は、間引いても変わらない。
 
 **教師**
 
 | 引数 | 既定値 | 値域と意味 |
 |---|---|---|
 | `--lambda <VALUE>` | 必須 | 探索値の割合。0以上1以下。 |
-| `--teacher-cp-per-logit <calibrate\|FILE>` | 必須 | 教師の勝率尺度を推定するか、較正JSONで与える。 |
+| `--teacher-cp-per-logit <calibrate\|FILE>` | `--base`の勝率尺度 | 教師の勝率尺度を訓練集合から推定するか、較正JSONで与える。 |
 | `--lookahead-gamma <VALUE>` | なし | 先読みの割引率。0より大きく1より小さい。`--lookahead-plies`と同時に指定する。 |
 | `--lookahead-plies <N>` | なし | 先読みの手数。1以上4096以下。`--lookahead-gamma`と同時に指定する。 |
 
@@ -404,35 +408,35 @@ done
 | `--lr-ft <VALUE>` | 0.001 | 第1層と仮想行の学習率。正の有限値。 |
 | `--lr-head <VALUE>` | 0.001 | 出力部の学習率。正の有限値。 |
 | `--lr-linear <VALUE>` | 0.03 | 線形の経路の学習率。正の有限値。 |
-| `--weight-decay-ft <VALUE>` | 0.0001 | 第1層と仮想行の重み減衰。非負の有限値。 |
-| `--weight-decay-head <VALUE>` | 0.0001 | 出力部の重み減衰。非負の有限値。 |
+| `--weight-decay-ft <VALUE>` | 0 | 第1層と仮想行の重み減衰。非負の有限値。 |
+| `--weight-decay-head <VALUE>` | 0 | 出力部の重み減衰。非負の有限値。 |
 | `--weight-decay-linear <VALUE>` | 0 | 線形の経路の重み減衰。非負の有限値。 |
-| `--lr-schedule <SPEC>` | `cosine:3:0.1` | 下表の3つの形。 |
-| `--batch <N>` | 16384 | 1更新の最大局面数。末尾のバッチは少なくてもよい。 |
+| `--lr-schedule <SPEC>` | 必須 | 下表の3つの形。 |
+| `--batch <N>` | 16384 | 1更新の最大局面数。エポックの最後のバッチは少なくてもよい。 |
 | `--seed <N>` | 1 | 初期化、順列作成、検証標本抽出の乱数シード。 |
 
 | `--lr-schedule`の形 | 倍率m(t) | 条件 |
 |---|---|---|
 | `constant:<c>` | c | c>0 |
-| `exponential:<h>:<f>` | max(f, 2^(−t/(h·U))) | h>0、0<f≤1 |
-| `cosine:<T>:<f>` | f + (1−f)·(1+cos(π·min(t/(T·U), 1)))/2 | T>0、0<f≤1 |
+| `exponential:<h>:<f>` | max(f, 2^(−t/(h·B))) | h>0、0<f≤1 |
+| `cosine:<T>:<f>` | f + (1−f)·(1+cos(π·min(t/(T·B), 1)))/2 | T>0、0<f≤1 |
 
-- tは完了した更新回数、Uは1エポックの更新回数である。
+- tは完了した更新回数、Bは`--batches-per-superbatch`である。hとTの単位はsuperbatchである。
 - 倍率は3つのパラメータ群の学習率に同じ値で掛かり、重み減衰にも学習率を通じて掛かる。
 
-**学習量と停止**
+**学習の長さと時間**
 
 | 引数 | 既定値 | 値域と意味 |
 |---|---|---|
-| `--epochs <N>` | 50 | 再開前を含むエポック数の上限。1以上50以下。 |
-| `--patience <N>` | 5 | 改善しないエポックがこの数だけ続くと止まる。1以上。 |
+| `--superbatches <N>` | 必須 | 再開前を含むsuperbatch数。1以上。N×Bがu64を超える指定は拒否する。 |
+| `--batches-per-superbatch <B>` | 6104 | 1 superbatchの更新回数。1以上。 |
 | `--time-limit-hours <VALUE>` | 24 | 前処理、検証、再開前を含む累積時間の上限。24以下。 |
 
 **検証**
 
 | 引数 | 既定値 | 値域と意味 |
 |---|---|---|
-| `--validation-interval <N>` | 0 | この更新回数ごとに検証集合全体を評価して記録する。0は無効。診断用であり、最良の重みの選択、早期終了、チェックポイントはエポック境界のまま変わらない。 |
+| `--validation-superbatches <V>` | 必須 | このsuperbatch数ごとに検証集合全体を評価して記録する。1以上。学習の前と終わりにも評価する。停止と重みの選択には使わない。 |
 | `--validation-sample <N>` | 10000 | 量子化誤差の検査に使う検証局面数の上限。1以上。 |
 
 **実行環境**
@@ -497,11 +501,14 @@ done
 | 構成 | P型、幅256、`pairwise-l16-l32` | [ADR](../adr/compose-the-nnue-of-a-piece-value-initialized-linear-path-and-pairwise-products-with-two-hidden-layers.md)で確定（`H1`なしで確定し、世代の判定で検証中） |
 | 最適化手法 | AdamW（β1=0.9、β2=0.999、ε=1e-8） | Stockfishの本番と同じ値（[調査メモ](../research/nnue-training-recipes.md)） |
 | 基準の学習率 | 第1層と出力部0.001、線形の経路0.03 | 0.001は先行の初期値の範囲内。線形の経路は、先行の学習器の設定をminaseの単位へ換算した0.67903が0.03に対してSTCで`H0`（[記録](../measurements/nnue-standard-recipe/nnue-standard-recipe-lr-linear-stc.md)） |
-| 学習率の予定 | `cosine:3:0.1` | 倍率が一定の1倍に対してSTCで`H1`（[ADR](../adr/anneal-the-nnue-learning-rate-with-a-cosine-schedule.md)）。`cosine:10:0.1`で10エポック学習したネットは第2世代に`H0`（得点率45.4%、[記録](../measurements/nnue-generation-reset/nnue-generation-reset-gen2-cosine10.md)） |
-| 重み減衰 | 第1層と出力部1e-4、線形の経路0 | 値を選んだ根拠の記録なし（先行の多くは0） |
+| 学習の長さ | 64 superbatch（1 superbatchはバッチ6,104回） | bullet、tatara、tanuki-、Saplingと同じ単位で、64は教師の量が最も近いSaplingの1.1億局面の学習の値（[調査メモ](../research/nnue-training-recipes.md)） |
+| 書き出すネットと停止 | 予定の更新を終えた最後のネット。検証損失は記録だけに使う | tataraとtanuki-は事前に決めた長さの最後のネットを使い、nnue-pytorch、tanuki-、tataraの作者は検証損失の良し悪しが棋力と一致しないと書いている（同じ調査メモ）。検証損失で選ぶのを標準とする学習器は、調べた範囲ではminaseだけだった |
+| 学習率の予定 | `cosine:64:0.027`（64 superbatchで初期値の0.027倍まで余弦で下げる） | Stockfish、Viridithas、およびSaplingの25.5億局面の学習は、学習率を学習の終わりまで余弦の形で下げる。終わりの倍率0.027は、ViridithasとSaplingの1.1億局面の学習に共通する（同じ調査メモ） |
+| 損失 | 勝率の差の2乗 | bullet、tatara、variant-nnue-pytorchが2乗を、nnue-pytorch、Stockfish、tanuki-が勝率の差のべき乗を使う（同じ調査メモ）。指数は調整していない基本の形の2とする |
+| 教師の勝率尺度 | ネットの勝率尺度と同じ値（`--teacher-cp-per-logit`を省略） | 調べた13件の実装のうち11件が、手で決めた定数か一度推定して固定した値を使う（[調査メモ](../research/win-rate-scale-k-prior-art.md)） |
+| 重み減衰 | どの層にも掛けない | nnue-pytorch、tatara、tanuki-、variant-nnue-pytorchが0である（[調査メモ](../research/nnue-training-recipes.md)） |
 | バッチ | 16,384局面 | 先行の多くと同じ |
-| 途中検証 | 行わない（`--validation-interval 0`） | 行わなくても同じネットになり、生成機で1,268秒を省ける（[記録](../measurements/nnue-generation-reset/nnue-generation-reset-gen2-training.md)） |
-| 停止とネットの選択 | 改善なし5エポックで止め、検証損失が最良のネットを書き出す | 同じ学習の最後のネットは最良のネットに`H0`（得点率46.2%、同じ記録）。検証損失で選ぶのを標準とする学習器は、調べた範囲ではminaseだけ |
+| 検証 | 8 superbatchごとと学習の終わり（`--validation-superbatches 8`） | 70ファイルの検証集合では1回約1分かかる見込みで、毎superbatchでは学習と同じ程度の時間になる |
 
 ## 詳細の置き場所
 
@@ -513,4 +520,4 @@ done
 | 保存物の各項目 | `crates/minase-trainer/src/nnue/train/record.rs` |
 | チェックポイントの形式 | `crates/minase-trainer/src/nnue/model/checkpoint.rs`の`Checkpoint` |
 | 学習データの形式、教師値、検証集合の分け方 | `crates/minase/src/training/`と`crates/minase-trainer/src/data/`（PSTとFMの学習器と共通） |
-| 方式を選んだ理由 | ADRの[カーネルの書き方](../adr/write-trainer-kernels-in-cuda-cpp-via-nvrtc.md)、[第1層の勾配](../adr/backpropagate-the-first-layer-through-a-reverse-index.md)、[AdamWの式](../adr/use-pytorch-adamw-with-bias-correction.md)、[教師と損失](../adr/train-the-nnue-on-search-value-teachers-without-lookahead.md) |
+| 方式を選んだ理由 | ADRの[カーネルの書き方](../adr/write-trainer-kernels-in-cuda-cpp-via-nvrtc.md)、[第1層の勾配](../adr/backpropagate-the-first-layer-through-a-reverse-index.md)、[AdamWの式](../adr/use-pytorch-adamw-with-bias-correction.md)、[教師と損失](../adr/train-the-nnue-on-search-value-teachers-with-the-squared-win-rate-difference.md)、[学習の長さと書き出すネット](../adr/train-the-nnue-for-64-superbatches-and-export-the-last-network.md)、[教師の勝率尺度](../adr/convert-nnue-teacher-values-with-the-network-win-rate-scale-by-default.md) |

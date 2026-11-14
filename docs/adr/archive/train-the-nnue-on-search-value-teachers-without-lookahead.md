@@ -2,16 +2,16 @@
 
 ## ステータス
 
-承認済み。決定日は2026年10月17日。
+置き換え済み。決定日は2026年10月17日。[NNUEは先読みを使わない探索値だけの教師で、勝率の差の2乗を損失として学ぶ](../train-the-nnue-on-search-value-teachers-with-the-squared-win-rate-difference.md)によって置き換えられた。
 
 ## コンテキスト
 
 NNUEの教師値は、教師局面の探索値を教師の勝率尺度で勝率に換算した値と、その対局の結果を、混合比λで混ぜたものである。
-[以前の決定](archive/train-the-nnue-on-search-value-lookahead-teachers.md)は、λ=1.0で対局結果を混ぜず、各局面の探索値を同じ対局の後続40手の探索値の加重平均（減衰率0.9）に置き換える先読み教師で学ぶとしていた。
-先読み教師は[PSTの学習で採用した](use-lookahead-teacher-values.md)方式であり、NNUEでの効果は測られていなかった。
-NNUEの検証損失が学習の条件によらず早く頭打ちになる原因を調べた[計画](../plans/archived/nnue-early-best-epoch.md)では、先読みの引数だけを外して学び直したネットを段階ゲートにかけた。
-このネットは、先読み教師で学んだ当時のネット（D0b）に対して[STC](../measurements/nnue-early-best-epoch/nnue-no-lookahead-stc.md)と[LTC](../measurements/nnue-early-best-epoch/nnue-no-lookahead-ltc.md)の両方で`H1`となった。
-同じ計画の[学習の記録](../measurements/nnue-early-best-epoch/nnue-no-lookahead-training.md)では、先読み教師で学んだネットは学習前のネットより訓練の対局の結果に強く適合し、先読みを外すとこの適合は学習前と区別できなくなった。
+[以前の決定](train-the-nnue-on-search-value-lookahead-teachers.md)は、λ=1.0で対局結果を混ぜず、各局面の探索値を同じ対局の後続40手の探索値の加重平均（減衰率0.9）に置き換える先読み教師で学ぶとしていた。
+先読み教師は[PSTの学習で採用した](../use-lookahead-teacher-values.md)方式であり、NNUEでの効果は測られていなかった。
+NNUEの検証損失が学習の条件によらず早く頭打ちになる原因を調べた[計画](../../plans/archived/nnue-early-best-epoch.md)では、先読みの引数だけを外して学び直したネットを段階ゲートにかけた。
+このネットは、先読み教師で学んだ当時のネット（D0b）に対して[STC](../../measurements/nnue-early-best-epoch/nnue-no-lookahead-stc.md)と[LTC](../../measurements/nnue-early-best-epoch/nnue-no-lookahead-ltc.md)の両方で`H1`となった。
+同じ計画の[学習の記録](../../measurements/nnue-early-best-epoch/nnue-no-lookahead-training.md)では、先読み教師で学んだネットは学習前のネットより訓練の対局の結果に強く適合し、先読みを外すとこの適合は学習前と区別できなくなった。
 
 ## 決定
 
@@ -24,7 +24,7 @@ NNUEの学習は、λ=1.0とし、各局面の素の探索値を教師の勝率�
 
 減衰率0.9と手数40の先読み教師は、先読みを外したネットがSTCとLTCで有意に強かったので採らない。
 先読み教師で学んだネットは、検証の対局の結果に対する損失では先読みなしのネットより低かったが、評価関数の採否は対局の勝敗で決めるので、この差は先読み教師を残す理由にならない。
-対局結果を混ぜる教師（λ<1）は、対局結果が同じ対局のすべての局面で同じ値を取るので、非線形の経路が結果を対局の記憶として学ぶ危険があり（[教訓](../lessons/game-constant-target-memorization.md)）、採らなかった。
+対局結果を混ぜる教師（λ<1）は、対局結果が同じ対局のすべての局面で同じ値を取るので、非線形の経路が結果を対局の記憶として学ぶ危険があり（[教訓](../../lessons/game-constant-target-memorization.md)）、採らなかった。
 線形の経路と非線形の経路で教師を分ける案、tataraの勝率モデル損失、および教師局面を静止探索の末端へ置き換える案は、以前の決定と同じ理由で採らない。
 
 ## 結果

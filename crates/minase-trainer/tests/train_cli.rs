@@ -1,11 +1,7 @@
-//! 学習コマンドの引数契約を、ファイルやGPUを使わず検査する。
+//! 学習コマンドの引数契約と、CPUでの進捗表示・再開を検査する。
 
 use clap::Parser;
-use minase_trainer::nnue::{
-    data::InputFeatureSet,
-    options::{DeviceKind, TrainingOptions},
-    train::Args,
-};
+use minase_trainer::nnue::{data::InputFeatureSet, options::DeviceKind, train::Args};
 
 #[derive(Parser)]
 struct TrainArguments {
@@ -26,8 +22,14 @@ fn argv() -> Vec<&'static str> {
         "base.bin",
         "--output-dir",
         "output",
-        "--teacher-cp-per-logit",
-        "calibrate",
+        "--superbatches",
+        "3",
+        "--batches-per-superbatch",
+        "6104",
+        "--validation-superbatches",
+        "1",
+        "--lr-schedule",
+        "cosine:3:0.1",
         "--lambda",
         "1.0",
     ]
@@ -35,22 +37,23 @@ fn argv() -> Vec<&'static str> {
 
 #[test]
 fn train_defaults_match_the_training_contract() {
-    let args = TrainArguments::try_parse_from(argv()).unwrap().args;
+    let mut values = argv();
+    let at = values
+        .iter()
+        .position(|&v| v == "--batches-per-superbatch")
+        .unwrap();
+    values.drain(at..at + 2);
+    let args = TrainArguments::try_parse_from(values).unwrap().args;
     args.validate().unwrap();
     assert_eq!(args.device, DeviceKind::Cuda);
-    assert_eq!(args.training, TrainingOptions::new(1.0));
-    assert_eq!(args.training.lr_linear, 0.03);
-    assert_eq!(args.training.weight_decay_linear, 0.0);
-    assert_eq!(args.training.lr_ft, 1e-3);
-    assert_eq!(args.training.weight_decay_ft, 1e-4);
-    assert_eq!(args.training.lr_head, 1e-3);
-    assert_eq!(args.training.weight_decay_head, 1e-4);
+    assert_eq!(args.training.weight_decay_ft, 0.0);
+    assert_eq!(args.training.weight_decay_head, 0.0);
     assert_eq!(args.training.lambda, 1.0);
     assert_eq!(args.feature_set, InputFeatureSet::P);
     assert_eq!(args.width, 128);
     assert_eq!(args.batch, 16_384);
-    assert_eq!(args.epochs, 50);
-    assert_eq!(args.patience, 5);
+    assert_eq!(args.batches_per_superbatch.get(), 6104);
+    assert!(args.teacher_cp_per_logit.is_none());
     assert_eq!(args.seed, 1);
     assert_eq!(args.time_limit_hours, 24.0);
     assert_eq!(args.validation_sample, 10_000);
@@ -68,6 +71,9 @@ fn train_requires_the_model_inputs_and_output_directory() {
         "--data",
         "--base",
         "--output-dir",
+        "--superbatches",
+        "--validation-superbatches",
+        "--lr-schedule",
     ] {
         let mut missing = argv();
         let index = missing.iter().position(|&arg| arg == required).unwrap();
@@ -120,9 +126,27 @@ fn train_validates_numeric_arguments_and_paired_lookahead_before_opening_inputs(
         (&["--batch", "32769"], true),
         (&["--batch", &max_batch], true),
         (&["--batch", &oversized_batch], false),
-        (&["--epochs", "0"], false),
-        (&["--epochs", "51"], false),
-        (&["--patience", "0"], false),
+        (&["--superbatches", "0"], false),
+        (&["--batches-per-superbatch", "0"], false),
+        (&["--validation-superbatches", "0"], false),
+        (
+            &[
+                "--superbatches",
+                "18446744073709551615",
+                "--batches-per-superbatch",
+                "2",
+            ],
+            false,
+        ),
+        (
+            &[
+                "--superbatches",
+                "18446744073709551615",
+                "--batches-per-superbatch",
+                "1",
+            ],
+            true,
+        ),
         (&["--time-limit-hours", "0"], false),
         (&["--time-limit-hours", "25"], false),
         (&["--time-limit-hours", "NaN"], false),
@@ -319,4 +343,165 @@ fn bucket_arguments_are_paired_with_the_bucket_count_before_opening_inputs() {
         };
         assert_eq!(valid, accepted, "arguments={arguments:?}");
     }
+}
+
+#[test]
+fn removed_epoch_and_interval_options_are_rejected() {
+    for flag in [
+        "--epochs",
+        "--patience",
+        "--export-epoch",
+        "--validation-interval",
+    ] {
+        let mut values = argv();
+        values.extend([flag, "1"]);
+        assert_eq!(
+            TrainArguments::try_parse_from(values).err().unwrap().kind(),
+            clap::error::ErrorKind::UnknownArgument
+        );
+    }
+}
+
+#[test]
+fn learning_rate_schedules_reject_invalid_numbers_and_shapes() {
+    for spec in [
+        "",
+        "constant:0",
+        "constant:NaN",
+        "exponential:0:0.1",
+        "cosine:3:0",
+        "cosine:3:1.1",
+        "cosine:inf:0.1",
+    ] {
+        let mut values = argv();
+        let at = values.iter().position(|&v| v == "--lr-schedule").unwrap();
+        values[at + 1] = spec;
+        assert!(TrainArguments::try_parse_from(values).is_err());
+    }
+}
+
+mod common;
+
+#[test]
+fn time_limit_exit_one_and_resume_export_match_a_complete_cli_run() {
+    use std::{fs, process::Command};
+    let fixture = common::Fixture::new(&common::positions());
+    let data = fixture.root.join("records.bin");
+    fs::write(&data, common::training::records(false, false)).unwrap();
+    let base = fixture.root.join("base.bin");
+    fs::write(&base, include_bytes!("../../minase/nets/nnue-epoch0.bin")).unwrap();
+    let invoke = |directory: &str, superbatches: &str, resume: bool, limit: &str| {
+        let output = fixture.root.join(directory);
+        let mut command = Command::new(env!("CARGO_BIN_EXE_minase-trainer"));
+        command
+            .args([
+                "nnue",
+                "train",
+                "--device",
+                "cpu",
+                "--feature-set",
+                "P",
+                "--width",
+                "4",
+                "--lambda",
+                "1",
+                "--threads",
+                "1",
+                "--batch",
+                "33",
+                "--superbatches",
+                superbatches,
+                "--batches-per-superbatch",
+                "2",
+                "--validation-superbatches",
+                "2",
+                "--lr-schedule",
+                "cosine:3:0.1",
+                "--time-limit-hours",
+                limit,
+                "--validation-sample",
+                "8",
+                "--data",
+            ])
+            .arg(&data)
+            .arg("--base")
+            .arg(&base)
+            .arg("--output-dir")
+            .arg(&output);
+        if resume {
+            command.arg("--resume").arg(&output);
+        }
+        command.output().unwrap()
+    };
+    for (directory, count) in [("continuous", "3"), ("resumed", "1")] {
+        let result = invoke(directory, count, false, "24");
+        assert!(
+            result.status.success(),
+            "{}",
+            String::from_utf8_lossy(&result.stderr)
+        );
+        // 指示書の表示契約に従い、検証なしは「-」、数値は小数点以下9桁とする。
+        let stderr = String::from_utf8(result.stderr).unwrap();
+        let progress: Vec<_> = stderr
+            .lines()
+            .filter(|line| line.starts_with("superbatch "))
+            .collect();
+        let records = common::training::logs(&fixture.root.join(directory));
+        assert_eq!(progress.len(), count.parse::<usize>().unwrap());
+        for (line, record) in progress.iter().zip(&records[1..]) {
+            let validation = match record["validation_loss"].as_f64() {
+                Some(loss) => format!("{loss:.9}"),
+                None => "-".to_owned(),
+            };
+            assert_eq!(
+                *line,
+                format!(
+                    "superbatch {}: updates={} train_loss={:.9} validation_loss={validation}",
+                    record["superbatch"].as_u64().unwrap(),
+                    record["total_steps"].as_u64().unwrap(),
+                    record["train_loss"].as_f64().unwrap(),
+                )
+            );
+        }
+        if directory == "continuous" {
+            assert!(progress[0].ends_with("validation_loss=-"));
+            assert!(!progress[1].ends_with("validation_loss=-"));
+            assert!(!progress[2].ends_with("validation_loss=-"));
+        }
+        let summary = common::training::document(fixture.root.join(directory).join("summary.json"));
+        assert_eq!(summary["stopped_by"], "completed");
+        assert_eq!(
+            stderr.lines().last().unwrap(),
+            format!(
+                "superbatches: {count}; updates: {}; stopped_by: completed; status: candidate",
+                summary["completed_steps"].as_u64().unwrap()
+            )
+        );
+    }
+    let interrupted = invoke("resumed", "3", true, "1e-20");
+    assert_eq!(interrupted.status.code(), Some(1));
+    assert!(!fixture.root.join("resumed/nnue.bin").exists());
+    let summary = common::training::document(fixture.root.join("resumed/summary.json"));
+    assert_eq!(summary["status"], "incomplete");
+    assert_eq!(summary["stopped_by"], "time_limit");
+    assert_eq!(summary["completed_steps"], 2);
+    assert_eq!(summary["planned_steps"], 6);
+    assert!(
+        String::from_utf8(interrupted.stderr)
+            .unwrap()
+            .lines()
+            .any(|line| {
+                line == "superbatches: 1; updates: 2; stopped_by: time_limit; status: incomplete"
+            })
+    );
+    let finished = invoke("resumed", "3", true, "24");
+    assert!(
+        finished.status.success(),
+        "{}",
+        String::from_utf8_lossy(&finished.stderr)
+    );
+    assert_eq!(
+        fs::read(fixture.root.join("continuous/nnue.bin")).unwrap(),
+        fs::read(fixture.root.join("resumed/nnue.bin")).unwrap()
+    );
 }

@@ -2,7 +2,7 @@
 //!
 //! 本モジュールは固定局面集のJSON Lines形式の正本を定める。
 //! 固定局面集は`crates/minase/tests/fixtures/nn-positions.jsonl`にコミットされ、Pythonの学習器との符号化の照合と`nn-eval`の推論に使われる。
-//! 1行につき1局面を記録し、キーの順は[`Fixture`]のフィールド順に固定する。
+//! 1行につき1局面を記録し、キーの順は`Fixture`のフィールド順に固定する。
 
 use std::num::{NonZeroU64, NonZeroUsize};
 use std::path::{Path, PathBuf};

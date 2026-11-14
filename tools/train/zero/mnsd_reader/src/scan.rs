@@ -1,4 +1,4 @@
-//! MNSD版2の項目フラグだけを読み、手順を再生せずに局面数を数える。
+//! MNSD版3の項目フラグだけを読み、手順を再生せずに局面数を数える。
 //!
 //! 価値があり除外されていない項目のうち、方策の候補か指した手を確率1とする印を持つものを選ぶ。
 //! 方策のない速い探索は数えず、検証の分割は対局ごとに決まる。
@@ -88,14 +88,14 @@ pub fn scan_file(path: &Path) -> Result<FileInfo, Error> {
                 input::<4>(&mut source, Section::Entry)?;
             }
             let flags = entry[4];
-            if flags & 0xf0 != 0 {
+            if flags & 0xe0 != 0 || flags & 7 > 4 {
                 return Err(records::Error::InvalidEntryFlags(flags).into());
             }
-            if flags & 4 != 0 && entry[2..4] != [0, 0] {
+            if flags & 8 != 0 && entry[2..4] != [0, 0] {
                 return Err(records::Error::NonzeroAbsentValue.into());
             }
             let candidates = u16::from_le_bytes([entry[5], entry[6]]);
-            if flags & 7 == 0 && (candidates > 0 || flags & 8 != 0) {
+            if flags & 15 == 0 && (candidates > 0 || flags & 16 != 0) {
                 if validation {
                     info.validation_count += 1;
                 } else {

@@ -1,4 +1,4 @@
-//! validation_forwardの期待値は、二値交差エントロピーと統計量の定義から定める。
+//! validation_forwardの期待値は、勝率の差の2乗と統計量の定義から定める。
 use minase_trainer::data::{Outcome, Sample};
 mod common;
 use common::*;
@@ -34,10 +34,10 @@ fn validation_excludes_draws_and_counts_activation_endpoints() {
             acc: [-0.1, 0.0, 1.0, 1.1, 0.2, 0.4, 0.6, 0.8, -1.0, 0.0, 0.9, 1.0].repeat(2),
             lin: vec![[0.0; 2]; 3],
         };
-        let stats = reference::validation_forward(&m, &batch, &f, &[0.5; 3]).unwrap();
+        let stats = reference::validation_forward(&m, &batch, &f, &[0.0, 0.5, 1.0]).unwrap();
         assert_eq!((stats.correct, stats.decisive), (1, 2));
         assert_eq!(stats.sign_accuracy(), Some(0.5));
-        assert!((stats.loss() - std::f64::consts::LN_2).abs() < 1e-7);
+        assert!((stats.loss() - (0.25 + 0.0 + 0.25) / 3.0).abs() < 1e-7);
         assert_eq!((stats.lower, stats.upper, stats.activations), (8, 6, 24));
         assert_eq!(stats.saturation(), [1.0 / 3.0, 0.25]);
         assert_eq!(stats.nonlinear_std_cp(), 0.0);

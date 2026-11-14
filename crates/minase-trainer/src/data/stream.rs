@@ -71,11 +71,6 @@ pub(crate) fn read_file(
             });
         }
         summary.origin = Some(record.origin());
-        let GameOutcome::Game(result) = record.outcome() else {
-            return Err(Error::SyntheticOrigin {
-                path: path.to_owned(),
-            });
-        };
         let mut samples = Vec::new();
         for (index, (entry, position)) in record.entries().iter().zip(game.positions()).enumerate()
         {
@@ -95,7 +90,24 @@ pub(crate) fn read_file(
             let sample = Sample::from_position(
                 position,
                 score,
-                Outcome::from_game_result(result, position.side_to_move()),
+                match record.outcome() {
+                    GameOutcome::Game(result) => {
+                        Outcome::from_game_result(result, position.side_to_move())
+                    }
+                    GameOutcome::EvaluationAdjudication { winner }
+                    | GameOutcome::MateInThree { winner } => {
+                        if winner == position.side_to_move() {
+                            Outcome::Win
+                        } else {
+                            Outcome::Loss
+                        }
+                    }
+                    GameOutcome::NotFromGame => {
+                        return Err(Error::SyntheticOrigin {
+                            path: path.to_owned(),
+                        });
+                    }
+                },
                 record.game_number(),
                 ply,
                 record.origin(),

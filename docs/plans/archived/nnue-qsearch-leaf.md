@@ -176,4 +176,4 @@ masterへの統合は利用者の許可を得てから行う。
 - [tanuki- 2022-05-15 best move が駒を取る指し手でない局面のみ qsearch なしで学習する](https://nodchip.hatenablog.com/entry/2022/05/15/000000)
 - [rshogiの実験のリリース（tatara）](https://github.com/SH11235/rshogi/releases/tag/nnue-experiments-202607)
 - [静止探索の出力を学ぶPSTの学習の設計書](qsearch-output-training.md)と[小標本の記録](../../measurements/qsearch-output-training/qsearch-output-leaf-sample.md)
-- [NNUEの教師のADR](../../adr/train-the-nnue-on-search-value-teachers-without-lookahead.md)と[本書の結論のADR](../../adr/do-not-replace-nnue-teacher-positions-with-qsearch-leaves.md)
+- [NNUEの教師のADR](../../adr/archive/train-the-nnue-on-search-value-teachers-without-lookahead.md)と[本書の結論のADR](../../adr/do-not-replace-nnue-teacher-positions-with-qsearch-leaves.md)

@@ -59,7 +59,7 @@ enum NnueCommand {
     ExportHandcrafted(minase_trainer::nnue::handcrafted::Args),
     /// 自己対局の結果への回帰で、線形の経路の序中盤の列を補正する。
     FitLinear(minase_trainer::nnue::fit_linear::Args),
-    /// CUDAまたはCPUで学習し、各エポックの検証、チェックポイントの保存、最良モデルの書き出しを行う。
+    /// CUDAまたはCPUで指定したsuperbatch数を学習し、最後の重みを書き出す。
     Train(Box<minase_trainer::nnue::train::Args>),
     /// GPUの前進計算、全勾配、更新、検証をCPU参照と照合する。
     CheckEquivalence {
@@ -126,8 +126,8 @@ fn run_nnue(command: NnueCommand) -> Result<(), Box<dyn std::error::Error>> {
         NnueCommand::ExportHandcrafted(args) => minase_trainer::nnue::handcrafted::run(args).map_err(Into::into),
         NnueCommand::FitLinear(args) => minase_trainer::nnue::fit_linear::run(args).map_err(Into::into),
         NnueCommand::Train(args) => minase_trainer::nnue::train::run(*args).map(|summary| {
-            println!("best epoch: {}; stopped_by: {:?}; status: {}",
-                summary.best_epoch.expect("successful training has a best epoch"), summary.stopped_by, summary.status);
+            eprintln!("superbatches: {}; updates: {}; stopped_by: {}; status: {}",
+                summary.completed_superbatches, summary.completed_steps, summary.stopped_by, summary.status);
         }),
         NnueCommand::CheckEquivalence { feature_set, width, batch, seed, training, head } => {
             minase_trainer::nnue::gpu::equivalence::run(feature_set, width, batch, seed, training, head)
@@ -142,7 +142,7 @@ fn run_nnue(command: NnueCommand) -> Result<(), Box<dyn std::error::Error>> {
                 if let (Some(used), Some(total), Some(allocated)) = (r.gpu_used_bytes, r.gpu_total_bytes, r.gpu_allocation_bytes) {
                     println!("GPUメモリ使用量は {used} / {total} bytes、入力面と更新器の確保前後の差は {allocated} bytesでした。");
                 }
-                println!("平均損失は {:.8} でした。計測用の設定として埋め草を除く全行を観測済みとし、出力と教師値に共通の cp_per_logit={} を使いました。", r.losses.bce, r.cp_per_logit);
+                println!("平均損失は {:.8} でした。計測用の設定として埋め草を除く全行を観測済みとし、出力と教師値に共通の cp_per_logit={} を使いました。", r.losses.loss, r.cp_per_logit);
                 if let Some(profile) = r.profile {
                     println!("{profile}");
                 }

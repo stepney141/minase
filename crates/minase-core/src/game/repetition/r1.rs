@@ -227,7 +227,7 @@ pub(crate) fn move_is_irreversible(mv: Move, undo: &Undo) -> bool {
 /// この列は、全件生成から移動元が`played.to`の捕獲手を抜き出した列と一致する。
 /// `position`は着手後の局面で、`played.to`に`mover`の駒があることを前提とする。
 /// じっとは到達升が元の升なので同じ扱いでよく、その駒に捕獲手があれば攻撃的着手に数える。
-/// この真偽値を用いる判定区間は[`r1_repetition_result`]に従う。
+/// この真偽値を用いる判定区間は`r1_repetition_result`に従う。
 pub fn move_was_attacking(
     position: &Position,
     generator: &MoveGenerator,

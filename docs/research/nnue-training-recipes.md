@@ -2,7 +2,7 @@
 
 本書のminaseに関する記述は2026年11月6日時点のものである。
 「minaseの標準学習レシピの候補」の節が先に測るとした予定の総長と書き出すネットの比較は、同日のSTCでどちらも`H0`だった（[第2世代の教師での学習率の予定と書き出すネットの比較](../measurements/nnue-generation-reset/nnue-generation-reset-gen2-cosine10.md)）。
-その後に起案した[NNUEの標準レシピv1を対局で決め、v0から世代反復をやり直す設計書](../plans/nnue-standard-recipe.md)では、線形の経路の学習率、学習後の補正の要否、および直前の世代の教師の併用の3項目だけを対局で決め、ほかの学習条件は現行のまま固定する。
+その後に起案した[NNUEの標準レシピv1を対局で決め、v0から世代反復をやり直す設計書](../plans/archived/nnue-standard-recipe.md)では、線形の経路の学習率、学習後の補正の要否、および直前の世代の教師の併用の3項目だけを対局で決め、ほかの学習条件は現行のまま固定する。
 
 本書は、中将棋エンジンminaseのNNUE（着手ごとに差分で更新できる小さなニューラルネット評価関数）の標準学習レシピを開発者が決める判断材料として、強豪の学習器の学習レシピとハイパーパラメーターを一次資料で調べた調査メモである。
 資料は2026年11月5日に参照した。
@@ -328,7 +328,7 @@ minaseの1局あたりの局面数が多いことは周回数を増やす側に�
 | 第1層の初期値をfan-in | tatara、LayerStack | +31.17 ±13.79 nElo（1,220ペア） | なし | [PR #363](https://github.com/SH11235/tatara/pull/363) |
 | 因子化を有効 | tatara | +8 ±10 nElo。40 superbatchの時点は+29 Elo | なし | [PR #303](https://github.com/SH11235/tatara/pull/303) |
 | 重複の除去、静止探索の末端への置換 | tatara公開実験、固定ノード | HalfKPで+29 ±15、+111 ±15 nElo、幅1536で−2 ±15、−5 ±15 nElo | なし | [リリース](https://github.com/SH11235/rshogi/releases/tag/nnue-experiments-202607) |
-| 同じデータの予定の比較（cosineと一定） | minase、STC | 281ペアで`H1`（候補の得点は[記録](../measurements/nnue-lr-schedule/nnue-lr-schedule-cosine-stc.md)のペンタノミアル度数[42, 2, 138, 3, 96]） | 幅128、先読みの教師の時代の比較である。現行の幅256、出力部、および教師では測っていない | [ADR](../adr/anneal-the-nnue-learning-rate-with-a-cosine-schedule.md) |
+| 同じデータの予定の比較（cosineと一定） | minase、STC | 281ペアで`H1`（候補の得点は[記録](../measurements/nnue-lr-schedule/nnue-lr-schedule-cosine-stc.md)のペンタノミアル度数[42, 2, 138, 3, 96]） | 幅128、先読みの教師の時代の比較である。現行の幅256、出力部、および教師では測っていない | [ADR](../adr/archive/anneal-the-nnue-learning-rate-with-a-cosine-schedule.md) |
 
 ### 慣習にすぎない設定
 

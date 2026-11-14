@@ -87,9 +87,30 @@ impl Store {
     /// 訓練集合による推定または較正ファイルの照合で尺度を解決する。
     pub(super) fn calibration(
         &self,
-        source: &TeacherCpPerLogitSource,
+        source: Option<&TeacherCpPerLogitSource>,
         cp_per_logit: f32,
     ) -> Result<TeacherCalibration> {
+        let Some(source) = source else {
+            let lambdas = match self {
+                Self::Memory(d) => d.teacher_lambdas(),
+                Self::Spill(d) => d.teacher_lambdas(),
+            };
+            return Ok(TeacherCalibration {
+                teacher_cp_per_logit: lambdas
+                    .iter()
+                    .map(|&lambda| (lambda != 0.0).then_some(f64::from(cp_per_logit)))
+                    .collect(),
+                teacher_score_multiplier: lambdas
+                    .iter()
+                    .map(|&lambda| (lambda != 0.0).then_some(1.0))
+                    .collect(),
+                at_search_bound: lambdas
+                    .iter()
+                    .map(|&lambda| (lambda != 0.0).then_some(false))
+                    .collect(),
+                source: serde_json::json!("base"),
+            });
+        };
         match self {
             Self::Memory(d) => Ok(source.resolve(d, cp_per_logit)?),
             Self::Spill(d) => Ok(super::spill_calibration::resolve(d, source, cp_per_logit)?),

@@ -2,15 +2,11 @@
 //!
 //! 開始局面一覧の行形式は書き手の[`crate::lishogi_import`]に定める。
 //! [`read_openings`]はUTF-8の全行を空白区切りで読み、空行やコメントを読み飛ばさない。
-//! 0行のファイルもエラーとし、拡張SFENの復元にはJCSAの移動規則を使う。
+//! 0行のファイルもエラーとし、拡張SFENの復元にはlishogiの移動規則を使う。
 
 use minase::datagen::data_error;
-use minase::datagen::opening::generate_opening;
-use minase_core::{Color, Game, Move, Position, Rules};
-use std::{
-    io::{self, BufRead, BufReader},
-    num::NonZeroU64,
-};
+use minase_core::{Color, Game, Position, Rules};
+use std::io::{self, BufRead, BufReader};
 
 /// 開始局面を特定する元棋譜の手数。
 pub(super) struct GameOrigin {
@@ -78,13 +74,13 @@ fn read_openings_from(reader: impl BufRead) -> io::Result<Vec<Opening>> {
             let _id = fields.next().ok_or(OpeningError::InvalidFields)?;
             let ply: u32 = fields.next().ok_or(OpeningError::InvalidFields)?.parse()?;
             let sfen = fields.collect::<Vec<_>>().join(" ");
-            let setup = parse_extended_sfen(&sfen, Rules::JCSA.moves)?;
+            let setup = parse_extended_sfen(&sfen, Rules::LISHOGI.moves)?;
             if ply >= u32::from(u16::MAX) || setup.next_move_number() != ply + 1 {
                 return Err(OpeningError::InvalidFields.into());
             }
             let (mut position, lion, _) = setup.into_parts();
             position.set_lion_capture(lion)?;
-            let game = Game::from_position(Rules::JCSA, position.clone());
+            let game = Game::from_position(Rules::LISHOGI, position.clone());
             if !position.promotion_deferred().is_empty()
                 || game.legal_moves().is_empty()
                 || position.royal_pieces(Color::Black).is_empty()
@@ -111,25 +107,16 @@ fn read_openings_from(reader: impl BufRead) -> io::Result<Vec<Opening>> {
     Ok(openings)
 }
 
-/// 最初の探索に渡す対局と、そこまでに乱数で指した手の列を返す。
-pub(super) fn starting_game(
-    rules: Rules,
-    seed: NonZeroU64,
-    opening: Option<&Opening>,
-) -> io::Result<(Game, Vec<Move>)> {
-    match opening {
-        Some(opening) => Ok((
-            Game::from_position(rules, opening.position.clone()),
-            Vec::new(),
-        )),
-        None => generate_opening(rules, seed),
+impl Opening {
+    /// 一覧の局面を基点に、対局履歴を持たない開始状態を作る。
+    pub(super) fn starting_game(&self, rules: Rules) -> Game {
+        Game::from_position(rules, self.position.clone())
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use minase_core::rng::derive_seed;
 
     fn read_path(path: &std::path::Path) -> io::Result<Vec<Opening>> {
         read_openings(&std::fs::read(path)?)
@@ -241,7 +228,7 @@ mod tests {
                 .map(|line| serde_json::from_str::<serde_json::Value>(line).unwrap())
                 .find(|game| game["id"] == "opening-prefix-2u7dwJf9")
                 .unwrap();
-        let mut original = Game::new(Rules::JCSA);
+        let mut original = Game::new(Rules::LISHOGI);
         for text in input["moves"].as_str().unwrap().split_whitespace().take(60) {
             original
                 .play(usi::parse(original.position(), text).unwrap())
@@ -256,14 +243,12 @@ mod tests {
         let path = directory.0.join("openings.txt");
         fs::write(&path, format!("source 60 {}\n", to_extended_sfen(&setup))).unwrap();
         let openings = read_path(&path).unwrap();
-        let (start, moves) =
-            starting_game(Rules::JCSA, derive_seed(42, 1), Some(&openings[0])).unwrap();
+        let start = openings[0].starting_game(Rules::LISHOGI);
         assert_eq!(start.position(), original.position());
         assert_eq!(start.ply_count(), 0);
-        assert!(moves.is_empty());
         let completed = play_game_from_opening(
             &epoch_zero_nnue(),
-            Rules::JCSA,
+            Rules::LISHOGI,
             1,
             PlaySettings {
                 base_seed: 42,
@@ -271,6 +256,7 @@ mod tests {
                 nodes: 400,
                 random_moves: 0,
                 max_ply: 4000,
+                policy: super::super::play::GenerationPolicy::default(),
             },
             &mut test_table(),
             Some(&openings[0]),

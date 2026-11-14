@@ -40,7 +40,7 @@ fn conditions(
     dirty: bool,
 ) -> GenerationConditions {
     GenerationConditions::new(
-        Rules::JCSA,
+        Rules::LISHOGI,
         COMMIT.to_owned(),
         *nnue.checksum(),
         7,
@@ -102,6 +102,7 @@ fn direct_reference(
         base_seed: conditions.config.seed,
         nodes: conditions.config.nodes.get(),
         random_moves: conditions.config.random_moves,
+        policy: conditions.config.policy,
         max_ply: conditions.config.max_ply.get(),
     };
     let mut table = test_table();
@@ -208,7 +209,7 @@ fn reassembled_teacher_matches_direct_writer_bytes() {
     assert_eq!(report.chunks_reused, 0);
     let saved: serde_json::Value =
         serde_json::from_reader(File::open(output.join("config.json")).unwrap()).unwrap();
-    assert_eq!(saved.as_object().unwrap().len(), 12);
+    assert_eq!(saved.as_object().unwrap().len(), 13);
     assert_eq!(
         saved["openings_sha256"].as_str(),
         conditions.config.openings_sha256.as_deref()
@@ -280,7 +281,7 @@ fn reassembly_statistics_match_hand_counted_records() {
     assert_eq!(report.statistics.black_wins, 3);
     assert_eq!(report.statistics.white_wins, 1);
     assert_eq!(report.statistics.discarded_games, 1);
-    assert_eq!(report.recorded.exclusions, [0, 0, 1, 1]);
+    assert_eq!(report.recorded.exclusions, [0, 0, 1, 1, 0]);
     assert_eq!(report.recorded.score_frequencies[score_index(-2)], 1);
     assert_eq!(report.recorded.score_frequencies[score_index(2)], 1);
     assert_eq!(report.recorded.score_frequencies.iter().sum::<u64>(), 2);
@@ -714,7 +715,7 @@ fn reassembly_rejects_header_range_and_count_errors() {
     let header_path = temporary.0.join("header");
     write_config(&header_path, &conditions);
     let wrong_header = Header::new(
-        Rules::JCSA.to_string(),
+        Rules::LISHOGI.to_string(),
         COMMIT.to_owned(),
         *nnue.checksum(),
         TeacherKind::AlphaBeta,
@@ -946,4 +947,60 @@ fn corrupt_external_files_return_typed_errors() {
             .unwrap(),
         OutputError::Records(records::Error::Truncated(records::Section::Header))
     ));
+}
+
+/// 候補を捨てても、塊からの再開と同時対局数は本と集計を変えない。
+#[test]
+fn rejected_openings_resume_and_concurrency_preserve_bytes_and_statistics() {
+    let temporary = TemporaryDirectory::new();
+    let nnue = epoch_zero_nnue();
+    let mut conditions = conditions(&nnue, 4, 2, 200, 1, None, false);
+    conditions.config.policy.opening_score_limit = 0;
+    conditions.config.policy.adjudication_score = 1;
+    conditions.config.policy.adjudication_plies = 5;
+    let whole = temporary.0.join("whole");
+    let parallel = temporary.0.join("parallel");
+    let resumed = temporary.0.join("resumed");
+    let reference = run(&whole, &conditions, &nnue, None, 1);
+    assert!(reference.statistics.rejected_openings > 0);
+    assert_eq!(
+        reference.statistics.searched_positions,
+        reference.statistics.rejected_openings
+            + reference.statistics.searched_plies
+            + reference.statistics.evaluation_adjudication_wins
+    );
+    assert!(reference.statistics.black_wins + reference.statistics.white_wins > 0);
+    let other = run(&parallel, &conditions, &nnue, None, 3);
+    assert_report_data_eq(&reference, &other);
+    fs::create_dir(&resumed).unwrap();
+    for name in [
+        "config.json".to_owned(),
+        chunk_mnsd_name(0),
+        chunk_summary_name(0),
+    ] {
+        fs::copy(whole.join(&name), resumed.join(name)).unwrap();
+    }
+    let resumed_report = run(&resumed, &conditions, &nnue, None, 2);
+    assert_eq!(resumed_report.chunks_reused, 1);
+    assert_report_data_eq(&reference, &resumed_report);
+    for path in [&parallel, &resumed] {
+        assert_eq!(
+            fs::read(whole.join("teacher.mnsd")).unwrap(),
+            fs::read(path.join("teacher.mnsd")).unwrap()
+        );
+        for chunk in 0..2 {
+            for name in [chunk_mnsd_name(chunk), chunk_summary_name(chunk)] {
+                assert_eq!(
+                    fs::read(whole.join(&name)).unwrap(),
+                    fs::read(path.join(name)).unwrap()
+                );
+            }
+        }
+    }
+    let reader = Reader::new(File::open(whole.join("teacher.mnsd")).unwrap()).unwrap();
+    assert_eq!(reader.header().rule_set(), "L1,L2,P0,P3,R1,E1,E3");
+    assert_eq!(
+        reader.header().game_count() + reference.statistics.discarded_games,
+        4
+    );
 }

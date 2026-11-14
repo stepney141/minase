@@ -18,13 +18,13 @@ FIXTURE = Path(__file__).resolve().parents[1] / "fixtures" / "zero-selfplay-smal
 
 
 def single_game(number: int, side: int, outcome: int, value: int | None, probabilities: tuple[int, ...]) -> bytes:
-    """records.rsの版2の仕様から、最終項目だけを持つ小さな対局を構成する。"""
+    """records.rsの版3の仕様から、最終項目だけを持つ小さな対局を構成する。"""
     board = bytearray(144)
     # 先手の王将と飛車、後手の王将と歩兵を置き、合法手と両陣営の王駒を確保する。
     board[0], board[12], board[143], board[131] = 12, 8, 76, 65
     reason = 11 if outcome == 2 else 7
     header = struct.pack("<IBBBBHI", number, 0, outcome, reason, 0, 23, 1)
-    flags = 4 if value is None else 0
+    flags = 8 if value is None else 0
     entry = struct.pack("<HHBHI", 65535, 0 if value is None else value, flags, len(probabilities), 128)
     candidates = b"".join(struct.pack("<HH", index, probability) for index, probability in enumerate(probabilities))
     return header + board + bytes([side, 255, 0]) + entry + candidates
@@ -33,7 +33,7 @@ def single_game(number: int, side: int, outcome: int, value: int | None, probabi
 def write_small(path: Path, games: list[bytes], rule_set: str) -> None:
     """形式仕様どおりにヘッダを作り、1項目ずつの対局を実ファイルへ書く。"""
     header = (
-        b"MNSD" + struct.pack("<I", 2) + rule_set.encode("utf-8").ljust(32, b"\0")
+        b"MNSD" + struct.pack("<I", 3) + rule_set.encode("utf-8").ljust(32, b"\0")
         + b"a" * 40 + bytes(range(32))
         + struct.pack("<B7xQQQQ", 1, 128, 20261038, len(games), len(games))
     )
@@ -130,7 +130,7 @@ class DataTests(unittest.TestCase):
         path = self.directory / "scalars.mnsd"
         write_small(path, [single_game(0x10203040, 0, 1, 0x1234, (65535,))], "JCSA")
         raw = minase_mnsd_reader.read(str(path))
-        self.assertEqual(minase_mnsd_reader.FORMAT_VERSION, 2)
+        self.assertEqual(minase_mnsd_reader.FORMAT_VERSION, 3)
         for key in ("origin", "teacher_kind", "teacher_search_budget", "seed", "game_count", "entry_count"):
             self.assertIs(type(raw[key]), int)
         self.assertIs(type(raw["jcsa"]), bool)

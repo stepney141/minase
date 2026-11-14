@@ -9,7 +9,8 @@
 第1世代の学習と各世代の診断、補正には、その世代の本だけを使う。
 --fit yesでは--fit-tau、--fit-seed、--fit-threadsも指定し、補正したネットをコミットする。
 --fit noではこれらの補正引数を指定せず、学習したネットをそのままコミットする。
---lr-linearで線形の経路の学習率を指定し、--validation-interval 0で途中検証を省く。
+--superbatchesで学習の長さ、--validation-superbatchesで検証の間隔を指定する。
+--lr-scheduleの期間はsuperbatchで指定し、学び終えた最後のネットを使う。
 --train-place generatorは生成機で学習、診断、補正し、localは作業機で実行する。
 生成機の障害後はlocalを明示して再開する。コミットとbenchはどちらも作業機で行う。
 作業機では--run-dirに接続先とgen-<N>/{received,teacher,logs,train,fit}を置く。
@@ -122,15 +123,15 @@ def book_number(path: Path) -> int:
 
 
 def read_header(path: Path) -> dict[str, Any]:
-    """MNSD版2の公開形式から、検査済みの本のヘッダだけを読む。"""
+    """MNSD版3の公開形式から、検査済みの本のヘッダだけを読む。"""
     with path.open('rb') as stream:
         header = stream.read(152)
     if len(header) != 152:
         raise ChainStop(f'本のヘッダが途中で切れています: {path}')
     magic, version, rules, commit, checksum, kind, reserved, budget, seed, games, entries = struct.unpack(
         '<4sI32s40s32sB7sQQQQ', header)
-    if magic != b'MNSD' or version != 2:
-        raise ChainStop(f'MNSD版2の本ではありません: {path}')
+    if magic != b'MNSD' or version != 3:
+        raise ChainStop(f'MNSD版3の本ではありません: {path}')
     return {'generation_commit': commit.decode('ascii'), 'network_checksum': checksum.hex(),
             'rule_set': rules.rstrip(b'\0').decode('utf-8'), 'teacher_search_budget': budget,
             'seed': seed, 'game_count': games, 'entry_count': entries}
@@ -243,7 +244,7 @@ class Chain:
         return self.args.seed_base + self.args.seed_generation_step * generation + self.args.seed_book_step * number
 
     def expected_header(self, generation: int, number: int, commit: str, checksum: str) -> dict[str, Any]:
-        return {'generation_commit': commit, 'network_checksum': checksum, 'rule_set': 'L0,P0,R1,E0',
+        return {'generation_commit': commit, 'network_checksum': checksum, 'rule_set': 'L1,L2,P0,P3,R1,E1,E3',
                 'seed': self.seed(generation, number), 'teacher_search_budget': self.args.nodes}
 
     def check_header(self, header: dict[str, Any], generation: int, number: int,
@@ -555,17 +556,14 @@ class Chain:
         args = self.args
         train = directory / 'train'
         command = [str(trainer), 'nnue', 'train', '--data', *map(str, training_books), '--base', str(base),
-                   '--lambda', str(args.mix), '--teacher-cp-per-logit', 'calibrate',
+                   '--lambda', str(args.mix),
                    '--seed', str(args.train_seed), '--threads', str(args.train_threads), '--output-dir', str(train)]
-        for key in ('feature_set', 'width', 'head', 'batch', 'epochs', 'patience', 'device',
-                    'validation_interval', 'lr_schedule', 'lr_linear'):
+        for key in ('feature_set', 'width', 'head', 'batch', 'superbatches', 'validation_superbatches',
+                    'device', 'lr_schedule', 'lr_linear'):
             command.extend(['--' + key.replace('_', '-'), str(getattr(args, key))])
-        if args.export_epoch == 'last':
-            command.extend(['--export-epoch', 'last'])
-        checkpoint = {'best': 'best.npz', 'last': 'latest.npz'}[args.export_epoch]
         commands = {
             'train': command,
-            'removal': [str(trainer), 'diag', 'nnue-removal', '--float', str(train / checkpoint),
+            'removal': [str(trainer), 'diag', 'nnue-removal', '--float', str(train / 'latest.npz'),
                         '--net', str(train / 'nnue.bin'), '--data', *map(str, current_books),
                         '--sample', str(args.removal_sample), '--seed', str(args.removal_seed),
                         '--output', str(directory / 'removal.json')],
@@ -768,7 +766,7 @@ class Chain:
                 self.git('checkout', 'HEAD', '--', NETWORK)
                 raise
             self.git('add', '--', NETWORK)
-            body = f'教師{len(books)}本、{sum(books.values())}局面、最良エポック{summary["best_epoch"]}'
+            body = f'教師{len(books)}本、{sum(books.values())}局面、{summary["completed_superbatches"]} superbatch（{summary["completed_steps"]}回の更新）'
             if self.args.fit == 'yes':
                 body += f'、D={d:.6f}'
             self.git('commit', '-m', f'feat(eval): embed the NNUE of generation {generation}',
@@ -922,13 +920,18 @@ def arguments(argv: list[str]) -> argparse.Namespace:
         run.add_argument('--' + name, required=True, type=absolute_path, help='配置先の絶対パス')
     for name in ('minase-bin', 'trainer-bin'):
         run.add_argument('--' + name, required=True, type=lambda value: Path(value).resolve(), help='固定した実行ファイルのパス')
-    for name in ('gen0-commit', 'ref-prefix', 'feature-set', 'head', 'device', 'lr-schedule', 'image', 'cpu-pattern'):
+    for name in ('gen0-commit', 'ref-prefix', 'feature-set', 'head', 'device', 'image', 'cpu-pattern'):
         run.add_argument('--' + name, required=True, help='実行条件を明示する')
     for name in ('first-generation', 'last-generation', 'books-per-generation', 'games', 'nodes',
-                 'max-ply', 'hash-mb', 'chunk-games', 'calibration-books', 'width', 'batch', 'epochs', 'patience',
+                 'max-ply', 'hash-mb', 'chunk-games', 'calibration-books', 'width', 'batch',
                  'train-threads', 'removal-sample', 'bench-depth',
                  'disk', 'min-cpu-cores'):
         run.add_argument('--' + name, required=True, type=positive_int, help='正の整数')
+    run.add_argument('--superbatches', required=True, type=positive_int, help='学習を終えるsuperbatch数。1以上の整数')
+    run.add_argument('--validation-superbatches', required=True, type=positive_int,
+                     help='全検証集合を評価するsuperbatchの間隔。1以上の整数。学習の最後にも評価する')
+    run.add_argument('--lr-schedule', required=True,
+                     help='constant:<倍率>、exponential:<半減期>:<下限>、cosine:<総長>:<下限>。期間の単位はsuperbatch')
     for name in ('random-moves', 'seed-base', 'seed-generation-step', 'seed-book-step', 'train-seed',
                  'removal-seed'):
         run.add_argument('--' + name, required=True, type=nonnegative_int, help='0以上の整数')
@@ -937,15 +940,11 @@ def arguments(argv: list[str]) -> argparse.Namespace:
                  'ssh-failure-minutes', 'lr-linear'):
         run.add_argument('--' + name, required=True, type=positive_float, help='正の有限値')
     run.add_argument('--replay-buffer-generations', required=True, type=int, choices=(1, 2), help='リプレイバッファに含める教師の世代数')
-    run.add_argument('--validation-interval', required=True, type=int, help='0以上の整数。0は途中検証なし')
     run.add_argument('--fit', required=True, choices=('yes', 'no'), help='線形の経路を補正するか')
     run.add_argument('--fit-tau', nargs='+', type=positive_float, help='補正する場合に必要な1個以上の正の有限値')
     run.add_argument('--fit-seed', type=nonnegative_int, help='補正する場合に必要な0以上の整数')
     run.add_argument('--fit-threads', type=positive_int, help='補正する場合に必要な正の整数')
     run.add_argument('--lambda', dest='mix', required=True, type=float, help='探索値の割合。0以上1以下')
-    run.add_argument('--export-epoch', required=True, choices=('best', 'last'),
-                     help='nnue.binへ書き出すエポック。bestは検証損失が最良、lastは最後に完了したエポック。'
-                          '生成機でlastを使うには、前の世代のコミットの学習器が--export-epochに対応する必要がある')
     run.add_argument('--offer', type=positive_int, help='新しく借りる出品ID。通常の再開では省略する')
     run.add_argument('--train-place', required=True, choices=('generator', 'local'),
                      help='学習・診断・補正をgeneratorでは生成機、localでは作業機で行う。障害後の作業機での再開はlocalを指定する')
@@ -964,8 +963,6 @@ def arguments(argv: list[str]) -> argparse.Namespace:
             parser.error('--fit noでは--' + name.replace('_', '-') + 'を指定できません')
     if args.first_generation > args.last_generation:
         parser.error('first-generationはlast-generation以下にしてください')
-    if args.validation_interval < 0:
-        parser.error('validation-intervalは0以上にしてください')
     if not math.isfinite(args.mix) or not 0 <= args.mix <= 1:
         parser.error('lambdaは0以上1以下の有限値にしてください')
     if args.calibration_books > args.books_per_generation:

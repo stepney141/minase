@@ -10,7 +10,7 @@
 探索が評価関数を呼ぶ局面に、学習の対象を近づけるためである。
 将棋の先例は構造によって分かれており、tanuki-のHalfKP 256x2-32-32では、最善手が駒を取る局面を除いて置換しない学習が静止探索つきの学習にR−118.0 ±10.2で負け、tataraの実験ではHalfKP 256x2-32-32で+111 ±15 nElo、SFNN-1536で−5 ±15 nEloだった（[設計書](../plans/archived/nnue-qsearch-leaf.md)）。
 
-[NNUEの教師の決定](train-the-nnue-on-search-value-teachers-without-lookahead.md)は、この案を「以前の決定と同じ理由」で退けていたが、その理由は対局で確かめたものではなかった。
+[NNUEの教師の決定](archive/train-the-nnue-on-search-value-teachers-without-lookahead.md)は、この案を「以前の決定と同じ理由」で退けていたが、その理由は対局で確かめたものではなかった。
 理由の1つは、[PSTでの不採用](do-not-regress-quiescence-search-outputs.md)である。
 これは駒どうしの関係を表せないモデルでの結果であり、NNUEの根拠にならない。
 もう1つは、元の局面と末端の深い探索値の差（平均185.8 cp）である。
@@ -25,7 +25,7 @@
 ## 決定
 
 P型の幅128で直接内積の出力部を持つNNUEの教師局面を、静止探索の末端へ置き換えない。
-本書の理由は、[NNUEの教師の決定](train-the-nnue-on-search-value-teachers-without-lookahead.md)がこの案について挙げた理由に優先する。
+本書の理由は、[NNUEの教師の決定](archive/train-the-nnue-on-search-value-teachers-without-lookahead.md)がこの案について挙げた理由に優先する。
 
 ## 検討した代案
 

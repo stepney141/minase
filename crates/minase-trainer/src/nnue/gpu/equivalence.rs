@@ -241,7 +241,7 @@ fn arrays(e: &Evaluation) -> Vec<(&'static str, &[f32])> {
     arrays
 }
 fn statistics(e: &Evaluation) -> Vec<f64> {
-    let mut values = vec![e.losses.bce];
+    let mut values = vec![e.losses.loss];
     values.extend(e.validation.sums());
     values.push(e.validation.loss());
     values.push(e.validation.nonlinear_std_cp());

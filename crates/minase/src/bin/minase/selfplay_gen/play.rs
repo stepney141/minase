@@ -1,19 +1,20 @@
 //! 自己対局1局の進行とランダム着手の注入。
 
-use super::{
-    INJECTION_WINDOW,
-    opening::{Opening, starting_game},
-};
+use super::{INJECTION_WINDOW, opening::Opening};
 use minase::datagen::game::{CompletedGame, CompletedRecord};
+use minase::datagen::opening::generate_opening_candidate;
 use minase::datagen::statistics::Statistics;
 use minase::datagen::{
     MATE_BAND_START, best_move_is_tactical, current_position_is_repeated, data_error, invalid_data,
 };
 use minase::eval::Nnue;
-use minase::search::{DEFAULT_THREADS, SearchLimits, SearchSnapshot, TranspositionTable, search};
+use minase::search::{
+    DEFAULT_THREADS, HistoryTables, SearchError, SearchLimits, SearchResult, SearchSnapshot,
+    TranspositionTable, search,
+};
 use minase::training::records::{Entry, Exclusion, GameRecord, Origin, Outcome, Policy, Value};
 use minase_core::rng::{XorShift64, derive_seed};
-use minase_core::{MoveGenerator, Position, Rules};
+use minase_core::{Color, Game, Move, MoveGenerator, Position, Rules};
 use std::{
     io,
     num::{NonZeroU64, NonZeroUsize},
@@ -30,6 +31,120 @@ pub(super) struct PlaySettings {
     pub(super) random_moves: u8,
     /// 1局の手数上限。
     pub(super) max_ply: u16,
+    /// 開始局面の選別と評価値による裁定の条件。
+    pub(super) policy: GenerationPolicy,
+}
+
+/// 開始局面を採用する探索値の絶対値の上限（cp）。
+const OPENING_SCORE_LIMIT: u32 = 1_700;
+/// 評価値による裁定に数える絶対値の下限（cp）。
+const ADJUDICATION_SCORE: u32 = 4_250;
+/// 同じ側の優勢が裁定に必要な連続回数。
+const ADJUDICATION_PLIES: u8 = 5;
+
+/// CLIでは固定し、再開時にも照合する生成条件。
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub(super) struct GenerationPolicy {
+    pub(super) opening_score_limit: u32,
+    pub(super) adjudication_score: u32,
+    pub(super) adjudication_plies: u8,
+}
+
+impl Default for GenerationPolicy {
+    fn default() -> Self {
+        Self {
+            opening_score_limit: OPENING_SCORE_LIMIT,
+            adjudication_score: ADJUDICATION_SCORE,
+            adjudication_plies: ADJUDICATION_PLIES,
+        }
+    }
+}
+
+impl GenerationPolicy {
+    fn accepts_opening(self, score: i32) -> bool {
+        score.unsigned_abs() <= self.opening_score_limit
+    }
+}
+
+/// 手番側の探索値を先手の視点へ直し、同じ側の連続した優勢を数える。
+#[derive(Default)]
+struct EvaluationAdjudication {
+    leader: Option<Color>,
+    count: u8,
+}
+
+impl EvaluationAdjudication {
+    fn update(
+        &mut self,
+        score: Option<i32>,
+        side: Color,
+        policy: GenerationPolicy,
+    ) -> Option<Color> {
+        let Some(score) = score.filter(|score| {
+            score.unsigned_abs() >= policy.adjudication_score
+                && score.unsigned_abs() < MATE_BAND_START
+                && *score != 0
+        }) else {
+            *self = Self::default();
+            return None;
+        };
+        let leader = if score > 0 { side } else { side.opposite() };
+        self.count = if self.leader == Some(leader) {
+            self.count + 1
+        } else {
+            1
+        };
+        self.leader = Some(leader);
+        (self.count >= policy.adjudication_plies).then_some(leader)
+    }
+}
+
+/// 実際に行った探索だけを、候補の採否と記録の有無によらず集計する。
+fn search_position(
+    nnue: &Nnue,
+    game: &Game,
+    nodes: u32,
+    table: &mut TranspositionTable,
+    histories: &mut HistoryTables,
+    stats: &mut Statistics,
+    context: &str,
+) -> io::Result<SearchResult> {
+    let snapshot = SearchSnapshot::from_game(game).map_err(|error| match error {
+        SearchError::NoLegalMoves => {
+            invalid_data(format!("{context} is ongoing but has no legal moves"))
+        }
+        _ => invalid_data(format!("{context} could not prepare search: {error}")),
+    })?;
+    let limits = SearchLimits::new(None, Some(u64::from(nodes)), None, None)
+        .map_err(|error| invalid_data(format!("{context} invalid search limits: {error}")))?;
+    let result = search(nnue, &snapshot, &limits, DEFAULT_THREADS, table, histories)
+        .map_err(|error| invalid_data(format!("{context} search failed: {error}")))?;
+    stats.searched_positions += 1;
+    stats.searched_nodes = stats
+        .searched_nodes
+        .checked_add(result.nodes)
+        .ok_or_else(|| invalid_data(format!("{context} searched node count overflow")))?;
+    Ok(result)
+}
+
+/// 除外理由は詰みの帯、王手、戦術的な最善手、再出現の順で1つだけ返す。
+fn exclusion_reason(
+    game: &Game,
+    generator: &MoveGenerator,
+    score: i32,
+    best_move: Move,
+) -> io::Result<Exclusion> {
+    Ok(if score.unsigned_abs() >= MATE_BAND_START {
+        Exclusion::MateBand
+    } else if game.position().is_in_check(generator) {
+        Exclusion::Check
+    } else if best_move_is_tactical(game.position(), generator, best_move).map_err(data_error)? {
+        Exclusion::Tactical
+    } else if current_position_is_repeated(game) {
+        Exclusion::Repetition
+    } else {
+        Exclusion::None
+    })
 }
 
 /// 1局のランダム着手予定と記録開始手数。
@@ -53,12 +168,42 @@ pub(super) fn play_game(
 }
 
 /// 1局を終局まで進め、全局面の着手と教師情報を返す。
+///
+/// 開始局面の選別は`opening`が`None`の生成にだけ適用し、`--openings`から渡された実戦の局面には適用しない。
+/// 初期局面から8〜16手の手数を一様に選び、各手を合法手から一様に選んで候補を作る。
+/// 候補ごとに探索前に置換表と履歴の表を初期化し、教師の各手と同じ`settings.nodes`のノード上限で探索する。
+/// `settings.policy`の既定値では探索値の絶対値が1,700 cp以下なら採用し、1,700 cpを超えたら捨てる。
+/// ランダムな手の途中で終局した候補は探索せずに作り直し、手数上限に達した未終局の候補は探索せずに対局を破棄する。
+///
+/// 対局シードは`derive_seed(settings.base_seed, game_number)`、最初の候補のシードは`derive_seed(game_seed.get(), 0)`で導く。
+/// 捨てた候補の次は`derive_seed(opening_seed.get(), 0)`で新しいシードを導き、初期局面から候補を作り直す。
+/// 候補を捨てても対局番号は進めず、探索値の閾値を超えた候補だけを`rejected_openings`に数える。
+/// これは手数上限で破棄した対局数`discarded_games`とは別に集計する。
+/// 採用した候補の探索結果は最初の手に再利用し、探索回数は1回と数える。
+/// 最初の手がランダム着手の注入なら、その探索結果を使わずに捨てる。
+/// `searched_positions`と`searched_nodes`には、候補の採否や教師の記録の有無によらず、実際に行った探索を加算する。
+///
+/// 対局の進行では規則による終局を優先し、未終局なら手数上限での破棄を判定してから探索する。
+/// 探索後は着手や教師の記録より先に評価値による裁定を判定し、優勢な側が連続した回数を数える。
+/// 手番側の探索値を先手の視点へ直したとき、`settings.policy`の既定値では絶対値が4,250 cp以上かつ29,000 cp未満の値を数える。
+/// この範囲内で同じ側の優勢が続けば回数を1増やし、優勢側が変われば新しい側の1回目とする。
+/// 絶対値が4,250 cp未満か、[`MATE_BAND_START`]以上の詰みの帯にある値では回数を0に戻す。
+/// 詰みの帯には反復による勝敗の値も含まれ、cpとして比較できないため裁定には数えない。
+/// 注入の手番は探索せず、連続回数を0に戻す。
+/// 連続回数は価値の記録開始前も数え、教師からの除外とは独立に判定する。
+///
+/// 同じ側の優勢が既定の5回に達したら、その手を指さずに優勢側の勝ちとする。
+/// 最後の項目は着手、探索値、方策の教師、除外理由を持たず、教師データの形式MNSDの版3で終局理由13を記録する。
+/// この結果は引き分けにはならず、`evaluation_adjudication_wins`と勝者別の対局数に加算する。
+/// 最後の探索も探索回数とノード数に数えるが、着手数や価値の記録対象局面数には含めない。
+///
 /// 価値の記録は序盤ランダム化の後から始め、注入を予定した場合は最後の予定注入の次の手から始める。
-/// 探索値の絶対値が[`MATE_BAND_START`]以上、合法な最善手が捕獲または成り、現局面の再出現の順に除外し、最初に該当した理由だけを数える。
-/// 手数上限で終局しなかった対局は書かず、終局した対局には結果と終局理由を付ける。
+/// 記録対象の局面は、探索値の絶対値が[`MATE_BAND_START`]以上、王手、合法な最善手が捕獲または成り、現局面の再出現の順に除外し、最初に該当した理由だけを数える。
+/// 除外する局面も着手と探索値を保存し、探索値は手番側から見た値のまま記録する。
 /// 実戦の開始局面では呼び手が注入回数0を指定し、乱数手を入れず次の局面から価値を記録する。
 /// 注入の予定と乱数列は[`plan_injections`]に従う。
-/// 理由は`docs/adr/archive/exclude-mate-tactical-and-repeated-positions-from-teacher-data.md`にある。
+/// 除外理由を付けて記録する判断は`docs/adr/record-excluded-positions-with-a-reason.md`にある。
+/// 王手の除外、開始局面の選別、評価値による裁定の判断は`docs/adr/exclude-checks-screen-openings-and-adjudicate-decided-games-in-teacher-generation.md`にある。
 pub(super) fn play_game_from_opening(
     nnue: &Nnue,
     rules: Rules,
@@ -68,7 +213,45 @@ pub(super) fn play_game_from_opening(
     opening: Option<&Opening>,
 ) -> io::Result<CompletedGame> {
     let game_seed = derive_seed(settings.base_seed, u64::from(game_number));
-    let (mut game, opening_moves) = starting_game(rules, game_seed, opening)?;
+    table.clear();
+    let mut histories = HistoryTables::new(DEFAULT_THREADS);
+    let mut stats = Statistics::default();
+    let mut first_search = None;
+    let (mut game, opening_moves) = if let Some(opening) = opening {
+        (opening.starting_game(rules), Vec::new())
+    } else {
+        let mut opening_seed = derive_seed(game_seed.get(), 0);
+        loop {
+            if let Some((candidate, moves)) = generate_opening_candidate(rules, opening_seed)
+                .map_err(|error| {
+                    invalid_data(format!(
+                        "game {game_number} could not generate opening candidate: {error}"
+                    ))
+                })?
+            {
+                if candidate.ply_count() >= u32::from(settings.max_ply) {
+                    break (candidate, moves);
+                }
+                table.clear();
+                histories.clear();
+                let result = search_position(
+                    nnue,
+                    &candidate,
+                    settings.nodes,
+                    table,
+                    &mut histories,
+                    &mut stats,
+                    &format!("game {game_number} opening candidate"),
+                )?;
+                if settings.policy.accepts_opening(result.score) {
+                    first_search = Some(result);
+                    break (candidate, moves);
+                }
+                stats.rejected_openings += 1;
+            }
+            opening_seed = derive_seed(opening_seed.get(), 0);
+        }
+    };
     let start_position = if opening.is_some() {
         game.position().clone()
     } else {
@@ -89,16 +272,11 @@ pub(super) fn play_game_from_opening(
     if opening.is_some() {
         injection_plan.record_from = 1;
     }
-    table.clear();
-    let mut histories = minase::search::HistoryTables::new(DEFAULT_THREADS);
-    let limits = SearchLimits::new(None, Some(u64::from(settings.nodes)), None, None)
-        .expect("the CLI parser accepts only non-zero node limits");
     let mut candidates = Vec::new();
-    let mut stats = Statistics {
-        planned_injections: u64::try_from(injection_plan.plies.len())
-            .expect("the injection count is at most 80"),
-        ..Statistics::default()
-    };
+    stats.planned_injections =
+        u64::try_from(injection_plan.plies.len()).expect("the injection count is at most 80");
+    let mut adjudication = EvaluationAdjudication::default();
+    let mut adjudicated = None;
     let generator = MoveGenerator::new(rules.moves);
 
     while game.result().is_none() && game.ply_count() + ply_offset < u32::from(settings.max_ply) {
@@ -107,6 +285,8 @@ pub(super) fn play_game_from_opening(
             .binary_search(&game.ply_count())
             .is_ok()
         {
+            first_search = None;
+            adjudication.update(None, game.position().side_to_move(), settings.policy);
             let legal_moves = game.legal_moves();
             let move_count = NonZeroUsize::new(legal_moves.len()).ok_or_else(|| {
                 invalid_data(format!(
@@ -136,25 +316,26 @@ pub(super) fn play_game_from_opening(
             continue;
         }
 
-        let snapshot = SearchSnapshot::from_game(&game).map_err(|_| {
-            invalid_data(format!(
-                "game {game_number} is ongoing but has no legal moves"
-            ))
-        })?;
-        let search_result = search(
-            nnue,
-            &snapshot,
-            &limits,
-            DEFAULT_THREADS,
-            table,
-            &mut histories,
-        )
-        .map_err(|error| invalid_data(error.to_string()))?;
-        stats.searched_positions += 1;
-        stats.searched_nodes = stats
-            .searched_nodes
-            .checked_add(search_result.nodes)
-            .ok_or_else(|| invalid_data("searched node count overflow"))?;
+        let search_result = match first_search.take() {
+            Some(result) => result,
+            None => search_position(
+                nnue,
+                &game,
+                settings.nodes,
+                table,
+                &mut histories,
+                &mut stats,
+                &format!("game {game_number}"),
+            )?,
+        };
+        if let Some(winner) = adjudication.update(
+            Some(search_result.score),
+            game.position().side_to_move(),
+            settings.policy,
+        ) {
+            adjudicated = Some(winner);
+            break;
+        }
 
         if game.ply_count() < injection_plan.record_from {
             entries.push(
@@ -176,31 +357,30 @@ pub(super) fn play_game_from_opening(
         stats.recordable_positions += 1;
 
         let score = i16::try_from(search_result.score).map_err(data_error)?;
-        let exclusion = if search_result.score.unsigned_abs() >= MATE_BAND_START {
-            stats.excluded_mate_band += 1;
-            Exclusion::MateBand
-        } else if best_move_is_tactical(game.position(), &generator, search_result.best_move)
-            .map_err(|error| {
-                invalid_data(format!(
-                    "game {game_number} search returned an illegal best move: {error}"
-                ))
-            })?
-        {
-            stats.excluded_tactical += 1;
-            Exclusion::Tactical
-        } else if current_position_is_repeated(&game) {
-            stats.excluded_repetition += 1;
-            Exclusion::Repetition
-        } else {
-            candidates.push(CompletedRecord {
+        let exclusion = exclusion_reason(
+            &game,
+            &generator,
+            search_result.score,
+            search_result.best_move,
+        )
+        .map_err(|error| {
+            invalid_data(format!(
+                "game {game_number} search returned an illegal best move: {error}"
+            ))
+        })?;
+        match exclusion {
+            Exclusion::MateBand => stats.excluded_mate_band += 1,
+            Exclusion::Check => stats.excluded_check += 1,
+            Exclusion::Tactical => stats.excluded_tactical += 1,
+            Exclusion::Repetition => stats.excluded_repetition += 1,
+            Exclusion::None => candidates.push(CompletedRecord {
                 score,
                 search_key: *game
                     .repetition_key_history()
                     .last()
                     .expect("every game has an initial search key"),
-            });
-            Exclusion::None
-        };
+            }),
+        }
         entries.push(
             Entry::new(
                 Some(search_result.best_move),
@@ -219,9 +399,17 @@ pub(super) fn play_game_from_opening(
     }
 
     stats.total_plies = u64::from(game.ply_count() + ply_offset);
-    let record = match game.result() {
-        Some(result) => {
-            stats.record_result(result);
+    let outcome = if let Some(result) = game.result() {
+        stats.record_result(result);
+        Some(Outcome::Game(result))
+    } else {
+        adjudicated.map(|winner| {
+            stats.record_evaluation_adjudication(winner);
+            Outcome::EvaluationAdjudication { winner }
+        })
+    };
+    let record = match outcome {
+        Some(outcome) => {
             entries.push(
                 Entry::new(None, Value::None, Exclusion::None, Policy::None, None)
                     .map_err(data_error)?,
@@ -235,7 +423,7 @@ pub(super) fn play_game_from_opening(
                     } else {
                         Origin::RandomSelfplay
                     },
-                    Outcome::Game(result),
+                    outcome,
                     start_ply,
                     start_position,
                     entries,
@@ -324,12 +512,76 @@ mod tests {
     use std::collections::BTreeSet;
 
     /// テスト用の対局設定を返す。
-    const fn test_settings(base_seed: u64, random_moves: u8, max_ply: u16) -> PlaySettings {
+    fn test_settings(base_seed: u64, random_moves: u8, max_ply: u16) -> PlaySettings {
         PlaySettings {
             base_seed,
             nodes: 100,
             random_moves,
             max_ply,
+            policy: GenerationPolicy {
+                opening_score_limit: MATE_BAND_START - 1,
+                adjudication_score: MATE_BAND_START,
+                ..GenerationPolicy::default()
+            },
+        }
+    }
+
+    #[test]
+    fn search_input_errors_identify_the_game_and_failed_operation() {
+        let empty = Game::from_position(Rules::LISHOGI, Position::empty(Color::Black));
+        let mut finished = Game::new(Rules::LISHOGI);
+        finished.agree_draw().unwrap();
+        for (game, expected) in [
+            (&empty, "game 37 is ongoing but has no legal moves"),
+            (
+                &finished,
+                "game 37 could not prepare search: search requires an ongoing game",
+            ),
+        ] {
+            let error = search_position(
+                &crate::selfplay_gen::test_support::epoch_zero_nnue(),
+                game,
+                100,
+                &mut test_table(),
+                &mut HistoryTables::new(DEFAULT_THREADS),
+                &mut Statistics::default(),
+                "game 37",
+            )
+            .err()
+            .unwrap();
+            assert_eq!(error.kind(), io::ErrorKind::InvalidData);
+            assert_eq!(error.to_string(), expected);
+        }
+    }
+
+    #[test]
+    fn opening_and_regular_search_failures_identify_the_game_and_operation() {
+        let openings = opening_for_position(&Position::initial(), 0);
+        for (opening, expected) in [
+            (
+                None,
+                "game 37 opening candidate invalid search limits: search node limit must be non-zero",
+            ),
+            (
+                Some(&openings[0]),
+                "game 37 invalid search limits: search node limit must be non-zero",
+            ),
+        ] {
+            let error = play_game_from_opening(
+                &crate::selfplay_gen::test_support::epoch_zero_nnue(),
+                Rules::LISHOGI,
+                37,
+                PlaySettings {
+                    nodes: 0,
+                    ..test_settings(7, 0, 200)
+                },
+                &mut test_table(),
+                opening,
+            )
+            .err()
+            .unwrap();
+            assert_eq!(error.kind(), io::ErrorKind::InvalidData);
+            assert_eq!(error.to_string(), expected);
         }
     }
 
@@ -350,7 +602,7 @@ mod tests {
     /// 同じ対局条件はレコードと全統計を再現する。
     #[test]
     fn play_game_is_deterministic_for_same_seed_and_arguments() {
-        let rules = Rules::JCSA;
+        let rules = Rules::LISHOGI;
         let nnue = crate::selfplay_gen::test_support::epoch_zero_nnue();
         let mut first_table = test_table();
         let mut second_table = test_table();
@@ -412,6 +664,7 @@ mod tests {
         assert_eq!(
             first.stats.recordable_positions,
             first.stats.recorded_positions
+                + first.stats.excluded_check
                 + first.stats.excluded_mate_band
                 + first.stats.excluded_tactical
                 + first.stats.excluded_repetition
@@ -421,7 +674,7 @@ mod tests {
     /// 注入計画の途中で打ち切った対局でも実施回数と探索回数を正しく集計する。
     #[test]
     fn injection_counts_and_offsets_stay_within_configured_bounds() {
-        let rules = Rules::JCSA;
+        let rules = Rules::LISHOGI;
         let nnue = minase::eval::weights().expect("embedded weights are valid");
         let maximum = 80;
 
@@ -507,5 +760,309 @@ mod tests {
         let (plan, _) = plan_injections(derive_seed(41, 12), opening_ply, 0);
         assert!(plan.plies.is_empty());
         assert_eq!(plan.record_from, opening_ply);
+    }
+    #[test]
+    fn opening_selection_accepts_1700_and_rejects_1701_for_both_signs() {
+        let policy = GenerationPolicy::default();
+        for sign in [-1, 1] {
+            assert!(policy.accepts_opening(sign * 1700));
+            assert!(!policy.accepts_opening(sign * 1701));
+            assert!(!policy.accepts_opening(sign * 29000));
+        }
+    }
+
+    #[test]
+    fn adjudication_counts_five_scores_for_the_same_winner_and_resets() {
+        let policy = GenerationPolicy::default();
+        for winner in Color::ALL {
+            let mut state = EvaluationAdjudication::default();
+            for ply in 0..5 {
+                let side = if ply % 2 == 0 {
+                    Color::Black
+                } else {
+                    Color::White
+                };
+                let score = if winner == side { 4250 } else { -4250 };
+                assert_eq!(
+                    state.update(Some(score), side, policy),
+                    (ply == 4).then_some(winner)
+                );
+            }
+        }
+        // 閾値未満、詰みの帯、探索なしは、4回の優勢の後でも連続を切る。
+        for reset in [Some(4249), Some(-4249), Some(29000), Some(-29000), None] {
+            let mut state = EvaluationAdjudication::default();
+            for _ in 0..4 {
+                assert_eq!(state.update(Some(4250), Color::Black, policy), None);
+            }
+            assert_eq!(state.update(reset, Color::Black, policy), None);
+            for count in 1..=5 {
+                assert_eq!(
+                    state.update(Some(4250), Color::Black, policy),
+                    (count == 5).then_some(Color::Black)
+                );
+            }
+        }
+        let mut state = EvaluationAdjudication::default();
+        for _ in 0..4 {
+            assert_eq!(state.update(Some(4250), Color::Black, policy), None);
+        }
+        for count in 1..=5 {
+            assert_eq!(
+                state.update(Some(-4250), Color::Black, policy),
+                (count == 5).then_some(Color::White)
+            );
+        }
+    }
+
+    #[test]
+    fn exclusions_prioritize_mate_check_tactics_and_repetition() {
+        use minase_core::{
+            Color::{Black, White},
+            PieceKind::{King, Pawn, Rook},
+            test_util::{position, sq},
+        };
+        let generator = MoveGenerator::new(Rules::LISHOGI.moves);
+        let quiet = Move {
+            from: sq(2, 2),
+            mid: None,
+            to: sq(3, 2),
+            promote: false,
+        };
+        let tactical = Move {
+            from: sq(2, 2),
+            mid: None,
+            to: sq(2, 3),
+            promote: false,
+        };
+        for checked in [false, true] {
+            let game = Game::from_position(
+                Rules::LISHOGI,
+                position(
+                    Black,
+                    &[
+                        (sq(0, 0), Black, King),
+                        (sq(11, 11), White, King),
+                        (sq(2, 2), Black, Rook),
+                        (sq(2, 3), White, Pawn),
+                        (sq(if checked { 0 } else { 1 }, 5), White, Rook),
+                    ],
+                ),
+            );
+            assert_eq!(
+                exclusion_reason(&game, &generator, 100, quiet).unwrap(),
+                if checked {
+                    Exclusion::Check
+                } else {
+                    Exclusion::None
+                }
+            );
+            assert_eq!(
+                exclusion_reason(&game, &generator, 100, tactical).unwrap(),
+                if checked {
+                    Exclusion::Check
+                } else {
+                    Exclusion::Tactical
+                }
+            );
+            assert_eq!(
+                exclusion_reason(&game, &generator, 29000, tactical).unwrap(),
+                Exclusion::MateBand
+            );
+        }
+        let mut game = Game::from_position(
+            Rules::LISHOGI,
+            position(
+                Black,
+                &[
+                    (sq(0, 0), Black, King),
+                    (sq(11, 11), White, King),
+                    (sq(2, 2), Black, Rook),
+                    (sq(2, 3), White, Pawn),
+                    (sq(9, 9), White, Rook),
+                ],
+            ),
+        );
+        for (from, to) in [
+            (sq(2, 2), sq(3, 2)),
+            (sq(9, 9), sq(8, 9)),
+            (sq(3, 2), sq(2, 2)),
+            (sq(8, 9), sq(9, 9)),
+        ] {
+            game.play(Move {
+                from,
+                mid: None,
+                to,
+                promote: false,
+            })
+            .unwrap();
+        }
+        assert!(current_position_is_repeated(&game));
+        assert_eq!(
+            exclusion_reason(&game, &generator, 100, quiet).unwrap(),
+            Exclusion::Repetition
+        );
+        assert_eq!(
+            exclusion_reason(&game, &generator, 100, tactical).unwrap(),
+            Exclusion::Tactical
+        );
+    }
+
+    fn opening_for_position(position: &Position, ply: u16) -> Vec<Opening> {
+        let text = format!(
+            "fixture {ply} {} - {}\n",
+            minase_core::to_sfen(position),
+            u32::from(ply) + 1
+        );
+        super::super::opening::read_openings(text.as_bytes()).unwrap()
+    }
+
+    #[test]
+    fn adjudication_saves_both_winners_without_the_fifth_move_or_value() {
+        use minase_core::{
+            Color::{Black, White},
+            PieceKind::{King, Pawn, Rook},
+            test_util::{position, reflect_ranks_and_swap_colors, sq},
+        };
+        let black_ahead = position(
+            Black,
+            &[
+                (sq(0, 0), Black, King),
+                (sq(11, 11), White, King),
+                (sq(2, 2), Black, Rook),
+                (sq(3, 2), Black, Rook),
+                (sq(10, 9), White, Pawn),
+            ],
+        );
+        for winner in Color::ALL {
+            let position = if winner == Black {
+                black_ahead.clone()
+            } else {
+                reflect_ranks_and_swap_colors(&black_ahead)
+            };
+            let openings = opening_for_position(&position, 60);
+            let settings = PlaySettings {
+                policy: GenerationPolicy {
+                    opening_score_limit: 0,
+                    adjudication_score: 1,
+                    adjudication_plies: 5,
+                },
+                ..test_settings(7, 0, 100)
+            };
+            let completed = play_game_from_opening(
+                &crate::selfplay_gen::test_support::epoch_zero_nnue(),
+                Rules::LISHOGI,
+                1,
+                settings,
+                &mut test_table(),
+                Some(&openings[0]),
+            )
+            .unwrap();
+            let decoded =
+                crate::selfplay_gen::test_support::round_trip(completed.record.as_ref().unwrap());
+            assert_eq!(
+                decoded.record().outcome(),
+                Outcome::EvaluationAdjudication { winner }
+            );
+            assert_eq!(completed.stats.searched_positions, 5);
+            assert_eq!(completed.stats.searched_plies, 4);
+            assert_eq!(completed.stats.rejected_openings, 0);
+            assert_eq!(completed.stats.evaluation_adjudication_wins, 1);
+            assert_eq!(completed.stats.black_wins, u64::from(winner == Black));
+            assert_eq!(completed.stats.white_wins, u64::from(winner == White));
+            assert_eq!(decoded.record().entries().len(), 5);
+            let last = decoded.record().entries().last().unwrap();
+            assert_eq!(last.played_move(), None);
+            assert_eq!(last.value(), Value::None);
+        }
+    }
+
+    #[test]
+    fn rules_and_ply_limit_precede_evaluation_adjudication() {
+        use minase_core::{
+            Color::{Black, White},
+            GameResult,
+            PieceKind::{King, Pawn, Rook},
+            WinReason,
+            test_util::{position, sq},
+        };
+        // 次の1手で王を取れる。探索値は詰みの帯なので裁定せず、上限の手で規則による勝ちを保存する。
+        let board = position(
+            Black,
+            &[
+                (sq(0, 0), Black, King),
+                (sq(5, 8), White, King),
+                (sq(5, 5), Black, Rook),
+                (sq(0, 1), Black, Rook),
+                (sq(11, 9), White, Pawn),
+            ],
+        );
+        let openings = opening_for_position(&board, 60);
+        let nnue = crate::selfplay_gen::test_support::epoch_zero_nnue();
+        let policy = GenerationPolicy {
+            adjudication_score: 1,
+            adjudication_plies: 1,
+            ..GenerationPolicy::default()
+        };
+        let settings = PlaySettings {
+            policy,
+            ..test_settings(7, 0, 61)
+        };
+        let completed = play_game_from_opening(
+            &nnue,
+            Rules::LISHOGI,
+            1,
+            settings,
+            &mut test_table(),
+            Some(&openings[0]),
+        )
+        .unwrap();
+        assert!(matches!(
+            completed.record.unwrap().outcome(),
+            Outcome::Game(GameResult::Win {
+                winner: Black,
+                reason: WinReason::RoyalCapture
+            })
+        ));
+        assert_eq!(completed.stats.evaluation_adjudication_wins, 0);
+        assert_eq!(completed.stats.discarded_games, 0);
+        assert_eq!(completed.stats.total_plies, 61);
+        let completed = play_game_from_opening(
+            &nnue,
+            Rules::LISHOGI,
+            1,
+            PlaySettings {
+                max_ply: 60,
+                ..settings
+            },
+            &mut test_table(),
+            Some(&openings[0]),
+        )
+        .unwrap();
+        assert!(completed.record.is_none());
+        assert_eq!(completed.stats.discarded_games, 1);
+        assert_eq!(completed.stats.searched_positions, 0);
+    }
+    #[test]
+    fn accepted_opening_is_searched_once_even_when_first_move_is_injected() {
+        let rules = Rules::LISHOGI;
+        let nnue = crate::selfplay_gen::test_support::epoch_zero_nnue();
+        let (number, opening_ply) = (1..=512)
+            .find_map(|number| {
+                let (ply, plan) = opening_and_plan(rules, 19, number, 80);
+                plan.plies.contains(&ply).then_some((number, ply))
+            })
+            .expect("a fixed seed schedules an injection on the first move");
+        for random_moves in [0, 80] {
+            let settings = test_settings(19, random_moves, (opening_ply + 1) as u16);
+            let completed = play_game(&nnue, rules, number, settings, &mut test_table()).unwrap();
+            assert_eq!(completed.stats.rejected_openings, 0);
+            assert_eq!(completed.stats.searched_positions, 1);
+            assert_eq!(
+                completed.stats.performed_injections,
+                u64::from(random_moves != 0)
+            );
+            assert_eq!(completed.stats.searched_plies, u64::from(random_moves == 0));
+        }
     }
 }

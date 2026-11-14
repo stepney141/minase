@@ -124,7 +124,7 @@ struct SupplyStats {
 struct Measurements {
     compute_ms: f64,
     transfer_ms: f64,
-    binary_cross_entropy: f64,
+    loss: f64,
     profile: ProfileMeasurements,
 }
 
@@ -133,7 +133,7 @@ impl Measurements {
         let (result, profile) = pending.0.collect_profiled()?;
         self.compute_ms += f64::from(result.compute_ms);
         self.transfer_ms += f64::from(pending.1.collect()?) + f64::from(result.target_transfer_ms);
-        self.binary_cross_entropy += result.losses.bce;
+        self.loss += result.losses.loss;
         for timing in profile {
             self.profile.add(timing);
         }
@@ -403,7 +403,7 @@ pub fn run(args: Args) -> std::result::Result<Report, Box<dyn std::error::Error>
         gpu_total_bytes: Some(total),
         gpu_allocation_bytes: Some(free_before as i128 - free_after as i128),
         losses: Losses {
-            bce: measurements.binary_cross_entropy / steps,
+            loss: measurements.loss / steps,
         },
         profile: args.profile.then(|| measurements.profile.table(args.steps)),
     })
@@ -527,7 +527,7 @@ fn run_cpu(
                 let compute_started = Instant::now();
                 let losses = update(&prepared)?;
                 measurements.compute_ms += compute_started.elapsed().as_secs_f64() * 1000.0;
-                measurements.binary_cross_entropy += losses.bce;
+                measurements.loss += losses.loss;
             }
             Ok(measurements)
         })();
@@ -561,7 +561,7 @@ fn run_cpu(
         gpu_total_bytes: None,
         gpu_allocation_bytes: None,
         losses: Losses {
-            bce: measurements.binary_cross_entropy / steps,
+            loss: measurements.loss / steps,
         },
         profile: None,
     })

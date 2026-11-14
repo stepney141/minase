@@ -241,7 +241,7 @@ fn subsample_keys_match_spec_in_memory_and_spill_without_changing_preprocessing(
                 .remove("train_subsample");
             assert_eq!(preprocessing, original["preprocessing"]);
             for epoch in [1, 2] {
-                let mut actual = match &session.dataset {
+                let mut actual = match session.dataset.as_ref() {
                     Store::Memory(dataset) => {
                         epoch_permutation(session.selection.indices(dataset), 31, epoch)
                     }
@@ -288,7 +288,7 @@ fn subsample_batches_schedule_and_validation_use_selected_positions() {
             args.train_subsample = Some(format!("{mode}:4:1").parse().unwrap());
             args.lr_schedule = "exponential:1:0.1".parse().unwrap();
             args.batch = 13;
-            args.validation_interval = 1;
+            args.validation_superbatches = nz(1);
             let full = Dataset::open(
                 &args.data,
                 args.lookahead().unwrap(),
@@ -305,37 +305,18 @@ fn subsample_batches_schedule_and_validation_use_selected_positions() {
                 .count() as u64;
             let steps = selected.div_ceil(args.batch as u64);
             assert!(steps > 1 && steps < full.training_indices().len().div_ceil(args.batch) as u64);
-            let mut session = Session::new(args.clone()).unwrap();
-            assert!(session.advance().unwrap());
-            assert!(session.advance().unwrap());
+            run(args.clone()).unwrap();
             let records = logs(&args.output_dir.join("training.jsonl"));
-            for epoch in 1..=2_u64 {
-                let row = &records[epoch as usize];
-                assert_eq!(row["steps"], steps);
-                assert_eq!(row["total_steps"], epoch * steps);
-                let first = (-((epoch - 1) as f64)).exp2();
-                let last = (-((epoch * steps - 1) as f64 / steps as f64)).exp2();
-                assert_eq!(
-                    row["lr_multiplier_first"].as_f64().unwrap().to_bits(),
-                    first.to_bits()
-                );
-                assert_eq!(
-                    row["lr_multiplier_last"].as_f64().unwrap().to_bits(),
-                    last.to_bits()
-                );
-            }
-            let intervals = logs(&args.output_dir.join("validation-interval.jsonl"));
-            assert_eq!(intervals.len() as u64, 2 * (steps - 1));
-            for (row, step) in intervals
-                .iter()
-                .zip((1..2 * steps).filter(|s| s % steps != 0))
-            {
-                assert_eq!(row["step"], step);
-                assert_eq!(row["epoch"], step / steps + 1);
-                assert_eq!(
-                    row["epoch_fraction"].as_f64().unwrap(),
-                    (step % steps) as f64 / steps as f64
-                );
+            for superbatch in 1..=args.superbatches.get() {
+                let row = &records[superbatch as usize];
+                let updates = args.batches_per_superbatch.get();
+                assert_eq!(row["steps"], updates);
+                assert_eq!(row["total_steps"], superbatch * updates);
+                assert_eq!(row["epochs"], (superbatch * updates) as f64 / steps as f64);
+                let first = (-((superbatch - 1) as f64)).exp2();
+                let last = (-((superbatch * updates - 1) as f64 / updates as f64)).exp2();
+                assert_eq!(row["lr_multiplier_first"].as_f64().unwrap(), first);
+                assert_eq!(row["lr_multiplier_last"].as_f64().unwrap(), last);
             }
         }
     }
@@ -389,13 +370,13 @@ fn cpu_subsample_resume_matches_continuous_training_and_rejects_changed_spec() {
             let mut args = fixture.training_args();
             cpu_buckets(&mut args, &fixture, buckets);
             args.train_subsample = Some(format!("{mode}:4:1").parse().unwrap());
-            args.validation_interval = 1;
+            args.validation_superbatches = nz(1);
             run(args.clone()).unwrap();
             let mut resumed = args.clone();
             resumed.output_dir = fixture.0.join("resumed");
-            let mut session = Session::new(resumed.clone()).unwrap();
-            assert!(session.advance().unwrap());
-            drop(session);
+            resumed.superbatches = nz(1);
+            run(resumed.clone()).unwrap();
+            resumed.superbatches = args.superbatches;
             resumed.resume = Some(resumed.output_dir.clone());
             for spec in [None, Some("games:4:2"), Some("positions:4:2")] {
                 let mut changed = resumed.clone();
@@ -413,9 +394,10 @@ fn cpu_subsample_resume_matches_continuous_training_and_rejects_changed_spec() {
             }
             resumed.threads = Some(2);
             run(resumed.clone()).unwrap();
-            for file in ["latest.npz", "best.npz"] {
-                compare_checkpoint(&args.output_dir.join(file), &resumed.output_dir.join(file));
-            }
+            compare_checkpoint(
+                &args.output_dir.join("latest.npz"),
+                &resumed.output_dir.join("latest.npz"),
+            );
             assert_eq!(
                 fs::read(args.output_dir.join("nnue.bin")).unwrap(),
                 fs::read(resumed.output_dir.join("nnue.bin")).unwrap()
@@ -423,10 +405,6 @@ fn cpu_subsample_resume_matches_continuous_training_and_rejects_changed_spec() {
             assert_eq!(
                 deterministic_logs(&args.output_dir),
                 deterministic_logs(&resumed.output_dir)
-            );
-            assert_eq!(
-                logs(&args.output_dir.join("validation-interval.jsonl")),
-                logs(&resumed.output_dir.join("validation-interval.jsonl"))
             );
         }
     }
@@ -438,7 +416,6 @@ fn deterministic_logs(directory: &Path) -> Vec<Value> {
         for key in [
             "training_seconds",
             "validation_seconds",
-            "interval_validation_seconds",
             "training_positions_per_second",
             "update_seconds",
             "elapsed_seconds",

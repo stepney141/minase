@@ -352,10 +352,10 @@ fn collect(report: &mut Report, pending: (StepResult, StepResult, Losses, u64)) 
     if first.step != step || repeated.step != step {
         return Err(Error::Equivalence("collected update number".into()));
     }
-    report.number("step BCE", step as usize, expected.bce, first.losses.bce)?;
-    if first.losses.bce.to_bits() != repeated.losses.bce.to_bits() {
+    report.number("step loss", step as usize, expected.loss, first.losses.loss)?;
+    if first.losses.loss.to_bits() != repeated.losses.loss.to_bits() {
         return Err(Error::Equivalence(
-            "step BCE: repeated updates differ in bits".into(),
+            "step loss: repeated updates differ in bits".into(),
         ));
     }
     Ok(())
@@ -582,8 +582,7 @@ mod tests {
                             optimizer,
                             lambda: 0.75,
                             progress: Progress {
-                                epoch,
-                                best: None,
+                                completed_superbatches: epoch,
                                 elapsed_seconds: 0.0,
                                 seed: 293,
                                 config: Configuration {
@@ -637,6 +636,8 @@ mod tests {
     fn fixture_config() -> AdamWConfig {
         TrainingOptions {
             weight_decay_linear: 0.02,
+            weight_decay_ft: 0.004,
+            weight_decay_head: 0.009,
             ..TrainingOptions::new(1.0)
         }
         .optimizer()
@@ -714,13 +715,13 @@ mod tests {
             model.parameter_mut(Parameter::Biases).fill(0.5);
             model.parameter_mut(Parameter::Hidden1Weights)[0] = 1.0;
             let z = if set == InputFeatureSet::P { 0.5 } else { 0.25 };
-            model.parameter_mut(Parameter::Hidden2Weights)[15] = 4.0;
-            model.parameter_mut(Parameter::Hidden2Weights)[30 + 15] = -4.0;
-            model.parameter_mut(Parameter::Hidden2Biases)[0] = 0.5 - 4.0 * z;
-            model.parameter_mut(Parameter::Hidden2Biases)[1] = 0.5 + 4.0 * z;
+            model.parameter_mut(Parameter::Hidden2Weights)[15] = 16.0;
+            model.parameter_mut(Parameter::Hidden2Weights)[30 + 15] = -16.0;
+            model.parameter_mut(Parameter::Hidden2Biases)[0] = 0.5 - 16.0 * z;
+            model.parameter_mut(Parameter::Hidden2Biases)[1] = 0.5 + 16.0 * z;
             model.parameter_mut(Parameter::Hidden2Output)[0] = f32::MAX;
             model.parameter_mut(Parameter::Hidden2Output)[1] = -f32::MAX;
-            model.parameter_mut(Parameter::OutputBias)[0] = -100.0;
+            model.parameter_mut(Parameter::OutputBias)[0] = 0.0;
             let forward =
                 reference::forward(&model, &batch, &reference::fold(&model).unwrap()).unwrap();
             let output = reference::output_backward(&model, &batch, &forward, &[1.0]).unwrap();
@@ -870,10 +871,10 @@ mod tests {
                 };
                 report
                     .number(
-                        "parallel CPU BCE",
+                        "parallel CPU loss",
                         0,
-                        gradients.losses.bce,
-                        metrics.losses.bce,
+                        gradients.losses.loss,
+                        metrics.losses.loss,
                     )
                     .unwrap();
                 compare_state(&mut report, &cpu, &cpu_optimizer, &parameters, &optimizer).unwrap();
@@ -939,7 +940,7 @@ mod tests {
             for (index, (expected, actual)) in expected.iter().zip(actual).enumerate() {
                 assert_eq!(actual.step, fixture.optimizer.step() + index as u64 + 1);
                 report
-                    .number("queued BCE", index, expected.bce, actual.losses.bce)
+                    .number("queued loss", index, expected.loss, actual.losses.loss)
                     .unwrap();
             }
             let (parameters, optimizer) = step.snapshot().unwrap();

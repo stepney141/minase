@@ -5,7 +5,7 @@
 第1層の幅も、2026年11月4日の[NNUEに隠れ層を加えて第1層を広げ、整数化の精度を上げる設計書](../plans/archived/nnue-architecture-revision.md)で128から256になった。
 付録に書かれた線形の経路の初期値と第1層の幅は、当時のものである。
 本文の「minaseも世代1から前の世代のデータを混ぜている」という記述も、現在は当たらない。
-[NNUEの世代反復を手書きの評価関数v0からやり直す設計書](../plans/archived/nnue-generation-reset.md)は各世代をその世代の教師だけで学び、[NNUEの標準レシピv1を対局で決め、v0から世代反復をやり直す設計書](../plans/nnue-standard-recipe.md)は前の世代の教師の併用を比べる候補とした。
+[NNUEの世代反復を手書きの評価関数v0からやり直す設計書](../plans/archived/nnue-generation-reset.md)は各世代をその世代の教師だけで学び、[NNUEの標準レシピv1を対局で決め、v0から世代反復をやり直す設計書](../plans/archived/nnue-standard-recipe.md)は前の世代の教師の併用を比べる候補とした。
 付録に候補として挙がる人間の棋譜の開始局面は、本文の第1の候補と同じく、[強くする手段に人間の棋譜を使わない](../adr/do-not-use-human-games-to-strengthen-the-engine.md)により採らない。
 「minaseへの含意」の節の候補のうち、既存の決定で退けられていないものは、2026年11月14日に[NNUEの教師の局面と教師値を変える候補](../proposals/nnue-teacher-content-candidates.md)へまとめ、採否と起案の時期はそちらで扱う。
 

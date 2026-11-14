@@ -38,6 +38,9 @@ fn assert_generated_check(
     assert_eq!(context.gives_check(position, generator, mv), expected);
     assert_eq!(gives_check_before(position, generator, mv), expected);
     assert_eq!(position.gives_check(generator, mv), expected, "mv={mv:?}");
+    let mut after = position.clone();
+    after.make_move_unchecked(mv, generator.rules());
+    assert_eq!(after.is_in_check(generator), expected, "mv={mv:?}");
     assert_eq!(
         position, &before,
         "gives_check must not change the position"
@@ -84,6 +87,9 @@ fn article_8_gives_check_matches_post_move_legal_capture_reference() {
                 assert_eq!(gives_check_before(&position, &generator, mv), expected);
                 assert_eq!(position.gives_check(&generator, mv), expected);
                 assert_eq!(actual, expected, "rules={rules:?}, mv={mv:?}");
+                let mut after = position.clone();
+                after.make_move_unchecked(mv, generator.rules());
+                assert_eq!(after.is_in_check(&generator), expected);
                 compared += 1;
                 checks += usize::from(actual);
             }
@@ -96,6 +102,82 @@ fn article_8_gives_check_matches_post_move_legal_capture_reference() {
         checks > 0,
         "the reference comparison must include checking moves"
     );
+}
+
+#[test]
+fn article_8_current_check_requires_capture_of_all_royals() {
+    use Color::{Black, White};
+    use PieceKind::{CrownPrince, King, Lion, Rook};
+    for rules in [crate::Rules::JCSA, crate::Rules::LISHOGI] {
+        let generator = MoveGenerator::new(rules.moves);
+        for (pieces, expected) in [
+            (vec![(sq(5, 5), Black, King), (sq(5, 2), White, Rook)], true),
+            (
+                vec![
+                    (sq(5, 5), Black, King),
+                    (sq(7, 5), Black, CrownPrince),
+                    (sq(5, 2), White, Rook),
+                ],
+                false,
+            ),
+            (
+                vec![
+                    (sq(5, 5), Black, King),
+                    (sq(6, 5), Black, CrownPrince),
+                    (sq(5, 4), White, Lion),
+                ],
+                true,
+            ),
+            (
+                vec![
+                    (sq(5, 5), Black, King),
+                    (sq(6, 5), Black, CrownPrince),
+                    (sq(5, 2), White, Rook),
+                    (sq(6, 2), White, Rook),
+                ],
+                false,
+            ),
+            (
+                vec![(sq(5, 5), Black, Rook), (sq(5, 2), White, Rook)],
+                false,
+            ),
+            (
+                vec![
+                    (sq(5, 5), Black, King),
+                    (sq(6, 5), Black, CrownPrince),
+                    (sq(7, 5), Black, King),
+                    (sq(5, 4), White, Lion),
+                ],
+                false,
+            ),
+        ] {
+            let codes = pieces
+                .into_iter()
+                .map(|(square, color, kind)| {
+                    (
+                        square,
+                        if kind == CrownPrince {
+                            promoted(color, kind)
+                        } else {
+                            piece(color, kind)
+                        },
+                    )
+                })
+                .collect::<Vec<_>>();
+            let board = position_from_codes(Black, &codes);
+            let before = board.clone();
+            assert_eq!(
+                board.is_in_check(&generator),
+                expected,
+                "rules={rules:?}, board={board:?}"
+            );
+            assert_eq!(board, before);
+            assert_eq!(
+                reflect_ranks_and_swap_colors(&board).is_in_check(&generator),
+                expected
+            );
+        }
+    }
 }
 
 #[test]
@@ -538,6 +620,35 @@ fn attack_dependencies_bound_all_occupancy_changes() {
                     board.attackers_to_by(color, royal, occupied),
                     board.attackers_to_by(color, royal, occupied ^ outside)
                 );
+            }
+        }
+    }
+}
+
+#[test]
+fn article_8_current_check_matches_every_move_of_random_games_in_both_rules() {
+    use crate::{
+        Game, Rules,
+        rng::{XorShift64, derive_seed},
+    };
+    for rules in [Rules::JCSA, Rules::LISHOGI] {
+        let generator = MoveGenerator::new(rules.moves);
+        for seed in [41, 79] {
+            let mut game = Game::new(rules);
+            let mut rng = XorShift64::new(derive_seed(seed, 0));
+            for _ in 0..64 {
+                if game.result().is_some() {
+                    break;
+                }
+                let moves = game.legal_moves();
+                for &mv in &moves {
+                    let expected = game.position().gives_check(&generator, mv);
+                    let mut after = game.position().clone();
+                    after.make_move_unchecked(mv, rules.moves);
+                    assert_eq!(after.is_in_check(&generator), expected, "{rules:?} {mv:?}");
+                }
+                let index = rng.index(std::num::NonZeroUsize::new(moves.len()).unwrap());
+                game.play(moves[index]).unwrap();
             }
         }
     }

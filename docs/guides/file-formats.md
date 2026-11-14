@@ -25,7 +25,7 @@ NPZはNumPyの配列を名前つきで収めた無圧縮のZIPであり、コン
 
 | 形式 | 識別と版 | 書き手 | 読み手 | 仕様 |
 |---|---|---|---|---|
-| MNSD（教師データ） | `MNSD`、版2 | `minase data selfplay generate`、`minase data zero-selfplay`、`minase data lishogi games`、`minase-trainer diag pst-compare` | 学習器、AlphaZero型探索の学習器（拡張モジュール`minase_mnsd_reader`）、診断、`minase data selfplay inspect`、`minase-trainer fm scale --data`、`nnue bench-step` | `crates/minase/src/training/records.rs` |
+| MNSD（教師データ） | `MNSD`、版3 | `minase data selfplay generate`、`minase data zero-selfplay`、`minase data lishogi games`、`minase-trainer diag pst-compare` | 学習器、AlphaZero型探索の学習器（拡張モジュール`minase_mnsd_reader`）、診断、`minase data selfplay inspect`、`minase-trainer fm scale --data`、`nnue bench-step` | `crates/minase/src/training/records.rs` |
 | MNUE（NNUEの重み） | `MNUE`、版5 | `minase-trainer nnue train`、`nnue fit-linear` | エンジン、診断、`nnue train`（書き出した重みの検査）、`nnue fit-linear`（基点の重み） | `crates/minase/src/eval/nnue/format.rs` |
 | MNPT（PSTの重みとFMの補正） | `MNPT`、版3 | `minase-trainer pst train`、`fm train`、`joint train`、`fm quarter`、`fm scale` | エンジン、学習器、診断 | `crates/minase/src/eval/pst/format.rs` |
 | PSTの浮動小数点の重み`pst-float.npz`（2配列） | NPZ、版なし | `minase-trainer pst train` | `joint train --pst-init`、`diag pst-compare` | `crates/minase-trainer/src/pst/npz.rs` |
@@ -49,7 +49,7 @@ NNUEの学習器が`--buckets`を2以上にしたときに作業ディレクト�
 
 | 形式 | 識別と版 | 書き手 | 読み手 | 仕様 |
 |---|---|---|---|---|
-| NNUEのチェックポイント`latest.npz`、`best.npz` | NPZ、`meta`の`kind = "nnue"` | `nnue train` | `nnue train`（終了時の書き出しと`--resume`）、`diag nnue-removal --float` | `crates/minase-trainer/src/nnue/model/checkpoint.rs` |
+| NNUEのチェックポイント`latest.npz` | NPZ、`meta`の`kind = "nnue"`、進捗は完了したsuperbatch数 | `nnue train` | `nnue train`（終了時の書き出しと`--resume`）、`diag nnue-removal --float` | `crates/minase-trainer/src/nnue/model/checkpoint.rs` |
 | PSTのチェックポイント`latest.npz`、`best.npz` | NPZ、`meta`の`kind = "pst"` | `pst train` | `pst train`（終了時の書き出しと`--resume`） | `crates/minase-trainer/src/pst/checkpoint.rs` |
 | FMのチェックポイント`latest.npz`、`best.npz` | NPZ、`meta`の`kind = "fm"` | `fm train` | `fm train`（終了時の書き出しと`--resume`） | `crates/minase-trainer/src/fm/checkpoint.rs` |
 | 同時学習のチェックポイント`latest.npz`、`best.npz` | NPZ、`meta`の`kind = "joint"` | `joint train` | `joint train`（終了時の書き出しと`--resume`） | `crates/minase-trainer/src/joint/checkpoint.rs` |
@@ -57,7 +57,7 @@ NNUEの学習器が`--buckets`を2以上にしたときに作業ディレクト�
 | PSTの学習の設定`config.json` | なし | `pst train` | `pst train --resume` | `crates/minase-trainer/src/pst/record.rs` |
 | FMの学習の設定`config.json` | なし | `fm train` | `fm train --resume` | `crates/minase-trainer/src/fm/record.rs` |
 | 同時学習の設定`config.json` | なし | `joint train` | `joint train --resume` | `crates/minase-trainer/src/joint/record.rs` |
-| NNUEのエポックの記録`training.jsonl` | なし | `nnue train` | `nnue train --resume` | `crates/minase-trainer/src/nnue/train/record.rs`の`EpochRecord` |
+| NNUEのsuperbatchの記録`training.jsonl` | なし | `nnue train` | `nnue train --resume` | `crates/minase-trainer/src/nnue/train/record.rs`の`SuperbatchRecord` |
 | PSTのエポックの記録`training.jsonl` | なし | `pst train` | `pst train --resume` | `crates/minase-trainer/src/pst/record.rs`の`EpochRecord` |
 | FMのエポックの記録`training.jsonl` | なし | `fm train` | `fm train --resume` | `crates/minase-trainer/src/fm/record.rs`の`EpochRecord` |
 | 同時学習のエポックの記録`training.jsonl` | なし | `joint train` | `joint train --resume` | `crates/minase-trainer/src/joint/record.rs`の`EpochRecord` |
@@ -74,7 +74,7 @@ NNUEの学習器が`--buckets`を2以上にしたときに作業ディレクト�
 
 AlphaZero型探索の学習器`minase_zero`（`tools/train/zero/minase_zero/`）は、`init`と`train`の出力先に、チェックポイント、ONNXのネット、および終了報告を書き出す。
 ONNXのネットはONNXが形式を定めるので載せない。
-試験用の小さな自己対局のファイル`tools/train/zero/fixtures/zero-selfplay-small.mnsd`はMNSDの版2であり、`minase data zero-selfplay`で作った。
+試験用の小さな自己対局のファイル`tools/train/zero/fixtures/zero-selfplay-small.mnsd`はMNSDの版3である。`minase data zero-selfplay`で作った版2のファイルを、版の番号と項目の印の配置だけを変えて版3に書き直した。
 
 | 形式 | 識別と版 | 書き手 | 読み手 | 仕様 |
 |---|---|---|---|---|
@@ -142,4 +142,4 @@ ONNXのネットそのものとTensorRTのエンジンのキャッシュは、ON
 - `summary.json`は、対局ハーネスでは累計実行時間と中断状態だけを持ち、学習器では学習の終了報告である。学習器の`summary.json`の欄は学習器ごとに異なり、AlphaZero型探索の学習器`minase_zero`の`summary.json`も`init`と`train`で欄が異なる。
 - `config.json`と`training.jsonl`は4種の学習器がそれぞれ書き、欄は学習器ごとに異なる。`config.json`は、教師の生成器`minase data selfplay generate`と`minase data zero-selfplay`の出力先にもあり、こちらは生成条件を持つ。
 - `pst-float.npz`は、PSTの学習器が書くと2つの配列、同時学習が書くと5つの配列を持つ。PSTの2つの配列だけを使う読み手は、5つの配列を持つファイルからも同じ名前の2つの配列を読む。
-- `latest.npz`と`best.npz`は4種の学習器がそれぞれ書き、収める配列は学習器ごとに異なる。`meta`の`kind`で学習器を見分ける。
+- `latest.npz`は4種の学習器がそれぞれ書き、`best.npz`はPST、FM、同時学習の学習器だけが書く。収める配列と`meta`の進捗の欄は学習器ごとに異なり、`meta`の`kind`で学習器を見分ける。NNUEの学習器は、エポック数で進捗を表していた変更前の学習器のチェックポイントを読まない。

@@ -134,7 +134,7 @@ masterの探索のコードは変えないので、世代ごとのコミット�
 本書は次の決定を、対局で確かめて改める可能性がある。
 いずれも採用した場合にだけ、新しいADRで置き換える。
 
-- [NNUEは探索値だけの教師で学ぶ](../../adr/train-the-nnue-on-search-value-teachers-without-lookahead.md)。このADRはλ<1を対局で測らずに、対局の記憶の危険を理由に退けた。本書の第1世代は、その危険が棋力にも現れることを対局で確かめた。
+- [NNUEは探索値だけの教師で学ぶ](../../adr/archive/train-the-nnue-on-search-value-teachers-without-lookahead.md)。このADRはλ<1を対局で測らずに、対局の記憶の危険を理由に退けた。本書の第1世代は、その危険が棋力にも現れることを対局で確かめた。
 - [探索用駒価値は学習PSTから導いた値に固定する](../../adr/derive-search-piece-values-from-the-learned-pst.md)。本書の候補はv0の値を使う。
 
 ## 設計判断

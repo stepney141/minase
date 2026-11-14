@@ -1,30 +1,33 @@
-//! CUDAまたはCPUによるNNUEの学習と、全検証集合の評価、保存と再開。
-//! CUDAでは供給スレッドがワーカー数ぶんのバッチを並列に作り、順列の順に3面へ書く。
-//! 各更新の結果は次の更新を投入してから回収し、CPUでは単一スレッドとビット一致する並列参照計算を使う。
-//! 各エポックはB=1なら`epoch_permutation(train, seed, epoch)`、B≥2ならbucketへの振り分けで始める。
-//! 更新、snapshot、全検証、最良値更新、ログ、latest.npz、改善時のbest.npzの順に進む。
-//! `latest.npz`をエポックの保存確定点とし、時間切れで未完了のエポックは採用しない。
+//! CUDAまたはCPUで、指定したsuperbatch数だけNNUEを学習する。
 //!
-//! `--output-dir`には次のファイルを保存する。
+//! 1 superbatchは`--batches-per-superbatch`回の更新であり、教師の1周とは独立した単位である。
+//! 間引き後の訓練局面数をM、`--batch`の局面数をmとすると、1周の更新回数は`U = ceil(M/m)`となる。
+//! 周ごとに訓練集合の全体を一様に並べ替える。
+//! superbatchの境界は周の途中に来てよく、同じ周の順列を境界を越えて保持する。
+//! 周の最後の短いバッチも1更新と数え、次の周の局面で埋めない。
+//! 学習率の倍率は、`--lr-schedule`、完了した更新回数、`--batches-per-superbatch`だけで決まる。
+//!
+//! 新規実行では学習前に全検証集合を評価し、更新0回の行を`training.jsonl`に記録する。
+//! 予定のsuperbatch数をN、`--validation-superbatches`の間隔をVとすると、k番目のsuperbatchの終了時に、kがVで割り切れるか`k = N`なら全検証集合を評価する。
+//! 検証しなかったsuperbatchの検証損失は`null`とし、検証損失は停止や重みの選択には用いない。
+//! superbatchの終了時は計算結果を回収して重みと最適化器の状態を取得し、必要な検証、ログの追記、`latest.npz`の保存の順に進む。
+//! この保存を確定の時点とし、先読みしただけのバッチと、検証を含めて時間内に完了しなかったsuperbatchの更新は採用しない。
 //!
 //! | ファイル | 内容 |
 //! | --- | --- |
-//! | `config.json` | 引数、実効ワーカー数、照合用の設定と入力、前処理の結果、デバイス名、再開履歴を保存する。欄は`record::configuration`に定める。 |
-//! | `training.jsonl` | エポック0の検証と、検証を終えた各エポックの[`EpochRecord`]を1行ずつ追記する。 |
-//! | `validation-interval.jsonl` | `--validation-interval`が正のときだけ、エポック途中の全検証集合の評価を[`record::IntervalRecord`]として追記する。エポック境界は除く。 |
-//! | `latest.npz` | 最後に検証を終えたモデル、AdamWの状態、更新回数、最良エポック、累積時間、照合用設定を[`Checkpoint`]で保存する。 |
-//! | `best.npz` | `--export-epoch`によらず、最良エポックのモデルとその時点のAdamWの状態を[`Checkpoint`]で保存する。 |
-//! | `nnue.bin` | `--export-epoch best`（既定）なら`best.npz`、`last`なら`latest.npz`のモデルを量子化したMNUE版5を保存する。 |
-//! | `summary.json` | 停止理由、最良エポック、書き出しの選択`export_epoch`と実際の番号`exported_epoch`、書き出したモデルの量子化検査と符号反転を[`Summary`]で保存する。 |
+//! | config.json | 引数、照合用の設定と入力、前処理、デバイス名、再開履歴。 |
+//! | training.jsonl | 学習前の検証と、完了したsuperbatchごとの[`SuperbatchRecord`]。 |
+//! | latest.npz | 確定した重み、最適化器の状態、superbatch数、更新数、累積時間。 |
+//! | nnue.bin | 予定の更新を終えたlatest.npzを量子化したMNUE版5。 |
+//! | summary.json | 予定と完了のsuperbatch数と更新数、停止理由、検証と量子化の結果。 |
 //!
-//! 新規実行の出力ディレクトリは存在しないか空でなければならず、空でなければ`--resume`の使用を求めるエラーで終了する。
-//! 停止条件はエポック開始前と終了時に、累積時間、改善のないエポック数、完了エポック数の順に判定する。
-//! 累積時間には前処理、エポック0の検証、各エポックの学習と検証、再開前の実行を含む。
-//! 訓練中はバッチ投入前に期限を判定し、期限を過ぎたエポックの更新は採用しない。
-//! 検証では各バッチの前後に期限を判定し、期限を過ぎたエポックの最良値更新、ログ追記、チェックポイント保存を行わない。
-//! 最良エポックは1以上から選び、[`crate::nn::update_best`]に従って検証損失が厳密に小さい場合だけ更新する。
+//! 新規実行の出力先は存在しないか空でなければならない。
+//! 累積時間には前処理と検証、再開前の実行を含む。
+//! 時間の上限で予定の更新を完了できなければ、`summary.json`の状態を`incomplete`とし、CLIは終了コード1を返す。
+//! この場合は`nnue.bin`を書かず、確定済みの`latest.npz`があれば残して再開に用いる。
+//! 学習前の検証も完了していなければ、チェックポイントは作らない。
 
-use crate::nn::{atomic_write, patience_reached};
+use crate::nn::atomic_write;
 mod args;
 mod backend;
 mod base;
@@ -46,18 +49,19 @@ use crate::{
         reference::{AdamW, Validation},
     },
 };
-pub use args::{Args, ExportEpoch};
+pub use args::Args;
 use backend::Backend;
 use minase::eval::features::FEATURE_COUNT;
-pub use record::{EpochRecord, LinearMovement, Saturation};
+pub use record::{LinearMovement, Saturation, SuperbatchRecord};
 use record::{
-    IntervalRecord, append_epoch, append_interval, append_resume, configuration, linear_movement,
-    reconcile_interval_log, reconcile_log, validate_statistics, write_json,
+    append_resume, append_superbatch, configuration, linear_movement, reconcile_log,
+    validate_statistics, write_json,
 };
 use serde::Serialize;
 use serde_json::{Value, json};
 use std::{
     fmt,
+    sync::Arc,
     time::{Duration, Instant, SystemTime},
 };
 
@@ -66,8 +70,8 @@ use std::{
 pub enum Error {
     /// 引数または保存状態が契約に違反する。
     Invalid(&'static str),
-    /// 1エポックも検証を完了せず時間の上限に達した。
-    NoCompletedEpoch,
+    /// 予定した更新回数に達する前に時間の上限に達した。
+    Incomplete,
     /// 勝率尺度（1ロジットあたりのcp）を`cp_per_logit`とする。
     /// 量子化した推論の平均絶対誤差が`cp_per_logit / 40`を超えた。
     QuantizationError,
@@ -76,8 +80,12 @@ impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Invalid(reason) => f.write_str(reason),
-            Self::NoCompletedEpoch => f.write_str("time limit reached with 0 completed training epochs; 予算の上限で終了し、収束は未確認"),
-            Self::QuantizationError => f.write_str("quantization_error: mean absolute error exceeds cp_per_logit / 40"),
+            Self::Incomplete => f.write_str(
+                "time limit reached before completing the planned training; resume to continue",
+            ),
+            Self::QuantizationError => {
+                f.write_str("quantization_error: mean absolute error exceeds cp_per_logit / 40")
+            }
         }
     }
 }
@@ -91,98 +99,76 @@ fn initial_standard_deviation() -> f32 {
     (1.0 / (3.0 * FEATURE_COUNT as f32)).sqrt()
 }
 
-/// 学習を停止した理由。診断値だけでは停止しない。
+/// 学習を停止した理由。
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum StopReason {
-    /// 指定されたエポック数を完了した。
-    MaxEpochs,
-    /// 指定された連続エポック数にわたって改善しなかった。
-    EarlyStopping,
+    /// 予定のsuperbatch数を完了した。
+    Completed,
     /// 再開前を含む時間の上限に達した。
     TimeLimit,
 }
 
-/// 終了理由、最良エポック、書き出したエポック、量子化検査と符号反転の集計を`summary.json`へ保存する。
-///
-/// `status = "candidate"`は量子化検査の合格で、コマンドの終了コードは0である。
-/// 平均絶対誤差が`cp_per_logit / 40`を超えると`"quantization_error"`となり、`nnue.bin`とチェックポイントを残して終了コード1を返す。
-/// このとき`reason`は`"quantization_error: mean absolute error exceeds cp_per_logit / 40"`である。
-/// 1エポックも検証を終えず時間切れになった場合と、選択した重みの書き出しに失敗した場合は`"error"`で終了コード1となる。
-/// 前者の`reason`は`"time limit reached with 0 completed training epochs; 予算の上限で終了し、収束は未確認"`である。
-/// `stopped_by = "time_limit"`なら`convergence`は`"予算の上限で終了し、収束は未確認"`、それ以外は`null`である。
-/// 学習ループ中のエラーで保存する簡略な報告は[`run`]に定める。
+impl fmt::Display for StopReason {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str(match self {
+            Self::Completed => "completed",
+            Self::TimeLimit => "time_limit",
+        })
+    }
+}
+
+/// 予定と確定済みの進捗、および最終の検査結果。
+/// candidateだけが終了コード0であり、それ以外は1で終了する。
 #[derive(Debug, Serialize)]
 pub struct Summary {
-    /// candidate、quantization_error、またはerror。
+    /// candidate、quantization_error、incomplete、errorのいずれか。
     pub status: &'static str,
-    /// 検査失敗または学習未完了の理由。
+    /// 失敗または未完了の理由。
     pub reason: Option<String>,
-    /// 学習の停止理由。
+    /// 停止の理由。
     pub stopped_by: StopReason,
-    /// 時間切れの場合の収束に関する注記。
-    pub convergence: Option<&'static str>,
-    /// 検証を終えた最終エポック。
-    pub last_epoch: u64,
-    /// 書き出すエポックの選び方。
-    pub export_epoch: ExportEpoch,
-    /// 書き出しと検査を終えたエポック番号。未完了ならnull。量子化誤差の閾値超過時も番号を残す。
-    pub exported_epoch: Option<u64>,
-    /// 1以上の最良エポック。未完了ならnull。
-    pub best_epoch: Option<u64>,
-    /// 最良エポックの検証損失。
-    pub best_validation_loss: Option<f64>,
-    /// 初期モデルの検証損失。初期検証中の時間切れならnull。
-    pub initial_validation_loss: Option<f64>,
-    /// 最良損失が初期損失を下回るか。採否には使わない。
-    pub improved_over_epoch_zero: Option<bool>,
-    /// 永続化した更新回数。
-    pub total_steps: u64,
-    /// 再開前を含む学習実行の秒数。
+    /// 予定したsuperbatch数。
+    pub planned_superbatches: u64,
+    /// 確定したsuperbatch数。
+    pub completed_superbatches: u64,
+    /// 予定した更新回数。
+    pub planned_steps: u64,
+    /// 確定した更新回数。
+    pub completed_steps: u64,
+    /// 更新回数を1周の更新回数で割った周回数。
+    pub epochs: f64,
+    /// 最後に確定した検証損失。初期検証も未完了ならnull。
+    pub final_validation_loss: Option<f64>,
+    /// 再開前を含む累積秒数。
     pub elapsed_seconds: f64,
     /// 量子化誤差の検査結果。
     pub quantization: Option<QuantizationReport>,
-    /// 量子化検査と同じ標本の駒除去差分の符号反転。閾値は設けずstatusに影響しない。
+    /// 量子化検査と同じ標本の駒除去差分の符号反転。
     pub removal_sign: Option<RemovalSignReport>,
 }
 
-fn update_best(progress: &mut Progress, epoch: u64, validation_loss: f64) -> Result<bool> {
-    if !validation_loss.is_finite() || validation_loss < 0.0 {
-        return Err(Error::Invalid("non-finite or negative validation loss").into());
-    }
-    if epoch == 0 {
-        return Ok(false);
-    }
-    if epoch <= progress.epoch {
-        return Err(Error::Invalid("epoch must advance").into());
-    }
-    progress.epoch = epoch;
-    Ok(crate::nn::update_best(
-        &mut progress.best,
-        epoch,
-        validation_loss,
-    )?)
-}
-
-/// エポック開始前と終了時の停止理由を優先順に決める。
-/// 累積秒数が`time_limit_hours × 3600`以上なら`time_limit`、最良エポックから
-/// `patience`エポック以上経過したら`early_stopping`、完了エポック数が`epochs`以上なら`max_epochs`を返す。
+/// 完了を優先し、予定に達していない場合だけ時間の上限を判定する。
 fn stop_reason(progress: &Progress, args: &Args) -> Option<StopReason> {
-    if progress.elapsed_seconds >= args.time_limit_hours * 3600.0 {
+    if progress.completed_superbatches == args.superbatches.get() {
+        Some(StopReason::Completed)
+    } else if progress.elapsed_seconds >= args.time_limit_hours * 3600.0 {
         Some(StopReason::TimeLimit)
-    } else if patience_reached(progress.best, progress.epoch, args.patience) {
-        Some(StopReason::EarlyStopping)
-    } else if progress.epoch >= args.epochs {
-        Some(StopReason::MaxEpochs)
     } else {
         None
     }
 }
 
+/// 同じ周の並べ替えをsuperbatchの境界を越えて保持する。
+enum Epoch<'a> {
+    Memory(Vec<u64>),
+    Spill(crate::data::EpochReader<'a>),
+}
+
 struct Session {
     args: Args,
     workers: usize,
-    dataset: Store,
+    dataset: Arc<Store>,
     selection: subsample::Selection,
     base: base::Base,
     teacher_cp_per_logit: Vec<f64>,
@@ -190,28 +176,30 @@ struct Session {
     backend: Backend,
     started: Instant,
     previous_elapsed: f64,
-    initial_validation_loss: Option<f64>,
+    last_validation: Option<(u64, f64)>,
     gpu_used_bytes: Option<usize>,
     gpu_total_bytes: Option<usize>,
 }
 
 impl Session {
-    /// 初期値と前処理を再計算し、新規学習または保存済みエポックからの再開を準備する。
-    /// `--base`の探索用駒価値から[`base::Base::initial_linear`]で線形初期値を作る。
-    /// 王駒と先獅子は0とし、非王駒は自駒を正、相手駒を負として全升と2端点へ同じ値を置く。
-    /// 全MNSDの規則セット名は基準MNUEと一致し、訓練集合と検証集合はどちらも空であってはならない。
-    /// 勝率尺度、47個の探索用駒価値、規則セット名は[`base::Base`]としてMNUEから引き継ぎ、勝率尺度を[`Shape`]へ渡す。
-    /// 初期値の鏡映対称性と保存範囲は[`Model::initialize`]で検査する。
-    /// 再開にはconfig.jsonのresumes配列の存在と、settings、inputs、preprocessingの一致を要求する。
-    /// settingsからは出力先、再開指定、入力パス、epochs、patience、export_epoch、time_limit_hours、threads、validation_interval、bucket_positions、scratch_dirを除く。
-    /// 入力の識別情報は正規化したパスとともにinputsへ記録し、欄ごとに照合する。
-    /// 予算を除く理由は`docs/lessons/resume-hash-excludes-budgets.md`にある。
-    /// 教師の勝率尺度、先読み教師、観測マスクは全訓練集合から作り、その後で更新用の集合を間引く。
-    /// 復元した形状、マスク、初期値、係数、シードは再計算値と一致し、更新回数は
-    /// `epoch×ceil(抽出後の訓練局面数/batch)`、epochは指定上限以下でなければならない。
-    /// 記録されたdevice_nameも一致を要求する。
-    /// best.npzの書き込み前に中断した場合は、最新エポックが最良であるときだけlatest.npzから復元できる。
-    /// 途中検証のログは[`reconcile_interval_log`]で更新回数の増加を検査し、チェックポイントより後の行と未完の末尾を捨てる。
+    /// 初期値と前処理を再計算し、照合を通った保存状態から再開する。
+    ///
+    /// 再開では`--resume`と`--output-dir`が正規化後に同じディレクトリを指すことを要求する。
+    /// 変更できる引数は`--superbatches`、`--validation-superbatches`、`--time-limit-hours`、`--threads`、`--bucket-positions`、`--scratch-dir`である。
+    /// `--batches-per-superbatch`と`--lr-schedule`を含むほかの学習設定は変更できない。
+    /// 入力は正規化したパスと識別情報を、前処理は教師の勝率尺度の値と出所も含めて照合し、デバイス名も一致を要求する。
+    ///
+    /// 保存済みのsuperbatch数をk、更新回数をtとし、`t = k × batches_per_superbatch`を要求する。
+    /// `--superbatches`がkより小さければエラーとし、等しければ追加の更新をせず、保存済みの重みを書き出す。
+    /// ただし、kで未検証なら書き出す前に最終検証を行い、時間内に終わらなければ`incomplete`とする。
+    /// 1周の更新回数をU、バッチの局面数をmとすると、更新を再開する周は`floor(t/U)+1`番目である。
+    /// その周の順列を同じシードで作り直し、`(t mod U) × m`局面を読み飛ばして続きから学ぶ。
+    /// `--buckets`が2以上の場合も一時ファイルを作り直して同じ位置まで読み飛ばす。
+    /// 進捗を`epoch`や`best`で表す旧形式のNNUEチェックポイントは読み替えずに拒否する。
+    ///
+    /// `training.jsonl`は保存済みのkまで照合し、未確定の末尾の行を捨てる。
+    /// 再開の照合を通った後、更新や書き出しを始める前に、既存の`nnue.bin`と`summary.json`を削除する。
+    /// 学習前の検証はログから引き継ぎ、再実行しない。
     fn new(args: Args) -> Result<Self> {
         let started = Instant::now();
         let resumed_at = SystemTime::now();
@@ -227,7 +215,8 @@ impl Session {
             );
         }
         dataset.check_rules(&base.rule_set)?;
-        let calibration = dataset.calibration(&args.teacher_cp_per_logit, base.cp_per_logit)?;
+        let calibration =
+            dataset.calibration(args.teacher_cp_per_logit.as_ref(), base.cp_per_logit)?;
         let teacher_cp_per_logit = calibration.target_values();
         let observations = dataset.observations(args.feature_set)?;
         let model = Model::initialize(
@@ -253,14 +242,13 @@ impl Session {
             optimizer: AdamW::new(model.shape(), args.training.optimizer())?,
             model,
             progress: Progress {
-                epoch: 0,
-                best: None,
+                completed_superbatches: 0,
                 elapsed_seconds: 0.0,
                 seed: args.seed,
                 config: crate::nn::checkpoint::Configuration::from_document(&config.document)?,
             },
         };
-        let mut initial_validation_loss = None;
+        let mut last_validation = None;
         let saved_config = if let Some(resume) = &args.resume {
             if resume.canonicalize()? != args.output_dir.canonicalize()? {
                 return Err(Error::Invalid(
@@ -272,10 +260,10 @@ impl Session {
             if saved.get("resumes").and_then(Value::as_array).is_none() {
                 return Err(Error::Invalid("configuration resumes must be an array").into());
             }
+            let restored = Checkpoint::read(resume.join("latest.npz"))?;
             crate::nn::checkpoint::Configuration::from_document(&saved)?.check(
                 &crate::nn::checkpoint::Configuration::from_document(&config.document)?,
             )?;
-            let restored = Checkpoint::read(resume.join("latest.npz"))?;
             restored.check_config(&crate::nn::checkpoint::Configuration::from_document(
                 &config.document,
             )?)?;
@@ -286,9 +274,12 @@ impl Session {
                 || restored.optimizer.config() != args.training.optimizer()
                 || restored.lambda != args.training.lambda
                 || restored.progress.seed != args.seed
-                || restored.progress.epoch > args.epochs
-                || restored.optimizer.step()
-                    != restored.progress.epoch * selection.positions.div_ceil(args.batch as u64)
+                || restored.progress.completed_superbatches > args.superbatches.get()
+                || restored
+                    .progress
+                    .completed_superbatches
+                    .checked_mul(args.batches_per_superbatch.get())
+                    != Some(restored.optimizer.step())
             {
                 return Err(Error::Invalid(
                     "checkpoint state differs from recomputed initialization or progress",
@@ -296,14 +287,10 @@ impl Session {
                 .into());
             }
             checkpoint = restored;
-            initial_validation_loss = Some(reconcile_log(
+            last_validation = Some(reconcile_log(
                 &resume.join("training.jsonl"),
-                checkpoint.progress.epoch,
+                checkpoint.progress.completed_superbatches,
             )?);
-            reconcile_interval_log(
-                &resume.join("validation-interval.jsonl"),
-                checkpoint.optimizer.step(),
-            )?;
             Some(saved)
         } else {
             if args.output_dir.exists() && std::fs::read_dir(&args.output_dir)?.next().is_some() {
@@ -342,7 +329,7 @@ impl Session {
         let mut session = Self {
             args,
             workers,
-            dataset,
+            dataset: Arc::new(dataset),
             selection,
             base,
             teacher_cp_per_logit,
@@ -350,35 +337,38 @@ impl Session {
             backend,
             started,
             previous_elapsed,
-            initial_validation_loss,
+            last_validation,
             gpu_used_bytes: memory.map(|(used, _)| used),
             gpu_total_bytes: memory.map(|(_, total)| total),
         };
-        if session.checkpoint.progress.best.is_some() {
-            recover_best_checkpoint(&session.args.output_dir, &session.checkpoint)?;
-        }
         if let Some(mut saved) = saved_config {
+            for name in ["nnue.bin", "summary.json"] {
+                match std::fs::remove_file(session.args.output_dir.join(name)) {
+                    Ok(()) => {}
+                    Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+                    Err(error) => return Err(error.into()),
+                }
+            }
             append_resume(
                 &session.args.output_dir.join("config.json"),
                 &mut saved,
                 &session.args,
                 session.workers,
-                session.checkpoint.progress.epoch,
+                session.checkpoint.progress.completed_superbatches,
                 resumed_at,
             )?;
         }
-        if session.initial_validation_loss.is_none() && !session.expired() {
+        if session.last_validation.is_none() && !session.expired() {
             let validation_started = Instant::now();
             let model = session.checkpoint.model.clone();
             if let Some(validation) = session.validate(&model)? {
-                session.initial_validation_loss = Some(validation.loss());
+                session.last_validation = Some((0, validation.loss()));
                 session.checkpoint.progress.elapsed_seconds = session.elapsed();
-                let record = session.epoch_record(
-                    &validation,
+                let record = session.superbatch_record(
+                    Some((&validation, validation_started.elapsed().as_secs_f64())),
                     None,
-                    validation_started.elapsed().as_secs_f64(),
                 )?;
-                append_epoch(&session.log_path(), &record)?;
+                append_superbatch(&session.log_path(), &record)?;
                 session.save_latest()?;
             }
         }
@@ -430,183 +420,197 @@ impl Session {
         )
     }
 
-    fn advance(&mut self) -> Result<bool> {
+    /// 各周の読み手を維持し、superbatchごとに確定する。
+    fn train(&mut self) -> Result<()> {
+        let dataset = Arc::clone(&self.dataset);
+        let mut epoch = None;
+        while self.advance(&dataset, &mut epoch)? {}
+        Ok(())
+    }
+
+    fn steps_per_epoch(&self) -> u64 {
+        self.selection.positions.div_ceil(self.args.batch as u64)
+    }
+
+    fn advance<'a>(&mut self, dataset: &'a Store, epoch: &mut Option<Epoch<'a>>) -> Result<bool> {
         self.checkpoint.progress.elapsed_seconds = self.elapsed();
         if stop_reason(&self.checkpoint.progress, &self.args).is_some() {
             return Ok(false);
         }
         self.memory()?;
-        let epoch = self.checkpoint.progress.epoch + 1;
         let training_started = Instant::now();
         let deadline = self.deadline();
-        let steps_per_epoch = self.selection.positions.div_ceil(self.args.batch as u64);
-        let mut interval_validation = |backend: &Backend| {
-            let (parameters, _) = backend.snapshot()?;
-            parameters.validate()?;
-            let mut candidate = self.checkpoint.model.clone();
-            for p in Parameter::ALL {
-                candidate.parameter_mut(p).copy_from_slice(&parameters[p]);
-            }
-            let Some(validation) = (StoreValidation {
-                store: &self.dataset,
-                feature_set: self.args.feature_set,
-                teacher_cp_per_logit: &self.teacher_cp_per_logit,
-                batch: self.args.batch,
-                deadline,
-            })
-            .evaluate(
-                backend,
-                &candidate,
-                &mut self.gpu_used_bytes,
-                &mut self.gpu_total_bytes,
-            )?
-            else {
+        let steps_per_epoch = self.steps_per_epoch();
+        let mut remaining = self.args.batches_per_superbatch.get();
+        let mut training = pipeline::Training::default();
+        while remaining > 0 {
+            if self.expired() {
                 return Ok(false);
-            };
-            let step = backend.step();
-            append_interval(
-                &self.args.output_dir.join("validation-interval.jsonl"),
-                &IntervalRecord {
-                    step,
-                    epoch,
-                    epoch_fraction: (step - (epoch - 1) * steps_per_epoch) as f64
-                        / steps_per_epoch as f64,
-                    validation_loss: validation.loss(),
-                    sign_accuracy: validation.sign_accuracy(),
-                    samples: validation.positions,
-                    decisive_samples: validation.decisive,
-                },
-            )?;
-            Ok(true)
-        };
-        let training = match &self.dataset {
-            Store::Memory(dataset) => {
-                let indices =
-                    epoch_permutation(self.selection.indices(dataset), self.args.seed, epoch);
-                pipeline::train_epoch(
-                    pipeline::Supply {
-                        dataset,
-                        feature_set: self.args.feature_set,
-                        indices: &indices,
-                        teacher_cp_per_logit: &self.teacher_cp_per_logit,
-                        batch: self.args.batch,
-                        validation_interval: self.args.validation_interval,
-                        schedule: self.args.lr_schedule,
-                        steps_per_epoch,
-                        workers: self.workers,
-                        deadline,
-                    },
-                    &mut self.backend,
-                    |_, backend| interval_validation(backend),
-                )?
             }
-            Store::Spill(store) => {
-                let Some(reader) = store.epoch(self.args.seed, epoch, deadline)? else {
-                    return Ok(false);
-                };
-                pipeline::train_spill_epoch(
+            let offset = self.backend.step() % steps_per_epoch;
+            let steps = remaining.min(steps_per_epoch - offset);
+            if epoch.is_none() {
+                let number = self.backend.step() / steps_per_epoch + 1;
+                *epoch = Some(match dataset {
+                    Store::Memory(dataset) => Epoch::Memory(epoch_permutation(
+                        self.selection.indices(dataset),
+                        self.args.seed,
+                        number,
+                    )),
+                    Store::Spill(store) => {
+                        let Some(mut reader) = store.epoch(self.args.seed, number, deadline)?
+                        else {
+                            return Ok(false);
+                        };
+                        // 再開時だけ同じ順列を作り直し、確定した更新の局面を読み飛ばす。
+                        for _ in 0..offset {
+                            if self.expired() {
+                                return Ok(false);
+                            }
+                            if reader.next_chunk(self.args.batch)?.is_none() {
+                                return Err(Error::Invalid(
+                                    "checkpoint cursor exceeds training epoch",
+                                )
+                                .into());
+                            }
+                        }
+                        Epoch::Spill(reader)
+                    }
+                });
+            }
+            let options = pipeline::BatchOptions {
+                feature_set: self.args.feature_set,
+                batch: self.args.batch,
+                schedule: self.args.lr_schedule,
+                batches_per_superbatch: self.args.batches_per_superbatch,
+                steps,
+                deadline,
+            };
+            let part = match (dataset, epoch.as_mut()) {
+                (Store::Memory(dataset), Some(Epoch::Memory(indices))) => {
+                    let start = usize::try_from(offset * self.args.batch as u64)?;
+                    let end = if offset + steps == steps_per_epoch {
+                        indices.len()
+                    } else {
+                        usize::try_from((offset + steps) * self.args.batch as u64)?
+                    };
+                    pipeline::train_batches(
+                        pipeline::Supply {
+                            dataset,
+                            indices: &indices[start..end],
+                            teacher_cp_per_logit: &self.teacher_cp_per_logit,
+                            workers: self.workers,
+                            options,
+                        },
+                        &mut self.backend,
+                    )?
+                }
+                (Store::Spill(store), Some(Epoch::Spill(reader))) => pipeline::train_spill_batches(
                     store,
                     reader,
                     self.workers,
                     &self.teacher_cp_per_logit,
-                    pipeline::EpochOptions {
-                        feature_set: self.args.feature_set,
-                        batch: self.args.batch,
-                        validation_interval: self.args.validation_interval,
-                        schedule: self.args.lr_schedule,
-                        steps_per_epoch,
-                        deadline,
-                    },
+                    options,
                     &mut self.backend,
-                    interval_validation,
-                )?
+                )?,
+                _ => return Err(Error::Invalid("training cursor does not match its store").into()),
+            };
+            let Some(part) = part else {
+                return Ok(false);
+            };
+            training.append(part)?;
+            remaining -= steps;
+            if offset + steps == steps_per_epoch {
+                *epoch = None;
             }
-        };
-
-        let Some(training) = training else {
-            return Ok(false);
-        };
+        }
         self.gpu_used_bytes = self.gpu_used_bytes.max(training.gpu_used_bytes);
         self.gpu_total_bytes = training.gpu_total_bytes;
-        let elapsed_seconds = training_started.elapsed().as_secs_f64();
         let (parameters, optimizer) = self.backend.snapshot()?;
         parameters.validate()?;
-        let mut candidate = self.checkpoint.model.clone();
-        for p in Parameter::ALL {
-            candidate.parameter_mut(p).copy_from_slice(&parameters[p]);
-        }
-        let validation_started = Instant::now();
-        let Some(validation) = self.validate(&candidate)? else {
-            return Ok(false);
+        let mut candidate = Checkpoint {
+            model: self.checkpoint.model.clone(),
+            optimizer,
+            lambda: self.checkpoint.lambda,
+            progress: self.checkpoint.progress.clone(),
         };
-        let validation_seconds = validation_started.elapsed().as_secs_f64();
-        self.checkpoint.model = candidate;
-        self.checkpoint.optimizer = optimizer;
-        let improved = update_best(&mut self.checkpoint.progress, epoch, validation.loss())?;
-        self.checkpoint.progress.elapsed_seconds = self.elapsed();
-        let record = self.epoch_record(
-            &validation,
-            Some((&training, elapsed_seconds)),
-            validation_seconds,
-        )?;
-        append_epoch(&self.log_path(), &record)?;
-        // latestがコミット点。新しいbestを公開する前に保存し、中断時にはlatestからbestを復元する。
-        self.save_latest()?;
-        if improved {
-            atomic_write(
-                &self.args.output_dir.join("best.npz"),
-                &self.checkpoint.encode()?,
-            )?;
+        for parameter in Parameter::ALL {
+            candidate
+                .model
+                .parameter_mut(parameter)
+                .copy_from_slice(&parameters[parameter]);
         }
+        candidate.progress.completed_superbatches += 1;
+        let training_seconds = training_started.elapsed().as_secs_f64();
+        let k = candidate.progress.completed_superbatches;
+        let validation = if k.is_multiple_of(self.args.validation_superbatches.get())
+            || k == self.args.superbatches.get()
+        {
+            let started = Instant::now();
+            let Some(validation) = self.validate(&candidate.model)? else {
+                return Ok(false);
+            };
+            Some((validation, started.elapsed().as_secs_f64()))
+        } else {
+            None
+        };
+        if self.expired() {
+            return Ok(false);
+        }
+        candidate.progress.elapsed_seconds = self.elapsed();
+        let previous = std::mem::replace(&mut self.checkpoint, candidate);
+        let saved = (|| {
+            let record = self.superbatch_record(
+                validation.as_ref().map(|(v, seconds)| (v, *seconds)),
+                Some((&training, training_seconds)),
+            )?;
+            append_superbatch(&self.log_path(), &record)?;
+            self.save_latest()
+        })();
+        if let Err(error) = saved {
+            self.checkpoint = previous;
+            return Err(error);
+        }
+        if let Some((validation, _)) = &validation {
+            self.last_validation = Some((k, validation.loss()));
+        }
+        let validation_loss = match &validation {
+            Some((validation, _)) => format!("{:.9}", validation.loss()),
+            None => "-".to_owned(),
+        };
         eprintln!(
-            "epoch {epoch}: train_loss={:.9} validation_loss={:.9}",
-            training.bce / training.positions as f64,
-            validation.loss()
+            "superbatch {k}: updates={} train_loss={:.9} validation_loss={validation_loss}",
+            self.checkpoint.optimizer.step(),
+            training.loss / training.positions as f64,
         );
         Ok(true)
     }
 
-    fn epoch_record(
+    fn superbatch_record(
         &self,
-        validation: &Validation,
+        validation: Option<(&Validation, f64)>,
         training: Option<(&pipeline::Training, f64)>,
-        validation_seconds: f64,
-    ) -> Result<EpochRecord> {
-        let timing = training.map(|(t, elapsed)| {
-            record::training_timing(t.positions, elapsed, t.interval_validation_seconds)
-        });
-        let saturation = validation.saturation();
-        let train_loss = training.map(|(t, _)| t.bce / t.positions as f64);
-        Ok(EpochRecord {
+    ) -> Result<SuperbatchRecord> {
+        let mut record = SuperbatchRecord {
             device: self.args.device,
-            epoch: self.checkpoint.progress.epoch,
-            train_loss,
-            validation_loss: validation.loss(),
-            sign_accuracy: validation.sign_accuracy(),
-            samples: validation.positions,
-            decisive_samples: validation.decisive,
-            nonlinear_std_cp: validation.nonlinear_std_cp(),
-            saturation: Saturation {
-                acc_le_zero: saturation[0],
-                acc_ge_one: saturation[1],
-            },
-            hidden1_saturation: Saturation {
-                acc_le_zero: validation.hidden1_saturation()[0],
-                acc_ge_one: validation.hidden1_saturation()[1],
-            },
-            hidden2_saturation: Saturation {
-                acc_le_zero: validation.hidden2_saturation()[0],
-                acc_ge_one: validation.hidden2_saturation()[1],
-            },
-            pairwise_both_positive: validation.pairwise_both_positive(),
+            superbatch: self.checkpoint.progress.completed_superbatches,
+            epochs: self.checkpoint.optimizer.step() as f64 / self.steps_per_epoch() as f64,
+            train_loss: training.map(|(t, _)| t.loss / t.positions as f64),
+            validation_loss: None,
+            sign_accuracy: None,
+            samples: None,
+            decisive_samples: None,
+            nonlinear_std_cp: None,
+            saturation: None,
+            hidden1_saturation: None,
+            hidden2_saturation: None,
+            pairwise_both_positive: None,
+            validation_seconds: None,
             first_layer_at_limit: self.checkpoint.model.first_layer_at_limit()?,
             linear_movement: linear_movement(&self.checkpoint.model),
-            training_seconds: timing.as_ref().map(|t| t.training_seconds),
-            validation_seconds,
-            interval_validation_seconds: timing
-                .as_ref()
-                .map_or(0.0, |t| t.interval_validation_seconds),
-            training_positions_per_second: timing.as_ref().map(|t| t.training_positions_per_second),
+            training_seconds: training.map(|(_, seconds)| seconds),
+            training_positions_per_second: training
+                .map(|(t, seconds)| t.positions as f64 / seconds),
             update_seconds: training.map(|(t, _)| t.compute_seconds / t.steps as f64),
             gpu_memory_used_bytes: self.gpu_used_bytes,
             gpu_memory_total_bytes: self.gpu_total_bytes,
@@ -615,84 +619,79 @@ impl Session {
             total_steps: self.checkpoint.optimizer.step(),
             lr_multiplier_first: training.and_then(|(t, _)| t.first_multiplier),
             lr_multiplier_last: training.and_then(|(t, _)| t.last_multiplier),
-        })
-    }
-
-    fn best_checkpoint(&self) -> Result<Checkpoint> {
-        let best = Checkpoint::read(self.args.output_dir.join("best.npz"))?;
-        best.check_config(&self.checkpoint.progress.config)?;
-        if best.progress.best != self.checkpoint.progress.best
-            || best
-                .progress
-                .best
-                .is_none_or(|entry| entry.epoch != best.progress.epoch)
-        {
-            return Err(Error::Invalid("best checkpoint disagrees with latest checkpoint").into());
+        };
+        if let Some((validation, seconds)) = validation {
+            record.set_validation(validation, seconds);
         }
-        Ok(best)
+        Ok(record)
     }
 
     fn finish(mut self) -> Result<Summary> {
         self.checkpoint.progress.elapsed_seconds = self.elapsed();
-        let reason = stop_reason(&self.checkpoint.progress, &self.args).ok_or(Error::Invalid(
-            "training stopped without a stopping condition",
-        ))?;
-        // 時間切れの未完了エポックは採用せず、費やした時間だけを保存する。
-        if self.initial_validation_loss.is_some() {
+        let mut stopped_by = stop_reason(&self.checkpoint.progress, &self.args).ok_or(
+            Error::Invalid("training stopped without a stopping condition"),
+        )?;
+        let completed = self.checkpoint.progress.completed_superbatches;
+        // Nを保存済みkまで短縮した再開では、kの検証がまだ行われていないことがある。
+        if stopped_by == StopReason::Completed
+            && self.last_validation.map(|(k, _)| k) != Some(completed)
+        {
+            let started = Instant::now();
+            let model = self.checkpoint.model.clone();
+            if let Some(validation) = self.validate(&model)? {
+                record::complete_final_validation(
+                    &self.log_path(),
+                    &validation,
+                    started.elapsed().as_secs_f64(),
+                    self.elapsed(),
+                )?;
+                self.last_validation = Some((completed, validation.loss()));
+            } else {
+                stopped_by = StopReason::TimeLimit;
+            }
+        }
+        self.checkpoint.progress.elapsed_seconds = self.elapsed();
+        // 未確定の更新は採用せず、費やした時間だけを保存する。
+        if self.last_validation.is_some() {
             self.save_latest()?;
         }
-        let best = self.checkpoint.progress.best;
         let mut summary = Summary {
             status: "error",
             reason: None,
-            stopped_by: reason,
-            convergence: (reason == StopReason::TimeLimit)
-                .then_some("予算の上限で終了し、収束は未確認"),
-            last_epoch: self.checkpoint.progress.epoch,
-            export_epoch: self.args.export_epoch,
-            exported_epoch: None,
-            best_epoch: best.map(|v| v.epoch),
-            best_validation_loss: best.map(|v| v.validation_loss),
-            initial_validation_loss: self.initial_validation_loss,
-            improved_over_epoch_zero: best
-                .zip(self.initial_validation_loss)
-                .map(|(v, initial)| v.validation_loss < initial),
-            total_steps: self.checkpoint.optimizer.step(),
+            stopped_by,
+            planned_superbatches: self.args.superbatches.get(),
+            completed_superbatches: self.checkpoint.progress.completed_superbatches,
+            planned_steps: self.args.planned_steps()?,
+            completed_steps: self.checkpoint.optimizer.step(),
+            epochs: self.checkpoint.optimizer.step() as f64 / self.steps_per_epoch() as f64,
+            final_validation_loss: self.last_validation.map(|(_, loss)| loss),
             elapsed_seconds: self.checkpoint.progress.elapsed_seconds,
             quantization: None,
             removal_sign: None,
         };
-        if best.is_none() {
-            summary.reason = Some(Error::NoCompletedEpoch.to_string());
+        if stopped_by == StopReason::TimeLimit {
+            summary.status = "incomplete";
+            eprintln!(
+                "superbatches: {completed}; updates: {}; stopped_by: {stopped_by}; status: incomplete",
+                self.checkpoint.optimizer.step()
+            );
+            summary.reason = Some(Error::Incomplete.to_string());
             write_json(&self.args.output_dir.join("summary.json"), &summary)?;
-            return Err(Error::NoCompletedEpoch.into());
+            return Err(Error::Incomplete.into());
         }
-        let checkpoint = match self.args.export_epoch {
-            ExportEpoch::Best => self.best_checkpoint()?,
-            ExportEpoch::Last => Checkpoint::read(self.args.output_dir.join("latest.npz"))?,
-        };
-        let source = match &self.dataset {
+        let checkpoint = Checkpoint::read(self.args.output_dir.join("latest.npz"))?;
+        let source = match self.dataset.as_ref() {
             Store::Memory(dataset) => export::ValidationSource::Memory(dataset),
             Store::Spill(store) => export::ValidationSource::Spill(store),
         };
-        let exported = match self.args.export_epoch {
-            ExportEpoch::Best => export::write_best(
-                source,
-                &checkpoint,
-                &self.args.output_dir,
-                &self.base.piece_values,
-                &self.base.rule_set,
-                self.args.validation_sample,
-            ),
-            ExportEpoch::Last => export::write_completed(
-                source,
-                &checkpoint,
-                &self.args.output_dir,
-                &self.base.piece_values,
-                &self.base.rule_set,
-                self.args.validation_sample,
-            ),
-        };
+        let exported = export::write_completed(
+            source,
+            &checkpoint,
+            &self.args.output_dir,
+            &self.base.piece_values,
+            &self.base.rule_set,
+            self.args.validation_sample,
+        );
         let (quantization, removal_sign) = match exported {
             Ok(report) => report,
             Err(error) => {
@@ -701,7 +700,6 @@ impl Session {
                 return Err(error.into());
             }
         };
-        summary.exported_epoch = Some(checkpoint.progress.epoch);
         let passed = quantization.passed;
         summary.status = if passed {
             "candidate"
@@ -775,7 +773,7 @@ impl StoreValidation<'_> {
     }
 }
 
-/// 通常の検証と途中検証が共有する、全検証集合への借用と評価条件。
+/// 全検証集合への借用と評価条件。
 struct ValidationSet<'a> {
     dataset: &'a Dataset,
     feature_set: InputFeatureSet,
@@ -821,7 +819,7 @@ impl ValidationSet<'_> {
 
 /// 全検証バッチを集計し、各バッチの前後に期限を検査する。
 /// 最終バッチの後も検査し、期限を過ぎたら`None`を返す。
-/// 呼び手はそのエポックの最良値更新、ログ追記、チェックポイント保存を行わない。
+/// 呼び手はそのsuperbatchのログ追記とチェックポイント保存を行わない。
 fn validate_batches<T>(
     batches: impl IntoIterator<Item = T>,
     mut evaluate: impl FnMut(T) -> Result<Validation>,
@@ -855,7 +853,7 @@ fn validate_batches<T>(
         } else {
             total = Some(statistics);
         }
-        // 最終バッチの後も期限を確認し、検証完了が期限を越えたエポックを採用しない。
+        // 最終バッチの後も期限を確認し、検証完了が期限を越えたsuperbatchを採用しない。
         if expired() {
             return Ok(None);
         }
@@ -865,66 +863,20 @@ fn validate_batches<T>(
     Ok(Some(total))
 }
 
-/// 確定済みの`latest.npz`に対応する`best.npz`を復旧する。
-/// 保存順は[`reconcile_log`]の契約に従う。
-/// `best.npz`が最良エポックと一致しなければ、最新の完了エポックが最良であり、
-/// `best.npz`がないか、その完了エポックが最良より古いときだけ`latest.npz`から書き直す。
-/// 既存の`best.npz`の復号失敗、設定の不一致、最良以上のエポックの不整合は復旧せず拒否する。
-fn recover_best_checkpoint(directory: &std::path::Path, latest: &Checkpoint) -> Result<()> {
-    let best = latest
-        .progress
-        .best
-        .ok_or(Error::Invalid("checkpoint has no best epoch"))?;
-    let path = directory.join("best.npz");
-    let saved = if path.exists() {
-        Some(Checkpoint::read(&path)?)
-    } else {
-        None
-    };
-    if let Some(saved) = &saved {
-        saved.check_config(&latest.progress.config)?;
-        if saved.progress.best == Some(best) && saved.progress.epoch == best.epoch {
-            return Ok(());
-        }
-    }
-    if latest.progress.epoch != best.epoch
-        || saved
-            .as_ref()
-            .is_some_and(|saved| saved.progress.epoch >= best.epoch)
-    {
-        return Err(Error::Invalid("best checkpoint disagrees with latest checkpoint").into());
-    }
-    eprintln!(
-        "recovering best checkpoint at epoch {} from committed latest checkpoint",
-        best.epoch
-    );
-    Ok(atomic_write(&path, &latest.encode()?)?)
-}
-
-/// 指定デバイスで初期検証、学習、保存、選択した重みの書き出しを順に行う。
-///
-/// 成功時と最終検査の失敗時の報告、および終了コードは[`Summary`]に従う。
-/// 学習ループ中のエラーでは、この型の代わりに`status = "error"`、`reason`、`last_epoch`、
-/// `elapsed_seconds`、`export_epoch`、`exported_epoch = null`の6欄を`summary.json`へ書き、コマンドは終了コード1で終わる。
-/// 終了時は時間切れで未完了のエポックを採用せず、初期検証を完了していれば費やした時間を`latest.npz`へ保存する。
-/// 完了済みエポックがあれば、`--export-epoch`に従って`best.npz`か`latest.npz`から`nnue.bin`を書き出す。
-/// 再開後も同じシード、エポック番号とbucket数から順列を再生成する。
+/// 指定デバイスで初期検証、予定回数の更新、最終の重みの書き出しを行う。
+/// 学習ループ中のエラーでは、最後に確定したsuperbatch数と更新回数を報告する。
 pub fn run(args: Args) -> Result<Summary> {
     let mut session = Session::new(args)?;
-    loop {
-        match session.advance() {
-            Ok(true) => {}
-            Ok(false) => break,
-            Err(error) => {
-                write_json(
-                    &session.args.output_dir.join("summary.json"),
-                    &json!({"status":"error", "reason":error.to_string(),
-                    "last_epoch": session.checkpoint.progress.epoch, "elapsed_seconds": session.elapsed(),
-                    "export_epoch": session.args.export_epoch, "exported_epoch": null}),
-                )?;
-                return Err(error);
-            }
-        }
+    if let Err(error) = session.train() {
+        write_json(
+            &session.args.output_dir.join("summary.json"),
+            &json!({
+                "status": "error", "reason": error.to_string(),
+                "completed_superbatches": session.checkpoint.progress.completed_superbatches,
+                "completed_steps": session.checkpoint.optimizer.step(), "elapsed_seconds": session.elapsed(),
+            }),
+        )?;
+        return Err(error);
     }
     session.finish()
 }

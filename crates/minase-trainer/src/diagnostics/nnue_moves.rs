@@ -172,14 +172,14 @@ fn unmatched_error(candidate_only: usize, baseline_only: usize) -> Option<String
 
 /// `--positions`の全局面の全合法手について、MNUE版5とMNPT版3の着手前後の評価差を比べる。
 /// 合成の由来を含むMNSDも受理する。
-/// ヘッダの規則セットを解釈して`JCSA`との一致を要求し、不一致と記録数0を拒否する。
+/// ヘッダの規則セットを解釈して`lishogi`との一致を要求し、不一致と記録数0を拒否する。
 /// [`Reader::read_game`]で各対局を復元し、その最初の局面から[`Game`]を作って[`move_rows`]で各手を評価する。
 pub(super) fn run(args: &MovesArgs) -> Result<Report> {
     let net = IntegerNetwork::read(&args.net)?;
     let baseline = read_baseline(&args.base)?;
     let mut reader = Reader::new(BufReader::new(File::open(&args.positions)?))?;
     let rules = Rules::from_codes(&parse_rule_set(reader.header().rule_set())?)?;
-    if rules != Rules::JCSA {
+    if rules != Rules::LISHOGI {
         return Err(ContractError::NondefaultRules.into());
     }
     if reader.header().game_count() == 0 {

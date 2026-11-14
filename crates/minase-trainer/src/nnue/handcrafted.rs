@@ -68,7 +68,7 @@ pub fn run(args: Args) -> Result<()> {
     let bytes = nnue::encode::<P, PairwiseL16L32>(&EncodeInput {
         width: WIDTH as u32,
         cp_per_logit: args.cp_per_logit,
-        rule_set: &Rules::JCSA.to_string(),
+        rule_set: &Rules::LISHOGI.to_string(),
         piece_values: &v0_piece_values(),
         linear: &linear,
         weights: &vec![0; P::DIMENSIONS * WIDTH],
@@ -230,7 +230,7 @@ mod tests {
     fn exported_evaluation_matches_v0_on_4096_random_positions() {
         let directory = Directory::new();
         let net = directory.export(731.5);
-        let rules = Rules::JCSA.moves;
+        let rules = Rules::LISHOGI.moves;
         let generator = MoveGenerator::new(rules);
         let mut visited = 0;
         for game in 0..16 {
@@ -268,7 +268,7 @@ mod tests {
             let net = directory.export(cp_per_logit);
             assert_eq!(net.width(), 256);
             assert_eq!(net.cp_per_logit().to_bits(), cp_per_logit.to_bits());
-            assert_eq!(net.rule_set(), Rules::JCSA.to_string());
+            assert_eq!(net.rule_set(), Rules::LISHOGI.to_string());
             for kind in PieceKind::ALL {
                 assert_eq!(
                     net.piece_value_of_state(kind.index()),

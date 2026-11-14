@@ -32,13 +32,13 @@ pub struct TrainingOptions {
     #[arg(long, default_value_t = 1e-3)]
     pub lr_ft: f64,
     /// 第1層と仮想行の重み減衰を非負の有限値で指定する。
-    #[arg(long, default_value_t = 1e-4)]
+    #[arg(long, default_value_t = 0.0)]
     pub weight_decay_ft: f64,
     /// 出力部の学習率を正の有限値で指定する。
     #[arg(long, default_value_t = 1e-3)]
     pub lr_head: f64,
     /// 出力部の重み減衰を非負の有限値で指定する。
-    #[arg(long, default_value_t = 1e-4)]
+    #[arg(long, default_value_t = 0.0)]
     pub weight_decay_head: f64,
     /// 自己対局の教師の混合比を有限な0以上1以下の値で指定する。実戦対局では0を使う。
     #[arg(long, value_parser = crate::data::parse_lambda)]

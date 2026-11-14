@@ -19,7 +19,7 @@
 
 完了（採用）。2026年11月3日に完了した。
 補正ネットは配置の距離の判定で「偏りが減った」となり（[記録](../../measurements/nnue-outcome-regression/nnue-outcome-regression-placement-stc.md)）、[STC](../../measurements/nnue-outcome-regression/nnue-outcome-regression-stc.md)と[LTC](../../measurements/nnue-outcome-regression/nnue-outcome-regression-ltc.md)でともに`H1`となったので採用した。
-LTCの時間切れ1件の扱いは[ADR](../../adr/correct-the-nnue-linear-path-by-regressing-on-game-outcomes.md)に記録した。
+LTCの時間切れ1件の扱いは[ADR](../../adr/archive/correct-the-nnue-linear-path-by-regressing-on-game-outcomes.md)に記録した。
 
 ## 目的
 
@@ -315,5 +315,5 @@ LTCのシードは、STCの基本シードからペア数以上離れた値と�
 - 配置の偏りの計画（起案のまま取り下げた）
 - [自己対局の閉ループが生む偏りと盲点の先行事例](../../research/self-play-bias-prior-art.md)
 - [評価項目の自己対局による調整の調査（Texelの方法）](../../research/handcrafted-evaluation-selfplay.md)
-- [NNUEは先読みを使わない探索値だけの教師で学ぶADR](../../adr/train-the-nnue-on-search-value-teachers-without-lookahead.md)
+- [NNUEは先読みを使わない探索値だけの教師で学ぶADR](../../adr/archive/train-the-nnue-on-search-value-teachers-without-lookahead.md)
 - [NNUEの出力を駒価値で初期化した線形の経路と直接内積の和にするADR](../../adr/archive/compose-the-nnue-of-a-piece-value-initialized-linear-path-and-a-direct-screlu-head.md)

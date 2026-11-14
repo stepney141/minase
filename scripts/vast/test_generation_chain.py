@@ -5,7 +5,7 @@
 本ファイルはgeneration_chain.py、generation_worker.pyと同じディレクトリに置く。
 引数と出品の拒否、教師の受理、学習と補正の再開、補正後のネットのコミット、
 停止と削除、作業者の公開順序と自己停止を検証する。
-期待値は指示書の式とコマンド、およびtraining/records.rsのMNSD版2の形式に基づく。
+期待値は指示書の式とコマンド、およびtraining/records.rsのMNSD版3の形式に基づく。
 外部コマンドは注入した実行関数で置き換え、時計も進めるだけにする。
 """
 
@@ -41,16 +41,16 @@ def network(generation: int) -> bytes:
 
 def header_fields(generation: int, number: int, entries: int) -> dict:
     """指示書のシードと、1本10局の試験条件を与える。"""
-    return {'rule_set': 'L0,P0,R1,E0', 'generation_commit': str(generation - 1) * 40,
+    return {'rule_set': 'L1,L2,P0,P3,R1,E1,E3', 'generation_commit': str(generation - 1) * 40,
             'network_checksum': (bytes([generation - 1]) * 32).hex(),
             'teacher_search_budget': 20000, 'seed': 9000000000 + 10000000 * generation + 100000 * number,
             'game_count': 9, 'entry_count': entries}
 
 
 def write_book(path: Path, fields: dict) -> None:
-    """公開されたMNSD版2のヘッダを組み立てる。本文の復号は偽inspectの担当とする。"""
+    """公開されたMNSD版3のヘッダを組み立てる。本文の復号は偽inspectの担当とする。"""
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_bytes(struct.pack('<4sI32s40s32sB7sQQQQ', b'MNSD', 2, fields['rule_set'].encode(),
+    path.write_bytes(struct.pack('<4sI32s40s32sB7sQQQQ', b'MNSD', 3, fields['rule_set'].encode(),
                                  fields['generation_commit'].encode(), bytes.fromhex(fields['network_checksum']),
                                  0, bytes(7), fields['teacher_search_budget'], fields['seed'],
                                  fields['game_count'], fields['entry_count']))
@@ -77,9 +77,8 @@ def cli_values(root: Path) -> dict[str, str | list[str]]:
             'seed-base': '9000000000',
             'seed-generation-step': '10000000', 'seed-book-step': '100000',
             'calibration-books': '1', 'lambda': '1.0', 'feature-set': 'P', 'width': '256',
-            'head': 'pairwise-l16-l32', 'batch': '16384', 'epochs': '50', 'patience': '5', 'train-seed': '1',
-            'export-epoch': 'best',
-            'device': 'cuda', 'validation-interval': '1000', 'lr-schedule': 'cosine:3:0.1', 'train-threads': '8',
+            'head': 'pairwise-l16-l32', 'batch': '16384', 'superbatches': '64', 'train-seed': '1',
+            'device': 'cuda', 'validation-superbatches': '8', 'lr-schedule': 'cosine:3:0.1', 'train-threads': '8',
             'removal-sample': '10', 'removal-seed': '3', 'bench-depth': '5',
             'fit-tau': ['0.5', '1.5'], 'fit-seed': '0', 'fit-threads': '3',
             'offer': '42', 'image': 'rust:1.98.0-bookworm', 'disk': '50', 'max-price': '0.5',
@@ -109,9 +108,9 @@ def option_values(command: list[str], option: str) -> list[str]:
 def write_training_result(directory: Path, generation: int, fit: bool) -> None:
     """学習器の出力形式で、実際の重みや損失に依存しない成果物を置く。"""
     (directory / 'train').mkdir(parents=True, exist_ok=True)
-    (directory / 'train/summary.json').write_text('{"status": "candidate", "best_epoch": 4}')
+    (directory / 'train/summary.json').write_text('{"status": "candidate", "completed_superbatches": 64, "completed_steps": 390656}')
     (directory / 'train/nnue.bin').write_bytes(network(generation) + b'unfitted')
-    (directory / 'train/best.npz').write_bytes(b'checkpoint')
+    (directory / 'train/latest.npz').write_bytes(b'checkpoint')
     (directory / 'removal.json').write_text('{}')
     if fit:
         (directory / 'fit').mkdir(exist_ok=True)
@@ -190,6 +189,11 @@ class Commands:
         (directory / 'logs/train.log').write_text('生成機での学習ログ\n')
         if self.interrupt_training:
             raise chain.Interrupted(signal.SIGTERM)
+        if self.train_status == 'incomplete':
+            (directory / 'train').mkdir(exist_ok=True)
+            (directory / 'train/summary.json').write_text('{"status":"incomplete"}')
+            (directory / 'exit-status').write_text('1\n')
+            return
         if self.training_exit is not None:
             (directory / 'exit-status').write_text(f'{self.training_exit}\n')
             return
@@ -360,9 +364,12 @@ class Commands:
                 directory = Path(args[args.index('--output-dir') + 1])
                 directory.mkdir(parents=True, exist_ok=True)
                 generation = int(directory.parent.name.removeprefix('gen-'))
-                (directory / 'summary.json').write_text(json.dumps({'status': self.train_status, 'best_epoch': 3}))
+                (directory / 'summary.json').write_text(json.dumps({'status': self.train_status, 'completed_superbatches': 64, 'completed_steps': 390656}))
+                if self.train_status == 'incomplete':
+                    (directory / 'latest.npz').touch()
+                    return self.result(command, '', 1, kwargs)
                 (directory / 'nnue.bin').write_bytes(network(generation) + '補正前の重み'.encode())
-                (directory / 'best.npz').touch()
+                (directory / 'latest.npz').touch()
             elif args[:2] == ['nnue', 'fit-linear']:
                 self.fit_options.append(kwargs)
                 directory = Path(args[args.index('--output-dir') + 1])
@@ -475,27 +482,21 @@ class ChainTestCase(unittest.TestCase):
 
 class ChainTests(ChainTestCase):
 
-    def test_export_epoch_selects_the_matching_float_checkpoint(self) -> None:
-        """bestは学習器の既定を使い、lastだけ明示して対応するチェックポイントを診断する。"""
+    def test_superbatch_training_commands_use_base_scale_and_latest_checkpoint(self) -> None:
         directory = self.root / 'run/gen-1'
-        for choice, checkpoint in (('best', 'best.npz'), ('last', 'latest.npz')):
-            with self.subTest(export_epoch=choice):
-                runner = chain.Chain(chain.arguments(argv(self.values | {'export-epoch': choice})))
-                commands = runner.training_commands(self.root / 'trainer', [self.root / 'book.mnsd'],
-                                                    [self.root / 'book.mnsd'], self.root / 'base.bin', directory)
-                if choice == 'best':
-                    self.assertNotIn('--export-epoch', commands['train'])
-                else:
-                    self.assertEqual(option_values(commands['train'], '--export-epoch'), ['last'])
-                self.assertEqual(option_values(commands['removal'], '--float'),
-                                 [str(directory / 'train' / checkpoint)])
-                self.assertEqual(option_values(commands['removal'], '--net'),
-                                 [str(directory / 'train/nnue.bin')])
+        runner = chain.Chain(chain.arguments(argv(self.values)))
+        commands = runner.training_commands(self.root / 'trainer', [self.root / 'book.mnsd'],
+                                            [self.root / 'book.mnsd'], self.root / 'base.bin', directory)
+        for flag, value in (('--superbatches', '64'), ('--validation-superbatches', '8'),
+                            ('--lr-schedule', 'cosine:3:0.1')):
+            self.assertEqual(option_values(commands['train'], flag), [value])
+        self.assertNotIn('--teacher-cp-per-logit', commands['train'])
+        self.assertEqual(option_values(commands['removal'], '--float'), [str(directory / 'train/latest.npz')])
 
-    def test_export_epoch_rejects_invalid_choices(self) -> None:
-        for value in ('', 'latest', '0', 'Best'):
-            with self.subTest(export_epoch=value), self.assertRaises(SystemExit) as raised:
-                chain.main(argv(self.values | {'export-epoch': value}))
+    def test_removed_training_arguments_are_rejected(self) -> None:
+        for flag in ('epochs', 'patience', 'export-epoch', 'validation-interval'):
+            with self.subTest(flag=flag), self.assertRaises(SystemExit) as raised:
+                chain.main(argv(self.values | {flag: '1'}))
             self.assertEqual(raised.exception.code, 2)
         self.assertFalse(self.commands.calls)
 
@@ -561,12 +562,12 @@ class ChainTests(ChainTestCase):
             base = 'base.bin' if generation == 1 else 'gen-1/fit/nnue.bin'
             self.assertEqual(call[call.index('--base') + 1], str(self.root / 'run' / base))
             self.assertEqual(call[call.index('--lambda') + 1], '1.0')
-            self.assertEqual(call[call.index('--teacher-cp-per-logit') + 1], 'calibrate')
+            self.assertNotIn('--teacher-cp-per-logit', call)
             self.assertNotIn('--export-epoch', call)
             directory = self.root / f'run/gen-{generation}'
             diagnostic = next(call for call in self.commands.calls if call[1:3] == ['diag', 'nnue-removal']
                               and str(directory / 'removal.json') in call)
-            self.assertEqual(option_values(diagnostic, '--float'), [str(directory / 'train/best.npz')])
+            self.assertEqual(option_values(diagnostic, '--float'), [str(directory / 'train/latest.npz')])
             self.assertEqual(option_values(diagnostic, '--net'), [str(directory / 'train/nnue.bin')])
             self.assertEqual(len(self.fit_calls(generation)), 1)
             self.assertEqual(self.commands.nets[str(generation) * 40], (directory / 'fit/nnue.bin').read_bytes())
@@ -600,7 +601,7 @@ class ChainTests(ChainTestCase):
         self.assertEqual(len(commits), 1)
         self.assertLess(self.commands.calls.index(self.train_calls(1)[0]), self.commands.calls.index(call))
         self.assertLess(self.commands.calls.index(call), self.commands.calls.index(commits[0]))
-        self.assertIn('教師3本、120局面、最良エポック3、D=-0.123457。', commits[0])
+        self.assertIn('教師3本、120局面、64 superbatch（390656回の更新）、D=-0.123457。', commits[0])
         fitted = (directory / 'fit/nnue.bin').read_bytes()
         self.assertNotEqual(fitted, (directory / 'train/nnue.bin').read_bytes())
         self.assertEqual(self.commands.nets[self.commands.head], fitted)
@@ -898,10 +899,24 @@ class ChainTests(ChainTestCase):
         self.commands.head = '1' * 40
         self.commands.nets[self.commands.head] = network(1)
         runner = chain.Chain(chain.arguments(argv(self.values)))
-        runner.commit_generation(1, {'best_epoch': 3}, {0: 100}, -0.1)
+        runner.commit_generation(1, {'completed_superbatches': 64, 'completed_steps': 390656}, {0: 100}, -0.1)
         self.assertEqual(self.commands.refs['refs/nnue-standard-recipe/gen-1'], '1' * 40)
         self.assertFalse(any(call[0] == 'cargo' or (call[0] == 'git' and call[3] == 'commit')
                              for call in self.commands.calls))
+
+    def test_books_reject_jcsa_and_version_two(self) -> None:
+        self.save_book(1, 0, 100)
+        path = self.root / 'run/gen-1/teacher/book-0.mnsd'
+        runner = chain.Chain(chain.arguments(argv(self.values)))
+        original = path.read_bytes()
+        for rules, version in [('L0,P0,R1,E0', 3), ('L1,L2,P0,P3,R1,E1,E3', 2)]:
+            with self.subTest(rules=rules, version=version):
+                data = bytearray(original)
+                data[4:8] = struct.pack('<I', version)
+                data[8:40] = rules.encode().ljust(32, b'\0')
+                path.write_bytes(data)
+                with self.assertRaises(chain.ChainStop):
+                    runner.books(1, '0' * 40, '00' * 32)
 
     def test_all_header_and_log_conditions_are_checked(self) -> None:
         """不正な各項目は、生成コミットの不一致と同じく入力への採用を阻止する。"""
@@ -947,6 +962,15 @@ class ChainTests(ChainTestCase):
                 self.assertNotEqual(self.execute(), 0)
                 self.assertNotIn('refs/nnue-standard-recipe/gen-1', self.commands.refs)
                 self.assert_stopped()
+
+    def test_incomplete_local_training_exit_one_stops_without_committing(self) -> None:
+        self.commands.train_status = 'incomplete'
+        self.assertNotEqual(self.execute(), 0)
+        self.assertNotIn('refs/nnue-standard-recipe/gen-1', self.commands.refs)
+        directory = self.root / 'run/gen-1/train'
+        self.assertEqual(json.loads((directory / 'summary.json').read_text())['status'], 'incomplete')
+        self.assertFalse((directory / 'nnue.bin').exists())
+        self.assertFalse(any(call[1:3] == ['diag', 'nnue-removal'] for call in self.commands.calls))
 
     def test_non_candidate_summary_stops_before_commit(self) -> None:
         self.commands.train_status = 'error'
@@ -1018,7 +1042,7 @@ class StandardRecipeTests(ChainTestCase):
     def test_recipe_arguments_reject_invalid_values_before_creating(self) -> None:
         """事例2: リプレイバッファ、補正、学習率、検証間隔、参照名の不正を起動前に拒否する。"""
         cases = [('replay-buffer-generations', '3'), ('fit', 'maybe'), ('lr-linear', '0'), ('lr-linear', 'nan'),
-                 ('lr-linear', 'inf'), ('lr-linear', '-1'), ('validation-interval', '-1'),
+                 ('lr-linear', 'inf'), ('lr-linear', '-1'), ('validation-superbatches', '-1'), ('validation-superbatches', '0'), ('superbatches', '0'),
                  ('books-per-generation', '0'), ('books-per-generation', '1.5'),
                  ('chunk-games', '0'), ('chunk-games', '1.5')]
         cases.extend(('ref-prefix', prefix) for prefix in
@@ -1032,12 +1056,6 @@ class StandardRecipeTests(ChainTestCase):
                 self.assertEqual(raised.exception.code, 2)
             call.assert_not_called()
             create.assert_not_called()
-        self.assertFalse(self.commands.calls)
-
-    def test_validation_interval_zero_is_accepted(self) -> None:
-        """事例2: 途中検証なしの0を、既定値で置き換えず保持する。"""
-        args = chain.arguments(argv(self.values | {'validation-interval': '0'}))
-        self.assertEqual(args.validation_interval, 0)
         self.assertFalse(self.commands.calls)
 
     def test_calibration_and_seed_bounds_use_books_per_generation(self) -> None:
@@ -1238,7 +1256,7 @@ class StandardRecipeTests(ChainTestCase):
         self.assertEqual(self.commands.nets[self.commands.head],
                          (self.root / 'run/gen-1/train/nnue.bin').read_bytes())
         commit = next(call for call in self.commands.calls if call[0] == 'git' and call[3] == 'commit')
-        self.assertIn('教師1本、120局面、最良エポック3。', commit)
+        self.assertIn('教師1本、120局面、64 superbatch（390656回の更新）。', commit)
         self.assertFalse(any('D=' in argument for argument in commit))
 
     def test_fit_no_generator_completes_and_receives_without_fit_artifacts(self) -> None:
@@ -1255,27 +1273,27 @@ class StandardRecipeTests(ChainTestCase):
         self.assertEqual(self.commands.nets[self.commands.head],
                          (self.root / 'run/gen-1/train/nnue.bin').read_bytes())
         commit = next(call for call in self.commands.calls if call[0] == 'git' and call[3] == 'commit')
-        self.assertIn('教師1本、120局面、最良エポック4。', commit)
+        self.assertIn('教師1本、120局面、64 superbatch（390656回の更新）。', commit)
         self.assertFalse(any('D=' in argument for argument in commit))
         (self.root / 'run/gen-1/removal.json').unlink()
         self.assertFalse(runner.training_complete(1))
 
-    def test_linear_learning_rate_and_zero_validation_reach_local_training(self) -> None:
-        """事例10: 作業機の学習コマンドに線形の学習率と検証間隔0を渡す。"""
-        self.values.update({'last-generation': '1', 'lr-linear': '0.67903', 'validation-interval': '0'})
+    def test_linear_learning_rate_and_validation_superbatches_reach_local_training(self) -> None:
+        """事例10: 作業機の学習コマンドに線形の学習率と検証間隔2を渡す。"""
+        self.values.update({'last-generation': '1', 'lr-linear': '0.67903', 'validation-superbatches': '2'})
         self.assertEqual(self.execute(), 0, self.errors.getvalue())
         command = self.train_calls(1)[0]
         self.assertEqual(option_values(command, '--lr-linear'), ['0.67903'])
-        self.assertEqual(option_values(command, '--validation-interval'), ['0'])
+        self.assertEqual(option_values(command, '--validation-superbatches'), ['2'])
 
-    def test_linear_learning_rate_and_zero_validation_reach_generator_training(self) -> None:
-        """事例10: 生成機の学習ジョブにも線形の学習率と検証間隔0を渡す。"""
+    def test_linear_learning_rate_and_validation_superbatches_reach_generator_training(self) -> None:
+        """事例10: 生成機の学習ジョブにも線形の学習率と検証間隔2を渡す。"""
         self.values.update({'train-place': 'generator', 'last-generation': '1',
-                            'lr-linear': '0.67903', 'validation-interval': '0'})
+                            'lr-linear': '0.67903', 'validation-superbatches': '2'})
         self.assertEqual(self.execute(), 0, self.errors.getvalue())
         command = self.remote_commands(1)['train']
         self.assertEqual(option_values(command, '--lr-linear'), ['0.67903'])
-        self.assertEqual(option_values(command, '--validation-interval'), ['0'])
+        self.assertEqual(option_values(command, '--validation-superbatches'), ['2'])
 
     def test_fit_no_two_local_generations_use_previous_trained_network_as_base(self) -> None:
         """事例11: 補正なしの第2世代は、第1世代でコミットした学習ネットを引き継ぐ。"""
@@ -1367,12 +1385,12 @@ class GeneratorTrainingTests(ChainTestCase):
         expected = [
             ['cargo', 'build', '--release', '--locked', '--bin', 'minase-trainer'],
             [trainer, 'nnue', 'train', '--data', *books, '--base', directory + '/base.bin',
-             '--lambda', '1.0', '--teacher-cp-per-logit', 'calibrate', '--seed', '1', '--threads', '8',
+             '--lambda', '1.0', '--seed', '1', '--threads', '8',
              '--output-dir', directory + '/train', '--feature-set', 'P', '--width', '256',
-             '--head', 'pairwise-l16-l32', '--batch', '16384', '--epochs', '50', '--patience', '5',
-             '--device', 'cuda', '--validation-interval', '1000', '--lr-schedule', 'cosine:3:0.1',
+             '--head', 'pairwise-l16-l32', '--batch', '16384', '--superbatches', '64', '--validation-superbatches', '8',
+             '--device', 'cuda', '--lr-schedule', 'cosine:3:0.1',
              '--lr-linear', '0.67903'],
-            [trainer, 'diag', 'nnue-removal', '--float', directory + '/train/best.npz',
+            [trainer, 'diag', 'nnue-removal', '--float', directory + '/train/latest.npz',
              '--net', directory + '/train/nnue.bin', '--data', *books, '--sample', '10', '--seed', '3',
              '--output', directory + '/removal.json'],
             [trainer, 'nnue', 'fit-linear', '--base', directory + '/train/nnue.bin', '--data', *books,
@@ -1423,6 +1441,13 @@ class GeneratorTrainingTests(ChainTestCase):
         self.assertEqual((self.commands.remote / 'generation_worker.py').read_bytes(),
                          Path(worker.__file__).read_bytes())
         self.assertFalse((self.commands.remote / 'generation_worker.py.tmp').exists())
+
+    def test_incomplete_generator_training_exit_one_stops_without_committing(self) -> None:
+        self.commands.train_status = 'incomplete'
+        self.assertNotEqual(self.execute(), 0)
+        self.assertNotIn('refs/nnue-standard-recipe/gen-1', self.commands.refs)
+        self.assertIn('終了コード1', self.errors.getvalue())
+        self.assertFalse(self.train_calls(1))
 
     def test_training_failure_stops_without_committing_or_local_training(self) -> None:
         """事例2: 生成機の終了コードとログの場所を示して止め、localでの再開を案内する。"""

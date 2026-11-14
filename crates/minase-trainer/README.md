@@ -35,3 +35,15 @@ GPU側では第1層の前進、全パラメータの勾配、部分和の縮約�
 | `diag nnue-distribution`、`diag nnue-removal`、`diag nnue-moves` | NNUEの評価分布、駒除去差分、合法手の評価差を診断する。 | [NNUEの学習と診断の手順](../../docs/guides/nnue-training.md#学習した重みを診断する) | `src/diagnostics/nnue_distribution.rs`、`src/diagnostics/nnue_removal.rs`、`src/diagnostics/nnue_moves.rs` |
 
 NNUEの経路の公開API、GPUの実装、およびテストの契約は`src/nnue/`の各モジュールとテストのdocコメントにあり、チェックポイントの形式は`src/nnue/model/checkpoint.rs`の`Checkpoint`のdocコメントにある。
+
+`nnue train`の学習の長さは、教師の量に依存しないsuperbatchで指定する。
+`--superbatches N`、`--validation-superbatches V`、`--lr-schedule`を必須とし、1 superbatchの更新回数Bは`--batches-per-superbatch`で指定する。Bの既定値は6,104である。
+学習率の半減期と総長もsuperbatchで数え、N×B回の更新を終えた`latest.npz`から`nnue.bin`を書き出す。
+検証は学習前、V superbatchごと、および学習の最後に行い、損失は停止や重みの選択には使わない。
+時間切れでは`summary.json`に`incomplete`を記録して終了コード1で終わり、最後に確定した`latest.npz`から`--resume`で続ける。
+再開時はNとV、時間の上限、スレッド数、bucketの容量と作業ディレクトリを変更できるが、Bと学習率の予定は一致を要求する。
+
+NNUEの訓練損失と検証損失は、ネットの勝率pと教師値の勝率qの差の2乗(p−q)²の平均とする。
+`--teacher-cp-per-logit`を省略すると`--base`の勝率尺度を使い、`calibrate`または較正ファイルを指定するとその尺度を使う。
+第1層と出力部の重み減衰の既定値はいずれも0である。
+`nnue fit-linear`と教師尺度の較正は、二値交差エントロピーを使う。

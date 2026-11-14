@@ -17,6 +17,8 @@ pub const SCORE_VALUE_COUNT: usize = 65_536;
 pub struct Statistics {
     /// 手数上限で破棄した対局数。
     pub discarded_games: u64,
+    /// 探索値の上限を超えて捨てた開始局面の候補数。
+    pub rejected_openings: u64,
     /// 先手勝ちの対局数。
     pub black_wins: u64,
     /// 後手勝ちの対局数。
@@ -37,6 +39,8 @@ pub struct Statistics {
     pub mate_wins: u64,
     /// 投了による勝利数。
     pub resignation_wins: u64,
+    /// 評価値による裁定の勝利数。
+    pub evaluation_adjudication_wins: u64,
     /// 反復裁定による引き分け数。
     pub repetition_draws: u64,
     /// 駒枯れによる引き分け数。
@@ -45,14 +49,16 @@ pub struct Statistics {
     pub bare_king_draws: u64,
     /// 合意による引き分け数。
     pub agreement_draws: u64,
-    /// 探索した局面数。
+    /// 捨てた開始局面も含む、実際に探索した局面数。
     pub searched_positions: u64,
-    /// 記録境界以後に探索した局面数。
+    /// 記録境界以後に価値を保存した局面数。裁定で打ち切った最後の探索は含めない。
     pub recordable_positions: u64,
     /// ファイルへ記録した局面数。
     pub recorded_positions: u64,
     /// 詰み帯の探索値による除外数。
     pub excluded_mate_band: u64,
+    /// 手番側への王手による除外数。
+    pub excluded_check: u64,
     /// 捕獲または成りの最善手による除外数。
     pub excluded_tactical: u64,
     /// 現局面の再出現による除外数。
@@ -84,6 +90,9 @@ impl Statistics {
             };
         }
         add!(discarded_games);
+        add!(rejected_openings);
+        add!(evaluation_adjudication_wins);
+        add!(excluded_check);
         add!(black_wins);
         add!(white_wins);
         add!(draws);
@@ -123,6 +132,15 @@ impl Statistics {
         true
     }
 
+    /// 評価値による裁定を勝者別と理由別の両方に数える。
+    pub fn record_evaluation_adjudication(&mut self, winner: Color) {
+        match winner {
+            Color::Black => self.black_wins += 1,
+            Color::White => self.white_wins += 1,
+        }
+        self.evaluation_adjudication_wins += 1;
+    }
+
     /// 終局理由と勝敗を集計する。
     pub fn record_result(&mut self, result: GameResult) {
         match result {
@@ -158,7 +176,7 @@ impl Statistics {
 #[derive(PartialEq, Eq, Debug)]
 pub struct RecordedStatistics {
     /// 保存した対局の除外理由別の項目数。添字は除外理由のコード。
-    pub exclusions: [u64; 4],
+    pub exclusions: [u64; 5],
     /// i16の全探索値に対応する度数表。
     pub score_frequencies: Vec<u64>,
     /// 既出局面の探索キー。
@@ -171,7 +189,7 @@ impl Default for RecordedStatistics {
     fn default() -> Self {
         Self {
             score_frequencies: vec![0; SCORE_VALUE_COUNT],
-            exclusions: [0; 4],
+            exclusions: [0; 5],
             search_keys: HashSet::new(),
             duplicate_positions: 0,
         }

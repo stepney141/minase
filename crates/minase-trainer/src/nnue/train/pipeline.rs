@@ -1,7 +1,7 @@
 //! バッチの並列構築と順序を保った投入を、容量3の供給と返却の2チャネルでつなぐ。
 //! 期限は群の前、各バッチの処理前、投入前に確認し、完成したバッチも順列の順に渡す。
 //! 供給側のエラーを受信側の「途中終了」で隠さずに返す。
-//! 途中検証の前には投入済み更新の損失をすべて回収し、検証中は次の更新を投入しない。
+//! 指定した更新数で供給を区切り、投入済みの結果を回収してからホストへ戻る。
 //! CUDAの失敗、時間切れ、正常終了の全経路で両チャネルを閉じ、供給スレッドを回収する。
 
 use super::{
@@ -18,6 +18,7 @@ use crate::{
 };
 use std::{
     collections::VecDeque,
+    num::NonZeroU64,
     sync::mpsc::{Receiver, SyncSender, sync_channel},
     time::Instant,
 };
@@ -30,48 +31,59 @@ struct Prepared {
 
 #[derive(Default)]
 pub(super) struct Training {
-    pub bce: f64,
+    pub loss: f64,
     pub compute_seconds: f64,
-    /// 途中検証の秒数の合計。パラメータの回収とログ保存を含み、学習秒数から除く。
-    pub interval_validation_seconds: f64,
     pub steps: u64,
     pub positions: usize,
-    /// このエポックの最初に投入した更新の倍率。
+    /// この区間の最初に投入した更新の倍率。
     pub first_multiplier: Option<f64>,
-    /// このエポックの最後に投入した更新の倍率。
+    /// この区間の最後に投入した更新の倍率。
     pub last_multiplier: Option<f64>,
     pub gpu_used_bytes: Option<usize>,
     pub gpu_total_bytes: Option<usize>,
 }
 
 impl Training {
+    /// 周をまたぐ区間の記録を更新順に合算する。
+    pub fn append(&mut self, next: Self) -> Result<()> {
+        self.loss += next.loss;
+        self.compute_seconds += next.compute_seconds;
+        self.steps += next.steps;
+        self.positions = self
+            .positions
+            .checked_add(next.positions)
+            .ok_or(Error::Invalid("training position count overflow"))?;
+        if self.first_multiplier.is_none() {
+            self.first_multiplier = next.first_multiplier;
+        }
+        self.last_multiplier = next.last_multiplier;
+        self.gpu_used_bytes = self.gpu_used_bytes.max(next.gpu_used_bytes);
+        self.gpu_total_bytes = next.gpu_total_bytes;
+        Ok(())
+    }
+
     fn collect(&mut self, result: StepResult, positions: usize) -> gpu::Result<()> {
         let metrics = result.collect()?;
-        if !metrics.losses.bce.is_finite() {
+        if !metrics.losses.loss.is_finite() {
             return Err(gpu::Error::Invalid("non-finite training loss"));
         }
-        self.bce += metrics.losses.bce * positions as f64;
+        self.loss += metrics.losses.loss * positions as f64;
         self.compute_seconds += f64::from(metrics.compute_ms) / 1000.0;
         self.steps += 1;
-        self.positions += positions;
+        self.positions = self
+            .positions
+            .checked_add(positions)
+            .ok_or(gpu::Error::Invalid("training position count overflow"))?;
         Ok(())
     }
 }
 
 pub(super) struct Supply<'a> {
     pub dataset: &'a Dataset,
-    pub feature_set: InputFeatureSet,
     pub indices: &'a [u64],
     pub teacher_cp_per_logit: &'a [f64],
-    pub batch: usize,
-    /// 累積更新回数に対する途中検証の間隔。0なら無効で、エポック境界は除く。
-    pub validation_interval: u64,
-    /// 完了済み更新回数から学習率の倍率を求める規則。
-    pub schedule: LrSchedule,
-    /// `ceil(抽出後の訓練局面数 / バッチサイズ)`。1以上である。
-    pub steps_per_epoch: u64,
     pub workers: usize,
-    pub deadline: Instant,
+    pub options: BatchOptions,
 }
 
 fn produce(
@@ -83,19 +95,20 @@ fn produce(
     let mut buffers = VecDeque::from(buffers);
     let workers = supply
         .workers
-        .min(supply.indices.len().div_ceil(supply.batch));
+        .min(supply.indices.len().div_ceil(supply.options.batch));
     let group_size = supply
+        .options
         .batch
         .checked_mul(workers)
         .ok_or(gpu::Error::Invalid("worker group size overflow"))?;
     for group in supply.indices.chunks(group_size) {
-        if Instant::now() >= supply.deadline {
+        if Instant::now() >= supply.options.deadline {
             break;
         }
-        let ranges: Vec<_> = group.chunks(supply.batch).collect();
+        let ranges: Vec<_> = group.chunks(supply.options.batch).collect();
         // 完了順には依存せず、順列中のバッチ順に回収する。
-        for batch in build_batches(supply.dataset, supply.feature_set, &ranges)? {
-            if Instant::now() >= supply.deadline {
+        for batch in build_batches(supply.dataset, supply.options.feature_set, &ranges)? {
+            if Instant::now() >= supply.options.deadline {
                 return Ok(());
             }
             let mut host = match buffers.pop_front() {
@@ -127,57 +140,35 @@ fn produce(
     Ok(())
 }
 
-/// 更新順に損失を集計し、指定間隔で未回収の結果を空にしてから途中検証を呼ぶ。
-/// 検証の閉包はバックエンドを共有借用し、期限切れで検証を中断したら`false`を返す。
-pub(super) fn train_epoch(
-    supply: Supply<'_>,
-    backend: &mut Backend,
-    mut interval_validation: impl FnMut(&Supply<'_>, &Backend) -> Result<bool>,
-) -> Result<Option<Training>> {
-    let options = EpochOptions {
-        feature_set: supply.feature_set,
-        batch: supply.batch,
-        validation_interval: supply.validation_interval,
-        schedule: supply.schedule,
-        steps_per_epoch: supply.steps_per_epoch,
-        deadline: supply.deadline,
-    };
-    train_epoch_inner(
-        options,
-        backend,
-        |backend| interval_validation(&supply, backend),
-        |buffers, recycled, sender| produce(&supply, buffers, recycled, sender),
-    )
+/// 周の部分列を、指定した更新回数だけ学ぶ。
+pub(super) fn train_batches(supply: Supply<'_>, backend: &mut Backend) -> Result<Option<Training>> {
+    train_batches_inner(supply.options, backend, |buffers, recycled, sender| {
+        produce(&supply, buffers, recycled, sender)
+    })
 }
 
-/// 供給元によらない更新順、検証間隔と期限。
-pub(super) struct EpochOptions {
-    /// 入力特徴の集合。
+/// 周とsuperbatchの境界のうち、先に到達する位置までの更新条件。
+#[derive(Clone, Copy)]
+pub(super) struct BatchOptions {
     pub feature_set: InputFeatureSet,
-    /// 1更新あたりの最大局面数。
     pub batch: usize,
-    /// 途中検証の更新間隔。
-    pub validation_interval: u64,
-    /// 学習率を決める規則。
     pub schedule: LrSchedule,
-    /// 抽出後の訓練局面数から求めた1エポックの更新回数。
-    pub steps_per_epoch: u64,
-    /// エポックを完了する期限。
+    pub batches_per_superbatch: NonZeroU64,
+    pub steps: u64,
     pub deadline: Instant,
 }
 
 /// 両供給元の更新と結果回収を同じ順序で実行する。
-fn train_epoch_inner(
-    supply: EpochOptions,
+fn train_batches_inner(
+    options: BatchOptions,
     backend: &mut Backend,
-    mut interval_validation: impl FnMut(&Backend) -> Result<bool>,
     produce: impl FnOnce([Buffer; 3], Receiver<Buffer>, SyncSender<Prepared>) -> gpu::Result<()> + Send,
 ) -> Result<Option<Training>> {
-    let (mut queue, buffers) = backend.queue(supply.feature_set, supply.batch)?;
+    let (mut queue, buffers) = backend.queue(options.feature_set, options.batch)?;
     let memory = backend.memory()?;
     let (sender, receiver) = sync_channel(3);
     let (recycle, recycled) = sync_channel(3);
-    let total_batches = supply.steps_per_epoch;
+    let total_batches = options.steps;
     std::thread::scope(|scope| {
         let producer = std::thread::Builder::new()
             .name("nnue-train-supply".into())
@@ -190,16 +181,16 @@ fn train_epoch_inner(
             };
             let mut pending: Option<(StepResult, usize)> = None;
             let mut submitted = 0;
-            while submitted < total_batches && Instant::now() < supply.deadline {
+            while submitted < total_batches && Instant::now() < options.deadline {
                 let Ok(mut prepared) = receiver.recv() else {
                     break;
                 };
-                if Instant::now() >= supply.deadline {
+                if Instant::now() >= options.deadline {
                     break;
                 }
-                let multiplier = supply
+                let multiplier = options
                     .schedule
-                    .multiplier(backend.step(), supply.steps_per_epoch);
+                    .multiplier(backend.step(), options.batches_per_superbatch);
                 let result = backend.enqueue(
                     &mut queue,
                     &mut prepared.host,
@@ -216,35 +207,18 @@ fn train_epoch_inner(
                     training.collect(previous, positions)?;
                 }
                 submitted += 1;
-                let step = backend.step();
-                if supply.validation_interval > 0
-                    && step.is_multiple_of(supply.validation_interval)
-                    && !step.is_multiple_of(supply.steps_per_epoch)
-                {
-                    if let Some((last, positions)) = pending.take() {
-                        training.collect(last, positions)?;
-                    }
-                    if Instant::now() >= supply.deadline {
-                        return Ok(None);
-                    }
-                    let validation_started = Instant::now();
-                    if !interval_validation(backend)? {
-                        return Ok(None);
-                    }
-                    training.interval_validation_seconds +=
-                        validation_started.elapsed().as_secs_f64();
-                }
             }
             if let Some((last, positions)) = pending {
                 training.collect(last, positions)?;
             }
-            if Instant::now() >= supply.deadline {
+            if Instant::now() >= options.deadline {
                 return Ok(None);
             }
             if submitted != total_batches {
-                return Err(
-                    Error::Invalid("batch worker stopped before completing the epoch").into(),
-                );
+                return Err(Error::Invalid(
+                    "batch worker stopped before completing the requested updates",
+                )
+                .into());
             }
             Ok(Some(training))
         })();
@@ -262,96 +236,97 @@ fn train_epoch_inner(
 
 /// 一時ファイルから最大workersバッチを先に取り出し、並列に構築して順に投入する。
 /// 復元済み記録の上限はworkers×batch件で、最後以外のバッチは満杯になる。
-pub(super) fn train_spill_epoch(
+pub(super) fn train_spill_batches(
     store: &SpillStore,
-    mut reader: EpochReader<'_>,
+    reader: &mut EpochReader<'_>,
     workers: usize,
     scales: &[f64],
-    options: EpochOptions,
+    options: BatchOptions,
     backend: &mut Backend,
-    interval_validation: impl FnMut(&Backend) -> Result<bool>,
 ) -> Result<Option<Training>> {
     let feature_set = options.feature_set;
     let batch_size = options.batch;
     let deadline = options.deadline;
-    train_epoch_inner(
-        options,
-        backend,
-        interval_validation,
-        move |buffers, recycled, sender| {
-            let mut buffers = VecDeque::from(buffers);
-            loop {
+    let mut remaining = options.steps;
+    train_batches_inner(options, backend, move |buffers, recycled, sender| {
+        let mut buffers = VecDeque::from(buffers);
+        loop {
+            if Instant::now() >= deadline {
+                return Ok(());
+            }
+            let mut records = Vec::new();
+            for _ in 0..workers {
+                if remaining == 0 {
+                    break;
+                }
                 if Instant::now() >= deadline {
                     return Ok(());
                 }
-                let mut records = Vec::new();
-                for _ in 0..workers {
-                    if Instant::now() >= deadline {
-                        return Ok(());
+                match reader
+                    .next_chunk(batch_size)
+                    .map_err(crate::nnue::data::Error::from)?
+                {
+                    Some(chunk) => {
+                        remaining -= 1;
+                        records.push(chunk);
                     }
-                    match reader
-                        .next_chunk(batch_size)
-                        .map_err(crate::nnue::data::Error::from)?
-                    {
-                        Some(chunk) => records.push(chunk),
-                        None => break,
-                    }
-                }
-                if records.is_empty() {
-                    return Ok(());
-                }
-                let batches = std::thread::scope(|scope| {
-                    let handles: Vec<_> = records
-                        .iter()
-                        .map(|records| {
-                            std::thread::Builder::new().spawn_scoped(scope, move || {
-                                BatchSlot::from_spill_records(feature_set, records)
-                            })
-                        })
-                        .collect();
-                    let results: Vec<_> = handles
-                        .into_iter()
-                        .map(|handle| {
-                            handle
-                                .map_err(crate::nnue::data::Error::Io)
-                                .and_then(|handle| {
-                                    handle
-                                        .join()
-                                        .map_err(|_| crate::nnue::data::Error::WorkerPanicked)?
-                                })
-                        })
-                        .collect();
-                    results
-                        .into_iter()
-                        .collect::<crate::nnue::data::Result<Vec<_>>>()
-                })?;
-                drop(records);
-                for batch in batches {
-                    if Instant::now() >= deadline {
-                        return Ok(());
-                    }
-                    let mut host = match buffers.pop_front() {
-                        Some(buffer) => buffer,
-                        None => match recycled.recv() {
-                            Ok(buffer) => buffer,
-                            Err(_) => return Ok(()),
-                        },
-                    };
-                    let targets = build_targets(&batch, scales, store.teacher_lambdas())?;
-                    let positions = batch.len();
-                    host.fill(batch)?;
-                    if sender
-                        .send(Prepared {
-                            host,
-                            targets,
-                            positions,
-                        })
-                        .is_err()
-                    {
-                        return Ok(());
-                    }
+                    None => break,
                 }
             }
-        },
-    )
+            if records.is_empty() {
+                return Ok(());
+            }
+            let batches = std::thread::scope(|scope| {
+                let handles: Vec<_> = records
+                    .iter()
+                    .map(|records| {
+                        std::thread::Builder::new().spawn_scoped(scope, move || {
+                            BatchSlot::from_spill_records(feature_set, records)
+                        })
+                    })
+                    .collect();
+                let results: Vec<_> = handles
+                    .into_iter()
+                    .map(|handle| {
+                        handle
+                            .map_err(crate::nnue::data::Error::Io)
+                            .and_then(|handle| {
+                                handle
+                                    .join()
+                                    .map_err(|_| crate::nnue::data::Error::WorkerPanicked)?
+                            })
+                    })
+                    .collect();
+                results
+                    .into_iter()
+                    .collect::<crate::nnue::data::Result<Vec<_>>>()
+            })?;
+            drop(records);
+            for batch in batches {
+                if Instant::now() >= deadline {
+                    return Ok(());
+                }
+                let mut host = match buffers.pop_front() {
+                    Some(buffer) => buffer,
+                    None => match recycled.recv() {
+                        Ok(buffer) => buffer,
+                        Err(_) => return Ok(()),
+                    },
+                };
+                let targets = build_targets(&batch, scales, store.teacher_lambdas())?;
+                let positions = batch.len();
+                host.fill(batch)?;
+                if sender
+                    .send(Prepared {
+                        host,
+                        targets,
+                        positions,
+                    })
+                    .is_err()
+                {
+                    return Ok(());
+                }
+            }
+        }
+    })
 }

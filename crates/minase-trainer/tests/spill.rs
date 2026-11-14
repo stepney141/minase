@@ -860,6 +860,12 @@ impl Training {
             "cpu".into(),
             "--batch".into(),
             "33".into(),
+            "--batches-per-superbatch".into(),
+            "5".into(),
+            "--validation-superbatches".into(),
+            "1".into(),
+            "--lr-schedule".into(),
+            "cosine:3:0.1".into(),
             "--validation-sample".into(),
             "24".into(),
             "--lookahead-gamma".into(),
@@ -895,7 +901,7 @@ fn find_source<'a, E: std::error::Error + 'static>(
 }
 
 #[test]
-fn cpu_spill_training_resumed_after_epoch_one_matches_the_uninterrupted_run() {
+fn cpu_spill_training_resumed_mid_epoch_matches_the_uninterrupted_run() {
     let training = Training::new();
     let scratch = training.scratch();
     let other_scratch = training.path("other-scratch");
@@ -909,16 +915,16 @@ fn cpu_spill_training_resumed_after_epoch_one_matches_the_uninterrupted_run() {
         &scratch,
     ];
     let mut continuous = buckets.to_vec();
-    continuous.extend(["--epochs", "2"]);
+    continuous.extend(["--superbatches", "2"]);
     minase_trainer::nnue::train::run(training.args("continuous", &continuous)).unwrap();
 
     let mut first = buckets.to_vec();
-    first.extend(["--epochs", "1"]);
+    first.extend(["--superbatches", "1"]);
     minase_trainer::nnue::train::run(training.args("resumed", &first)).unwrap();
     assert_eq!(
         training::logs(&training.data.temp.join("resumed"))
             .iter()
-            .map(|row| row["epoch"].as_u64().unwrap())
+            .map(|row| row["superbatch"].as_u64().unwrap())
             .collect::<Vec<_>>(),
         [0, 1]
     );
@@ -933,7 +939,7 @@ fn cpu_spill_training_resumed_after_epoch_one_matches_the_uninterrupted_run() {
             "2000",
             "--scratch-dir",
             &other_scratch,
-            "--epochs",
+            "--superbatches",
             "2",
             "--threads",
             "3",
@@ -945,9 +951,7 @@ fn cpu_spill_training_resumed_after_epoch_one_matches_the_uninterrupted_run() {
 
     let left = training.data.temp.join("continuous");
     let right = training.data.temp.join("resumed");
-    for file in ["latest.npz", "best.npz"] {
-        training::compare_checkpoints(&left.join(file), &right.join(file));
-    }
+    training::compare_checkpoints(&left.join("latest.npz"), &right.join("latest.npz"));
     assert_eq!(
         fs::read(left.join("nnue.bin")).unwrap(),
         fs::read(right.join("nnue.bin")).unwrap()
@@ -957,13 +961,13 @@ fn cpu_spill_training_resumed_after_epoch_one_matches_the_uninterrupted_run() {
     assert_eq!(
         continuous_log
             .iter()
-            .map(|row| row["epoch"].as_u64().unwrap())
+            .map(|row| row["superbatch"].as_u64().unwrap())
             .collect::<Vec<_>>(),
         [0, 1, 2]
     );
     assert_eq!(continuous_log.len(), resumed_log.len());
     for (a, b) in continuous_log.iter().zip(&resumed_log) {
-        for key in ["epoch", "steps", "total_steps"] {
+        for key in ["superbatch", "steps", "total_steps"] {
             assert_eq!(a[key], b[key], "{key}");
         }
         for key in ["train_loss", "validation_loss"] {
@@ -974,9 +978,8 @@ fn cpu_spill_training_resumed_after_epoch_one_matches_the_uninterrupted_run() {
             );
         }
     }
-    // 1エポックの更新回数はceil(N / batch)である。
-    let n = training.data.dataset().training_indices().len() as u64;
-    let steps = n.div_ceil(33);
+    // 1 superbatchは指定した5更新であり、教師の量に依存しない。
+    let steps = 5;
     assert_eq!(continuous_log[1]["steps"].as_u64().unwrap(), steps);
     assert_eq!(
         continuous_log[2]["total_steps"].as_u64().unwrap(),
@@ -988,7 +991,7 @@ fn cpu_spill_training_resumed_after_epoch_one_matches_the_uninterrupted_run() {
     assert!(config["settings"].get("bucket_positions").is_none());
     assert!(config["settings"].get("scratch_dir").is_none());
     assert_eq!(config["resumes"].as_array().unwrap().len(), 1);
-    assert_eq!(config["resumes"][0]["epoch"], 1);
+    assert_eq!(config["resumes"][0]["completed_superbatches"], 1);
     assert_eq!(config["resumes"][0]["bucket_positions"], 2000);
     assert_eq!(config["resumes"][0]["scratch_dir"], other_scratch.as_str());
 
@@ -1010,7 +1013,7 @@ fn resume_rejects_a_changed_bucket_count() {
             "1000",
             "--scratch-dir",
             &scratch,
-            "--epochs",
+            "--superbatches",
             "1",
         ],
     ))
@@ -1028,7 +1031,7 @@ fn resume_rejects_a_changed_bucket_count() {
         vec![],
     ] {
         let mut extra = changed.clone();
-        extra.extend(["--epochs", "2", "--resume", &output]);
+        extra.extend(["--superbatches", "2", "--resume", &output]);
         let error = minase_trainer::nnue::train::run(training.args("output", &extra))
             .expect_err("a changed bucket count must be rejected");
         assert!(
@@ -1065,7 +1068,7 @@ fn missing_or_non_directory_scratch_dir_fails_before_training() {
                 "1000",
                 "--scratch-dir",
                 &scratch,
-                "--epochs",
+                "--superbatches",
                 "1",
             ],
         ));
@@ -1090,7 +1093,7 @@ fn training_removes_its_run_directory_after_a_bucket_overflow() {
             "1",
             "--scratch-dir",
             &scratch,
-            "--epochs",
+            "--superbatches",
             "1",
         ],
     ))

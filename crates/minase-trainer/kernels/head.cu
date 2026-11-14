@@ -72,8 +72,9 @@ __device__ float nonlinear_output_warp(
 __device__ float logit_value(const float* lin, float nonlinear, float phi, float K) {
     return (phi * lin[0] + (1.0f - phi) * lin[1]) / K + nonlinear;
 }
-__device__ float bce(float x, float target) {
-    return fmaxf(x, 0.0f) - x * target + log1pf(expf(-fabsf(x)));
+__device__ float squared_error(float x, float target) {
+    float difference = 1.0f / (1.0f + expf(-x)) - target;
+    return difference * difference;
 }
 
 extern "C" __global__ void output_backward(
@@ -103,9 +104,10 @@ extern "C" __global__ void output_backward(
         if (lane == 0) {
             float phi = phase(counts[b]);
             float x = logit_value(lin + b * 2, nonlinear, phi, K);
-            grad = (1.0f / (1.0f + expf(-x)) - targets[b]) / (float)B;
+            float probability = 1.0f / (1.0f + expf(-x));
+            grad = 2.0f * (probability - targets[b]) * probability * (1.0f - probability) / (float)B;
             logits[b] = x;
-            l = bce(x, targets[b]);
+            l = squared_error(x, targets[b]);
             loss[b] = l;
             g[b] = grad;
             c[b * 2] = grad * phi / K;
@@ -208,7 +210,7 @@ extern "C" __global__ void validation_head(
         unsigned a_upper = head_warp_count(a[lane] >= 1);
         if (lane == 0) {
             float x = logit_value(lin + b * 2, nonlinear, phase(counts[b]), K);
-            values[0] = (double)bce(x, targets[b]);
+            values[0] = (double)squared_error(x, targets[b]);
             values[1] = outcomes[b] != 1 && ((x > 0) == (outcomes[b] == 2));
             values[2] = outcomes[b] != 1;
             values[3] = (double)nonlinear * (double)K;

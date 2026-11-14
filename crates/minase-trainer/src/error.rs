@@ -105,7 +105,7 @@ impl std::fmt::Display for ContractError {
             Self::FloatingFmMismatch => {
                 f.write_str("floating FM does not quantize to the input MNPT FM")
             }
-            Self::NondefaultRules => f.write_str("diagnostic positions must use JCSA rules"),
+            Self::NondefaultRules => f.write_str("diagnostic positions must use lishogi rules"),
             Self::EmptyPositions => f.write_str("move probe positions must be nonempty"),
             Self::AsymmetricReference => f.write_str("removal reference mirror sharing"),
             Self::Quantization => {

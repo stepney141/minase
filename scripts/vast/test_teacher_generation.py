@@ -105,14 +105,17 @@ class Commands:
         for number in range(job['target_books']):
             if number in job['skip_books']:
                 continue
-            fields = {'rule_set': 'L0,P0,R1,E0', 'generation_commit': job['commit'],
+            fields = {'rule_set': 'L1,L2,P0,P3,R1,E1,E3', 'generation_commit': job['commit'],
                       'network_checksum': '12' * 32, 'teacher_search_budget': job['nodes'],
                       'seed': job['generation_seed'] + job['book_step'] * number,
-                      'game_count': 9, 'entry_count': 120} | self.bad_header
+                      'game_count': 9, 'entry_count': 136} | self.bad_header
             path = machine['root'] / f'teacher/gen-{job["generation"]}/book-{number}.mnsd'
             write_book(path, fields)
             summary = {'games_completed': 10, 'nodes': 20000, 'max_ply': 4000, 'hash_mb': 16,
                        'random_moves_max': 0, 'games_discarded_max_ply': 1,
+                       'rejected_openings': 3, 'win_reason_evaluation_adjudication': 2,
+                       'excluded_check': 7, 'excluded_check_rate_percent': 5.511811,
+                       'excluded_check_in_saved_games': 7,
                        'recorded_positions': 120, 'chunks_reused': machine['reused'].get(number, 0)} | self.bad_log
             log = machine['root'] / f'logs/gen-{job["generation"]}/book-{number}.log'
             log.write_text('   Finished `release` profile\n'
@@ -288,6 +291,7 @@ class Commands:
             if self.inspect_failure:
                 return self.result(command, code=7)
             fields = inspect_book(Path(command[-1]))
+            fields.update(eligible_positions=120, exclusion_check=7, games_evaluation_adjudication=2)
             return self.result(command, ''.join(f'{key}: {value}\n' for key, value in fields.items()))
         raise AssertionError(command)
 
@@ -339,6 +343,8 @@ class TeacherTests(unittest.TestCase):
         args.seed_generation_step = 0
         runner = chain.Chain(args)
         self.assertEqual(runner.books(3, 'a' * 40, '12' * 32), {2: 120, 3: 120})
+        accepted = [item for item in self.events() if item['event'] == 'accepted']
+        self.assertEqual([item['recorded_positions'] for item in accepted], [120, 120])
         self.assertIsNone(self.state()['current'])
         self.assertTrue(self.state()['rentals'][0]['deleted_at'])
         events = [item['event'] for item in self.events()]
@@ -346,6 +352,14 @@ class TeacherTests(unittest.TestCase):
         self.assertEqual(events.count('generation_resumed'), 1)
         self.assertEqual(events[-2:], ['deleted', 'finished'])
         self.assertFalse(list((self.root / 'run/remote/work').glob('book-*')))
+
+    def test_jcsa_books_are_rejected_before_acceptance(self) -> None:
+        self.commands.bad_header = {'rule_set': 'L0,P0,R1,E0'}
+        self.assertEqual(self.execute(), 1)
+        self.assertIn('rule_setが一致しません', self.errors.getvalue())
+        self.assertFalse(list((self.root / 'run/gen-3/teacher').glob('*.mnsd')))
+        self.assertFalse(any(item['event'] == 'accepted' for item in self.events()))
+        self.assertFalse(self.commands.instances)
 
     def test_rsync_24_accepts_published_books_on_next_collection(self) -> None:
         """事例1: 公開途中の消失は停止理由にせず、次の60秒の回収で受理する。"""
