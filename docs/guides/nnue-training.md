@@ -21,9 +21,9 @@
 
 ## 標準レシピ
 
-本節の手順は、[標準レシピv1の設計書](../plans/nnue-standard-recipe.md)が決めた標準レシピv1である。
-前の世代のネットで教師を生成して次の世代のネットを学ぶ世代反復では、`scripts/vast/generation_chain.py`がこの手順を続けて実行する。
-学習の長さは、教師の量によらない単位superbatch（バッチ6,104回分の更新で、16,384局面のバッチなら約1億局面にあたる）の数で事前に決め、学び終えた最後のネットを書き出す。
+本節は、[標準レシピv1の設計書](../plans/nnue-standard-recipe.md)が定めた標準レシピv1の学習と診断のコマンドと、中止の条件をまとめる。各段階の詳しい手順は[手順](#手順)にある。
+前の世代のネットで教師を生成して次の世代のネットを学習する世代反復では、`scripts/vast/generation_chain.py`がこの手順を続けて実行する。
+学習の長さは、教師の量によらない単位superbatch（バッチ6,104回分の更新で、16,384局面のバッチなら約1億局面にあたる）の数で事前に決め、予定の更新を終えた最後のネットを書き出す。
 検証損失（学習に使わない対局での予測の誤差）は記録するだけで、停止とネットの選択には使わない。
 
 **コマンド**
@@ -96,7 +96,7 @@ minase-trainer diag nnue-removal \
 - 標準レシピでは指定しない。省略すると、教師の探索値を`--base`のネットの勝率尺度と同じ値で勝率へ換算する。
 - 訓練集合から教師の分類ごとに推定するときは`calibrate`を、記録済みの値を使うときは較正ファイルのパスを指定する。
 - 使った値と出どころ（省略時は`base`）は、`config.json`の`preprocessing`（`teacher_cp_per_logit`、`teacher_score_multiplier`、`teacher_cp_per_logit_source`）に残る。
-- `calibrate`で入力を変えても教師値を固定したい比較では、間引く前の全入力から較正ファイルを作って各学習に渡す。
+- 訓練データの量や間引き方を変えても教師値を同じに保ちたい比較では、`calibrate`を各学習に指定せず、間引く前の全入力から較正ファイルを作って各学習に渡す。
 
 ```sh
 minase-trainer data calibrate --data <教師...> --output <新規の較正.json>
@@ -138,7 +138,7 @@ done
 
 **主な調整用オプション**（値域と式は[オプション一覧](#オプション一覧)）
 
-- `--lr-schedule`: 総長と半減期の単位はsuperbatchであり、`--superbatches`と独立に指定する。標準レシピは総長を`--superbatches`と同じ64にして、学習の終わりで下限に達する。
+- `--lr-schedule`: 総長と半減期の単位はsuperbatchであり、`--superbatches`と独立に指定する。標準レシピでは総長を`--superbatches`と同じ64とし、学習の終わりで学習率の倍率が下限に達するようにする。
 - `--validation-superbatches`: 70ファイルの教師では、検証1回に約1分かかる見込みである。
 
 ### 結果を確認する
@@ -157,7 +157,7 @@ done
 
 - `summary.json`: `status`が`candidate`であること、`completed_steps`が`planned_steps`に等しいこと、量子化検査の結果を確かめる。
   - `removal_sign`は、駒を1枚除いたときの評価差の符号が手書きの評価関数v0の駒価値の差と逆になる割合である。閾値はなく学習の成否に影響しない。採否の測定で負けたときの手がかりにする。
-- `training.jsonl`: 訓練損失、学習率の倍率、エポック数、線形重みの移動量を毎行で、検証損失、符号一致率、非線形出力の標準偏差、飽和率を検証した行で読み、更新の不足や過学習がないかを点検する。検証しなかった行の検証の欄は`null`である。
+- `training.jsonl`: 更新の不足や過学習がないかを点検する。訓練損失、学習率の倍率、エポック数、および線形重みの移動量はすべての行にある。検証損失、符号一致率、非線形出力の標準偏差、および飽和率は検証を行った行にあり、検証を行わなかった行では`null`になる。
   - GPUメモリの欄はGPU全体の使用量であり、他のプロセスの確保も含む。
 - 損失は勝率の差の2乗なので、二値交差エントロピーで学んだ過去の学習の損失とは値を比べられない。
 
@@ -165,7 +165,7 @@ done
 
 - `summary.json`の`status`が`candidate`のときだけ終了コード0で終わり、次の場合は終了コード1で終わる。
   - 引数、入力、または再開の条件を満たさない（学習を始める前）。
-  - 予定の更新を終える前に時間の上限に達した（`status`は`incomplete`）。`nnue.bin`は書き出さず、最後に確定した`latest.npz`を残すので、[再開](#中断した学習を再開する)で続きを学ぶ。予定の長さに達していないネットは、標準レシピのネットとして使わない。
+  - 予定の更新を終える前に時間の上限に達した（`status`は`incomplete`）。`nnue.bin`は書き出さず、最後に確定した`latest.npz`を残すので、[再開](#中断した学習を再開する)の手順で続きを学習する。予定の長さに達していないネットは、標準レシピのネットとして使わない。
   - 量子化した重みとCPUの浮動小数点参照の平均絶対誤差が上限を超えた（`status`は`quantization_error`）。この重みは採否の測定にかけず、整数化の段を1つずつ適用して原因を調べる（[教訓](../lessons/check-quantization-scale-against-the-win-rate-scale.md)）。
 
 ### 学習した重みを診断する
@@ -263,9 +263,9 @@ systemd-run --user --unit=<サービス名> --setenv=PATH="$PATH" -p WorkingDire
 
 - 最初と同じコマンドに、`--output-dir`と同じパスで`--resume <出力ディレクトリ>`を加える。
 - 再開時に変えられるのは、`--superbatches`、`--validation-superbatches`、`--time-limit-hours`、`--threads`、`--bucket-positions`、`--scratch-dir`だけである。`--batches-per-superbatch`と`--lr-schedule`は学習率の進み方を変えるので、変えられない。
-- `--superbatches`と`--time-limit-hours`は、再開前を含む総量である。`--superbatches`を完了済みの数より小さくするとエラーになり、大きくすると学び終えた学習の続きも学べる。
+- `--superbatches`と`--time-limit-hours`は、再開前を含む総量である。`--superbatches`を完了済みの数より小さくするとエラーになり、大きくすると完了した学習からさらに続きを学習できる。
 - それ以外の設定、入力ファイル（パス、バイト長、ヘッダ）、前処理の結果、またはデバイスが異なると、エラーになり再開できない。
-- 最後に確定した`latest.npz`から復元し、エポックの途中であれば同じ並べ替えを作り直して続きの局面から学ぶ。`training.jsonl`の確定していない行は捨て、前の実行の`nnue.bin`と`summary.json`は再開の始めに消す。止めずに通した学習と同じネットになる。
+- 最後に確定した`latest.npz`から復元し、エポックの途中であれば同じ並べ替えを作り直して続きの局面から学習する。`training.jsonl`の確定していない行は捨て、前の実行の`nnue.bin`と`summary.json`は再開の始めに消す。止めずに通した学習と同じネットになる。
 - 再開の履歴は`config.json`の`resumes`に残るので、測定記録に再開の回数と変更した上限を書く。
 - 変更前の学習器（エポック数で学習の長さを決めていたもの）が保存したチェックポイントからは再開できない。
 
@@ -502,8 +502,8 @@ done
 | 最適化手法 | AdamW（β1=0.9、β2=0.999、ε=1e-8） | Stockfishの本番と同じ値（[調査メモ](../research/nnue-training-recipes.md)） |
 | 基準の学習率 | 第1層と出力部0.001、線形の経路0.03 | 0.001は先行の初期値の範囲内。線形の経路は、先行の学習器の設定をminaseの単位へ換算した0.67903が0.03に対してSTCで`H0`（[記録](../measurements/nnue-standard-recipe/nnue-standard-recipe-lr-linear-stc.md)） |
 | 学習の長さ | 64 superbatch（1 superbatchはバッチ6,104回） | bullet、tatara、tanuki-、Saplingと同じ単位で、64は教師の量が最も近いSaplingの1.1億局面の学習の値（[調査メモ](../research/nnue-training-recipes.md)） |
-| 書き出すネットと停止 | 予定の長さを学び終えた最後のネット。検証損失は記録だけに使う | tataraとtanuki-は事前に決めた長さの最後のネットを使い、nnue-pytorch、tanuki-、tataraの作者は検証損失の良し悪しが棋力と一致しないと書いている（同じ調査メモ）。検証損失で選ぶのを標準とする学習器は、調べた範囲ではminaseだけだった |
-| 学習率の予定 | `cosine:64:0.027`（64 superbatchで初期値の0.027倍まで余弦で下げる） | Stockfish、Viridithas、Saplingの25.5億局面のネットが学習の終わりまで続く余弦を使い、終わりの倍率0.027はViridithasとSaplingの1.1億局面のネットに共通する（同じ調査メモ） |
+| 書き出すネットと停止 | 予定の更新を終えた最後のネット。検証損失は記録だけに使う | tataraとtanuki-は事前に決めた長さの最後のネットを使い、nnue-pytorch、tanuki-、tataraの作者は検証損失の良し悪しが棋力と一致しないと書いている（同じ調査メモ）。検証損失で選ぶのを標準とする学習器は、調べた範囲ではminaseだけだった |
+| 学習率の予定 | `cosine:64:0.027`（64 superbatchで初期値の0.027倍まで余弦で下げる） | Stockfish、Viridithas、およびSaplingの25.5億局面の学習は、学習率を学習の終わりまで余弦の形で下げる。終わりの倍率0.027は、ViridithasとSaplingの1.1億局面の学習に共通する（同じ調査メモ） |
 | 損失 | 勝率の差の2乗 | bullet、tatara、variant-nnue-pytorchが2乗を、nnue-pytorch、Stockfish、tanuki-が勝率の差のべき乗を使う（同じ調査メモ）。指数は調整していない基本の形の2とする |
 | 教師の勝率尺度 | ネットの勝率尺度と同じ値（`--teacher-cp-per-logit`を省略） | 調べた13件の実装のうち11件が、手で決めた定数か一度推定して固定した値を使う（[調査メモ](../research/win-rate-scale-k-prior-art.md)） |
 | 重み減衰 | どの層にも掛けない | nnue-pytorch、tatara、tanuki-、variant-nnue-pytorchが0である（[調査メモ](../research/nnue-training-recipes.md)） |

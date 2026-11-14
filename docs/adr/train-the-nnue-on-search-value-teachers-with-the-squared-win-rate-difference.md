@@ -7,11 +7,11 @@
 ## コンテキスト
 
 [以前の決定](archive/train-the-nnue-on-search-value-teachers-without-lookahead.md)は、NNUEをλ=1.0（教師値に対局結果を混ぜない）とし、各局面の素の探索値を勝率へ換算した教師で、二値交差エントロピーを損失として学ぶと定めていた。
-先読み教師を外したネットはSTCとLTCで`H1`であり、対局結果を混ぜる教師は非線形の経路が結果を対局の記憶として学ぶ危険があった（[教訓](../lessons/game-constant-target-memorization.md)）。
+素の探索値に代えて同じ対局の後続の局面の探索値を混ぜる先読み教師は、外したネットのほうがSTCとLTCで`H1`であり、対局結果を混ぜる教師は非線形の経路が結果を対局の記憶として学ぶ危険があった（[教訓](../lessons/game-constant-target-memorization.md)）。
 
 先行の学習器の調査（[学習レシピの調査](../research/nnue-training-recipes.md)）では、bullet、tatara、およびvariant-nnue-pytorchがネットの勝率と教師の勝率の差の2乗を、nnue-pytorch（2.5乗）、Stockfish（2.434乗）、およびtanuki-（2.75乗）が勝率の差のべき乗を損失にしていた。
 二値交差エントロピーを使うのは、調べた範囲ではやねうら王の旧学習器であり、tanuki-の作者の比較では交差エントロピー型が二乗誤差型に−56.52 ±19.45 Eloだった（[tatara調査](../research/tatara-nnue-transfer.md)）。
-2026年11月14日にエンジンの開発者は、先行する複数のエンジンに共通する形に合わせると決め、指数は根拠がないので基本の形の2にすると決めた。
+2026年11月14日にエンジンの開発者は、先行する複数のエンジンに共通する損失に合わせ、2以外の指数を選ぶ根拠がないので指数を2にすると決めた。
 
 ## 決定
 
