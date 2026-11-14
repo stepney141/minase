@@ -1,0 +1,202 @@
+{
+ "commit": "a954e945c84856a12dcb731fcce6a719f4176fa5",
+ "started_utc": "2026-11-14T05:35:26Z",
+ "logical": 384,
+ "physical": 192,
+ "cgroup_cpu": "36864001 100000",
+ "mem_total_kb": 527867248,
+ "rustc": "rustc 1.98.0 (88d9e12ae 2026-08-18)",
+ "build_seconds": 115.6303253119695,
+ "binary_sha256": "67f0d8c41505779448cee5057bb8e7a1f5ffc6dcd70a3c34706ab7fd61b9f4b2",
+ "runs": [
+  {
+   "concurrency": 384,
+   "command": [
+    "/workspace/phase0/minase/target/release/minase",
+    "data",
+    "selfplay",
+    "generate",
+    "--output-dir",
+    "/workspace/phase0/out-384",
+    "--chunk-games",
+    "384",
+    "--games",
+    "384",
+    "--concurrency",
+    "384",
+    "--seed",
+    "9699000000",
+    "--nodes",
+    "20000",
+    "--random-moves",
+    "0",
+    "--max-ply",
+    "200",
+    "--hash-mb",
+    "16"
+   ],
+   "wall_seconds": 18.0224235120113,
+   "elapsed_seconds": 17.404205,
+   "searched_nodes_total": 1432240000,
+   "nps": 82292756.26206425,
+   "games_completed": 384,
+   "rss_kb_at_12s": 84802276,
+   "rss_kb_max": 85615400,
+   "rss_samples": [
+    [
+     0.0,
+     0
+    ],
+    [
+     1.01,
+     66341588
+    ],
+    [
+     2.01,
+     85615400
+    ],
+    [
+     3.01,
+     85555712
+    ],
+    [
+     4.01,
+     85536208
+    ],
+    [
+     5.01,
+     85508692
+    ],
+    [
+     6.01,
+     85520436
+    ],
+    [
+     7.01,
+     85580932
+    ],
+    [
+     8.01,
+     85415640
+    ],
+    [
+     9.02,
+     85371776
+    ],
+    [
+     10.02,
+     85143424
+    ],
+    [
+     11.02,
+     84989152
+    ],
+    [
+     12.02,
+     84802276
+    ],
+    [
+     13.02,
+     84587256
+    ],
+    [
+     14.02,
+     84412148
+    ],
+    [
+     15.02,
+     83229900
+    ],
+    [
+     16.02,
+     60117296
+    ],
+    [
+     17.02,
+     11368460
+    ]
+   ]
+  },
+  {
+   "concurrency": 192,
+   "command": [
+    "/workspace/phase0/minase/target/release/minase",
+    "data",
+    "selfplay",
+    "generate",
+    "--output-dir",
+    "/workspace/phase0/out-192",
+    "--chunk-games",
+    "192",
+    "--games",
+    "192",
+    "--concurrency",
+    "192",
+    "--seed",
+    "9699000000",
+    "--nodes",
+    "20000",
+    "--random-moves",
+    "0",
+    "--max-ply",
+    "200",
+    "--hash-mb",
+    "16"
+   ],
+   "wall_seconds": 11.004836946027353,
+   "elapsed_seconds": 10.234644,
+   "searched_nodes_total": 712980000,
+   "nps": 69663390.34362113,
+   "games_completed": 192,
+   "rss_kb_at_12s": null,
+   "rss_kb_max": 42846288,
+   "rss_samples": [
+    [
+     0.0,
+     0
+    ],
+    [
+     1.0,
+     42837432
+    ],
+    [
+     2.0,
+     42846288
+    ],
+    [
+     3.0,
+     42817920
+    ],
+    [
+     4.0,
+     42838100
+    ],
+    [
+     5.0,
+     42700048
+    ],
+    [
+     6.0,
+     42226560
+    ],
+    [
+     7.0,
+     41953712
+    ],
+    [
+     8.0,
+     41779952
+    ],
+    [
+     9.0,
+     39978524
+    ],
+    [
+     10.0,
+     5905264
+    ]
+   ]
+  }
+ ],
+ "finished_utc": "2026-11-14T05:37:53Z"
+}

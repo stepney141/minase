@@ -1,0 +1,154 @@
+{
+ "commit": "a954e945c84856a12dcb731fcce6a719f4176fa5",
+ "started_utc": "2026-11-14T05:02:33Z",
+ "logical": 48,
+ "physical": 24,
+ "cgroup_cpu": "4608000 100000",
+ "mem_total_kb": 1486024848,
+ "rustc": "rustc 1.98.0 (88d9e12ae 2026-08-18)",
+ "build_seconds": 78.62898477446288,
+ "binary_sha256": "c7b9b78a76b305c6f914165f6615fa3d5d1105f2f54cb89862d88c387eafee85",
+ "runs": [
+  {
+   "concurrency": 48,
+   "command": [
+    "/workspace/phase0/minase/target/release/minase",
+    "data",
+    "selfplay",
+    "generate",
+    "--output-dir",
+    "/workspace/phase0/out-48",
+    "--chunk-games",
+    "48",
+    "--games",
+    "48",
+    "--concurrency",
+    "48",
+    "--seed",
+    "9699000000",
+    "--nodes",
+    "20000",
+    "--random-moves",
+    "0",
+    "--max-ply",
+    "200",
+    "--hash-mb",
+    "16"
+   ],
+   "wall_seconds": 10.011405506171286,
+   "elapsed_seconds": 9.284077,
+   "searched_nodes_total": 179180000,
+   "nps": 19299710.67667793,
+   "games_completed": 48,
+   "rss_kb_at_12s": null,
+   "rss_kb_max": 10814752,
+   "rss_samples": [
+    [
+     0.0,
+     156
+    ],
+    [
+     1.0,
+     10814752
+    ],
+    [
+     2.01,
+     10789104
+    ],
+    [
+     3.01,
+     10786156
+    ],
+    [
+     4.01,
+     10779940
+    ],
+    [
+     5.01,
+     10783252
+    ],
+    [
+     6.01,
+     10642088
+    ],
+    [
+     7.01,
+     10624292
+    ],
+    [
+     8.01,
+     10433464
+    ],
+    [
+     9.01,
+     9107464
+    ]
+   ]
+  },
+  {
+   "concurrency": 24,
+   "command": [
+    "/workspace/phase0/minase/target/release/minase",
+    "data",
+    "selfplay",
+    "generate",
+    "--output-dir",
+    "/workspace/phase0/out-24",
+    "--chunk-games",
+    "24",
+    "--games",
+    "24",
+    "--concurrency",
+    "24",
+    "--seed",
+    "9699000000",
+    "--nodes",
+    "20000",
+    "--random-moves",
+    "0",
+    "--max-ply",
+    "200",
+    "--hash-mb",
+    "16"
+   ],
+   "wall_seconds": 7.002894104458392,
+   "elapsed_seconds": 6.302066,
+   "searched_nodes_total": 90540000,
+   "nps": 14366717.200359374,
+   "games_completed": 24,
+   "rss_kb_at_12s": null,
+   "rss_kb_max": 5412756,
+   "rss_samples": [
+    [
+     0.0,
+     200
+    ],
+    [
+     1.0,
+     5402092
+    ],
+    [
+     2.0,
+     5401312
+    ],
+    [
+     3.0,
+     5406396
+    ],
+    [
+     4.0,
+     5412680
+    ],
+    [
+     5.0,
+     5412756
+    ],
+    [
+     6.0,
+     5355840
+    ]
+   ]
+  }
+ ],
+ "finished_utc": "2026-11-14T05:04:10Z"
+}
