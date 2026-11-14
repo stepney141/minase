@@ -25,7 +25,7 @@ NPZはNumPyの配列を名前つきで収めた無圧縮のZIPであり、コン
 
 | 形式 | 識別と版 | 書き手 | 読み手 | 仕様 |
 |---|---|---|---|---|
-| MNSD（教師データ） | `MNSD`、版2 | `minase data selfplay generate`、`minase data zero-selfplay`、`minase data lishogi games`、`minase-trainer diag pst-compare` | 学習器、AlphaZero型探索の学習器（拡張モジュール`minase_mnsd_reader`）、診断、`minase data selfplay inspect`、`minase-trainer fm scale --data`、`nnue bench-step` | `crates/minase/src/training/records.rs` |
+| MNSD（教師データ） | `MNSD`、版3 | `minase data selfplay generate`、`minase data zero-selfplay`、`minase data lishogi games`、`minase-trainer diag pst-compare` | 学習器、AlphaZero型探索の学習器（拡張モジュール`minase_mnsd_reader`）、診断、`minase data selfplay inspect`、`minase-trainer fm scale --data`、`nnue bench-step` | `crates/minase/src/training/records.rs` |
 | MNUE（NNUEの重み） | `MNUE`、版5 | `minase-trainer nnue train`、`nnue fit-linear` | エンジン、診断、`nnue train`（書き出した重みの検査）、`nnue fit-linear`（基点の重み） | `crates/minase/src/eval/nnue/format.rs` |
 | MNPT（PSTの重みとFMの補正） | `MNPT`、版3 | `minase-trainer pst train`、`fm train`、`joint train`、`fm quarter`、`fm scale` | エンジン、学習器、診断 | `crates/minase/src/eval/pst/format.rs` |
 | PSTの浮動小数点の重み`pst-float.npz`（2配列） | NPZ、版なし | `minase-trainer pst train` | `joint train --pst-init`、`diag pst-compare` | `crates/minase-trainer/src/pst/npz.rs` |
@@ -74,7 +74,7 @@ NNUEの学習器が`--buckets`を2以上にしたときに作業ディレクト�
 
 AlphaZero型探索の学習器`minase_zero`（`tools/train/zero/minase_zero/`）は、`init`と`train`の出力先に、チェックポイント、ONNXのネット、および終了報告を書き出す。
 ONNXのネットはONNXが形式を定めるので載せない。
-試験用の小さな自己対局のファイル`tools/train/zero/fixtures/zero-selfplay-small.mnsd`はMNSDの版2であり、`minase data zero-selfplay`で作った。
+試験用の小さな自己対局のファイル`tools/train/zero/fixtures/zero-selfplay-small.mnsd`はMNSDの版3である。`minase data zero-selfplay`で作った版2のファイルを、版の番号と項目の印の配置だけを変えて版3に書き直した。
 
 | 形式 | 識別と版 | 書き手 | 読み手 | 仕様 |
 |---|---|---|---|---|

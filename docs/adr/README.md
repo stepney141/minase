@@ -387,6 +387,7 @@ PSTは駒の種類と升ごとの値の表による評価、FMはFactorization M
 - 2026年11月12日 [プロトコルの種類、探索方式、入出力の記録は起動引数に残し、ONNX Runtimeの場所は環境変数に残す](keep-protocol-search-method-and-io-log-as-startup-arguments.md)
 - 2026年11月13日 [AlphaZero型探索の実行環境は、借りる機械では導入スクリプトで導入し、作業機の開発用のコンテナは同じスクリプトから作る](install-the-zero-toolchain-with-setup-sh-on-rented-machines-and-build-the-workstation-image-from-it.md)
 - 2026年11月13日 [対局用MCTSは、成りの保留をネットの入力に入れないまま、全部の規則コードで探索する](search-all-rule-codes-in-mcts-without-encoding-deferred-promotion.md)
+- 2026年11月13日 [評価関数を学ぶための自己対局と、学んだネットの判定の対局を、規則セットlishogiで行う](play-self-play-and-judge-trained-networks-under-the-lishogi-rule-set.md)
 - 2026年11月14日 [AlphaZero型探索のネットの強さは、コミットを固定したαβ探索との対局を主に、深さ3のHaChuとの対局を副に測る](measure-zero-networks-against-a-pinned-alphabeta-search-first-and-depth-3-hachu-second.md)
 - 2026年11月14日 [NNUEの教師ファイルは、対局数で決めた塊ごとに確定させ、全塊がそろったら1つのファイルへ組み直す](commit-nnue-teacher-files-in-fixed-game-chunks-and-reassemble-them-into-one-file.md)
 - 2026年11月14日 [NNUEの教師ファイルは、作業機の制御スクリプトが借りた1台に生成させ、止まったら回収済みの塊から別の機械で続ける](generate-teacher-files-on-one-rented-machine-and-continue-from-collected-chunks-on-another.md)
@@ -396,3 +397,4 @@ PSTは駒の種類と升ごとの値の表による評価、FMはFactorization M
 - 2026年11月14日 [NNUEは先読みを使わない探索値だけの教師で、勝率の差の2乗を損失として学ぶ](train-the-nnue-on-search-value-teachers-with-the-squared-win-rate-difference.md)
 - 2026年11月14日 [勝率尺度を重みファイルの1定数とし、NNUEの教師の探索値も既定ではその尺度で勝率へ換算する](convert-nnue-teacher-values-with-the-network-win-rate-scale-by-default.md)
 - 2026年11月14日 [NNUEの学習では、どのパラメータ群にも重み減衰を掛けない](apply-no-weight-decay-to-the-nnue.md)
+- 2026年11月14日 [NNUEの教師の生成では、王手の局面を除き、評価値が傾いた開始局面を捨て、大差が続いた対局を評価値で裁定する](exclude-checks-screen-openings-and-adjudicate-decided-games-in-teacher-generation.md)
