@@ -2,7 +2,6 @@
 
 use common::mnsd;
 use minase_trainer::data::{Outcome, Sample};
-use minase_trainer::nn::BestEpoch;
 mod common;
 
 use std::{
@@ -28,7 +27,7 @@ use minase_trainer::{
     data::Dataset,
     nnue::{
         data::InputFeatureSet,
-        export::{self, QuantizationReport, write_best},
+        export::{self, QuantizationReport, write_completed},
         model::{Checkpoint, Model, Parameter, Progress, Shape},
         reference::{AdamW, AdamWConfig, v0_piece_values},
     },
@@ -103,7 +102,7 @@ impl Fixture {
     }
 
     fn export(&self, checkpoint: &Checkpoint, sample: usize) -> QuantizationReport {
-        write_best(
+        write_completed(
             &self.dataset,
             checkpoint,
             &self.root.join("output"),
@@ -145,11 +144,7 @@ fn checkpoint(set: InputFeatureSet, cp_per_logit: f32, linear_value: f32) -> Che
         model,
         optimizer: AdamW::new(shape, AdamWConfig::default()).unwrap(),
         progress: Progress {
-            epoch: 2,
-            best: Some(BestEpoch {
-                epoch: 2,
-                validation_loss: 0.5,
-            }),
+            completed_superbatches: 2,
             elapsed_seconds: 1.5,
             seed: 71,
             config: minase_trainer::nn::checkpoint::Configuration {
@@ -173,7 +168,7 @@ fn check_network<F: FeatureSet>(bytes: &[u8], values: &[i32; PIECE_STATE_COUNT])
 }
 
 #[test]
-fn both_feature_sets_export_mnue5_without_rewriting_the_best_checkpoint() {
+fn both_feature_sets_export_mnue5_without_rewriting_the_checkpoint() {
     let fixture = Fixture::new(0..80, None);
     for set in [InputFeatureSet::P, InputFeatureSet::HalfKpHmB8] {
         let checkpoint = checkpoint(set, 1000.0, 0.0);
@@ -197,7 +192,7 @@ fn both_feature_sets_export_mnue5_without_rewriting_the_best_checkpoint() {
         assert_eq!(json["split"], "validation");
         assert_eq!(json["passed"], true);
         use sha2::{Digest, Sha256};
-        // export::write_bestの契約に従い、seed=71、epoch=0の
+        // export::write_completedの契約に従い、seed=71、epoch=0の
         // Fisher–Yatesを独立な整数演算で求めた検証集合の選択順。
         let indices: Vec<u8> = [41_u64, 59, 22, 4, 70, 15, 48]
             .into_iter()
@@ -291,12 +286,12 @@ fn the_gate_accepts_cp_per_logit_over_40_exactly_and_reports_a_larger_mean() {
 }
 
 #[test]
-fn export_rejects_empty_samples_and_a_checkpoint_other_than_the_best_epoch() {
+fn export_rejects_empty_samples_and_a_checkpoint_without_completed_superbatches() {
     let fixture = Fixture::new(0..80, None);
     let mut checkpoint = checkpoint(InputFeatureSet::P, 1000.0, 0.0);
     let output = fixture.root.join("output");
     let write = |checkpoint: &Checkpoint, sample| {
-        write_best(
+        write_completed(
             &fixture.dataset,
             checkpoint,
             &output,
@@ -309,13 +304,7 @@ fn export_rejects_empty_samples_and_a_checkpoint_other_than_the_best_epoch() {
         write(&checkpoint, 0),
         Err(export::Error::Invalid(_))
     ));
-    checkpoint.progress.epoch = 3;
-    assert!(matches!(
-        write(&checkpoint, 1),
-        Err(export::Error::Invalid(_))
-    ));
-    checkpoint.progress.epoch = 0;
-    checkpoint.progress.best = None;
+    checkpoint.progress.completed_superbatches = 0;
     assert!(matches!(
         write(&checkpoint, 1),
         Err(export::Error::Invalid(_))
@@ -325,7 +314,7 @@ fn export_rejects_empty_samples_and_a_checkpoint_other_than_the_best_epoch() {
     assert!(empty.dataset.validation_indices().is_empty());
     let checkpoint = self::checkpoint(InputFeatureSet::P, 1000.0, 0.0);
     assert!(matches!(
-        write_best(
+        write_completed(
             &empty.dataset,
             &checkpoint,
             &empty.root.join("output"),
@@ -344,7 +333,7 @@ fn invalid_weights_fail_explicitly_before_exporting() {
     checkpoint.model.parameter_mut(Parameter::OutputBias)[0] = f32::NAN;
     let output = fixture.root.join("output");
     assert!(matches!(
-        write_best(
+        write_completed(
             &fixture.dataset,
             &checkpoint,
             &output,
@@ -443,7 +432,7 @@ fn removal_sign_uses_integer_deltas_recorded_perspective_and_shared_sampling() {
             }
         }
         checkpoint.model.parameter_mut(Parameter::Linear)[6768 * 2..6840 * 2].fill(50.0);
-        let (quantization, report) = write_best(
+        let (quantization, report) = write_completed(
             &fixture.dataset,
             &checkpoint,
             &fixture.root.join("sign-output"),
@@ -465,7 +454,7 @@ fn removal_sign_uses_integer_deltas_recorded_perspective_and_shared_sampling() {
         );
         assert!(quantization.passed);
         // 標本を1局面に縮めると、両検査とも同じ1局面だけを扱う。
-        let (quantization, report) = write_best(
+        let (quantization, report) = write_completed(
             &fixture.dataset,
             &checkpoint,
             &fixture.root.join("sign-output"),
@@ -498,7 +487,7 @@ fn removal_sign_rejects_royals_only_and_zero_reference_denominators() {
         let fixture = sign_fixture(&[position]);
         let checkpoint = checkpoint(InputFeatureSet::P, 1000.0, 0.0);
         assert!(matches!(
-            write_best(
+            write_completed(
                 &fixture.dataset,
                 &checkpoint,
                 &fixture.root.join("output"),
@@ -530,7 +519,7 @@ fn removal_sign_counts_quantized_zero_as_no_reversal_and_excludes_zero_reference
     for set in [InputFeatureSet::P, InputFeatureSet::HalfKpHmB8] {
         // -1/16 cpは尺度8の偶数丸めで0。実数では反転するが整数差分は0。
         let checkpoint = checkpoint(set, 1000.0, -1.0 / 16.0);
-        let (_, report) = write_best(
+        let (_, report) = write_completed(
             &fixture.dataset,
             &checkpoint,
             &fixture.root.join("output"),

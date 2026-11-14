@@ -2,7 +2,6 @@
 #[path = "common/checkpoint.rs"]
 #[allow(dead_code)]
 mod checkpoint_contract;
-use minase_trainer::nn::BestEpoch;
 mod common;
 use common::*;
 use minase::eval::nnue::{
@@ -417,11 +416,7 @@ fn checkpoint_round_trip_restores_next_update_and_rejects_corruption_and_config_
             model,
             optimizer,
             progress: Progress {
-                epoch: 4,
-                best: Some(BestEpoch {
-                    epoch: 3,
-                    validation_loss: 0.4,
-                }),
+                completed_superbatches: 4,
                 elapsed_seconds: 123.5,
                 seed: 71,
                 config: minase_trainer::nn::checkpoint::Configuration {
@@ -560,8 +555,7 @@ fn checkpoint_rejects_the_removed_penalty_scalar() {
         model,
         lambda: 1.0,
         progress: Progress {
-            epoch: 0,
-            best: None,
+            completed_superbatches: 0,
             elapsed_seconds: 0.0,
             seed: 71,
             config: minase_trainer::nn::checkpoint::Configuration {

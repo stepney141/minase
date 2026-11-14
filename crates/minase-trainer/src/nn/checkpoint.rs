@@ -175,7 +175,7 @@ impl Configuration {
     }
 }
 
-/// 4種の学習器が`meta`へ保存する進捗と再開条件。
+/// PST、FMと同時学習の学習器が`meta`へ保存する進捗と再開条件。
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Progress {
     /// 最後に完了したエポック。
@@ -212,19 +212,23 @@ impl Progress {
 }
 
 #[derive(Serialize, Deserialize)]
-struct Meta {
+struct Meta<P> {
     kind: String,
     #[serde(flatten)]
-    progress: Progress,
+    progress: P,
 }
 
 pub(crate) struct Writer(Vec<(String, Array)>);
 impl Writer {
     pub(crate) fn new(kind: &str, progress: &Progress) -> Result<Self> {
         progress.validate()?;
+        Self::with_metadata(kind, progress)
+    }
+    /// 学習器専用の進捗を、配列の形式を変えずに保存する。
+    pub(crate) fn with_metadata<P: Serialize>(kind: &str, progress: &P) -> Result<Self> {
         let data = serde_json::to_vec(&Meta {
             kind: kind.into(),
-            progress: progress.clone(),
+            progress,
         })
         .map_err(|_| Error::Format("checkpoint meta JSON"))?;
         Ok(Self(vec![(
@@ -278,6 +282,15 @@ impl Writer {
 pub(crate) struct Reader(BTreeMap<String, Array>);
 impl Reader {
     pub(crate) fn new(bytes: &[u8], kind: &str) -> Result<(Self, Progress)> {
+        let (reader, progress): (_, Progress) = Self::with_metadata(bytes, kind)?;
+        progress.validate()?;
+        Ok((reader, progress))
+    }
+    /// 学習器専用の進捗を読み、共通の種別と配列の形状を検査する。
+    pub(crate) fn with_metadata<P: serde::de::DeserializeOwned>(
+        bytes: &[u8],
+        kind: &str,
+    ) -> Result<(Self, P)> {
         let mut reader = Self(npz::decode(bytes)?);
         let meta = reader
             .0
@@ -286,12 +299,11 @@ impl Reader {
         if meta.dtype != "|u1" || meta.shape != [meta.data.len()] {
             return Err(Error::Format("checkpoint meta dtype or shape"));
         }
-        let meta: Meta = serde_json::from_slice(&meta.data)
+        let meta: Meta<P> = serde_json::from_slice(&meta.data)
             .map_err(|_| Error::Format("checkpoint meta JSON"))?;
         if meta.kind != kind {
             return Err(Error::Format("checkpoint kind mismatch"));
         }
-        meta.progress.validate()?;
         Ok((reader, meta.progress))
     }
     fn take(&mut self, name: &str, dtype: &str, shape: &[usize]) -> Result<Array> {

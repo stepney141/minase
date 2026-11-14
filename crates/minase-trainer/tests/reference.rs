@@ -56,7 +56,7 @@ fn nonzero_model_with_head(set: InputFeatureSet, head: HeadKind) -> Model {
     result
 }
 
-// 独立な損失の定義: ネット全体をf64で再評価し、二値交差エントロピーを求める。
+// 独立な損失の定義: ネット全体をf64で再評価し、勝率の差の2乗を求める。
 fn dense_loss(model: &Model, batch: &BatchSlot) -> f64 {
     let width = model.shape().width();
     let table = model.expanded_first_layer();
@@ -157,7 +157,7 @@ fn dense_loss(model: &Model, batch: &BatchSlot) -> f64 {
     let mut loss = 0.0;
     for (b, &target) in targets.iter().enumerate() {
         let before = value(b);
-        loss += before.max(0.0) - before * f64::from(target) + (-before.abs()).exp().ln_1p();
+        loss += (1.0 / (1.0 + (-before).exp()) - f64::from(target)).powi(2);
     }
     loss / batch.len() as f64
 }
@@ -175,7 +175,7 @@ fn finite_differences_cover_all_parameter_groups() {
                 &build_targets(&batch, &[700.0], &[1.0]).unwrap(),
             )
             .unwrap();
-            close(gradients.losses.bce, dense_loss(&model, &batch), 3e-5);
+            close(gradients.losses.loss, dense_loss(&model, &batch), 3e-5);
             for p in Parameter::ALL {
                 let indices: Vec<usize> = match p {
                     Parameter::Linear => {
@@ -770,7 +770,7 @@ fn cpu_threads_preserve_every_loss_gradient_parameter_and_moment_bit_for_three_u
                 let actual =
                     reference::loss_and_gradients_parallel(model, &batch, &targets, *threads)
                         .unwrap();
-                assert_eq!(actual.losses.bce.to_bits(), expected.losses.bce.to_bits());
+                assert_eq!(actual.losses.loss.to_bits(), expected.losses.loss.to_bits());
                 assert_parameter_bits(&actual.parameters, &expected.parameters);
                 optimizer
                     .update_parallel(model, &actual.parameters, *threads, 1.0)
@@ -808,4 +808,28 @@ fn cpu_rejects_zero_threads_without_changing_state() {
     );
     assert_eq!(model, unchanged);
     assert_eq!(optimizer, before);
+}
+
+#[test]
+fn squared_probability_loss_and_logit_gradient_match_hand_computed_values() {
+    let fixture = Fixture::new(&positions());
+    for set in [InputFeatureSet::P, InputFeatureSet::HalfKpHmB8] {
+        let batch = fixture.batch(set, &[0, 1, 2]);
+        let mut model = model(set, 4);
+        for parameter in Parameter::ALL {
+            model.parameter_mut(parameter).fill(0.0);
+        }
+        let forward =
+            reference::forward(&model, &batch, &reference::fold(&model).unwrap()).unwrap();
+        let output =
+            reference::output_backward(&model, &batch, &forward, &[0.0, 0.5, 1.0]).unwrap();
+        // z=0ならp=1/2。損失は1/4,0,1/4、勾配は各々(1/4,0,-1/4)/3である。
+        assert_eq!(output.loss, [0.25, 0.0, 0.25]);
+        assert_eq!(output.g, [0.25 / 3.0, 0.0, -0.25 / 3.0]);
+        let gradients = reference::loss_and_gradients(&model, &batch, &[0.0, 0.5, 1.0]).unwrap();
+        close(gradients.losses.loss, 1.0 / 6.0, 1e-12);
+        let validation =
+            reference::validation_forward(&model, &batch, &forward, &[0.0, 0.5, 1.0]).unwrap();
+        close(validation.loss(), 1.0 / 6.0, 1e-12);
+    }
 }

@@ -19,7 +19,7 @@ pub struct Evaluation {
     pub forward: Forward,
     /// 出力部の局面ごとの寄与。oとW1は共有を畳み込んだCPU参照と同じ配置。
     pub output: Output,
-    /// バッチ平均の二値交差エントロピー。
+    /// バッチ平均の勝率の差の2乗。
     pub losses: Losses,
     /// 第1層の勾配`[R,H]`。埋め草行を含む。
     pub first_layer: Vec<f32>,
@@ -393,7 +393,7 @@ impl Evaluator {
                 c: pairs(read(&self.device, &b.c, n * 2)?),
             },
             losses: Losses {
-                bce: losses[0] / n as f64,
+                loss: losses[0] / n as f64,
             },
             first_layer: read(
                 &self.device,

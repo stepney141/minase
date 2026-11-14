@@ -8,7 +8,7 @@ use crate::nnue::{
 /// 非線形出力はセンチポーン単位である。
 #[derive(Clone, Debug, PartialEq)]
 pub struct Validation {
-    /// 局面ごとのBCEの和。
+    /// 局面ごとのlossの和。
     pub loss_sum: f64,
     /// 引き分けを除き、勝敗とロジットの正負が一致した局面数。
     pub correct: u64,
@@ -44,7 +44,7 @@ pub struct Validation {
     pub pairwise_products: usize,
 }
 impl Validation {
-    /// バッチ平均のBCE。
+    /// バッチ平均のloss。
     pub fn loss(&self) -> f64 {
         self.loss_sum / self.positions as f64
     }
@@ -85,7 +85,7 @@ impl Validation {
         self.pairwise_positive as f64 / self.pairwise_products as f64
     }
     /// CPUとCUDAで共通の12列。
-    /// BCE和、一致数、勝敗局面数、非線形cp和、二乗和、acc≤0数、acc≥1数、
+    /// loss和、一致数、勝敗局面数、非線形cp和、二乗和、acc≤0数、acc≥1数、
     /// z≤0数、z≥1数、a≤0数、a≥1数、要素積の両因子が正の個数の順。
     pub(crate) fn from_sums(sums: &[f64; 12], positions: usize, width: usize) -> Self {
         Self {
@@ -126,7 +126,7 @@ impl Validation {
     }
 }
 
-/// 検証用の二値交差エントロピー、勝敗一致数、非線形出力と飽和数を集める。
+/// 検証用の勝率の差の2乗、勝敗一致数、非線形出力と飽和数を集める。
 /// 符号0は勝ち予測に含めず、引き分けを一致率の分母から除く。
 pub fn validation_forward(
     model: &Model,
@@ -148,7 +148,8 @@ pub fn validation_forward(
     let mut sums = [0.0; 12];
     for (b, &target) in targets.iter().enumerate() {
         let x = logit(model, batch, f, b);
-        sums[0] += f64::from(x.max(0.0) - x * target + (-x.abs()).exp().ln_1p());
+        let difference = 1.0 / (1.0 + (-x).exp()) - target;
+        sums[0] += f64::from(difference * difference);
         if batch.outcomes()[b] != 1 {
             sums[1] += u8::from((x > 0.0) == (batch.outcomes()[b] == 2)) as f64;
             sums[2] += 1.0;

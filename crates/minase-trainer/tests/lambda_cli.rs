@@ -104,6 +104,12 @@ fn teacher_commands_require_lambda_and_cli_rejects_missing_or_invalid_values() {
             "calibrate",
             "--output-dir",
             "unused",
+            "--superbatches",
+            "1",
+            "--validation-superbatches",
+            "1",
+            "--lr-schedule",
+            "constant:1",
         ],
         &[
             "nnue",
@@ -162,7 +168,7 @@ fn teacher_commands_require_lambda_and_cli_rejects_missing_or_invalid_values() {
 }
 
 #[test]
-fn training_and_pst_comparison_require_an_explicit_teacher_scale_source() {
+fn pst_fm_joint_and_pst_comparison_require_an_explicit_teacher_scale_source() {
     let commands: &[&[&str]] = &[
         &[
             "pst",
@@ -215,20 +221,6 @@ fn training_and_pst_comparison_require_an_explicit_teacher_scale_source() {
             "1",
         ],
         &[
-            "nnue",
-            "train",
-            "--feature-set",
-            "P",
-            "--width",
-            "8",
-            "--data",
-            "missing.mnsd",
-            "--base",
-            "missing.bin",
-            "--output-dir",
-            "unused",
-        ],
-        &[
             "diag",
             "pst-compare",
             "--data",
@@ -265,8 +257,7 @@ fn training_and_pst_comparison_require_an_explicit_teacher_scale_source() {
     check::<pst::Args>(&commands[0][2..]);
     check::<fm::Args>(&commands[1][2..]);
     check::<joint::Args>(&commands[2][2..]);
-    check::<nnue::train::Args>(&commands[3][2..]);
-    check::<diagnostics::PstCompareArgs>(&commands[4][2..]);
+    check::<diagnostics::PstCompareArgs>(&commands[3][2..]);
     for args in commands {
         let output = Command::new(env!("CARGO_BIN_EXE_minase-trainer"))
             .args(*args)

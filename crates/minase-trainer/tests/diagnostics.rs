@@ -149,8 +149,7 @@ impl Fixture {
             model,
             lambda: 1.0,
             progress: Progress {
-                epoch: 0,
-                best: None,
+                completed_superbatches: 0,
                 elapsed_seconds: 0.0,
                 seed: 1,
                 config: minase_trainer::nn::checkpoint::Configuration {

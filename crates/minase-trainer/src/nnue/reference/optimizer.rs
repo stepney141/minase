@@ -12,7 +12,7 @@ use minase::eval::features::FEATURE_COUNT;
 use serde::Serialize;
 
 /// 線形、第1層、出力部の3群の基準係数。
-/// 既定値は線形が学習率0.03と重み減衰0、第1層と出力部が学習率10⁻³と重み減衰10⁻⁴である。
+/// 既定値は線形が学習率0.03と重み減衰0、第1層と出力部が学習率10⁻³と重み減衰0である。
 #[derive(Clone, Copy, Debug, PartialEq, Serialize)]
 pub struct AdamWConfig {
     /// 線形正準行。
@@ -31,11 +31,11 @@ impl Default for AdamWConfig {
             },
             ft: AdamWGroup {
                 lr: 1e-3,
-                weight_decay: 1e-4,
+                weight_decay: 0.0,
             },
             head: AdamWGroup {
                 lr: 1e-3,
-                weight_decay: 1e-4,
+                weight_decay: 0.0,
             },
         }
     }

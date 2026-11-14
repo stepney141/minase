@@ -293,7 +293,7 @@ impl StepResult {
         }
         Ok(StepMetrics {
             losses: Losses {
-                bce: values[0] / self.batch_len as f64,
+                loss: values[0] / self.batch_len as f64,
             },
             compute_ms: self.readback.start.elapsed_ms(&self.readback.end)?,
             target_transfer_ms: self

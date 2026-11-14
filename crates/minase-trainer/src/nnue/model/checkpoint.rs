@@ -1,5 +1,5 @@
 //! NNUE学習器の無圧縮NPZチェックポイント。
-//! `latest.npz`と`best.npz`は次の配列を持ち、余分・欠落・型や形状の違いを拒否する。
+//! `latest.npz`は次の配列を持ち、余分・欠落・型や形状の違いを拒否する。
 //! Hは幅、Rは第1層の行数、Vは仮想行数で、いずれも埋め草を含む。
 //! Bはバイアスの独立な個数（P型H/2、HalfKP型H）、Uは視点ごとの出力の独立な個数（B/2）である。
 //! `weights`、`m`、`v`の各接頭辞で、次の11区画をf32の行優先で保存する。
@@ -22,15 +22,14 @@
 //! 最適化器の3群の学習率と重み減衰、およびJSONの進捗も保存する。
 //! `head`はu64の0であり、pairwise-l16-l32を表す。区画の欠落と余分を拒否する。
 //! 配列名の`m`は1次モーメント、`v`は2次モーメントを表す。
-//! `meta`は`kind = "nnue"`、`epoch`、`best`、`elapsed_seconds`、`seed`、`config`を持つ。
-//! `best`は`{epoch, validation_loss}`で更新前はnull。時間は秒である。
+//! `meta`は`kind = "nnue"`、`completed_superbatches`、`elapsed_seconds`、`seed`、`config`を持つ。
+//! 時間は秒であり、更新回数は最適化器の`step`で保存する。
 //! `config`は`config.json`の`settings`、`inputs`、`preprocessing`をそのまま保持する。
 //! GPUの状態は学習バックエンドのスナップショットでホストへ集めてから保存する。
 
 use super::{
     Error, FIRST_LAYER_WEIGHT_LIMIT, HeadKind, Masks, Model, Parameter, Parameters, Result, Shape,
 };
-pub use crate::nn::checkpoint::Progress;
 use crate::nn::{
     AdamWGroup,
     checkpoint::{Configuration, Reader, Writer},
@@ -39,7 +38,30 @@ use crate::nnue::{
     data::InputFeatureSet,
     reference::{AdamW, AdamWConfig},
 };
+use serde::{Deserialize, Serialize};
 use std::path::Path;
+
+/// NNUE専用の確定済み進捗。更新回数との一致は再開時に検査する。
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Progress {
+    /// 保存を完了したsuperbatchの数。
+    pub completed_superbatches: u64,
+    /// 再開前を含む累積秒数。
+    pub elapsed_seconds: f64,
+    /// 初期化と周ごとの並べ替えのシード。
+    pub seed: u64,
+    /// 再開時に照合する設定、入力、前処理結果。
+    pub config: Configuration,
+}
+impl Progress {
+    fn validate(&self) -> Result<()> {
+        if !self.elapsed_seconds.is_finite() || self.elapsed_seconds < 0.0 {
+            return Err(Error::Invalid("elapsed time"));
+        }
+        Ok(())
+    }
+}
 
 /// パラメータ、固定行の初期値とマスク、AdamWの状態、進捗を保存する。
 /// 配列の配置はこのモジュールの表に定める。
@@ -108,7 +130,7 @@ impl Checkpoint {
     pub fn encode(&self) -> Result<Vec<u8>> {
         self.validate()?;
         let shape = self.model.shape();
-        let mut w = Writer::new("nnue", &self.progress)?;
+        let mut w = Writer::with_metadata("nnue", &self.progress)?;
         w.scalar("head", shape.head() as u64);
         w.scalar("width", shape.width() as u64);
         w.scalar(
@@ -165,7 +187,14 @@ impl Checkpoint {
 
     /// 種別、配列の集合・型・形状、有限性、マスク、初期値と進捗を検査する。
     pub fn decode(bytes: &[u8]) -> Result<Self> {
-        let (mut r, progress) = Reader::new(bytes, "nnue")?;
+        let (mut r, metadata): (_, serde_json::Value) = Reader::with_metadata(bytes, "nnue")?;
+        if metadata.get("epoch").is_some() || metadata.get("best").is_some() {
+            return Err(Error::Format(
+                "old NNUE checkpoint format: epoch/best progress is no longer supported",
+            ));
+        }
+        let progress: Progress = serde_json::from_value(metadata)
+            .map_err(|_| Error::Format("NNUE checkpoint progress JSON"))?;
         let width = usize::try_from(r.scalar::<u64>("width")?)
             .map_err(|_| Error::Format("checkpoint width"))?;
         let set = match r.scalar::<u64>("feature_set")? {
@@ -244,7 +273,7 @@ impl Checkpoint {
     }
     /// 再開前に設定、入力、前処理結果を照合する。
     pub fn check_config(&self, config: &Configuration) -> Result<()> {
-        Ok(self.progress.check_config(config)?)
+        Ok(self.progress.config.check(config)?)
     }
 }
 fn dimensions(shape: Shape, parameter: Parameter) -> Vec<usize> {

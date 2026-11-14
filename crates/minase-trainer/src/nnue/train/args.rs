@@ -9,17 +9,7 @@ use crate::{
     },
 };
 use serde::Serialize;
-use std::path::PathBuf;
-
-/// `nnue.bin`へ書き出す、完了済みエポックの選び方。
-#[derive(Clone, Copy, Debug, PartialEq, Eq, clap::ValueEnum, Serialize)]
-#[serde(rename_all = "lowercase")]
-pub enum ExportEpoch {
-    /// 検証損失が最良のエポックを`best.npz`から書き出す。
-    Best,
-    /// 最後に検証と保存を終えたエポックを`latest.npz`から書き出す。
-    Last,
-}
+use std::{num::NonZeroU64, path::PathBuf};
 
 /// 学習の入力、係数と実行条件。
 #[derive(Clone, Debug, clap::Args, Serialize)]
@@ -41,9 +31,8 @@ pub struct Args {
     #[command(flatten)]
     #[serde(flatten)]
     pub training: TrainingOptions,
-    /// 更新ごとに学習率へ掛ける倍率。constant:<c>、exponential:<半減期エポック>:<下限>、cosine:<総長エポック>:<下限>。
-    /// 既定値は`cosine:3:0.1`で、総長3エポック、倍率の下限0.1とする。
-    #[arg(long, default_value = "cosine:3:0.1", value_parser = clap::value_parser!(LrSchedule))]
+    /// 更新ごとに学習率へ掛ける倍率。constant:<c>、exponential:<半減期superbatch>:<下限>、cosine:<総長superbatch>:<下限>。
+    #[arg(long, value_parser = clap::value_parser!(LrSchedule))]
     pub lr_schedule: LrSchedule,
     /// 入力の特徴集合を指定する。
     #[arg(long, value_enum)]
@@ -62,9 +51,9 @@ pub struct Args {
     #[arg(long, value_name = "SPEC")]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub train_subsample: Option<crate::data::TrainSubsample>,
-    /// 教師の勝率尺度をcalibrateで推定するか、較正JSONのパスで指定する。
+    /// 教師の勝率尺度をcalibrateで推定するか、較正JSONのパスで指定する。省略時はbaseの尺度を使う。
     #[arg(long, value_name = "calibrate|FILE")]
-    pub teacher_cp_per_logit: crate::data::TeacherCpPerLogitSource,
+    pub teacher_cp_per_logit: Option<crate::data::TeacherCpPerLogitSource>,
     /// 線形初期値に使う探索用駒価値、勝率尺度（1ロジットあたりのcp）、規則セット名を持つMNUEファイルを指定する。
     #[arg(long)]
     pub base: PathBuf,
@@ -80,16 +69,15 @@ pub struct Args {
     /// 1更新の最大局面数を指定する。末尾のバッチは指定数より少なくてもよい。
     #[arg(long, default_value_t = 16_384)]
     pub batch: usize,
-    /// 再開前の完了分を含むエポック数の上限を1以上50以下で指定する。
-    #[arg(long, default_value_t = 50)]
-    pub epochs: u64,
-    /// 改善しないエポックが指定数だけ連続して完了したら停止する。
-    #[arg(long, default_value_t = 5)]
-    pub patience: u64,
-    /// nnue.binへ書き出すエポックを選ぶ。bestはbest.npz、lastはlatest.npzを使う。
-    /// best.npzは常に検証損失が最良のモデルを保存する。再開時に変更できる。
-    #[arg(long, value_enum, default_value = "best")]
-    pub export_epoch: ExportEpoch,
+    /// 再開前の完了分を含むsuperbatch数を1以上で指定する。
+    #[arg(long)]
+    pub superbatches: NonZeroU64,
+    /// 1 superbatchの更新回数を1以上で指定する。
+    #[arg(long, default_value = "6104")]
+    pub batches_per_superbatch: NonZeroU64,
+    /// 全検証集合を評価するsuperbatchの間隔を1以上で指定する。学習の最後にも評価する。
+    #[arg(long)]
+    pub validation_superbatches: NonZeroU64,
     /// 初期化、順列作成、検証標本抽出の乱数シードを指定する。
     #[arg(long, default_value_t = 1)]
     pub seed: u64,
@@ -99,9 +87,6 @@ pub struct Args {
     /// 量子化誤差の検査に使う検証局面数の上限を指定する。
     #[arg(long, default_value_t = 10_000)]
     pub validation_sample: usize,
-    /// 指定した更新回数ごとに検証集合全体を評価して`validation-interval.jsonl`へ記録する。0は無効。
-    #[arg(long, default_value_t = 0)]
-    pub validation_interval: u64,
     /// バッチ供給とCPU更新のスレッド数を指定する。省略時は物理コア数から2を引き、最小値を1とする。
     #[arg(long)]
     pub threads: Option<usize>,
@@ -147,14 +132,11 @@ impl Args {
                 Error::Invalid("--batch exceeds the reverse-index capacity or is zero").into(),
             );
         }
-        if !(1..=50).contains(&self.epochs) {
-            return Err(Error::Invalid("--epochs must be in 1..=50").into());
-        }
-        if self.patience == 0 || self.validation_sample == 0 || self.threads == Some(0) {
-            return Err(Error::Invalid(
-                "--patience, --validation-sample and --threads must be positive",
-            )
-            .into());
+        self.planned_steps()?;
+        if self.validation_sample == 0 || self.threads == Some(0) {
+            return Err(
+                Error::Invalid("--validation-sample and --threads must be positive").into(),
+            );
         }
         if !self.time_limit_hours.is_finite()
             || !(0.0 < self.time_limit_hours && self.time_limit_hours <= 24.0)
@@ -163,6 +145,16 @@ impl Args {
         }
         self.lookahead()?;
         Ok(())
+    }
+
+    /// 更新予算の積を、桁あふれを拒否して求める。
+    pub fn planned_steps(&self) -> Result<u64> {
+        self.superbatches
+            .get()
+            .checked_mul(self.batches_per_superbatch.get())
+            .ok_or_else(|| {
+                Error::Invalid("--superbatches times --batches-per-superbatch exceeds u64").into()
+            })
     }
 
     pub(super) fn lookahead(&self) -> Result<Option<Lookahead>> {

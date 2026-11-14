@@ -1,7 +1,7 @@
 //! NNUEの前進、後退、および更新のCPU参照計算。
 //! 配列は局面、視点、ユニットの順で行優先とし、Bは局面数、Hは展開後の幅である。
 //! Uは視点ごとの独立な出力重みの数で、P型ではH/4、HalfKPではH/2である。
-//! BCEは二値交差エントロピーを表す。
+//! lossは勝率の差の2乗を表す。
 //! 処理番号は1が[`forward`]、2が[`output_backward`]、3が[`reduce_partials`]、4が[`first_layer_backward`]である。
 //! 続いて5が[`linear_backward`]、6が[`reduce_virtual`]、7が[`AdamW::update`]、8が[`validation_forward`]である。
 //! 前進と出力部はGPUと同じ加算順のf32で計算し、後退の積と縮約はf64で計算する。
@@ -53,9 +53,9 @@ pub struct Output {
     pub f: Vec<f32>,
     /// ロジット`[B]`。
     pub logits: Vec<f32>,
-    /// 局面ごとの二値交差エントロピー`[B]`。バッチ平均前。
+    /// 局面ごとの勝率の差の2乗`[B]`。バッチ平均前。
     pub loss: Vec<f32>,
-    /// バッチ平均BCEのロジット微分g`[B]`。
+    /// バッチ平均lossのロジット微分g`[B]`。
     pub g: Vec<f32>,
     /// 累算値への寄与`[B, 2, H]`。
     pub d_acc: Vec<f32>,
@@ -109,12 +109,12 @@ impl Output {
 /// [`reduce_partials`]で得たバッチ平均の損失。
 #[derive(Clone, Copy, Debug)]
 pub struct Losses {
-    /// 二値交差エントロピー。
-    pub bce: f64,
+    /// 勝率の差の2乗。
+    pub loss: f64,
 }
 /// 1バッチの参照計算。パラメータは変更しない。
 pub struct Gradients {
-    /// 二値交差エントロピー。
+    /// 勝率の差の2乗。
     pub losses: Losses,
     /// 全パラメータの勾配。
     pub parameters: Parameters,
@@ -358,8 +358,8 @@ pub(crate) fn evaluate_f64_with_weights(
     Ok(values)
 }
 
-/// 出力と二値交差エントロピー、および後退の局面ごとの寄与を求める。
-/// ロジットxと教師値tに対し、`g = (σ(x)−t)/B`と`loss = max(x,0)−x×t+log1p(exp(−|x|))`をf32で計算する。
+/// 出力と勝率の差の2乗、および後退の局面ごとの寄与を求める。
+/// ロジットxと教師値tに対し、`p = σ(x)`、`g = 2(p−t)p(1−p)/B`と`loss = (p−t)²`をf32で計算する。
 /// 線形係数は`c = g×u/cp_per_logit`である。
 /// 線形の経路だけを位相で重み付けし、出力部は要素積と2段の隠れ層の連鎖律に従う。
 /// clipped ReLUの微分は0≤z≤1で1、範囲外で0とする。
@@ -419,10 +419,12 @@ fn output_backward_parallel(
             let x = (phi[0] * forward.lin[b][0] + phi[1] * forward.lin[b][1])
                 / shape.cp_per_logit()
                 + head.value;
-            let g = (1.0 / (1.0 + (-x).exp()) - targets[b]) / n as f32;
+            let probability = 1.0 / (1.0 + (-x).exp());
+            let difference = probability - targets[b];
+            let g = 2.0 * difference * probability * (1.0 - probability) / n as f32;
             result.logits[local] = x;
             result.g[local] = g;
-            result.loss[local] = x.max(0.0) - x * targets[b] + (-x.abs()).exp().ln_1p();
+            result.loss[local] = difference * difference;
             result.f[local * inputs..(local + 1) * inputs].copy_from_slice(&head.f);
             for (e, &weight) in phi.iter().enumerate() {
                 result.c[local][e] = g * weight / shape.cp_per_logit();
@@ -547,7 +549,7 @@ pub fn reduce_partials(
         }
     }
     Ok(Losses {
-        bce: output.loss.iter().map(|&v| f64::from(v)).sum::<f64>() / n as f64,
+        loss: output.loss.iter().map(|&v| f64::from(v)).sum::<f64>() / n as f64,
     })
 }
 
@@ -714,7 +716,7 @@ pub fn loss_and_gradients_parallel(
     linear_backward_parallel(model, batch, &output, &mut parameters, threads)?;
     reduce_virtual_parallel(&mut parameters, threads)?;
     parameters.validate()?;
-    if !losses.bce.is_finite() {
+    if !losses.loss.is_finite() {
         return Err(Error::Invalid("non-finite loss"));
     }
     Ok(Gradients { losses, parameters })
