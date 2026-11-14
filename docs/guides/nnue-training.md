@@ -20,9 +20,10 @@
 
 ## 標準レシピ
 
-2026年11月6日時点の暫定の標準であり、[世代反復](../plans/archived/nnue-generation-reset.md)の第2世代の学習と同じ条件である。
-世代反復の第2世代の教師での比較を受けて見直している。
-世代反復では、`scripts/vast/generation_chain.py`がこの手順を続けて実行する。
+本節の手順は、[標準レシピv1の設計書](../plans/nnue-standard-recipe.md)が対局で決めた標準レシピv1である。
+前の世代のネットで教師を生成して次の世代のネットを学ぶ世代反復では、`scripts/vast/generation_chain.py`がこの手順を続けて実行する。
+設計書は、学習の長さをsuperbatch（約1億局面分の更新）で64と定め、最後のネットを書き出す形に学習器を改めると決めている。
+学習器を改めるまでは、下のコマンドのとおり、検証損失が5エポック改善しなければ止め、検証損失が最良のネットを書き出す。
 
 **コマンド**
 
@@ -33,20 +34,17 @@ minase-trainer nnue train \
   --lambda 1.0 --teacher-cp-per-logit calibrate \
   --feature-set P --width 256 --head pairwise-l16-l32 \
   --batch 16384 --lr-schedule cosine:3:0.1 --epochs 50 --patience 5 \
-  --seed 1 --device cuda --validation-interval 1000 --threads <スレッド数>
+  --seed 1 --device cuda --validation-interval 0 --threads <スレッド数>
 
 # 診断
 minase-trainer diag nnue-removal \
   --float <学習の出力>/best.npz --net <学習の出力>/nnue.bin \
   --data <教師...> --sample 10000 --seed 1 --output <新規の報告.json>
-
-# 補正
-minase-trainer nnue fit-linear --base <学習の出力>/nnue.bin \
-  --data <教師...> --tau 10 20 40 80 --seed 20261105 --threads 12 --output-dir <新規または空のディレクトリ>
 ```
 
+- `--data`には、その世代の教師だけを指定する。
 - `--threads`の実績は、作業機（RTX 3060 Ti）で4、生成機（RTX 5090）で32である。
-- 補正で出力された`nnue.bin`をエンジンに埋め込む。
+- 学習で出力された`nnue.bin`をエンジンに埋め込む。
 - 診断は駒除去差分だけを示した。採否の測定の前に、[残りの2つの診断](#学習した重みを診断する)も行う。
 
 **止める条件**
@@ -55,7 +53,6 @@ minase-trainer nnue fit-linear --base <学習の出力>/nnue.bin \
 |---|---|
 | 学習 | `summary.json`の`status`が`candidate`でない。 |
 | 診断 | 終了コードが0以外である。 |
-| 補正 | `decision.d`が負でない。 |
 | 埋め込みの後 | 深さ5の`bench`（USIの独自コマンド）が完走しない。 |
 
 ## 手順
@@ -67,8 +64,7 @@ minase-trainer nnue fit-linear --base <学習の出力>/nnue.bin \
 3. [学習する](#学習する)
 4. [結果を確認する](#結果を確認する)
 5. [学習した重みを診断する](#学習した重みを診断する)
-6. [線形の経路を対局結果で補正する](#線形の経路を対局結果で補正する)
-7. [採否を測定して記録する](#採否を測定して記録する)
+6. [採否を測定して記録する](#採否を測定して記録する)
 
 ### 学習データと初期値を用意する
 
@@ -221,25 +217,6 @@ minase-trainer diag nnue-moves \
 - `--positions`には、ヘッダの規則セットが`JCSA`（L0,P0,R1,E0）と同じ規則であるMNSDを指定する。由来が合成のMNSDも指定できる。
 - 片方のモデルにしかない合法手があると、`error`を含む報告を保存して終了コード1で終わる。規則か局面の復元の不一致として調べる。
 
-### 線形の経路を対局結果で補正する
-
-学習したネットは教師の探索値に合わせて学ぶので、対局結果に現れる配置や駒の損得の情報を持たない。
-`nnue fit-linear`は、第1層と出力部を固定し、線形の経路の序中盤の列を対局結果へのロジスティック回帰（Texel tuningと同種）で補正する。
-
-```sh
-minase-trainer nnue fit-linear --base <出力ディレクトリ>/nnue.bin \
-  --data <学習に使ったデータ...> --tau 10 20 40 80 --seed <シード> \
-  --output-dir <新規のディレクトリ>
-```
-
-- CPUだけで動き、`--output-dir`に補正後の`nnue.bin`と`summary.json`を書く。
-- 教師30ファイルで約2分（幅256、`--threads 8`）、最大常駐メモリは約3.3 GBである。
-- `summary.json`の`decision.d`（値D）は、検証分割の対局で補正ありの損失から補正なしの損失を引いた値である。負なら補正で損失が下がっている。
-- Dの95%区間は、`decision.games`から対局単位のブートストラップで求める（例は[`fit_report.py`](../measurements/nnue-outcome-regression/nnue-outcome-regression-fit/fit_report.py)）。上限が0未満なら予測の改善を確認できる。
-- 補正は`--base`のネットに対して求めるので、ネットを学び直したら求め直す。
-- Dと補正の大きさは、教師や`--lambda`を変えたときに残る偏りの目安になる。
-- 式と局面の選び方は`crates/minase-trainer/src/nnue/fit_linear/mod.rs`に、方式の理由は[ADR](../adr/correct-the-nnue-linear-path-by-regressing-on-game-outcomes.md)にある。
-
 ### 採否を測定して記録する
 
 - 基準コミットから候補ブランチを作り、`nnue.bin`を候補の`crates/minase/nets/nnue.bin`へコピーする。
@@ -279,6 +256,25 @@ minase-trainer nnue fit-linear --base <出力ディレクトリ>/nnue.bin \
 
 - 一時ファイルは`<scratch-dir>/nnue-<UNIX秒>-<プロセスID>-<連番>/`に作られ、正常終了時と、学習器が捕捉した異常終了時に消える。
 - 強制終了や電源断で残ったものは、再開にも別の学習にも使えない。`lock`のプロセスIDが`ps -p <ID>`で実行中でないことを確かめてから、ディレクトリごと`rm -r`で消す。
+
+### 線形の経路を対局結果で補正する
+
+`nnue fit-linear`は標準レシピでは使わず、教師や`--lambda`を変えたときに残る偏りを調べるときに使う。
+このコマンドは、学習したネットの第1層と出力部を固定し、線形の経路の序中盤の列を対局結果へのロジスティック回帰（Texel tuningと同種）で補正する。
+
+```sh
+minase-trainer nnue fit-linear --base <出力ディレクトリ>/nnue.bin \
+  --data <学習に使ったデータ...> --tau 10 20 40 80 --seed <シード> \
+  --output-dir <新規のディレクトリ>
+```
+
+- CPUだけで動き、`--output-dir`に補正後の`nnue.bin`と`summary.json`を書く。
+- 教師30ファイルで約2分（幅256、`--threads 8`）、最大常駐メモリは約3.3 GBである。
+- `summary.json`の`decision.d`（値D）は、検証分割の対局で補正ありの損失から補正なしの損失を引いた値である。負なら補正で損失が下がっている。
+- Dの95%区間は、`decision.games`から対局単位のブートストラップで求める（例は[`fit_report.py`](../measurements/nnue-outcome-regression/nnue-outcome-regression-fit/fit_report.py)）。上限が0未満なら予測の改善を確認できる。
+- 補正は`--base`のネットに対して求めるので、ネットを学び直したら求め直す。
+- Dと補正の大きさは、教師や`--lambda`を変えたときに残る偏りの目安になる。
+- 式と局面の選び方は`crates/minase-trainer/src/nnue/fit_linear/mod.rs`に、方式の理由は[ADR](../adr/correct-the-nnue-linear-path-by-regressing-on-game-outcomes.md)にある。
 
 ## 学習器を変更したとき
 
@@ -462,18 +458,20 @@ done
 ## 標準レシピの設定と根拠
 
 対局で測ってから決める残りの項目は、[調査メモ](../research/nnue-training-recipes.md#対局で測ってから決める項目)にある。
+表の根拠にある第1世代と第2世代は、[中断した世代反復](../plans/archived/nnue-generation-reset.md)の世代である。
 
 | 項目 | 値 | 根拠 |
 |---|---|---|
-| 教師の量 | 1世代約1億局面、1手2万ノード | 世代反復の設計判断。第2世代の教師では、全量が半分にSTCで`H1`（得点率63.2%）で、まだ頭打ちではない（[記録](../measurements/nnue-generation-reset/nnue-generation-reset-gen2-volume.md)） |
+| 教師の量 | 1世代70ファイル（1ファイル7,500局）、1手2万ノード | 第2世代の教師では、37ファイルが、その半分に対してSTCで`H1`（得点率63.2%）で、まだ頭打ちではないので、約2倍の70ファイルとする（[記録](../measurements/nnue-generation-reset/nnue-generation-reset-gen2-volume.md)）。局面数をそろえると対局の多い教師が`H1`（得点率56.5%）なので、量は対局数で定める（[記録](../measurements/nnue-generation-reset/nnue-generation-reset-gen2-diversity.md)） |
+| リプレイバッファ | その世代の教師だけで学ぶ | 直前の世代の教師を併用した学習はSTCで`H0`（[記録](../measurements/nnue-standard-recipe/nnue-standard-recipe-window-stc.md)） |
 | λ | 1.0 | 第1世代で、第0世代に対してλ=0.75は`H0`、λ=1.0は`H1`（[記録](../measurements/nnue-generation-reset/nnue-generation-reset-gen1-stc.md)） |
-| 対局結果の反映 | 学習の後に`fit-linear`で線形の経路だけを補正する | 補正後のネットがλ=1.0のネットに`H1`（[記録](../measurements/nnue-generation-reset/nnue-generation-reset-gen1-review.md)） |
 | 構成 | P型、幅256、`pairwise-l16-l32` | [ADR](../adr/compose-the-nnue-of-a-piece-value-initialized-linear-path-and-pairwise-products-with-two-hidden-layers.md)で確定（`H1`なしで確定し、世代の判定で検証中） |
 | 最適化手法 | AdamW（β1=0.9、β2=0.999、ε=1e-8） | Stockfishの本番と同じ値（[調査メモ](../research/nnue-training-recipes.md)） |
-| 基準の学習率 | 第1層と出力部0.001、線形の経路0.03 | 0.001は先行の初期値の範囲内（線形の経路は単位が違うので比べられない） |
+| 基準の学習率 | 第1層と出力部0.001、線形の経路0.03 | 0.001は先行の初期値の範囲内。線形の経路は、先行の学習器の設定をminaseの単位へ換算した0.67903が0.03に対してSTCで`H0`（[記録](../measurements/nnue-standard-recipe/nnue-standard-recipe-lr-linear-stc.md)） |
 | 学習率の予定 | `cosine:3:0.1` | 倍率が一定の1倍に対してSTCで`H1`（[ADR](../adr/anneal-the-nnue-learning-rate-with-a-cosine-schedule.md)）。`cosine:10:0.1`で10エポック学習したネットは第2世代に`H0`（得点率45.4%、[記録](../measurements/nnue-generation-reset/nnue-generation-reset-gen2-cosine10.md)） |
 | 重み減衰 | 第1層と出力部1e-4、線形の経路0 | 値を選んだ根拠の記録なし（先行の多くは0） |
 | バッチ | 16,384局面 | 先行の多くと同じ |
+| 途中検証 | 行わない（`--validation-interval 0`） | 行わなくても同じネットになり、生成機で1,268秒を省ける（[記録](../measurements/nnue-generation-reset/nnue-generation-reset-gen2-training.md)） |
 | 停止とネットの選択 | 改善なし5エポックで止め、検証損失が最良のネットを書き出す | 同じ学習の最後のネットは最良のネットに`H0`（得点率46.2%、同じ記録）。検証損失で選ぶのを標準とする学習器は、調べた範囲ではminaseだけ |
 
 ## 詳細の置き場所
