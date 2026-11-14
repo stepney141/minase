@@ -2,11 +2,111 @@
 """中断可能な生成機を1台ずつ借り、教師の回収、受け入れ、および移行を行う。
 
 使い方: python3 scripts/vast/teacher_generation.py run --help
-全引数を明示する。同じrun-dirで再開するときも、保存した全引数と一致させる。
-run.jsonに条件、state.jsonに借用履歴、events.jsonlとprogress.jsonlに観測を残す。
-受け入れた本とログはgen-<N>/{teacher,logs}/に置き、generation_chain.pyへ渡せる。
-生成機が止まったら削除を確認し、config.jsonと組のそろった塊だけを次の機械へ送る。
-正常終了、例外、SIGTERM、SIGINTのいずれでも、最後の回収と削除の確認を行う。
+
+本スクリプトは手元の作業機で動き、vast.aiで借りる生成機のgeneration_worker.pyに教師ファイルを生成させる。
+借り方は中断可能またはオンデマンドで、同時に借りるのは1台とする。
+完成した教師ファイルを回収して検査し、生成機が止まったときは、回収済みの出力を次の機械へ送って生成を再開する。
+この再開の手順を移行と呼び、世代番号をN、教師ファイルの番号をi、借用番号をkとする。
+
+作業機の実行ディレクトリrun-dirには、実行条件と再開に必要な記録を置く。
+run.jsonは全引数を保存し、同じディレクトリで再実行するときも、全引数の明示と保存値との一致を要求する。
+state.jsonは借用回数、借りた機械の出品情報と識別子、単価、転送量、作成と削除の時刻、現在の機械、および除外するmachine_idを保持し、再実行で引き継ぐ。
+events.jsonlには作成、削除、受け入れ、停止などの出来事と損失の推定値を、progress.jsonlには本ごとの進捗と回収済みの塊の局数を時刻つきで追記する。
+onstart.shは生成機へ渡す起動時スクリプトであり、実行全体の絶対期限に生成機の自己停止を予約する。
+同じrun-dirでの同時実行はディレクトリの排他ロックで拒否する。
+
+回収したファイルはrun-dirのremote/{work,teacher,logs}/へ置き、移行時の退避先をremote/archive/rental-<k>/とする。
+remote/work/には本ごとのconfig.json、塊、および追記中の生成ログが入り、remote/teacher/とremote/logs/には生成機が公開した教師ファイルとログが入る。
+検査に通ったbook-<i>.mnsdとbook-<i>.logは、gen-<N>/{teacher,logs}/へそれぞれハードリンクで置き、generation_chain.pyへ渡せる配置にする。
+再実行では、指定範囲内のgen-<N>/teacher/book-<i>.mnsdが存在する番号を、再検査せず受け入れ済みとして扱う。
+
+生成機では、/workspace/job/を作業のルートとする。
+worker.pidにはsetsidで起動したbashのプロセス識別子を保存し、bashはstartedの作成を待ってgeneration_worker.pyをexecするため、作業プロセスも同じ識別子とセッションを使う。
+worker.jsonは仕事がないまま待つ上限idle_limit_secondsを1,800秒に設定し、job.jsonは生成条件、対象番号、および同時対局数を指定する。
+bundles/source.bundleは指定コミットをビルドするためのGitの履歴であり、job.jsonのtarget_booksはlast_book + 1、skip_booksはfirst_book未満の番号と受け入れ済みの番号の和集合とする。
+作業プロセスは0以上target_books未満からskip_booksと生成機で公開済みの番号を除き、小さい番号から生成する。
+
+生成機のwork/gen-<N>/book-<i>/にはconfig.jsonと再開用の塊を、work/gen-<N>/book-<i>.logには生成ログを置く。
+塊の組とは、同じ番号の確定名chunk-NNNNN.mnsdとchunk-NNNNN.jsonがそろったものである。
+完成時にはlogs/gen-<N>/book-<i>.logとteacher/gen-<N>/book-<i>.mnsdをこの順に公開し、その本の作業用ディレクトリと追記ログを削除する。
+logs/exit-statusは作業プロセスが異常終了などで記録する終了コードであり、世代ごとのログとは別に観測する。
+
+出品は、EPYC 7B13またはEPYC 9654で、cpu_coresが整数かつ256以上のものに限る。
+cpu_archはamd64、gpu_fracは1、cpu_cores_effectiveはcpu_coresと同じ、direct_port_countは1以上、rentableはtrueであり、durationが絶対期限までの残り秒数以上でなければならない。
+メモリの下限はcpu_cores × 220 MiB × 1.25とし、MiB単位のcpu_ramと比べる。
+除外済みのmachine_idと、制御スクリプトの今回の起動で失敗して除外した出品は選ばない。
+選定に使う数値は有限値でなければならず、時間単価とdph_totalには負の値を認めない。
+オンデマンドの時間単価はdph_total、中断可能の時間単価はmin_bidを0.0001米ドル単位で切り上げた入札額とし、max_price以下のものから選ぶ。
+見込みの探索速度は、cpu_coresに1スレッドあたりの探索速度を掛けた値であり、7B13には186,200ノード/秒、9654には214,300ノード/秒を使う。
+この値の出典はdocs/measurements/interruptible-teacher-generation/interruptible-teacher-generation-candidates.mdであり、時間単価を見込みの探索速度で割った値が最小の出品を選ぶ。
+中断可能の入札額は借りている間に変更しない。
+
+借用番号と借用回数は作成要求の前に保存し、作成に失敗した試行や準備に失敗して借り直す試行も1回に数える。
+作成の応答を受け取れないなどの失敗では、同じラベルの機械を照会し、1台あればその機械を引き継ぎ、存在しないことを確認できればその出品を除外して次を試す。
+同じラベルが複数ある場合や照会に失敗した場合は、新しい機械を借りずに終了する。
+認証失効と照会頻度の上限による作成失敗も、その場で終了処理へ進む。
+
+借りた後は、作成開始から10分を稼働確認の期限とし、稼働を確認してから5分をSSH接続の期限とする。
+どちらかを確認できなければ削除の完了を確かめ、その出品を制御スクリプトの今回の起動中は除外して別の出品を試す。
+SSHで接続できたら作業プロセスと観測用スクリプト、worker.jsonを送り、generation_worker.py cpu-infoでCPUの割り当てを検査する。
+使える論理スレッド数nprocは出品のcpu_coresと等しく、CPU時間の上限をスレッド数に換算したcpu_limitはnullかcpu_coresの0.9倍以上でなければならない。
+検査に通ればnprocを同時対局数とし、通らなければ削除を確認してmachine_idをstate.jsonの除外対象へ加える。
+準備中のSSHやrsyncの失敗、またはcpu-infoの応答を読めない場合も削除を確認して出品を除外するが、ローカルのbundle作成失敗などは借り直さず終了する。
+
+観測と回収は、各巡回の後にCOLLECT_SECONDSの60秒を置いて繰り返す。
+生成機の状態を照会し、SSHでteacher_generation_probe.pyから作業プロセスの生存、CPU時間、終了コード、および対象世代のファイルの総バイト数を得る。
+観測値が読めたら、生成機のwork/gen-<N>/、teacher/gen-<N>/、logs/gen-<N>/をこの順にrsyncで対応するremote/の下へ回収する。
+回収では*.tmp、.selfplay_generate.lock、および作業中の組み直し結果teacher.mnsdを除外する。
+rsyncの終了コード24は転送中の送信元ファイルの消失として許容し、受け取れたファイルを残して次の巡回でも回収するが、それ以外の非0の終了コードは回収失敗とする。
+終了コード24の場合を含め、rsyncの統計から転送量を読み取れなければ回収失敗とする。
+
+公開済みの教師ファイルと生成ログが両方そろうと、common.inspect_teacherで全対局を復号し、受け入れを検査する。
+ヘッダの生成コミット、重みのチェックサム、規則L0,P0,R1,E0、探索ノード数、およびseed_base + seed_book_step × iで求めるシードを照合する。
+ログの完了局数、探索ノード数、手数上限、置換表の容量、およびランダム着手数も引数と照合し、保存局数と手数上限による破棄局数の和がgamesに一致することを確かめる。
+保存局数、破棄局数、および記録局面数は非負で、ログのrecorded_positionsと検査のeligible_positionsが一致しなければならない。
+受け入れた後はremote/work/book-<i>/とremote/work/book-<i>.logを削除し、remote/teacher/とremote/logs/の公開済みファイルは残す。
+回収が失敗した巡回でも、すでに届いた教師ファイルとログの受け入れは試みる。
+
+停止の判定は、次の順に最初に当てはまる条件を適用する。
+状態の照会に失敗した場合は状態不明として、新しい機械を借りずに終了する。
+照会が成功し、2回続けて機械が一覧にないかactual_statusがrunning以外で、かつSSHによる有効な観測値も得られない場合は、停止として移行する。
+この観測失敗にはSSH接続の失敗だけでなく、観測用スクリプトの失敗や応答の不正も含み、入札負けとは断定せず照会結果の状態欄を記録する。
+次に、回収失敗が最後の回収成功から30分以上続いていれば通信障害として終了し、回収成功がまだなければ最初のSSH接続成功から数える。
+続いて、logs/exit-statusがあれば値が0でも生成失敗とし、終了コードがなく作業プロセスが消失している場合も生成失敗として終了する。
+最後に、観測値が得られた巡回でCPU時間を比較し、最初のCPU観測または最後の増加から10分以上増えていなければ生成失敗として終了する。
+CPU時間がnullの観測も増加とはみなさず、これらの条件に当てはまらなければ、確定した塊の数が変わらなくても継続する。
+
+移行では最後の回収を試みてから旧機を削除し、インスタンス一覧から消えたことを確認してから次の機械を借りる。
+削除を確認できなければ終了し、確認できた場合は回収先に片側だけ残った塊を消す。
+旧機のworkの追記ログはremote/archive/rental-<k>/へ退避し、remote/teacher/とremote/logs/に残ったファイルもそれぞれteacher-とlogs-を名前に付けて同じ場所へ移す。
+次の機械には、CPUの検査後にbundleを送り、未受け入れの各本のconfig.jsonと組のそろった塊だけをwork/gen-<N>/book-<i>/へ送る。
+塊があるのにconfig.jsonがない場合は終了し、送付が終わったらjob.jsonを送り、最後にstartedを作成して生成を開始させる。
+
+止まった機械の損失は、最後に記録した進捗がある未受け入れの本ごとに推定する。
+推定局数は、その起動で終えた対局数 − その起動で確定させて回収した塊の局数 ＋ 同時対局数 ÷ 2とする。
+その起動で確定させて回収した局数は、回収済みの塊の担当局数から起動時に送った塊の担当局数を引いて求め、手数上限で破棄した局も数える。
+この値は停止後の最後の回収を試みる前にloss_estimateとして記録し、実測した損失とは区別する。
+
+累計費用の見込みは、各機械の借用秒数 ÷ 3,600 × ストレージ込みの時間単価dph_totalと、転送費用を合計して求める。
+時間単価は機械の照会結果から読み、借用秒数は作成開始から削除確認まで、削除未確認なら現在時刻までを数える。
+転送費用は送信バイト数 ÷ 10^9 × inet_down_costと受信バイト数 ÷ 10^9 × inet_up_costの和とする。
+作成失敗後に機械が存在しないことを確認した試行は費用に含めず、存在する機械の時間単価が不明なら終了する。
+借りる前はrental_countがmax_rentals未満で、絶対期限まで25分以上あり、累計費用に出品のdph_totalの1時間分を足してもmax_costを超えないことを要求する。
+借りている間は、絶対期限まで10分未満になった場合、または累計費用に現在の機械のdph_totalの30分分を足した額がmax_cost以上になった場合に終了処理へ進む。
+
+送受信の時間上限はcommon.transfer_secondsで求める。
+上限秒数は、バイト数 ÷ 1,000,000 ＋ 120と、絶対期限までの残り秒数 − 600の小さい方とし、0以下なら転送を開始しない。
+1回の回収では観測した総バイト数から共通の期限を求め、3つのディレクトリの転送全体をその期限内に収める。
+
+起動時はstate.jsonに残る削除未確認の機械を先に削除し、識別子が未記録なら保存したラベルで照会して特定する。
+同じ実行のラベル接頭辞minase-teacher-<run-dirの末尾名>-を持つ記録外の機械も削除対象とする。
+記録外の機械の識別子はunaccounted_instancesへ保存し、削除できても累計費用が不明として終了し、再実行でもこの扱いを引き継ぐ。
+
+通常完了、例外、SIGTERM、およびSIGINTのいずれでも、最後に現在の機械からの回収と受け入れを試み、削除の完了を確認する。
+終了処理中のSIGTERMとSIGINTは無視し、記録外の機械の削除も試みる。
+終了コードは全対象の受け入れによる通常完了で0、例外で1、シグナルで128 ＋ シグナル番号とし、削除を確認できない場合は1にする。
+削除未確認の機械については識別子を表示し、費用上限を保証できないことを報告する。
+vast.aiのコマンド操作に対する401と429の扱いはcommon.callが担い、401は即座に認証失効とし、429は60秒間隔で再試行して5回続いたら失敗とする。
 """
 
 import argparse
@@ -30,16 +130,25 @@ from typing import Any
 
 import common
 
+# 生成機へ送る設定、作業プロセス、および成果物のルートである。
 REMOTE = '/workspace/job'
+# 生成コミットのビルドと実行に使うコンテナイメージである。
 IMAGE = 'rust:1.98.0-bookworm'
+# 作成時に要求するディスク容量をGB単位で指定する。
 DISK_GB = 30
+# worker.jsonに渡す、次の仕事がないまま待つ上限秒数である。
 IDLE_SECONDS = 1800
+# 観測と回収を終えてから次の巡回まで置く秒数である。
 COLLECT_SECONDS = 60
+# 生成コミットから受け入れ検査用のチェックサムを読む重みのパスである。
 NETWORK = 'crates/minase/nets/nnue.bin'
+# 1スレッドあたりの探索速度をノード/秒で表し、出品の単価比較に使う。
 # docs/measurements/interruptible-teacher-generation/interruptible-teacher-generation-candidates.md
 NPS_PER_THREAD = {'7B13': 186_200, '9654': 214_300}
+# 生成ログから対局数と塊の進捗を読み取る。
 PROGRESS = re.compile(r'^progress: elapsed_seconds=\S+ finished_games=(\d+) '
                       r'committed_games=(\d+) chunks=(\d+)/(\d+)\s*$', re.M)
+# 停止を検知したときに照会結果からそのまま記録する状態欄である。
 STATUS_FIELDS = ('actual_status', 'intended_status', 'cur_state', 'next_state', 'status_msg')
 
 
@@ -88,7 +197,7 @@ def bid_price(minimum: int | float) -> float:
 
 def select_offer(offers: list[dict], args: argparse.Namespace, remaining: float,
                  excluded: list[int]) -> dict:
-    """フェーズ0で決めた条件を満たす出品から、探索速度あたりの単価が最小のものを選ぶ。"""
+    """候補の条件を満たす出品から、見込みの探索速度あたりの時間単価が最小のものを選ぶ。"""
     candidates = []
     for offer in offers:
         model = re.search(r'\bEPYC\s+(7B13|9654)\b', offer['cpu_name'])
@@ -624,7 +733,7 @@ class TeacherGeneration:
         return data, success
 
     def decision(self, instance: dict | None, data: dict | None, success: bool) -> str:
-        """照会済みの観測へ、停止判定の表の2行目以降を順に適用する。"""
+        """状態照会の成功後に、停止、回収失敗、作業プロセスの異常の順に判定する。"""
         record = self.current
         record['nonrunning'] = (record['nonrunning'] + 1 if instance is None or
                                 instance['actual_status'] != 'running' else 0)
