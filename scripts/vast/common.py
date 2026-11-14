@@ -9,6 +9,7 @@ from contextlib import contextmanager
 import fcntl
 import ipaddress
 import json
+import math
 import os
 from pathlib import Path
 import re
@@ -28,6 +29,18 @@ class VastError(RuntimeError):
     """操作または状態の確認に失敗したことを表す。"""
 
 
+class AuthenticationExpired(VastError):
+    """口座の認証が失効し、操作を継続できない。"""
+
+
+class RateLimitExceeded(VastError):
+    """429が5回続き、操作を継続できない。"""
+
+
+class InvalidResponse(VastError):
+    """JSONの応答を読めず、操作の結果が確定していない。"""
+
+
 @contextmanager
 def session_lock(path: Path) -> Iterator[None]:
     """同じセッションの起動と取得が重ならないようにする。"""
@@ -40,17 +53,24 @@ def session_lock(path: Path) -> Iterator[None]:
 
 
 
-def run_timed(args: list[str], seconds: float, **kwargs: Any) -> subprocess.CompletedProcess[str]:
+def run_timed(args: list[str], seconds: float, *, text: bool = True,
+              **kwargs: Any) -> subprocess.CompletedProcess:
     """上限でプロセス群を終了し、5秒で終わらなければ強制終了する。"""
-    with subprocess.Popen(args, text=True, start_new_session=True, **kwargs) as process:
+    with subprocess.Popen(args, text=text, start_new_session=True, **kwargs) as process:
         try:
             output, errors = process.communicate(timeout=seconds)
-        except subprocess.TimeoutExpired:
-            os.killpg(process.pid, signal.SIGTERM)
+        except BaseException:
+            try:
+                os.killpg(process.pid, signal.SIGTERM)
+            except ProcessLookupError:
+                pass
             try:
                 process.communicate(timeout=5)
             except subprocess.TimeoutExpired:
-                os.killpg(process.pid, signal.SIGKILL)
+                try:
+                    os.killpg(process.pid, signal.SIGKILL)
+                except ProcessLookupError:
+                    pass
                 process.communicate()
             raise
         result = subprocess.CompletedProcess(args, process.returncode, output, errors)
@@ -59,10 +79,41 @@ def run_timed(args: list[str], seconds: float, **kwargs: Any) -> subprocess.Comp
 
 
 def call(seconds: float, *args: str, **kwargs: Any) -> str:
-    """上限時間を設けてvastaiを実行し、標準出力を返す。"""
-    if isinstance(seconds, bool) or seconds <= 0:
+    """両出力の401と429を検出し、JSONを要求した操作では応答も検査する。
+
+    429は60秒おきに最大5回試す。停止・削除・copyの通常のテキスト出力は維持する。
+    """
+    if isinstance(seconds, bool) or not math.isfinite(seconds) or seconds <= 0:
         raise VastError(f'vastaiの上限秒数には正の整数が必要です: {seconds}')
-    return run_timed(['vastai', *map(str, args)], seconds, stdout=subprocess.PIPE, **kwargs).stdout
+    merge_errors = kwargs.pop('stderr', None) == subprocess.STDOUT
+    for attempt in range(5):
+        failure = None
+        try:
+            result = run_timed(['vastai', *map(str, args)], seconds,
+                               stdout=subprocess.PIPE, stderr=subprocess.PIPE, **kwargs)
+            output, errors = result.stdout, result.stderr
+        except subprocess.CalledProcessError as error:
+            output, errors, failure = error.stdout, error.stderr, error
+        if errors is not None:
+            print(errors, end='', file=sys.stderr)
+        response = '\n'.join(value for value in (output, errors) if value is not None)
+        codes = re.findall(r'"status_code"\s*:\s*"?(401|429)\b', response)
+        codes.extend(re.findall(r'Failed with error (401|429):', response))
+        if '401' in codes:
+            raise AuthenticationExpired('vast.aiの認証が失効しました（状態コード401）')
+        if '429' in codes:
+            if attempt == 4:
+                raise RateLimitExceeded('vast.aiの照会頻度の上限（429）が5回続きました')
+            time.sleep(60)
+            continue
+        if failure is not None:
+            raise failure
+        if '--raw' in args:
+            try:
+                json.loads(output)
+            except (TypeError, ValueError) as error:
+                raise InvalidResponse('vast.aiの応答をJSONとして読めません') from error
+        return response if merge_errors else output
 
 
 def ids(label: str) -> list[int]:
@@ -80,14 +131,68 @@ def instance(instance_id: int, seconds: float) -> dict[str, Any] | None:
     return matches[0] if matches else None
 
 
-def create(offer: str, label: str, onstart: Path, image: str, disk: int) -> int:
+def create(offer: str, label: str, onstart: Path, image: str, disk: int,
+           *, bid_price: float | None = None) -> int:
     """出品からインスタンスを作り、応答のIDを検査する。"""
-    value = json.loads(call(600, 'create', 'instance', offer, '--image', image,
+    bid = [] if bid_price is None else ['--bid_price', str(bid_price)]
+    response = json.loads(call(600, 'create', 'instance', offer, '--image', image,
                             '--disk', str(disk), '--ssh', '--direct', '--cancel-unavail',
-                            '--label', label, '--onstart', str(onstart), '--raw'))['new_contract']
+                            '--label', label, '--onstart', str(onstart), *bid, '--raw'))
+    if not isinstance(response, dict) or 'new_contract' not in response:
+        raise InvalidResponse('作成応答にnew_contractがありません')
+    value = response['new_contract']
     if type(value) is not int or value <= 0:
-        raise VastError('作成応答に正しいnew_contractがありません')
+        raise InvalidResponse('作成応答に正しいnew_contractがありません')
     return value
+
+
+def transfer_seconds(byte_count: int, remaining_seconds: float) -> float:
+    """毎秒1 MBと120秒の余裕から転送上限を求め、削除用の600秒を残す。"""
+    if type(byte_count) is not int or byte_count < 0 or not math.isfinite(remaining_seconds):
+        raise VastError('転送量または期限までの残り秒数が不正です')
+    seconds = min(byte_count / 1_000_000 + 120, remaining_seconds - 600)
+    if seconds <= 0:
+        raise VastError('削除用の600秒を残すため、転送を開始できません')
+    return seconds
+
+
+def output_fields(output: str) -> dict[str, str]:
+    """生成ログとinspectの同名の欄には、最後の値を使う。"""
+    fields = {}
+    for line in output.splitlines():
+        key, separator, value = line.partition(':')
+        if separator and value.strip():
+            fields[key.strip()] = value.strip()
+    return fields
+
+
+def inspect_priority() -> None:
+    """教師の検査をnice 19で実行する。"""
+    os.nice(19)
+
+
+def inspect_teacher(binary: Path, path: Path, log_path: Path, expected: dict[str, Any],
+                    settings: dict[str, int], run: Any) -> tuple[int, int]:
+    """全対局を復号し、生成条件と局数・局面数を照合して保存局数と記録局面数を返す。"""
+    output = run([str(binary), 'data', 'selfplay', 'inspect', str(path)],
+                 text=True, stdout=subprocess.PIPE, preexec_fn=inspect_priority).stdout
+    header = output_fields(output)
+    for key, value in expected.items():
+        if str(header[key]) != str(value):
+            raise VastError(f'{path.name}: {key}が一致しません')
+    log = output_fields(log_path.read_text())
+    for key, value in (('games_completed', settings['games']), ('nodes', settings['nodes']),
+                       ('max_ply', settings['max_ply']), ('hash_mb', settings['hash_mb']),
+                       ('random_moves_max', settings['random_moves'])):
+        if int(log[key]) != value:
+            raise VastError(f'{path.name}: 生成ログの{key}が一致しません')
+    games, discarded = int(header['game_count']), int(log['games_discarded_max_ply'])
+    entries = int(header['eligible_positions'])
+    if games < 0 or discarded < 0 or games + discarded != settings['games'] or entries < 0:
+        raise VastError(f'{path.name}: 局数または局面数が不正です')
+    if int(log['recorded_positions']) != entries:
+        raise VastError(f'{path.name}: 生成ログの局面数が本の内容と一致しません')
+    return games, entries
 
 
 def change_state(instance_id: int, action: str) -> None:

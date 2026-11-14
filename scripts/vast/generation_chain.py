@@ -444,22 +444,13 @@ class Chain:
             if number in books or not log_path.is_file():
                 continue
             try:
-                output = self.children.run([str(self.args.minase_bin), 'data', 'selfplay', 'inspect', str(path)],
-                                           text=True, stdout=subprocess.PIPE, preexec_fn=low_priority).stdout
-                header = output_fields(output)
-                self.check_header(header, generation, number, commit, checksum)
-                log = output_fields(log_path.read_text())
-                for key, value in (('games_completed', self.args.games), ('nodes', self.args.nodes),
-                                   ('max_ply', self.args.max_ply), ('hash_mb', self.args.hash_mb),
-                                   ('random_moves_max', self.args.random_moves)):
-                    if int(log[key]) != value:
-                        raise ChainStop(f'本{number}の生成ログの{key}が一致しません')
-                games, discarded = int(header['game_count']), int(log['games_discarded_max_ply'])
-                entries = int(header['eligible_positions'])
-                if games < 0 or discarded < 0 or games + discarded != self.args.games or entries < 0:
-                    raise ChainStop(f'本{number}の局数または局面数が不正です')
-                if int(log['recorded_positions']) != entries:
-                    raise ChainStop(f'本{number}の生成ログの局面数が本の内容と一致しません')
+                try:
+                    games, entries = common.inspect_teacher(
+                        self.args.minase_bin, path, log_path,
+                        self.expected_header(generation, number, commit, checksum),
+                        vars(self.args), self.children.run)
+                except common.VastError as error:
+                    raise ChainStop(str(error)) from error
                 os.link(path, teacher / path.name)
                 books[number] = entries
                 print(f'第{generation}世代の本{number}: 経過{time.monotonic() - self.started:.1f}秒、'

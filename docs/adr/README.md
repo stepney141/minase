@@ -386,3 +386,5 @@ PSTは駒の種類と升ごとの値の表による評価、FMはFactorization M
 - 2026年11月13日 [対局用MCTSは、成りの保留をネットの入力に入れないまま、全部の規則コードで探索する](search-all-rule-codes-in-mcts-without-encoding-deferred-promotion.md)
 - 2026年11月14日 [AlphaZero型探索のネットの強さは、コミットを固定したαβ探索との対局を主に、深さ3のHaChuとの対局を副に測る](measure-zero-networks-against-a-pinned-alphabeta-search-first-and-depth-3-hachu-second.md)
 - 2026年11月14日 [NNUEの教師ファイルは、対局数で決めた塊ごとに確定させ、全塊がそろったら1つのファイルへ組み直す](commit-nnue-teacher-files-in-fixed-game-chunks-and-reassemble-them-into-one-file.md)
+- 2026年11月14日 [NNUEの教師ファイルは、作業機の制御スクリプトが借りた1台に生成させ、止まったら回収済みの塊から別の機械で続ける](generate-teacher-files-on-one-rented-machine-and-continue-from-collected-chunks-on-another.md)
+- 2026年11月14日 [NNUEの教師生成に使う機械は、vast.aiの中断可能インスタンスを、その時点の最低入札額で借りる](rent-interruptible-instances-at-the-minimum-bid-for-teacher-generation.md)
