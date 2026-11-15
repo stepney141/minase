@@ -61,6 +61,10 @@ P型の文脈は1種類なので、この全再計算は起きない。
 現行の学習器で再学習したHalfKP-hm-b8のネットは、ブランチ`halfkp-retrain`のコミット`ae1b384c`に埋め込まれている（[記録](../measurements/nnue-early-best-epoch/halfkp-retrain-stc.md)）。
 探索木を変えない高速化のNPSの比較には、`scripts/bench_compare.py`を使う。
 
+[tatara化とHalfKP_vm](nnue-tatara-framework-and-halfkp-vm.md)は、`FeatureSet`トレイトとHalfKP-hm-b8を削除し、自玉の72区分と鏡映の有無を文脈とするHalfKP_vmを加える。
+本書は8区分の文脈を前提に書かれているので、着手の前にHalfKP_vmに合わせて改める。
+着手するかは、tatara化の設計書の「HalfKP_vmの動作の確認」で測る全再計算の頻度と探索の速さを見て、HalfKP_vmの世代反復の設計書を起案するときに決める。
+
 ## 設計判断
 
 | 判断 | 採った方式 | 棄却した代案 | 理由 |

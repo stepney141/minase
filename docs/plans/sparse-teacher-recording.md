@@ -64,6 +64,9 @@
 学習器は現行のmasterの`minase-trainer`であり、変更しない。
 段階ゲートはryzen0（Threadripper 2990WX、物理32コア）で行い、runnerが物理コア数を誤判定するので同時対局数を`--concurrency 30`と明示する。
 
+[tatara化とHalfKP_vm](nnue-tatara-framework-and-halfkp-vm.md)の後は、学習器と生成器の引数が変わる（`--base`の廃止、構造ごとのサブコマンド、生成器の`--eval-file`）。
+本書は着手の前に`lishogi`の規則に合わせて改めるので、そのときにこれらにも合わせる。
+
 ## 設計判断
 
 | 項目 | 決定 | 棄却した代案 |

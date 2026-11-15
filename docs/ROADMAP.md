@@ -138,7 +138,7 @@
 | NNUEに隠れ層を加えて第1層を広げ、整数化の精度を上げる | [plans/archived/nnue-architecture-revision.md](plans/archived/nnue-architecture-revision.md) | 完了（一部不採用） | 2026年11月4日 |
 | NNUE教師生成を探索結果を変えずに速くする | [plans/archived/teacher-generation-speedup.md](plans/archived/teacher-generation-speedup.md) | 完了 | 2026年11月6日 |
 | NNUEの標準レシピv1と、学習器および教師の生成器の変更 | [plans/archived/nnue-standard-recipe.md](plans/archived/nnue-standard-recipe.md) | 完了（採用） | 2026年11月15日 |
-| 標準レシピv2でのNNUEの世代反復のやり直し | [plans/nnue-generation-iteration.md](plans/nnue-generation-iteration.md) | 起案 | |
+| 標準レシピv2でのP型のNNUEの世代反復のやり直し | [plans/nnue-generation-iteration.md](plans/nnue-generation-iteration.md) | 起案 | |
 | MCTSの葉での王駒の捕獲の判定と方策の温度 | [plans/archived/mcts-royal-capture-temperature.md](plans/archived/mcts-royal-capture-temperature.md) | 完了（採用） | 2026年11月9日 |
 | 起動引数と診断ツールをUSIへ移す | [plans/archived/cli-to-usi.md](plans/archived/cli-to-usi.md) | 完了（採用） | 2026年11月12日 |
 | NNUEの教師生成を中断の後に再開できるようにする | [plans/archived/resumable-nnue-teacher-generation.md](plans/archived/resumable-nnue-teacher-generation.md) | 完了（採用） | 2026年11月14日 |
@@ -156,7 +156,7 @@
 ### NNUEと教師生成
 
 NNUEは、着手ごとに差分で更新できる小さなニューラルネットの評価関数であり、以下ではネットと呼ぶ。
-NNUEの作業の本線は、教師の生成と学習の標準の条件（標準レシピv2）で、手書きの評価関数v0から世代反復をやり直す計画である。
+NNUEの作業の本線は、NNUEに関わる実装をすべて直し、自玉の升ごとに別の重みを引く入力HalfKP_vmをいつでも使える状態にしてから、教師の生成と学習の標準の条件（標準レシピv2）で、手書きの評価関数v0から王の位置を使わない入力P型の世代反復をやり直す計画である（2026年11月15日の利用者の決定）。
 標準レシピv2は、[設計書](plans/archived/nnue-standard-recipe.md)で決めた標準レシピv1のうち、1世代の教師の量と学習の長さを世代の番号で決まる値に改めたものである（[世代の量のADR](adr/grow-each-nnue-generation-by-the-teacher-files-for-100-million-positions.md)、[学習の長さのADR](adr/train-the-nnue-for-64-or-80-superbatches-by-the-generation-volume-and-export-the-last-network.md)）。
 世代反復は、あるネットの自己対局で教師を作り、その教師から次のネットを学ぶことの繰り返しを指す。
 教師は、自己対局の局面に、その局面の探索値と対局結果を付けた学習データである。
@@ -164,31 +164,40 @@ NNUEの作業の本線は、教師の生成と学習の標準の条件（標準�
 強くする手段に人間の棋譜は使わない（[設計判断の記録](adr/do-not-use-human-games-to-strengthen-the-engine.md)）。
 やり直す世代反復の自己対局と、世代ごとの強さを判定する対局は、オンライン対局サイトlishogiの実装に近い規則セット`lishogi`で行う（[ADR](adr/play-self-play-and-judge-trained-networks-under-the-lishogi-rule-set.md)）。
 
+本線は、次の順に進める。
+前の段の設計書の完了が、次の段の着手の前提である。
+
+1. [ネットの外部ファイル化](plans/nnue-external-network-file.md)：ネットを実行ファイルに埋め込まず、外部のファイルから読む。
+2. [tatara化とHalfKP_vm](plans/nnue-tatara-framework-and-halfkp-vm.md)：NNUEを将棋の学習器tataraに倣った枠組みへ載せ替え、HalfKP_vmをいつでも使える状態にする。
+3. [P型の世代反復](plans/nnue-generation-iteration.md)：P型の系統を、v0から最大第5世代まで回す。
+4. HalfKP_vmの世代反復：P型の世代反復で評価関数の癖をつかんだ後に、別の設計書として起案する。
+
 設計書は次の6本である。
 
 | 設計書 | 内容 | 状態と次の判断 | 前提 |
 |---|---|---|---|
-| [標準レシピv2での世代反復のやり直し](plans/nnue-generation-iteration.md) | 標準レシピv2で、第n世代に約n億局面の教師を使い、v0から最大第5世代までの世代反復を行い、最終候補を、構成を見直す前のネットと比べる。生成機と学習機の費用は約280米ドルと見込む。 | 起案の段階である。計算機を借りるので、利用者の着手の指示を待つ。着手したら、まず連続生成スクリプトを、学習だけのために機械を借りられるように改める。 | 「ネットの外部ファイル化」と「tataraに倣った枠組みとHalfKP_vm」の完了（標準レシピv1の学習器と教師の生成器、および中断可能インスタンスでの教師生成はmasterに統合済み） |
-| [ネットの外部ファイル化](plans/nnue-external-network-file.md) | ネットを実行ファイルに埋め込まず、USIのオプション`EvalFile`で外部のファイルから読む。ネットの識別子を読み込んだファイル全体のSHA-256とし、測定ではコードをコミットで、ネットをこの値で特定する。自玉の位置で条件付けるHalfKP_vmのネット（約500 MB）をgitに置けないことと、教師を作る系統をP型とHalfKP_vmの2つに分ける利用者の決定（2026年11月15日）が理由である。 | 起案の段階で、利用者の承認を待っている。 | なし |
-| [tataraに倣った枠組みとHalfKP_vm](plans/nnue-tatara-framework-and-halfkp-vm.md) | NNUEの入力特徴集合と構造を、将棋のNNUE学習器tataraに倣って独立した列挙型で表し、P型をtataraのLayerStack（区分1つ）とPSQTに、自玉の升ごとに別の重みを引くHalfKP_vmをtataraのSimple（256x2-32-32）に載せ、重みのファイルをtataraの形式に揃える。載せ替えたP型が前のP型より10 Elo以上弱いとは言えないことを対局で確かめる。利用者の決定（2026年11月15日）は、2つの系統を同じコードで回すことと、minaseの独自方式よりtataraの設計を優先することである。 | 起案の段階で、利用者の承認を待っている。完了後に、世代反復の設計書を2つの系統を回す形へ書き直す。 | 「ネットの外部ファイル化」の完了 |
-| [先読みなしの教師での間引きの比較](plans/nnue-subsample-no-lookahead.md) | 同じ局面数を少数の対局から採る学習と、多数の対局から採る学習を比べ、対局数が多いほど良いという効果が、後続の局面の探索値を混ぜない現行の教師（先読みなしの教師）でも残るかを確かめる。 | 起案の段階で、世代反復の結果を見て、続けるかを決める。 | なし |
-| [記録する局面の間引き](plans/sparse-teacher-recording.md) | 4手に1手だけを2万ノードで探索して記録し、残りの手を少ないノード数で指して、同じ計算量で対局数を増やす。 | 起案の段階である。日本中将棋連盟の規則に基づく規則セット`JCSA`の教師を使う前提で書かれているので、着手の前に`lishogi`の規則に合わせて改める。 | 「間引きの比較」が、現行の教師でも対局数の効果が残ると判定すること（同書の判定1が「支持」）、および世代反復の完了 |
-| [第1層の全再計算の差分化（Finny tables）](plans/nnue-finny-tables.md) | ネットの第1層の値の全再計算を、保存した値からの差分の更新に置き換える。 | 待機中である。全再計算は、入力特徴を自玉の位置で条件付けるネットで、自玉が別の区分へ動いたときに起きる。現行のネットは自玉の位置で条件付けないので、探索中に全再計算が起きない。 | 自玉の位置で条件付けるネットを対局で測ると決まること、または第1層の値の更新方式が変わること |
+| [ネットの外部ファイル化](plans/nnue-external-network-file.md) | ネットを実行ファイルに埋め込まず、USIのオプション`EvalFile`で外部のファイルから読む。ネットの識別子を読み込んだファイル全体のSHA-256とし、測定ではコードをコミットで、ネットをこの値で特定する。HalfKP_vmのネット（約500 MB）をgitに置けず、大きなネットの世代反復を回せないことが理由である。 | 起案の段階で、利用者の承認を待っている。 | なし |
+| [tatara化とHalfKP_vm](plans/nnue-tatara-framework-and-halfkp-vm.md) | NNUEの入力特徴集合と構造を、tataraに倣って独立した列挙型で表し、P型をtataraのLayerStack（区分1つ）とPSQTに、HalfKP_vmをtataraのSimple（256x2-32-32）に載せ、重みのファイルをtataraの形式に揃える。載せ替えたP型が前のP型より10 Elo以上弱いとは言えないことを対局で確かめ、HalfKP_vmをエンジン、学習器、および教師生成でいつでも使える状態にする。minaseの独自方式よりtataraの設計を優先するのは、2026年11月15日の利用者の決定である。 | 起案の段階で、利用者の承認を待っている。 | 「ネットの外部ファイル化」の完了 |
+| [P型の世代反復](plans/nnue-generation-iteration.md) | 標準レシピv2で、第n世代に約n億局面の教師を使い、v0から最大第5世代までP型の世代反復を行い、最終候補を、構成を見直す前のネットと比べる。生成機と学習機の費用は約280米ドルと見込む。 | 起案の段階である。計算機を借りるので、前提の完了の後に利用者の着手の指示を待つ。着手したら、まず連続生成スクリプトを、学習だけのために機械を借りられるように改める。 | 「ネットの外部ファイル化」と「tatara化とHalfKP_vm」の完了 |
+| [先読みなしの教師での間引きの比較](plans/nnue-subsample-no-lookahead.md) | 同じ局面数を少数の対局から採る学習と、多数の対局から採る学習を比べ、対局数が多いほど良いという効果が、後続の局面の探索値を混ぜない現行の教師（先読みなしの教師）でも残るかを確かめる。固定の学習器と既存の教師を使うので、本線の変更の影響を受けない。 | 起案の段階で、世代反復の結果を見て、続けるかを決める。 | なし |
+| [記録する局面の間引き](plans/sparse-teacher-recording.md) | 4手に1手だけを2万ノードで探索して記録し、残りの手を少ないノード数で指して、同じ計算量で対局数を増やす。 | 起案の段階である。日本中将棋連盟の規則に基づく規則セット`JCSA`の教師と、いまの学習器の引数を前提に書かれているので、着手の前に`lishogi`の規則とtatara化の後の引数に合わせて改める。 | 「間引きの比較」が、現行の教師でも対局数の効果が残ると判定すること（同書の判定1が「支持」）、および世代反復の完了 |
+| [第1層の全再計算の差分化（Finny tables）](plans/nnue-finny-tables.md) | ネットの第1層の値の全再計算を、保存した値からの差分の更新に置き換える。 | 待機中である。全再計算は、HalfKP_vmのように自玉の位置で条件付けるネットで、自玉が別の区分へ動いたときに起きる。いまの本文はtatara化で削除するHalfKP-hm-b8を前提にしているので、着手の前にHalfKP_vmに合わせて改める。 | tatara化の完了と、tatara化で測るHalfKP_vmの全再計算の費用を見て、HalfKP_vmの世代反復を起案するときに着手を決めること |
 
-設計書の間の依存は2組である。
-1組目として、「記録する局面の間引き」は、「間引きの比較」の判定を前提とする。
+本線の外の依存は次のとおりである。
+「記録する局面の間引き」は、「間引きの比較」の判定を前提とする。
 「記録する局面の間引き」に効果を見込めるのは、対局数の効果が現行の教師でも残ると確かめられた場合だからである。
 「記録する局面の間引き」は、標準レシピv2が固定した1世代の教師の作り方を変えるので、世代反復の後に扱う。
-2組目として、世代反復は「ネットの外部ファイル化」と「tataraに倣った枠組みとHalfKP_vm」の完了を前提とする。
-外部ファイル化は、世代反復が使う連続生成スクリプトから、世代ごとのネットをgitにコミットする手順をなくし、tataraに倣った枠組みは、P型とHalfKP_vmの2つの系統を同じコードで回せるようにするからである。
-「tataraに倣った枠組みとHalfKP_vm」も「ネットの外部ファイル化」の完了を前提とする。
+
+外部ファイル化とtatara化は、NNUEの外の設計書の手順にも及ぶ。
+外部ファイル化の後は、αβ探索の`bench`の前に`RuleSet`、`EvalFile`、および`isready`を送り、対局の実行器にはネットのファイルを渡し、PV-MCTSには勝率尺度を`NnCpPerLogit`で渡す。
+どの設計書が影響を受け、どちらを先にmasterへ入れるとどう合わせるかは、[外部ファイル化の設計書](plans/nnue-external-network-file.md)と[tatara化の設計書](plans/nnue-tatara-framework-and-halfkp-vm.md)の「依存関係」の節と、影響を受ける各設計書の「依存関係」の節にある。
 世代反復の教師ファイルは、[中断可能な計算機での教師生成](plans/archived/interruptible-teacher-generation.md)で作った制御スクリプトで、vast.aiの中断可能インスタンスを最低入札額で借りて生成する（[ADR](adr/rent-interruptible-instances-at-the-minimum-bid-for-teacher-generation.md)）。
 
 世代反復の最終候補は、[NNUEの構成の見直し](plans/archived/nnue-architecture-revision.md)をmasterへ統合する前のコミットを残したブランチ`nnue-width128-regressed`と比べる。
 見直した構成は、統合前のネットより強いと判定されないまま、世代反復で使う構成として統合した。
 このため、最終候補が決まるまで、masterのエンジンは統合前より弱いと見込まれる。
 
-世代反復の教師は、教師の生成、取得、検査、およびネットの学習を続けて行うスクリプト`scripts/vast/generation_chain.py`で、vast.aiの計算機を借りて作る。
+世代反復では、教師ファイルを制御スクリプト`scripts/vast/teacher_generation.py`で生成し、取得、検査、およびネットの学習を連続生成スクリプト`scripts/vast/generation_chain.py`で行う。
 
 設計書のない候補は、次の3本の提案にある。
 どの候補も利用者の判断を待っており、利用者が選んだ候補から設計書を起案する。
@@ -216,7 +225,9 @@ NNUEの作業の本線は、教師の生成と学習の標準の条件（標準�
 次の2件は、2回目の実行と独立に進められる。
 
 - [対局用MCTSのPUCTの係数と方策の温度のSPSAによる調整](plans/mcts-puct-spsa.md)は起案の段階で、利用者の承認を待っている。道具の変更はすぐに始められるが、本番の調整は、2回目の実行のネットのうち利用者が指定するものを使う。自己対局の探索はPUCTの係数を使わず、定例の測定はサイクル1を始めたときのバイナリに固定するので、調整しても2回目の学習の途中で条件が変わることはない。
-- 2回目の実行と[NNUEの世代反復のやり直し](plans/nnue-generation-iteration.md)は、借りる計算機が競合しないので並行して進め、作業機での対局の測定だけを重ならないように順番を調整する。どちらも、自己対局とネットの強さを測る対局を規則セット`lishogi`で行う（2026年11月13日の利用者の決定、[統括計画](plans/alphazero.md)の「自己対局と測定の規則」の節）。2回目の実行のHaChuとの対局だけは、HaChuの規則で行う。
+- 2回目の実行と[NNUEの世代反復のやり直し](plans/nnue-generation-iteration.md)は、借りる計算機が競合しないので並行して進め、作業機での対局の測定だけを重ならないように順番を調整する。世代反復の着手は、NNUEの外部ファイル化とtatara化の完了の後である。どちらも、自己対局とネットの強さを測る対局を規則セット`lishogi`で行う（2026年11月13日の利用者の決定、[統括計画](plans/alphazero.md)の「自己対局と測定の規則」の節）。2回目の実行のHaChuとの対局だけは、HaChuの規則で行う。
+
+NNUEの[外部ファイル化](plans/nnue-external-network-file.md)を含む版のPV-MCTSのエンジンは、勝率尺度をUSIのオプション`NnCpPerLogit`で受け取るので、2回目の実行、学習レシピの設計書、およびPUCTの係数の調整でその版を使うときに限り、この値を渡す。統括計画の到達の判定では、比べるαβ探索のNNUEのネットを`EvalFile`で渡し、そのSHA-256を記録する。強さを測る相手のαβ探索は、ネットを埋め込んだコミット`45d5db54`に固定されているので、NNUEの変更の影響を受けない。PUCTの係数の調整と外部ファイル化はどちらも`minase spsa`を変えるので、後からmasterへ入れる側が先に入った変更に合わせる。
 
 統括計画の完了の後には、AlphaZero型のネットの評価値でNNUEの教師値を付け直す設計書を起案する（[提案](proposals/nnue-teacher-content-candidates.md)の最初の候補）。到達の判定でMCTSがαβ探索と同等以上とされた場合は、既定の探索方式の変更とlishogi Botへの配備も別の設計書で扱う。
 
@@ -224,7 +235,7 @@ NNUEの作業の本線は、教師の生成と学習の標準の条件（標準�
 
 - [棋力向上の段階計画](plans/strength-stages.md)は、段階11（並列度、終盤処理）が未着手である。
 - [詰み探索（df-pn）](plans/mate-search.md)は、攻め方の手を王手に限る標準df-pnのソルバを、`go mate`と対局探索の両方から呼べるライブラリとして作る。αβ探索とPV-MCTSへの組み込みは、発動率を測ってから別の設計書で起案する。
-- [複数の読み筋を同時に示すMultiPV](plans/multipv.md)は、USIのオプション`MultiPV`で根の上位N手の読み筋を出す機能を、αβ探索とPV-MCTSの両方に加える。起案の段階で、利用者の承認を待っている。既定値1では探索と出力を変えず、開発用GUIでの表示は完了の後に`minase-gui`で別に計画する。
+- [複数の読み筋を同時に示すMultiPV](plans/multipv.md)は、USIのオプション`MultiPV`で根の上位N手の読み筋を出す機能を、αβ探索とPV-MCTSの両方に加える。起案の段階で、利用者の承認を待っている。既定値1では探索と出力を変えず、開発用GUIでの表示は完了の後に`minase-gui`で別に計画する。NNUEのtatara化と探索のコードが重なるので、後からmasterへ入れる側が先に入った変更に合わせる。
 
 ### 合法手生成と対局ハーネス
 

@@ -56,6 +56,9 @@ PGOと`unsafe`を要する先読みは利用者の決定により再提案しな
 最終のSPRTは[SPRTの手引き](../guides/sprt.md)に従う。
 本マイルストーンのブランチは、第2期のブランチをmasterへ取り込んだ後にmasterから切る。
 
+[tatara化とHalfKP_vm](nnue-tatara-framework-and-halfkp-vm.md)の後に着手するなら、評価関数の構造と探索用駒価値が変わるので、探索の結果の一致を確かめる基準を、tatara化の後のコミットとネットで取り直す。
+[ネットの外部ファイル化](nnue-external-network-file.md)の後は、αβ探索の`bench`の前に`RuleSet`、`EvalFile`、および`isready`を送り、対局の実行器にはネットのファイルを`--candidate-option EvalFile=<パス>`と`--baseline-option EvalFile=<パス>`で渡す。
+
 ## 設計判断
 
 ### 残存負荷の内訳から段階を選ぶ

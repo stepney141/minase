@@ -73,6 +73,10 @@ MCTSを対局させる手順は、同じ手引きの「エンジンの指定方�
 GPUを持つ開発用の機械（以下作業機、GPUはRTX 3060 Ti 8 GB）で行う対局の測定は、[NNUEの世代反復のやり直しの計画](nnue-generation-iteration.md)が作業機で行う対局と重ならないように順番を調整する。
 NNUEは、αβ探索の評価関数である。
 
+[ネットの外部ファイル化](nnue-external-network-file.md)も`minase spsa`を変え、固定のUSIオプションを`--option <名前>=<値>`で渡す形と、PV-MCTSの勝率尺度を`NnCpPerLogit`で受け取る形を入れる。
+変更が重なるので、後からmasterへ入れる側が、先に入った変更に合わせる。
+外部ファイル化の後に調整するなら、`NnModel`と`NnCpPerLogit`を`--option`で渡す。
+
 ## 設計判断
 
 | 判断 | 採る方式 | 棄却した代案 |
