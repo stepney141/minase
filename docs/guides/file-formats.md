@@ -18,6 +18,7 @@
 ## 教師データと重み
 
 教師データは、自己対局や実戦棋譜の局面に教師の探索値と対局結果を付けた学習用のデータである。
+検証用データは、実戦棋譜の手順と対局結果だけを持ち、探索値を持たない診断用のデータであり、教師データと同じMNSDで、教師の種類を探索なしとして記録する。
 重みは、エンジンの評価関数が読む整数の重みと、学習器が受け渡す浮動小数点の重みである。
 PSTは駒の種類と位置ごとの点数表、FMは2駒の組の関係を補う補正、NNUEは差分更新できるニューラルネットの評価関数である。
 MNPTは、FMを持たない重みをFM節の次元0で、FMを持つ重みを次元32で表す。
@@ -25,7 +26,7 @@ NPZはNumPyの配列を名前つきで収めた無圧縮のZIPであり、コン
 
 | 形式 | 識別と版 | 書き手 | 読み手 | 仕様 |
 |---|---|---|---|---|
-| MNSD（教師データ） | `MNSD`、版3 | `minase data selfplay generate`、`minase data zero-selfplay`、`minase data lishogi games`、`minase-trainer diag pst-compare` | 学習器、AlphaZero型探索の学習器（拡張モジュール`minase_mnsd_reader`）、診断、`minase data selfplay inspect`、`minase-trainer fm scale --data`、`nnue bench-step` | `crates/minase/src/training/records.rs` |
+| MNSD（教師データと検証用データ） | `MNSD`、版3 | `minase data selfplay generate`、`minase data zero-selfplay`、`minase data lishogi games`、`minase data lishogi validation`、`minase-trainer diag pst-compare` | 学習器、AlphaZero型探索の学習器（拡張モジュール`minase_mnsd_reader`）、診断、`minase data selfplay inspect`、`minase-trainer fm scale --data`、`nnue bench-step` | `crates/minase/src/training/records.rs` |
 | MNUE（NNUEの重み） | `MNUE`、版5 | `minase-trainer nnue train`、`nnue fit-linear` | エンジン、診断、`nnue train`（書き出した重みの検査）、`nnue fit-linear`（基点の重み） | `crates/minase/src/eval/nnue/format.rs` |
 | MNPT（PSTの重みとFMの補正） | `MNPT`、版3 | `minase-trainer pst train`、`fm train`、`joint train`、`fm quarter`、`fm scale` | エンジン、学習器、診断 | `crates/minase/src/eval/pst/format.rs` |
 | PSTの浮動小数点の重み`pst-float.npz`（2配列） | NPZ、版なし | `minase-trainer pst train` | `joint train --pst-init`、`diag pst-compare` | `crates/minase-trainer/src/pst/npz.rs` |

@@ -67,7 +67,7 @@
 | AlphaZero型探索の強化学習の2回目の実行 | [plans/alphazero-rl-2.md](plans/alphazero-rl-2.md) | 起案 | |
 | 対局用MCTSを全部の規則コードで探索できるようにする | [plans/archived/mcts-rule-codes.md](plans/archived/mcts-rule-codes.md) | 完了（採用） | 2026年11月13日 |
 | AlphaZero型探索の強さを測る固定の相手 | [plans/archived/mcts-fixed-opponents.md](plans/archived/mcts-fixed-opponents.md) | 完了（採用） | 2026年11月14日 |
-| AlphaZero型探索のネットを診断する固定の検証用データ | [plans/zero-validation-games.md](plans/zero-validation-games.md) | 起案 | |
+| AlphaZero型探索のネットを診断する固定の検証用データ | [plans/zero-validation-games.md](plans/zero-validation-games.md) | 進行中 | |
 | 対局用MCTSのPUCTの係数と方策の温度のSPSAによる調整 | [plans/mcts-puct-spsa.md](plans/mcts-puct-spsa.md) | 起案 | |
 | AlphaZero型探索の学習と自己対局生成の複数GPU化 | [plans/archived/alphazero-multi-gpu.md](plans/archived/alphazero-multi-gpu.md) | 完了（採用） | 2026年11月11日 |
 | AlphaZero型探索の推論で、ホストとGPUの間の転送を減らす | [plans/archived/alphazero-inference-transfer.md](plans/archived/alphazero-inference-transfer.md) | 完了（採用） | 2026年11月11日 |
