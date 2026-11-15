@@ -1,9 +1,12 @@
 #!/usr/bin/env python3
 """lishogiの人間同士の棋譜を固定条件で選び、原文と選別の集計を書き出す。
 
-入力は1行1局のUTF-8 JSONとする。全行で棋譜idの重複とuser.idを検査し、
-10種類の条件を順に適用した後、固定シードで並べ替えて1人100局まで採る。
-出力の棋譜はid順に並べ、入力のバイト列を保つ。末尾にLFがなければ補う。
+入力は各行がLFで終わる1行1局のUTF-8 JSONとする。
+全行で棋譜idの空文字列、空白、重複を拒否し、user.idとratingも検査する。
+ratingは省略とnullを許し、それ以外は真偽値を除く符号付き32ビット整数に限る。
+全行からtitleがBOTのuser.idを集め、そのアカウントの対局は肩書きがない行でも除く。
+全行を読んだ後、10種類の条件を順に適用し、固定シードで並べ替えて1人100局まで採る。
+出力の棋譜はid順に並べ、入力のバイト列をそのまま書く。
 既存の出力は上書きせず、失敗時にはこの実行で作成したファイルだけを消す。
 """
 
@@ -12,7 +15,6 @@ from collections import Counter
 from dataclasses import dataclass
 import hashlib
 import json
-import math
 import os
 from pathlib import Path
 import random
@@ -59,12 +61,19 @@ def object_or_none(value, field):
 
 
 def read_players(game, bot_accounts):
-    """全行の対局者idを検査し、選別にかかわらずBOTのidを集める。"""
+    """全行の対局者idとratingを検査し、選別にかかわらずBOTのidを集める。"""
     players = object_or_none(game.get("players"), "players")
     sides = []
     for side in ("sente", "gote"):
         player = None if players is None else object_or_none(players.get(side), f"players.{side}")
         if player is not None:
+            rating = player.get("rating")
+            if rating is not None and (
+                isinstance(rating, bool)
+                or not isinstance(rating, int)
+                or not -(2**31) <= rating < 2**31
+            ):
+                raise SelectionError(f"players.{side}.rating must be a signed 32-bit integer or null")
             user = object_or_none(player.get("user"), f"players.{side}.user")
             if user is not None:
                 if not isinstance(user.get("id"), str):
@@ -75,7 +84,7 @@ def read_players(game, bot_accounts):
     return sides
 
 
-def exclusion(game, players):
+def exclusion(game, players, bot_accounts):
     """最初に該当する除外理由を返す。採用候補ならNoneを返す。"""
     if game.get("variant") != "chushogi":
         return "variant"
@@ -85,7 +94,7 @@ def exclusion(game, players):
         return "ai"
     if any(p is None or p.get("user") is None for p in players):
         return "anonymous"
-    if any(p["user"].get("title") == "BOT" for p in players):
+    if any(p["user"]["id"] in bot_accounts for p in players):
         return "bot"
     if game.get("rated") is not True:
         return "unrated"
@@ -93,12 +102,6 @@ def exclusion(game, players):
         rating = player.get("rating")
         if rating is None or player.get("provisional") is True:
             return "rating"
-        if (
-            isinstance(rating, bool)
-            or not isinstance(rating, (int, float))
-            or (isinstance(rating, float) and not math.isfinite(rating))
-        ):
-            raise SelectionError("rating must be a finite number or null")
         if rating < MIN_RATING:
             return "rating"
     if game.get("status") not in STATUSES:
@@ -132,7 +135,7 @@ def select_games(input_path, output_path, report_path):
     excluded = dict.fromkeys(REASONS, 0)
     seen = set()
     bot_accounts = set()
-    candidates = []
+    rows = []
     digest = hashlib.sha256()
     size = 0
     line_count = 0
@@ -141,28 +144,43 @@ def select_games(input_path, output_path, report_path):
             size += len(raw)
             digest.update(raw)
             try:
+                if not raw.endswith(b"\n"):
+                    raise SelectionError("each line must end with LF")
                 game = json.loads(raw.decode("utf-8"))
                 if not isinstance(game, dict):
                     raise SelectionError("each line must be a JSON object")
                 game_id = game.get("id")
                 if not isinstance(game_id, str):
                     raise SelectionError("id must be a string")
+                # Rustのchar::is_whitespaceはPythonと異なりU+001C〜U+001Fを含まない。
+                if not game_id or any(
+                    character.isspace() and character not in "\x1c\x1d\x1e\x1f"
+                    for character in game_id
+                ):
+                    raise SelectionError("id must be nonempty and contain no whitespace")
                 if game_id in seen:
                     raise SelectionError(f"duplicate game id: {game_id}")
                 seen.add(game_id)
                 players = read_players(game, bot_accounts)
-                reason = exclusion(game, players)
-                if reason is not None:
-                    excluded[reason] += 1
-                    continue
-                candidates.append(Candidate(
-                    game_id,
-                    frozenset(p["user"]["id"] for p in players),
-                    len(game["moves"].split()),
-                    raw if raw.endswith(b"\n") else raw + b"\n",
-                ))
+                rows.append((game, players, raw))
             except (ValueError, UnicodeError) as error:
                 raise SelectionError(f"NDJSON line {line_count}: {error}") from error
+
+    candidates = []
+    for line_number, (game, players, raw) in enumerate(rows, 1):
+        try:
+            reason = exclusion(game, players, bot_accounts)
+            if reason is not None:
+                excluded[reason] += 1
+                continue
+            candidates.append(Candidate(
+                game["id"],
+                frozenset(p["user"]["id"] for p in players),
+                len(game["moves"].split()),
+                raw,
+            ))
+        except ValueError as error:
+            raise SelectionError(f"NDJSON line {line_number}: {error}") from error
 
     candidates.sort(key=lambda game: game.id)
     random.Random(SEED).shuffle(candidates)

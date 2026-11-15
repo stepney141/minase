@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""フェーズ1指示書の選別条件、決定性、原文保存と失敗時の契約を検証する。"""
+"""選別条件、入力検査、決定性、原文保存と失敗時の契約を検証する。"""
 
 from collections import Counter
 import hashlib
@@ -61,6 +61,16 @@ class SelectionTests(unittest.TestCase):
         self.assertFalse(self.output.exists())
         self.assertFalse(self.report.exists())
 
+    def assert_input_error(self, raw, line_number):
+        self.source.write_bytes(raw)
+        result = self.command()
+        try:
+            self.assert_error(result)
+            self.assertIn(f"NDJSON line {line_number}:".encode(), result.stderr)
+        finally:
+            self.output.unlink(missing_ok=True)
+            self.report.unlink(missing_ok=True)
+
     def test_all_ten_filters_and_first_reason_priority(self):
         rows = []
         for reason in REASONS[:-1]:
@@ -103,6 +113,39 @@ class SelectionTests(unittest.TestCase):
         self.assertEqual(report["selected"], {**report["candidates"], "plies": 0, "ids": []})
         self.assertEqual(self.output.read_bytes(), b"")
         self.assertEqual(result.stdout.decode().splitlines(), ["selected: 0", *(f"{key}: {value}" for key, value in expected.items())])
+
+    def test_bot_accounts_apply_before_and_after_titles_without_changing_priority(self):
+        human = game("human")
+        before_sente = game("before-sente", "bot-sente", "alice")
+        before_gote = game("before-gote", "alice", "bot-gote")
+        initial = game("initial", "bot-sente")
+        initial["initialSfen"] = None
+        ai = game("ai", "bot-sente")
+        ai["players"]["gote"]["aiLevel"] = 1
+        anonymous = game("anonymous", "bot-sente")
+        anonymous["players"]["gote"]["user"] = None
+        evidence_sente = game("evidence-sente", "alice", "bot-sente")
+        evidence_sente["players"]["gote"]["user"]["title"] = "BOT"
+        evidence_sente["variant"] = "standard"
+        evidence_gote = game("evidence-gote", "bot-gote", "alice")
+        evidence_gote["players"]["sente"]["user"]["title"] = "BOT"
+        after = game("after", "bot-sente", "bot-gote")
+        after["rated"] = False
+        rows = [human, before_sente, before_gote, initial, ai, anonymous,
+                evidence_sente, evidence_gote, after]
+        self.source.write_bytes(encode(rows))
+        report = select_games(self.source, self.output, self.report)
+        self.assertEqual(report["excluded"], {
+            **dict.fromkeys(REASONS, 0), "variant": 1, "initial_sfen": 1,
+            "ai": 1, "anonymous": 1, "bot": 4,
+        })
+        self.assertEqual(report["bot_accounts"], ["bot-gote", "bot-sente"])
+        self.assertEqual(report["selected"]["ids"], ["human"])
+        self.assertEqual(self.output.read_bytes(), encode([human]))
+        self.source.write_bytes(encode(reversed(rows)))
+        reversed_report = select_games(self.source, self.root / "reversed.ndjson", self.root / "reversed.json")
+        for field in ("bot_accounts", "excluded", "candidates", "selected"):
+            self.assertEqual(reversed_report[field], report[field])
 
     def test_missing_and_null_players_ratings_and_ai_precedence(self):
         rows = []
@@ -172,8 +215,8 @@ class SelectionTests(unittest.TestCase):
         rows[1]["status"] = "royalsLost"
         rows[2]["status"] = "bareKing"
         raw = [("  " + json.dumps(row, ensure_ascii=False, separators=(", ", " : ")) + " \n").encode() for row in rows]
-        # 最終行だけ改行がない入力でも、出力は各行末にLFを1つ置く。
-        source = b"".join(raw)[:-1]
+        raw[1] = raw[1][:-1] + b"\r\n"
+        source = b"".join(raw)
         self.source.write_bytes(source)
         report = select_games(self.source, self.output, self.report)
         self.assertEqual(self.output.read_bytes(), raw[1] + raw[2] + raw[0])
@@ -219,6 +262,67 @@ class SelectionTests(unittest.TestCase):
             with self.subTest(rows=rows):
                 self.source.write_bytes(encode(rows))
                 self.assert_error(self.command())
+
+    def test_empty_game_id_or_game_id_with_whitespace_is_an_input_error(self):
+        for game_id in ("", " ", "bad id", " id", "id ", "id\tpart", "id\npart", "id\rpart",
+                        "id\u0085part", "id\u00a0part", "id\u2028part", "id\u3000part"):
+            with self.subTest(game_id=game_id):
+                invalid = game(game_id)
+                invalid["variant"] = "standard"
+                self.assert_input_error(encode([game("valid"), invalid]), 2)
+
+    def test_game_ids_allow_characters_outside_unicode_white_space(self):
+        # input.rsのchar::is_whitespaceはU+001C〜U+001Fやゼロ幅スペースを含まない。
+        rows = [game(game_id) for game_id in (
+            "日本語", "id\u200bpart", "id\x1cpart", "id\x1dpart", "id\x1epart", "id\x1fpart",
+        )]
+        self.source.write_bytes(encode(rows))
+        report = select_games(self.source, self.output, self.report)
+        self.assertEqual(report["excluded"], dict.fromkeys(REASONS, 0))
+        expected = sorted(rows, key=lambda row: row["id"])
+        self.assertEqual(report["selected"]["ids"], [row["id"] for row in expected])
+        self.assertEqual(self.output.read_bytes(), encode(expected))
+
+    def test_non_integer_and_out_of_i32_range_ratings_are_input_errors(self):
+        for side in ("sente", "gote"):
+            for rating in (1600.0, 1600.5, -(2**31) - 1, 2**31, True, False, "1600", [], {}):
+                with self.subTest(side=side, rating=rating):
+                    invalid = game("bad-rating")
+                    invalid["players"][side]["rating"] = rating
+                    self.assert_input_error(encode([game("valid"), invalid]), 2)
+
+    def test_invalid_rating_is_checked_before_exclusion(self):
+        variant = game("variant")
+        variant["variant"] = "standard"
+        provisional = game("provisional")
+        provisional["players"]["gote"]["provisional"] = True
+        missing = game("missing")
+        del missing["players"]["sente"]["rating"]
+        for invalid in (variant, provisional, missing):
+            with self.subTest(game_id=invalid["id"]):
+                invalid["players"]["gote"]["rating"] = 1600.0
+                self.assert_input_error(encode([game("valid"), invalid]), 2)
+
+    def test_i32_rating_boundaries_are_valid_input(self):
+        minimum = game("minimum")
+        minimum["players"]["sente"]["rating"] = -(2**31)
+        maximum = game("maximum")
+        for player in maximum["players"].values():
+            player["rating"] = 2**31 - 1
+        self.source.write_bytes(encode([minimum, maximum]))
+        report = select_games(self.source, self.output, self.report)
+        self.assertEqual(report["excluded"], {**dict.fromkeys(REASONS, 0), "rating": 1})
+        self.assertEqual(report["selected"]["ids"], ["maximum"])
+        self.assertEqual(self.output.read_bytes(), encode([maximum]))
+
+    def test_final_line_without_lf_is_an_input_error_even_if_excluded(self):
+        for variant in ("chushogi", "standard"):
+            for ending in (b"", b"\r"):
+                with self.subTest(variant=variant, ending=ending):
+                    last = game("last")
+                    last["variant"] = variant
+                    raw = encode([game("valid"), last])[:-1] + ending
+                    self.assert_input_error(raw, 2)
 
     def test_failed_report_creation_removes_created_output(self):
         self.source.write_bytes(encode([game("valid")]))
