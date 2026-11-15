@@ -234,6 +234,13 @@ python3 scripts/vast/test_common.py
 python3 scripts/vast-spsa/test_spsa.py
 ```
 
+学習の系列の進捗図の道具`tools/train/progress/series_progress.py`を変更したときも、マージの前に試験を実行する。
+道具は独立のPythonの環境を持つので、作業ツリーに環境がなければ、先に`uv sync --frozen --project tools/train/progress`で導入する。
+
+```console
+(cd tools/train/progress && uv run --frozen python -m unittest test_series_progress)
+```
+
 遅い層は速い層と分けて単独に実行できるようにし、`cargo test -p <crate>`や`--test <名前>`で一部だけを回せる形を保つ。
 遅いテストを足したときは検査全体の所要時間を測り、目標の10分を超えたら、まず固定の費用の分離と削減を検討し、本数の削減は最後にする。
 固定の費用とは、テストバイナリのビルドとリンク、プロセスの起動、および対局ハーネスがコミット指定（`commit:`）のエンジンを用意するためのビルドである。

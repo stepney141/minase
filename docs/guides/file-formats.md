@@ -134,6 +134,20 @@ ONNXのネットそのものとTensorRTのエンジンのキャッシュは、ON
 | 固定局面集`crates/minase/tests/fixtures/nn-positions.jsonl` | なし | USIの独自コマンド`nn-fixture` | minaseのテスト、学習器の`fixture-eval`、学習器の試験 | `crates/minase/src/diagnostics/nn_fixture.rs` |
 | 固定局面集の推論の結果（出力先を指定） | なし | USIの独自コマンド`nn-eval`、学習器の`fixture-eval` | `tools/train/zero/nn_compare.py` | `crates/minase/src/diagnostics/nn_eval.rs` |
 
+## 学習の系列の記録
+
+学習の系列のディレクトリ`docs/training/<系列名>/`に置く、系列の定義と、進捗図の元になる値である（置き場の規則は[学習の系列の記録](../training/README.md)にある）。
+道具`tools/train/progress/series_progress.py`の`collect`が系列の定義を読んで3つのCSVのうち2つを書き、`plot`が3つのCSVだけを読んで進捗図`progress.png`を書く。
+進捗図はPNGが形式を定めるので載せない。
+`collect`が読む入力のうち、固定の相手との対局の集計`summary.json`の欄は集計スクリプト`docs/measurements/mcts-fixed-opponents/mcts-fixed-opponents-scripts/summarize.py`のdocstringに、固定の検証用データの診断のJSONの欄は`tools/train/zero/minase_zero/external.py`のdocstringにある。
+
+| 形式 | 識別と版 | 書き手 | 読み手 | 仕様 |
+|---|---|---|---|---|
+| 系列の定義`series.toml` | なし | 人またはエージェント | `series_progress.py collect` | `tools/train/progress/series_progress.py`のdocstring |
+| サイクルごとの値`cycles.csv` | なし | 1回目の強化学習の系列では一度だけの変換 | `series_progress.py plot` | `tools/train/progress/series_progress.py`のdocstring |
+| 固定の相手との対局の値`strength.csv` | なし | `series_progress.py collect` | `series_progress.py plot` | `tools/train/progress/series_progress.py`のdocstring |
+| 固定の検証用データの診断の値`validation.csv` | なし | `series_progress.py collect` | `series_progress.py plot` | `tools/train/progress/series_progress.py`のdocstring |
+
 ## 同じ名前で中身が違うファイル
 
 次のファイルは、同じ名前で別の形式を持つ。
