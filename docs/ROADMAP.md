@@ -68,6 +68,7 @@
 | 対局用MCTSを全部の規則コードで探索できるようにする | [plans/archived/mcts-rule-codes.md](plans/archived/mcts-rule-codes.md) | 完了（採用） | 2026年11月13日 |
 | AlphaZero型探索の強さを測る固定の相手 | [plans/archived/mcts-fixed-opponents.md](plans/archived/mcts-fixed-opponents.md) | 完了（採用） | 2026年11月14日 |
 | AlphaZero型探索のネットを診断する固定の検証用データ | [plans/archived/zero-validation-games.md](plans/archived/zero-validation-games.md) | 完了（採用） | 2026年11月15日 |
+| AlphaZero型探索の学習レシピを先行実装に揃える | [plans/zero-recipe-precedents.md](plans/zero-recipe-precedents.md) | 起案 | |
 | 対局用MCTSのPUCTの係数と方策の温度のSPSAによる調整 | [plans/mcts-puct-spsa.md](plans/mcts-puct-spsa.md) | 起案 | |
 | AlphaZero型探索の学習と自己対局生成の複数GPU化 | [plans/archived/alphazero-multi-gpu.md](plans/archived/alphazero-multi-gpu.md) | 完了（採用） | 2026年11月11日 |
 | AlphaZero型探索の推論で、ホストとGPUの間の転送を減らす | [plans/archived/alphazero-inference-transfer.md](plans/archived/alphazero-inference-transfer.md) | 完了（採用） | 2026年11月11日 |
@@ -200,11 +201,14 @@ NNUEの作業の本線は、教師の生成と学習の標準の条件（標準�
 [統括計画](plans/alphazero.md)は、ゼロから強化学習で育てたネットのMCTSを、αβ探索とNNUEの組合せと同等以上に強くすることを目標とする。
 統括計画のサブタスクは、実行環境、ネットの入出力と推論、探索方式の共存とMCTS、自己対局生成器、学習器、および強化学習の実行の6本であり、状態表のそのほかのAlphaZero型探索の行は、サブタスクを補う設計書である。
 サブタスク1〜5は完了し、強化学習の[1回目の実行](plans/archived/alphazero-rl.md)はサイクル32で中断したので、次は2回目の実行で、20ブロック256チャネルのネットをランダムに初期化してやり直す。
-2回目の実行のための初期ネット、複数GPU化、推論の転送の削減、および導入スクリプトは用意が済んでいる（状態表の完了の行）。
+2回目の実行のための複数GPU化、推論の転送の削減、および導入スクリプトは用意が済んでいる（状態表の完了の行）。
 
 2回目の実行は、[2回目の実行の設計書](plans/alphazero-rl-2.md)で進める。
 この設計書は、自己対局の規則の`lishogi`への切り替え、定例の測定のスクリプトの用意、3サイクルの試走、機械の選択、およびサイクルの実行を扱い、起案の段階で利用者の承認を待っている。
-2026年11月13日にこの設計書から分けた3本の準備、[対局用MCTSの規則コードへの対応](plans/archived/mcts-rule-codes.md)、[強さを測る固定の相手](plans/archived/mcts-fixed-opponents.md)、および[固定の検証用データ](plans/archived/zero-validation-games.md)は完了しており、サイクル1の前提はそろっている。
+2026年11月13日にこの設計書から分けた3本の準備、[対局用MCTSの規則コードへの対応](plans/archived/mcts-rule-codes.md)、[強さを測る固定の相手](plans/archived/mcts-fixed-opponents.md)、および[固定の検証用データ](plans/archived/zero-validation-games.md)は完了している。
+残る前提は、[学習レシピを先行実装に揃える設計書](plans/zero-recipe-precedents.md)である。
+この設計書は、学習の設定のうちminaseが独自に決めた値と組合せ（毎サイクルの学習率の下げ直し、序盤の一様な乱択、探索回数の乱択とGumbel AlphaZeroの組合せ、パラメータ数で決めるリプレイバッファ、固定の閾値の投了など）をチェスと将棋のエンジンの方法に置き換え、補助目標を外し、胴体とヘッドをAlphaZeroの形にした新しい初期ネットを作る（2026年11月15日の利用者の決定）。
+起案の段階で、利用者の承認を待っている。
 
 次の2件は、2回目の実行と独立に進められる。
 
