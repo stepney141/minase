@@ -25,5 +25,5 @@ NNUEの世代反復では、各世代のネットをその世代の教師だけ�
 ## 結果
 
 連続生成スクリプトは`--replay-buffer-generations`で1世代分と2世代分を選べるが、標準レシピv1では1を指定する。
-教師の量を増やすときは、1世代あたりの教師ファイルの本数を増やす（[世代の量のADR](size-each-nnue-generation-at-70-teacher-files.md)）。
+教師の量を増やすときは、1世代あたりの教師ファイルの本数を増やす（[世代の量のADR](archive/size-each-nnue-generation-at-70-teacher-files.md)）。
 測定は二値交差エントロピーの損失と早期終了を使っていた当時の学習器で行ったので、今の学習器でも同じ結論が成り立つかは確かめていない。

@@ -430,6 +430,7 @@ PSTとFMの同時学習の損失にあったFMの補正の2乗平均の項は、
 重み減衰は、先行のエンジンに共通する形に合わせてどの群にも掛けない。
 3つの群の学習率には、各更新で共通の倍率を掛ける。
 標準の`cosine:64:0.027`では、64 superbatch（1 superbatchはミニバッチ6,104回分の更新）にわたって、倍率をcosine annealingで1から0.027まで下げる。
+教師が約5億局面の第5世代では、学習の長さに合わせて`cosine:80:0.027`とする。
 superbatchは教師の量によらない単位なので、教師を増やしても学習率の進み方は変わらない。
 AdamWの係数は $`\beta_1 = 0.9`$、$`\beta_2 = 0.999`$、$`\epsilon = 10^{-8}`$ であり、PyTorchと同じバイアス補正つきの式を使う（[学習器のAdamWはPyTorchと同じバイアス補正つきの式にする](../adr/use-pytorch-adamw-with-bias-correction.md)）。
 
@@ -443,7 +444,7 @@ AdamWの係数は $`\beta_1 = 0.9`$、$`\beta_2 = 0.999`$、$`\epsilon = 10^{-8}
 
 学習データは対局単位で訓練集合と検証集合に分け、約5%の対局を検証に充てる。
 同じ対局の局面を両方に入れると、隣接する局面が似ているために検証損失が実際より良く見えるからである。
-学習の長さは事前にsuperbatchの数で決め、標準の学習では64 superbatch（390,656回の更新）を学び終えた最後の重みを採用する。
+学習の長さは事前にsuperbatchの数で決め、標準の学習では、第1世代から第4世代は64 superbatch（390,656回の更新）、第5世代は80 superbatch（488,320回の更新）を学び終えた最後の重みを採用する。
 検証集合での損失（検証損失）は、学習の前、8 superbatchごと、および学習の終わりに測って記録するが、学習を止める判断と重みの選択には使わない。
 先行の学習器の作者たちが、検証損失の良し悪しが棋力と一致しないと書いているからである（[学習レシピの調査](../research/nnue-training-recipes.md)）。
 2026年11月14日より前の学習器は、5エポック続けて検証損失が改善しなければ止め（早期終了）、検証損失が最良のエポックの重みを採用していた。
@@ -497,7 +498,7 @@ GPUの学習器を設計した理由は、[NNUEの学習器をRustのホスト�
 - [NNUEを、探索用駒価値で初期化した線形の経路と、要素積と2段の隠れ層を持つ非線形の経路で組み立てる](../adr/compose-the-nnue-of-a-piece-value-initialized-linear-path-and-pairwise-products-with-two-hidden-layers.md)
 - [P型のNNUEは左右鏡映の対で第1層の重みを半幅だけ回して共有する](../adr/share-p-type-mirror-weights-by-half-width-rotation.md)
 - [NNUEは先読みを使わない探索値だけの教師で、勝率の差の2乗を損失として学ぶ](../adr/train-the-nnue-on-search-value-teachers-with-the-squared-win-rate-difference.md)
-- [NNUEは64 superbatchを余弦の学習率の予定で学び、学び終えた最後のネットを書き出す](../adr/train-the-nnue-for-64-superbatches-and-export-the-last-network.md)
+- [NNUEは、1世代の教師の量に応じて64または80 superbatchを余弦の学習率の予定で学び、学び終えた最後のネットを書き出す](../adr/train-the-nnue-for-64-or-80-superbatches-by-the-generation-volume-and-export-the-last-network.md)
 - [勝率尺度を重みファイルの1定数とし、NNUEの教師の探索値も既定ではその尺度で勝率へ換算する](../adr/convert-nnue-teacher-values-with-the-network-win-rate-scale-by-default.md)
 - [NNUEの学習では、どのパラメータ群にも重み減衰を掛けない](../adr/apply-no-weight-decay-to-the-nnue.md)
 - [NNUEの学習器から駒除去差分の補助損失を外し、書き出し時に符号反転の割合を記録する](../adr/drop-the-piece-removal-auxiliary-loss-from-the-nnue-trainer.md)

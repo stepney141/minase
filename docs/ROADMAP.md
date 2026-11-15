@@ -137,7 +137,7 @@
 | NNUEに隠れ層を加えて第1層を広げ、整数化の精度を上げる | [plans/archived/nnue-architecture-revision.md](plans/archived/nnue-architecture-revision.md) | 完了（一部不採用） | 2026年11月4日 |
 | NNUE教師生成を探索結果を変えずに速くする | [plans/archived/teacher-generation-speedup.md](plans/archived/teacher-generation-speedup.md) | 完了 | 2026年11月6日 |
 | NNUEの標準レシピv1と、学習器および教師の生成器の変更 | [plans/archived/nnue-standard-recipe.md](plans/archived/nnue-standard-recipe.md) | 完了（採用） | 2026年11月15日 |
-| 標準レシピv1でのNNUEの世代反復のやり直し | [plans/nnue-generation-iteration.md](plans/nnue-generation-iteration.md) | 起案 | |
+| 標準レシピv2でのNNUEの世代反復のやり直し | [plans/nnue-generation-iteration.md](plans/nnue-generation-iteration.md) | 起案 | |
 | MCTSの葉での王駒の捕獲の判定と方策の温度 | [plans/archived/mcts-royal-capture-temperature.md](plans/archived/mcts-royal-capture-temperature.md) | 完了（採用） | 2026年11月9日 |
 | 起動引数と診断ツールをUSIへ移す | [plans/archived/cli-to-usi.md](plans/archived/cli-to-usi.md) | 完了（採用） | 2026年11月12日 |
 | NNUEの教師生成を中断の後に再開できるようにする | [plans/archived/resumable-nnue-teacher-generation.md](plans/archived/resumable-nnue-teacher-generation.md) | 完了（採用） | 2026年11月14日 |
@@ -153,7 +153,8 @@
 ### NNUEと教師生成
 
 NNUEは、着手ごとに差分で更新できる小さなニューラルネットの評価関数であり、以下ではネットと呼ぶ。
-NNUEの作業の本線は、教師の生成と学習の標準の条件（標準レシピv1、[設計書](plans/archived/nnue-standard-recipe.md)）で、手書きの評価関数v0から世代反復をやり直す計画である。
+NNUEの作業の本線は、教師の生成と学習の標準の条件（標準レシピv2）で、手書きの評価関数v0から世代反復をやり直す計画である。
+標準レシピv2は、[設計書](plans/archived/nnue-standard-recipe.md)で決めた標準レシピv1のうち、1世代の教師の量と学習の長さを世代の番号で決まる値に改めたものである（[世代の量のADR](adr/grow-each-nnue-generation-by-the-teacher-files-for-100-million-positions.md)、[学習の長さのADR](adr/train-the-nnue-for-64-or-80-superbatches-by-the-generation-volume-and-export-the-last-network.md)）。
 世代反復は、あるネットの自己対局で教師を作り、その教師から次のネットを学ぶことの繰り返しを指す。
 教師は、自己対局の局面に、その局面の探索値と対局結果を付けた学習データである。
 ほかの設計書と提案の大半は、本線の教師を安く作るためのものか、本線の結果を見てから次に試すものである。
@@ -164,14 +165,14 @@ NNUEの作業の本線は、教師の生成と学習の標準の条件（標準�
 
 | 設計書 | 内容 | 状態と次の判断 | 前提 |
 |---|---|---|---|
-| [標準レシピv1での世代反復のやり直し](plans/nnue-generation-iteration.md) | 標準レシピv1で、v0から最大第4世代までの世代反復を行い、最終候補を、構成を見直す前のネットと比べる。生成機の費用は約180米ドルと見込む。 | 起案の段階である。計算機を借りるので、利用者の着手の指示を待つ。 | 標準レシピv1の学習器と教師の生成器（[設計書](plans/archived/nnue-standard-recipe.md)、2026年11月15日完了）がmasterに統合されていること |
+| [標準レシピv2での世代反復のやり直し](plans/nnue-generation-iteration.md) | 標準レシピv2で、第n世代に約n億局面の教師を使い、v0から最大第5世代までの世代反復を行い、最終候補を、構成を見直す前のネットと比べる。生成機と学習機の費用は約280米ドルと見込む。 | 起案の段階である。計算機を借りるので、利用者の着手の指示を待つ。着手したら、まず連続生成スクリプトを、学習だけのために機械を借りられるように改める。 | なし（標準レシピv1の学習器と教師の生成器、および中断可能インスタンスでの教師生成はmasterに統合済み） |
 | [先読みなしの教師での間引きの比較](plans/nnue-subsample-no-lookahead.md) | 同じ局面数を少数の対局から採る学習と、多数の対局から採る学習を比べ、対局数が多いほど良いという効果が、後続の局面の探索値を混ぜない現行の教師（先読みなしの教師）でも残るかを確かめる。 | 起案の段階で、世代反復の結果を見て、続けるかを決める。 | なし |
 | [記録する局面の間引き](plans/sparse-teacher-recording.md) | 4手に1手だけを2万ノードで探索して記録し、残りの手を少ないノード数で指して、同じ計算量で対局数を増やす。 | 起案の段階である。日本中将棋連盟の規則に基づく規則セット`JCSA`の教師を使う前提で書かれているので、着手の前に`lishogi`の規則に合わせて改める。 | 「間引きの比較」が、現行の教師でも対局数の効果が残ると判定すること（同書の判定1が「支持」）、および世代反復の完了 |
 | [第1層の全再計算の差分化（Finny tables）](plans/nnue-finny-tables.md) | ネットの第1層の値の全再計算を、保存した値からの差分の更新に置き換える。 | 待機中である。全再計算は、入力特徴を自玉の位置で条件付けるネットで、自玉が別の区分へ動いたときに起きる。現行のネットは自玉の位置で条件付けないので、探索中に全再計算が起きない。 | 自玉の位置で条件付けるネットを対局で測ると決まること、または第1層の値の更新方式が変わること |
 
 設計書の間の依存は1組であり、「記録する局面の間引き」は、「間引きの比較」の判定を前提とする。
 「記録する局面の間引き」に効果を見込めるのは、対局数の効果が現行の教師でも残ると確かめられた場合だからである。
-「記録する局面の間引き」は、標準レシピv1が固定した1世代の教師の作り方を変えるので、世代反復の後に扱う。
+「記録する局面の間引き」は、標準レシピv2が固定した1世代の教師の作り方を変えるので、世代反復の後に扱う。
 世代反復の教師ファイルは、[中断可能な計算機での教師生成](plans/archived/interruptible-teacher-generation.md)で作った制御スクリプトで、vast.aiの中断可能インスタンスを最低入札額で借りて生成する（[ADR](adr/rent-interruptible-instances-at-the-minimum-bid-for-teacher-generation.md)）。
 
 世代反復の最終候補は、[NNUEの構成の見直し](plans/archived/nnue-architecture-revision.md)をmasterへ統合する前のコミットを残したブランチ`nnue-width128-regressed`と比べる。

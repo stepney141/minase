@@ -2,7 +2,7 @@
 
 ## ステータス
 
-置き換え済み。決定日は2026年10月16日。[NNUEは64 superbatchを余弦の学習率の予定で学び、学び終えた最後のネットを書き出す](../train-the-nnue-for-64-superbatches-and-export-the-last-network.md)によって置き換えられた。
+置き換え済み。決定日は2026年10月16日。[NNUEは64 superbatchを余弦の学習率の予定で学び、学び終えた最後のネットを書き出す](train-the-nnue-for-64-superbatches-and-export-the-last-network.md)によって置き換えられた。
 
 ## コンテキスト
 

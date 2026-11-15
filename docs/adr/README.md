@@ -392,9 +392,11 @@ PSTは駒の種類と升ごとの値の表による評価、FMはFactorization M
 - 2026年11月14日 [NNUEの教師ファイルは、対局数で決めた塊ごとに確定させ、全塊がそろったら1つのファイルへ組み直す](commit-nnue-teacher-files-in-fixed-game-chunks-and-reassemble-them-into-one-file.md)
 - 2026年11月14日 [NNUEの教師ファイルは、作業機の制御スクリプトが借りた1台に生成させ、止まったら回収済みの塊から別の機械で続ける](generate-teacher-files-on-one-rented-machine-and-continue-from-collected-chunks-on-another.md)
 - 2026年11月14日 [NNUEの教師生成に使う機械は、vast.aiの中断可能インスタンスを、その時点の最低入札額で借りる](rent-interruptible-instances-at-the-minimum-bid-for-teacher-generation.md)
-- 2026年11月14日 [NNUEの世代反復の1世代の教師を、局面数ではなく教師ファイルの本数で定め、70本とする](size-each-nnue-generation-at-70-teacher-files.md)
-- 2026年11月14日 [NNUEは64 superbatchを余弦の学習率の予定で学び、学び終えた最後のネットを書き出す](train-the-nnue-for-64-superbatches-and-export-the-last-network.md)
+- 2026年11月14日 [NNUEの世代反復の1世代の教師を、局面数ではなく教師ファイルの本数で定め、70本とする](archive/size-each-nnue-generation-at-70-teacher-files.md)（置き換え済み）
+- 2026年11月14日 [NNUEは64 superbatchを余弦の学習率の予定で学び、学び終えた最後のネットを書き出す](archive/train-the-nnue-for-64-superbatches-and-export-the-last-network.md)（置き換え済み）
 - 2026年11月14日 [NNUEは先読みを使わない探索値だけの教師で、勝率の差の2乗を損失として学ぶ](train-the-nnue-on-search-value-teachers-with-the-squared-win-rate-difference.md)
 - 2026年11月14日 [勝率尺度を重みファイルの1定数とし、NNUEの教師の探索値も既定ではその尺度で勝率へ換算する](convert-nnue-teacher-values-with-the-network-win-rate-scale-by-default.md)
 - 2026年11月14日 [NNUEの学習では、どのパラメータ群にも重み減衰を掛けない](apply-no-weight-decay-to-the-nnue.md)
 - 2026年11月14日 [NNUEの教師の生成では、王手の局面を除き、評価値が傾いた開始局面を捨て、大差が続いた対局を評価値で裁定する](exclude-checks-screen-openings-and-adjudicate-decided-games-in-teacher-generation.md)
+- 2026年11月15日 [NNUEの世代反復の第n世代の教師を、1億局面に相当する本数のn倍とし、世代を追って増やす](grow-each-nnue-generation-by-the-teacher-files-for-100-million-positions.md)
+- 2026年11月15日 [NNUEは、1世代の教師の量に応じて64または80 superbatchを余弦の学習率の予定で学び、学び終えた最後のネットを書き出す](train-the-nnue-for-64-or-80-superbatches-by-the-generation-volume-and-export-the-last-network.md)

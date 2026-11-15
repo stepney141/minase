@@ -31,4 +31,4 @@ NNUEの線形の経路の学習率は0.03のままとし、第1層と出力部�
 ## 結果
 
 学習器の`--lr-linear`の既定値は0.03のままである。
-測定は二値交差エントロピーの損失と早期終了を使っていた当時の学習器で行ったので、[64 superbatchの学習](train-the-nnue-for-64-superbatches-and-export-the-last-network.md)と[勝率の差の2乗の損失](train-the-nnue-on-search-value-teachers-with-the-squared-win-rate-difference.md)でも同じ結論が成り立つかは確かめていない。
+測定は二値交差エントロピーの損失と早期終了を使っていた当時の学習器で行ったので、[64 superbatchの学習](archive/train-the-nnue-for-64-superbatches-and-export-the-last-network.md)と[勝率の差の2乗の損失](train-the-nnue-on-search-value-teachers-with-the-squared-win-rate-difference.md)でも同じ結論が成り立つかは確かめていない。

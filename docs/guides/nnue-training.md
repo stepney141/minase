@@ -21,7 +21,8 @@
 
 ## 標準レシピ
 
-本節は、[標準レシピv1の設計書](../plans/archived/nnue-standard-recipe.md)が定めた標準レシピv1の学習と診断のコマンドと、中止の条件をまとめる。各段階の詳しい手順は[手順](#手順)にある。
+本節は、標準レシピv2の学習と診断のコマンドと、中止の条件をまとめる。各段階の詳しい手順は[手順](#手順)にある。
+標準レシピv2は、[標準レシピv1の設計書](../plans/archived/nnue-standard-recipe.md)が定めた標準レシピv1のうち、1世代の教師の量と学習の長さを世代の番号で決まる値に改めたものである（[世代の量のADR](../adr/grow-each-nnue-generation-by-the-teacher-files-for-100-million-positions.md)、[学習の長さのADR](../adr/train-the-nnue-for-64-or-80-superbatches-by-the-generation-volume-and-export-the-last-network.md)）。
 前の世代のネットで教師を生成して次の世代のネットを学習する世代反復では、`scripts/vast/generation_chain.py`がこの手順を続けて実行する。
 学習の長さは、教師の量によらない単位superbatch（バッチ6,104回分の更新で、16,384局面のバッチなら約1億局面にあたる）の数で事前に決め、予定の更新を終えた最後のネットを書き出す。
 検証損失（学習に使わない対局での予測の誤差）は記録するだけで、停止とネットの選択には使わない。
@@ -34,7 +35,7 @@ minase-trainer nnue train \
   --data <教師...> --base <前の世代のネット> --output-dir <新規または空のディレクトリ> \
   --lambda 1.0 \
   --feature-set P --width 256 --head pairwise-l16-l32 \
-  --batch 16384 --superbatches 64 --lr-schedule cosine:64:0.027 --validation-superbatches 8 \
+  --batch 16384 --superbatches <S> --lr-schedule cosine:<S>:0.027 --validation-superbatches 8 \
   --seed 1 --device cuda --threads <スレッド数>
 
 # 診断
@@ -43,7 +44,8 @@ minase-trainer diag nnue-removal \
   --data <教師...> --sample 10000 --seed 1 --output <新規の報告.json>
 ```
 
-- `--data`には、その世代の教師だけを指定する。
+- `--data`には、その世代の教師だけを指定する。第n世代の教師は、1億局面に相当する本数k（見込みは37）のn倍の教師ファイルである。
+- 学習の長さ`<S>`は、第1世代から第4世代では64、第5世代では80とする。
 - `--teacher-cp-per-logit`は指定しない。教師の探索値は、`--base`のネットの勝率尺度で勝率へ換算される。
 - `--threads`の実績は、作業機（RTX 3060 Ti）で4、生成機（RTX 5090）で32である。
 - 学習で出力された`nnue.bin`をエンジンに埋め込む。
@@ -133,13 +135,13 @@ done
 **学習の長さと書き出すネット**
 
 - 学習は、`--superbatches`×`--batches-per-superbatch`回の更新を終えたら止まり、そのときの重みを`nnue.bin`へ書き出す。教師の量を変えても、更新回数と学習率の進み方は変わらない。
-- 1エポック（教師の全訓練局面を1回ひととおり学ぶこと）の更新回数は`ceil(訓練局面数 / バッチ)`であり、superbatchの境界はエポックの途中に来てよい。70ファイルの教師（約1.9億局面）では、64 superbatchが約34エポックにあたる。
+- 1エポック（教師の全訓練局面を1回ひととおり学ぶこと）の更新回数は`ceil(訓練局面数 / バッチ)`であり、superbatchの境界はエポックの途中に来てよい。第1世代の37ファイルの教師（約1億局面）では64 superbatchが約64エポック、第5世代の185ファイルの教師（約5億局面）では80 superbatchが約16エポックにあたる。
 - 検証は、学習の前と、`--validation-superbatches`のsuperbatchごとと、学習の終わりに行う。検証損失は記録だけに使う。
 
 **主な調整用オプション**（値域と式は[オプション一覧](#オプション一覧)）
 
-- `--lr-schedule`: 総長と半減期の単位はsuperbatchであり、`--superbatches`と独立に指定する。標準レシピでは総長を`--superbatches`と同じ64とし、学習の終わりで学習率の倍率が下限に達するようにする。
-- `--validation-superbatches`: 70ファイルの教師では、検証1回に約1分かかる見込みである。
+- `--lr-schedule`: 総長と半減期の単位はsuperbatchであり、`--superbatches`と独立に指定する。標準レシピでは総長を`--superbatches`と同じ値とし、学習の終わりで学習率の倍率が下限に達するようにする。
+- `--validation-superbatches`: 検証1回の時間は教師の本数に比例し、37ファイルの教師で約30秒、185ファイルの教師で約2.7分かかる見込みである。
 
 ### 結果を確認する
 
@@ -495,20 +497,20 @@ done
 
 | 項目 | 値 | 根拠 |
 |---|---|---|
-| 教師の量 | 1世代70ファイル（1ファイル7,500局）、1手2万ノード | 第2世代の教師では、37ファイルが、その半分に対してSTCで`H1`（得点率63.2%）で、まだ頭打ちではないので、約2倍の70ファイルとする（[記録](../measurements/nnue-generation-reset/nnue-generation-reset-gen2-volume.md)）。局面数をそろえると対局の多い教師が`H1`（得点率56.5%）なので、量は対局数で定める（[記録](../measurements/nnue-generation-reset/nnue-generation-reset-gen2-diversity.md)） |
+| 教師の量 | 第n世代は1億局面に相当する本数k（見込みは37）のn倍のファイル、1ファイル7,500局、1手2万ノード | 第2世代の教師では、37ファイルが、その半分に対してSTCで`H1`（得点率63.2%）で、まだ頭打ちではない（[記録](../measurements/nnue-generation-reset/nnue-generation-reset-gen2-volume.md)）。自己生成で育てたSaplingとAstraは、世代を追って1世代の量を増やした（[調査の付録](../research/teacher-generation-strong-engines/zero-chess-and-variants.md)）。局面数をそろえると対局の多い教師が`H1`（得点率56.5%）なので、量は対局数で定める（[記録](../measurements/nnue-generation-reset/nnue-generation-reset-gen2-diversity.md)） |
 | リプレイバッファ | その世代の教師だけで学ぶ | 直前の世代の教師を併用した学習はSTCで`H0`（[記録](../measurements/nnue-standard-recipe/nnue-standard-recipe-window-stc.md)） |
 | λ | 1.0 | 第1世代で、第0世代に対してλ=0.75は`H0`、λ=1.0は`H1`（[記録](../measurements/nnue-generation-reset/nnue-generation-reset-gen1-stc.md)） |
 | 構成 | P型、幅256、`pairwise-l16-l32` | [ADR](../adr/compose-the-nnue-of-a-piece-value-initialized-linear-path-and-pairwise-products-with-two-hidden-layers.md)で確定（`H1`なしで確定し、世代の判定で検証中） |
 | 最適化手法 | AdamW（β1=0.9、β2=0.999、ε=1e-8） | Stockfishの本番と同じ値（[調査メモ](../research/nnue-training-recipes.md)） |
 | 基準の学習率 | 第1層と出力部0.001、線形の経路0.03 | 0.001は先行の初期値の範囲内。線形の経路は、先行の学習器の設定をminaseの単位へ換算した0.67903が0.03に対してSTCで`H0`（[記録](../measurements/nnue-standard-recipe/nnue-standard-recipe-lr-linear-stc.md)） |
-| 学習の長さ | 64 superbatch（1 superbatchはバッチ6,104回） | bullet、tatara、tanuki-、Saplingと同じ単位で、64は教師の量が最も近いSaplingの1.1億局面の学習の値（[調査メモ](../research/nnue-training-recipes.md)） |
+| 学習の長さ | 第1〜第4世代は64 superbatch、第5世代は80 superbatch（1 superbatchはバッチ6,104回） | bullet、tatara、tanuki-、Saplingと同じ単位である（[調査メモ](../research/nnue-training-recipes.md)）。値は、第1層の幅256のSaplingのネットが1.1億〜3.8億局面を64、6億局面を80で学んだ記録を、局面数で読み替えた（[log.txt 59〜96行](https://github.com/Timmoth/Sapling/blob/2b43285d97fa4a9e49ce1d08fd4155a1fa950724/src/Sapling.Engine/Resources/WeightsHistory/log.txt#L59-L96)） |
 | 書き出すネットと停止 | 予定の更新を終えた最後のネット。検証損失は記録だけに使う | tataraとtanuki-は事前に決めた長さの最後のネットを使い、nnue-pytorch、tanuki-、tataraの作者は検証損失の良し悪しが棋力と一致しないと書いている（同じ調査メモ）。検証損失で選ぶのを標準とする学習器は、調べた範囲ではminaseだけだった |
-| 学習率の予定 | `cosine:64:0.027`（64 superbatchで初期値の0.027倍まで余弦で下げる） | Stockfish、Viridithas、およびSaplingの25.5億局面の学習は、学習率を学習の終わりまで余弦の形で下げる。終わりの倍率0.027は、ViridithasとSaplingの1.1億局面の学習に共通する（同じ調査メモ） |
+| 学習率の予定 | `cosine:<学習の長さ>:0.027`（学習の長さのsuperbatchで初期値の0.027倍まで余弦で下げる） | Stockfish、Viridithas、およびSaplingの25.5億局面の学習は、学習率を学習の終わりまで余弦の形で下げる。終わりの倍率0.027は、ViridithasとSaplingの1.1億局面の学習に共通する（同じ調査メモ） |
 | 損失 | 勝率の差の2乗 | bullet、tatara、variant-nnue-pytorchが2乗を、nnue-pytorch、Stockfish、tanuki-が勝率の差のべき乗を使う（同じ調査メモ）。指数は調整していない基本の形の2とする |
 | 教師の勝率尺度 | ネットの勝率尺度と同じ値（`--teacher-cp-per-logit`を省略） | 調べた13件の実装のうち11件が、手で決めた定数か一度推定して固定した値を使う（[調査メモ](../research/win-rate-scale-k-prior-art.md)） |
 | 重み減衰 | どの層にも掛けない | nnue-pytorch、tatara、tanuki-、variant-nnue-pytorchが0である（[調査メモ](../research/nnue-training-recipes.md)） |
 | バッチ | 16,384局面 | 先行の多くと同じ |
-| 検証 | 8 superbatchごとと学習の終わり（`--validation-superbatches 8`） | 70ファイルの検証集合では1回約1分かかる見込みで、毎superbatchでは学習と同じ程度の時間になる |
+| 検証 | 8 superbatchごとと学習の終わり（`--validation-superbatches 8`） | 185ファイルの検証集合では1回約2.7分かかる見込みで、毎superbatchでは学習と同じ程度の時間になる |
 
 ## 詳細の置き場所
 
@@ -520,4 +522,4 @@ done
 | 保存物の各項目 | `crates/minase-trainer/src/nnue/train/record.rs` |
 | チェックポイントの形式 | `crates/minase-trainer/src/nnue/model/checkpoint.rs`の`Checkpoint` |
 | 学習データの形式、教師値、検証集合の分け方 | `crates/minase/src/training/`と`crates/minase-trainer/src/data/`（PSTとFMの学習器と共通） |
-| 方式を選んだ理由 | ADRの[カーネルの書き方](../adr/write-trainer-kernels-in-cuda-cpp-via-nvrtc.md)、[第1層の勾配](../adr/backpropagate-the-first-layer-through-a-reverse-index.md)、[AdamWの式](../adr/use-pytorch-adamw-with-bias-correction.md)、[教師と損失](../adr/train-the-nnue-on-search-value-teachers-with-the-squared-win-rate-difference.md)、[学習の長さと書き出すネット](../adr/train-the-nnue-for-64-superbatches-and-export-the-last-network.md)、[教師の勝率尺度](../adr/convert-nnue-teacher-values-with-the-network-win-rate-scale-by-default.md) |
+| 方式を選んだ理由 | ADRの[カーネルの書き方](../adr/write-trainer-kernels-in-cuda-cpp-via-nvrtc.md)、[第1層の勾配](../adr/backpropagate-the-first-layer-through-a-reverse-index.md)、[AdamWの式](../adr/use-pytorch-adamw-with-bias-correction.md)、[教師と損失](../adr/train-the-nnue-on-search-value-teachers-with-the-squared-win-rate-difference.md)、[学習の長さと書き出すネット](../adr/train-the-nnue-for-64-or-80-superbatches-by-the-generation-volume-and-export-the-last-network.md)、[教師の勝率尺度](../adr/convert-nnue-teacher-values-with-the-network-win-rate-scale-by-default.md) |
