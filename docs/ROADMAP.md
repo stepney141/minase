@@ -67,7 +67,7 @@
 | AlphaZero型探索の強化学習の2回目の実行 | [plans/alphazero-rl-2.md](plans/alphazero-rl-2.md) | 起案 | |
 | 対局用MCTSを全部の規則コードで探索できるようにする | [plans/archived/mcts-rule-codes.md](plans/archived/mcts-rule-codes.md) | 完了（採用） | 2026年11月13日 |
 | AlphaZero型探索の強さを測る固定の相手 | [plans/archived/mcts-fixed-opponents.md](plans/archived/mcts-fixed-opponents.md) | 完了（採用） | 2026年11月14日 |
-| AlphaZero型探索のネットを診断する固定の検証用データ | [plans/zero-validation-games.md](plans/zero-validation-games.md) | 進行中 | |
+| AlphaZero型探索のネットを診断する固定の検証用データ | [plans/archived/zero-validation-games.md](plans/archived/zero-validation-games.md) | 完了（採用） | 2026年11月15日 |
 | 対局用MCTSのPUCTの係数と方策の温度のSPSAによる調整 | [plans/mcts-puct-spsa.md](plans/mcts-puct-spsa.md) | 起案 | |
 | AlphaZero型探索の学習と自己対局生成の複数GPU化 | [plans/archived/alphazero-multi-gpu.md](plans/archived/alphazero-multi-gpu.md) | 完了（採用） | 2026年11月11日 |
 | AlphaZero型探索の推論で、ホストとGPUの間の転送を減らす | [plans/archived/alphazero-inference-transfer.md](plans/archived/alphazero-inference-transfer.md) | 完了（採用） | 2026年11月11日 |
@@ -197,15 +197,9 @@ NNUEの作業の本線は、教師の生成と学習の標準の条件（標準�
 サブタスク1〜5は完了し、強化学習の[1回目の実行](plans/archived/alphazero-rl.md)はサイクル32で中断したので、次は2回目の実行で、20ブロック256チャネルのネットをランダムに初期化してやり直す。
 2回目の実行のための初期ネット、複数GPU化、推論の転送の削減、および導入スクリプトは用意が済んでいる（状態表の完了の行）。
 
-2回目の実行は、次の2本の設計書で進める。
-1本目は、2026年11月13日に、2回目の実行の設計書から、学習の実行と独立に進められる準備を分けて起案したものである。
-2本とも起案の段階で、利用者の承認を待っている。
-同じ日に分けたほかの2本、[対局用MCTSの規則コードへの対応](plans/archived/mcts-rule-codes.md)と[強さを測る固定の相手](plans/archived/mcts-fixed-opponents.md)は完了している。
-
-| 順 | 設計書 | 内容 | 前提 |
-|---|---|---|---|
-| 1 | [固定の検証用データ](plans/zero-validation-games.md) | lishogiの人間同士の棋譜から作る検証用データと、診断の道具の対応 | なし |
-| 2 | [2回目の実行](plans/alphazero-rl-2.md) | 自己対局の規則の`lishogi`への切り替え、定例の測定のスクリプトの用意、3サイクルの試走、機械の選択、およびサイクルの実行 | 規則の切り替えと試走は前提なし。サイクル1は順1の完了の後 |
+2回目の実行は、[2回目の実行の設計書](plans/alphazero-rl-2.md)で進める。
+この設計書は、自己対局の規則の`lishogi`への切り替え、定例の測定のスクリプトの用意、3サイクルの試走、機械の選択、およびサイクルの実行を扱い、起案の段階で利用者の承認を待っている。
+2026年11月13日にこの設計書から分けた3本の準備、[対局用MCTSの規則コードへの対応](plans/archived/mcts-rule-codes.md)、[強さを測る固定の相手](plans/archived/mcts-fixed-opponents.md)、および[固定の検証用データ](plans/archived/zero-validation-games.md)は完了しており、サイクル1の前提はそろっている。
 
 次の2件は、2回目の実行と独立に進められる。
 

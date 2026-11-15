@@ -48,7 +48,9 @@ NASの`$A`の下の主な置き場所は次のとおりである。
 | `rentals.jsonl` | 機械を借りた時刻と止めた時刻、および残高 |
 | `seed-ledger.jsonl` | 生成に割り当てたシードの台帳。1回目の学習と共有する |
 | `logs/runner-<セッション名>.log` | 起動スクリプトと実行器のログ |
-| `progress/cycles-rl2/`、`external/cycles-rl2/` | 作業機の進捗測定と、固定の検証用棋譜の診断の出力 |
+| `progress/cycles-rl2/` | 作業機の進捗測定の出力 |
+| `external/cycles-rl2/` | 固定の検証用データによる診断の出力 |
+| `validation/` | 固定の検証用データ`zero-validation-games.mnsd`、選別した棋譜`selected.ndjson`、選別の報告`selection.json`、および照合の報告`replay.json`。読み取り専用 |
 
 1サイクルの時間と費用は、ColabのG4の機械で約1時間、約9 CU（Colabの計算単位）と見込む（設計書の「費用」の節）。
 vast.aiのRTX 4090が4枚の機械では、推論の入出力の転送を減らした後、サイクル1を31.4分、約1.00米ドルで回した（[1サイクルの記録](../measurements/alphazero-inference-transfer/alphazero-inference-transfer-cycle.md)）。減らす前は約36分、約1.23米ドルであった（[vast.aiの測定](../measurements/alphazero-multi-gpu/alphazero-multi-gpu-vast.md)）。
@@ -267,12 +269,15 @@ N=$A/nets/cycles-rl2/cycle-0020.onnx
 
 コミット45d5db54は、規則を起動引数`--rules`で受けていた版なので、`--baseline-args`でその引数を足し、規則は名前`JCSA`ではなくコード列で指定する（[SPRTの手引き](sprt.md)の「エンジンの指定方法」の節）。
 
-固定の検証用棋譜の診断は、前回の測定より後の各サイクルについて行う。
+固定の検証用データによる診断は、前回の測定より後の各サイクルについて行う。
+検証用データは、lishogiの人間同士の棋譜から選んだ811局であり、条件と用途は[検証用データのADR](../adr/diagnose-zero-networks-on-fixed-lishogi-human-games.md)にある。
+出力には、対局結果に対する価値の損失`value_result`と、人間が指した手との一致率`policy_agreement`が、全体と手数の帯ごとに記録される。
+これらの値は、同じデータで診断した1回目の学習のネットの結果（[基準の記録](../measurements/zero-validation-games/zero-validation-games-baseline.md)）と並べて読む。
 
 ```console
 (cd tools/train/zero && uv run --frozen python -m minase_zero external-eval \
   --checkpoint $A/cycles-rl2/cycle-NNNN/train/checkpoint.pt \
-  --data <リポジトリの場所>/data/nnue-lr-schedule-gen/generated-8200000.bin --games 1000 --seed 20261030 \
+  --data $A/validation/zero-validation-games.mnsd \
   --device cuda --out $A/external/cycles-rl2/cycle-NNNN.json)
 ```
 
@@ -345,6 +350,23 @@ Colabの機械を使う場合の表であり、ほかの機械の場合は[借�
 
 計算を止めた後に判断を待つときは、借りた機械を返したことを確かめる。
 Colabの機械では`colab sessions`で確かめる。
+
+### 固定の検証用データを作り直す
+
+固定の検証用データは、2026年11月15日にコミットb59eb37cで作り、NASの`$A/validation/`に置いた。
+作り直すのは、NASのファイルが失われたときか、チェックサムが記録と一致しないときに限る。
+作業ツリーに変更のない状態で同じコミットからビルドした`minase`を使い、lishogiの棋譜`data/lishogi/games.ndjson`（SHA-256 `58bbec58…4b5f`）から次のコマンドで作ると、出力の4つのファイル`selected.ndjson`、`selection.json`、`zero-validation-games.mnsd`、および`replay.json`が元と同じチェックサムになる。
+
+```console
+python3 scripts/select_validation_games.py --input data/lishogi/games.ndjson \
+  --output <出力先>/selected.ndjson --report <出力先>/selection.json
+target/release/minase data lishogi validation --input <出力先>/selected.ndjson \
+  --output <出力先>/zero-validation-games.mnsd --report <出力先>/replay.json --seed 20261113
+```
+
+`select_validation_games.py`は、条件に合う対局を選んで入力の行のまま書き出す。
+`minase data lishogi validation`は、選んだ対局を規則セット`lishogi`で再生して照合し、探索を行わない対局の記録として[ファイル形式の手引き](file-formats.md)のMNSDで書き出す。
+各ファイルのチェックサムは[基準の記録](../measurements/zero-validation-games/zero-validation-games-baseline.md)にある。
 
 ### 設定を変える
 
@@ -490,7 +512,7 @@ GPUの枚数の違う機械でも再開できるが、加算の順序が変わ�
 | `minase_zero init` | `--blocks`、`--channels`、`--seed`、`--out-dir`（存在しないか空）、`--trainer-commit` | ランダムに初期化したネットを作るとき |
 | `minase_zero fixture-eval` | `--checkpoint`、`--onnx`、`--fixture`、`--out` | 固定の局面集でPyTorchの出力を書き出し、照合の基準にするとき |
 | `minase_zero export-onnx` | `--checkpoint`、`--out`（存在しないパス） | ONNXの入力と出力の型や形を変えた後に、チェックポイントからONNXだけを書き出し直すとき |
-| `minase_zero external-eval` | `--checkpoint`、`--data`（αβ探索の自己対局の教師データのファイル。形式は[ファイル形式の手引き](file-formats.md)のMNSD。複数指定可）、`--games`、`--seed`、`--device`、`--out` | 固定の検証用棋譜で診断するとき |
+| `minase_zero external-eval` | `--checkpoint`、`--data`（教師の種類が探索なしの[MNSD](file-formats.md)で書いた固定の検証用データのファイル1つ）、`--device`、`--out` | 固定の検証用データで診断するとき |
 | `minase_zero seed-ledger` | `--ledger`（既存の台帳）、`--name`、`--seed`、`--games` | 実行器を通さずに生成するシードを台帳に登録するとき |
 | `minase_zero resign-calibration` | `--summary`（直前のサイクルの生成器の集計`summary.json`。複数指定可） | 投了を有効にできるかを手で確かめるとき |
 
