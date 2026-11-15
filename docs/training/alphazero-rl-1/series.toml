@@ -1,0 +1,53 @@
+# 1回目の強化学習の系列の定義。欄の意味は tools/train/progress/series_progress.py のdocstringにある。
+
+[[strength]]
+cycle = 10
+summary = "docs/measurements/mcts-fixed-opponents/mcts-fixed-opponents-alphabeta-baseline/summary.json"
+run_name = "mcts-fixed-opponents-alphabeta-baseline-c0010"
+condition = "fixed-opponents-1"
+
+[[strength]]
+cycle = 20
+summary = "docs/measurements/mcts-fixed-opponents/mcts-fixed-opponents-alphabeta-baseline/summary.json"
+run_name = "mcts-fixed-opponents-alphabeta-baseline-c0020"
+condition = "fixed-opponents-1"
+
+[[strength]]
+cycle = 32
+summary = "docs/measurements/mcts-fixed-opponents/mcts-fixed-opponents-alphabeta-baseline/summary.json"
+run_name = "mcts-fixed-opponents-alphabeta-baseline-c0032"
+condition = "fixed-opponents-1"
+
+[[strength]]
+cycle = 10
+summary = "docs/measurements/mcts-fixed-opponents/mcts-fixed-opponents-hachu-baseline/summary.json"
+run_name = "mcts-fixed-opponents-hachu-baseline-c0010"
+condition = "fixed-opponents-1"
+
+[[strength]]
+cycle = 20
+summary = "docs/measurements/mcts-fixed-opponents/mcts-fixed-opponents-hachu-baseline/summary.json"
+run_name = "mcts-fixed-opponents-hachu-baseline-c0020"
+condition = "fixed-opponents-1"
+
+[[strength]]
+cycle = 32
+summary = "docs/measurements/mcts-fixed-opponents/mcts-fixed-opponents-hachu-baseline/summary.json"
+run_name = "mcts-fixed-opponents-hachu-baseline-c0032"
+condition = "fixed-opponents-1"
+
+[[validation]]
+cycle = 0
+path = "docs/measurements/zero-validation-games/zero-validation-games-baseline/external/rl1-cycle-0000.json"
+
+[[validation]]
+cycle = 10
+path = "docs/measurements/zero-validation-games/zero-validation-games-baseline/external/rl1-cycle-0010.json"
+
+[[validation]]
+cycle = 20
+path = "docs/measurements/zero-validation-games/zero-validation-games-baseline/external/rl1-cycle-0020.json"
+
+[[validation]]
+cycle = 32
+path = "docs/measurements/zero-validation-games/zero-validation-games-baseline/external/rl1-cycle-0032.json"
