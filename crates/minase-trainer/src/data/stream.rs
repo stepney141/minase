@@ -44,9 +44,10 @@ pub(crate) fn read_file(
     sink: &mut dyn FnMut(Emitted) -> Result<()>,
 ) -> Result<FileSummary> {
     let mut reader = Reader::new(BufReader::new(File::open(path)?))?;
-    if reader.header().teacher_kind() == TeacherKind::Mcts {
-        return Err(Error::MctsTeacher {
+    if reader.header().teacher_kind() != TeacherKind::AlphaBeta {
+        return Err(Error::UnsupportedTeacher {
             path: path.to_owned(),
+            kind: reader.header().teacher_kind(),
         });
     }
     let mut summary = FileSummary {

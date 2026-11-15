@@ -432,6 +432,7 @@ fn inspect_dump_reports_entry_fields_and_summarizes_all_games() {
         let (value, visits) = match kind {
             TeacherKind::AlphaBeta => (TeacherValue::AlphaBeta(123), None),
             TeacherKind::Mcts => (TeacherValue::Mcts(123), Some(456)),
+            TeacherKind::NoSearch => panic!("this test exercises search teachers"),
         };
         let record = GameRecord::new(
             9,

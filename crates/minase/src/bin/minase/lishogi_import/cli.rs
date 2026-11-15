@@ -28,6 +28,8 @@ pub(super) enum Operation {
     },
     /// 実戦開始の自己対局に使う中盤の局面一覧を作る。
     Openings(Common),
+    /// 選別済みの人間の対局を照合し、探索なしの検証用MNSDを作る。
+    Validation(super::validation::Arguments),
 }
 
 #[derive(clap::Args)]

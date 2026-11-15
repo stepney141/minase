@@ -136,10 +136,12 @@ fn all_header_game_and_entry_fields_round_trip_for_both_teachers() {
                     (TeacherKind::AlphaBeta, _) => Value::AlphaBeta(i16::MAX),
                     (TeacherKind::Mcts, 1) => Value::Mcts(0),
                     (TeacherKind::Mcts, _) => Value::Mcts(u16::MAX),
+                    (TeacherKind::NoSearch, _) => panic!("this test exercises search teachers"),
                 };
                 let visits = match kind {
                     TeacherKind::AlphaBeta => None,
                     TeacherKind::Mcts => Some(if k == 0 { 0 } else { u32::MAX }),
+                    TeacherKind::NoSearch => panic!("this test exercises search teachers"),
                 };
                 let policy = match k {
                     0 => Policy::None,
@@ -260,7 +262,7 @@ fn corrupt_fields_are_classified_by_their_specific_error() {
         (0, 0, Error::InvalidMagic([0; 4])),
         (4, 2, Error::UnsupportedVersion(2)),
         (4, 9, Error::UnsupportedVersion(9)),
-        (112, 2, Error::InvalidTeacherKind(2)),
+        (112, 3, Error::InvalidTeacherKind(3)),
         (113, 1, Error::NonzeroReservedBytes),
         (119, 1, Error::NonzeroReservedBytes),
         (40, b'g', Error::InvalidGenerationCommit),

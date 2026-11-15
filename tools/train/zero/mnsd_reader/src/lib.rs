@@ -473,6 +473,9 @@ fn read_positions(
                     index,
                 })?;
             let visits = match (output.info.header.teacher_kind(), entry.visits()) {
+                (records::TeacherKind::NoSearch, _) => {
+                    return Err(records::Error::ValueKindMismatch.into());
+                }
                 (records::TeacherKind::AlphaBeta, None) => 0,
                 (records::TeacherKind::Mcts, Some(visits)) => visits,
                 (records::TeacherKind::AlphaBeta, Some(_)) => {
