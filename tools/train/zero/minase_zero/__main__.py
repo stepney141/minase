@@ -14,7 +14,7 @@
 - train --resume <出力先> --device --replay-threads：ほかの設定はチェックポイントから読み、中断した学習を続ける。
 - export-onnx：--checkpointからONNXだけを--outへ書き出す。
 - fixture-eval：--checkpoint、--onnx、--fixture、--out。
-- external-eval：--checkpoint、--data（αβのMNSDの列）、--games、--seed、--device、--out。
+- external-eval：--checkpoint、--data（探索なしの検証用MNSD 1ファイル）、--device、--out。
 - seed-ledger：--ledger（既存の台帳）、--name、--seed、--games。
 - resign-calibration：--summary（直前のサイクルの生成器の集計の列）。
 - run-cycles：--machine colab|vastで指定した機械で生成、学習、照合を順に実行し、NASへ受け取る。
@@ -82,11 +82,8 @@ def _parse(argv: list[str]) -> argparse.Namespace:
         fixture.add_argument(f"--{name}", type=Path, required=True)
 
     external = commands.add_parser("external-eval", allow_abbrev=False)
-    for name in ("checkpoint", "out"):
+    for name in ("checkpoint", "data", "out"):
         external.add_argument(f"--{name}", type=Path, required=True)
-    external.add_argument("--data", nargs="+", required=True)
-    for name in ("games", "seed"):
-        external.add_argument(f"--{name}", type=int, required=True)
     external.add_argument("--device", choices=("cuda", "cpu"), required=True)
 
     ledger = commands.add_parser("seed-ledger", allow_abbrev=False)

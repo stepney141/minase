@@ -2,7 +2,7 @@
 
 ## ステータス
 
-置き換え済み。[教師データを対局単位の連鎖で記録するMNSDの1形式にまとめる](../record-teacher-data-as-chained-games.md)によって置き換えられた。
+置き換え済み。[教師データを対局単位の連鎖で記録するMNSDの1形式にまとめる](record-teacher-data-as-chained-games.md)によって置き換えられた。
 
 ## コンテキスト
 

@@ -31,7 +31,7 @@ GPUを使う学習と自己対局は、Google Colabの有料プランで借り�
 2026年11月9日に、利用者の決定でこの学習をサイクル32で中断し、1回目の実行の設計書を凍結した。サブタスク6は[2回目の実行の設計書](alphazero-rl-2.md)で、同じ日の利用者の決定により20ブロック256チャネルのネットを新しくランダムに初期化してやり直す。その前に、組み替えた初期配置の開始局面、初期ネット、および道具を用意する[2回目の実行の準備](archived/alphazero-rl-2-prep.md)と、生成と学習を複数のGPUで回せるようにする[複数GPU化](archived/alphazero-multi-gpu.md)を、この順に行う。
 2026年11月13日に、利用者の決定で自己対局と強さの測定の規則を、日本中将棋連盟の規則に基づく`JCSA`から`lishogi`へ改め、自己対局生成器と学習器の規則の切り替えを2回目の実行の作業に加えた（「自己対局と測定の規則」の節）。
 同じ日に、着手の前の点検の結果を受けた利用者の決定で、2回目の実行の構成を改めた。自己対局の開始局面は1回目と同じ方式に戻し、初期配置を組み替えた局面は提案に残す。強さの比較にはHaChuとの対局を使い、固定の検証用データはlishogiの人間同士の棋譜から作る（[2回目の実行の設計書](alphazero-rl-2.md)の「状態」の節）。
-この構成のうち、学習の実行と独立に進められる準備は、[対局用MCTSの規則コードへの対応](archived/mcts-rule-codes.md)、[強さを測る固定の相手](archived/mcts-fixed-opponents.md)、および[固定の検証用データ](zero-validation-games.md)の3本の設計書に分け、2回目の実行のサイクル1はこの3本の完了を前提とする。
+この構成のうち、学習の実行と独立に進められる準備は、[対局用MCTSの規則コードへの対応](archived/mcts-rule-codes.md)、[強さを測る固定の相手](archived/mcts-fixed-opponents.md)、および[固定の検証用データ](archived/zero-validation-games.md)の3本の設計書に分け、2回目の実行のサイクル1はこの3本の完了を前提とする。
 
 ## 目的
 
@@ -99,8 +99,7 @@ MCTSは、αβ探索の置き換えとしてではなく、同じリポジトリ
 サブタスク6は、1から5のすべてを使ってRLのサイクルを回す。
 サブタスク6の2回目の実行は、サブタスクを補う設計書の完了も前提とする。
 [2回目の実行の準備](archived/alphazero-rl-2-prep.md)、[複数GPU化](archived/alphazero-multi-gpu.md)、および[推論の転送の削減](archived/alphazero-inference-transfer.md)は完了している。
-2026年11月13日に起案した[対局用MCTSの規則コードへの対応](archived/mcts-rule-codes.md)と[強さを測る固定の相手](archived/mcts-fixed-opponents.md)も、それぞれ2026年11月13日と14日に完了した。
-残る前提は[固定の検証用データ](zero-validation-games.md)であり、2回目の実行のサイクル1は、その完了の後に始める。
+2026年11月13日に起案した[対局用MCTSの規則コードへの対応](archived/mcts-rule-codes.md)、[強さを測る固定の相手](archived/mcts-fixed-opponents.md)、および[固定の検証用データ](archived/zero-validation-games.md)も、それぞれ2026年11月13日、14日、および15日に完了し、2回目の実行のサイクル1の前提はすべてそろった。
 
 対局の進行、異常時の裁定、エンジンのビルドとキャッシュ、および測定の手順は[対局ハーネスのバイナリ対戦化](archived/match-harness.md)と[docs/guides/sprt.md](../guides/sprt.md)が定める。
 既存の計画への個別の依存は、各サブタスクの依存関係の節に書く。

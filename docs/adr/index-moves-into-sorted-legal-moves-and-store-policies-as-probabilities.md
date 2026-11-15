@@ -6,7 +6,7 @@
 
 ## コンテキスト
 
-[教師データを対局単位の連鎖で記録する決定](record-teacher-data-as-chained-games.md)により、MNSDは1手ごとに指した手と方策を持つ。
+[教師データを対局単位の連鎖で記録する決定](archive/record-teacher-data-as-chained-games.md)により、MNSDは1手ごとに指した手と方策を持つ。
 方策は局面の各合法手に割り当てた確率分布であり、AlphaZero型探索の教師あり学習（SL）ではαβ探索の最善手1手を、強化学習（RL）ではGumbel方式の探索の目標を教師にする（[AlphaZero型探索の設計書](../plans/alphazero.md)）。
 Gumbel方式の方策の目標は、訪問していない手にも確率を与える。
 dlshogiのhcpe3は候補ごとに指し手と訪問回数を、lc0のV6はチェスの着手を固定の1858通りに番号付けした確率と根の訪問回数を持つ。

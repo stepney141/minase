@@ -9,17 +9,18 @@
 //! | 4..8 | u32 | 版3 |
 //! | 8..40 | `u8[32]` | UTF-8の規則セット名。NULを含まない最大32バイトを0で埋める |
 //! | 40..80 | `u8[40]` | 生成コミット。大小文字を許す40桁のASCII 16進数字 |
-//! | 80..112 | `u8[32]` | 教師の重みの検査和。駒得評価では全0 |
-//! | 112 | u8 | 教師の種類。αβ探索0、モンテカルロ木探索（MCTS）1 |
+//! | 80..112 | `u8[32]` | 教師の重みの検査和。駒得評価または探索なしでは全0 |
+//! | 112 | u8 | 教師の種類。αβ探索0、モンテカルロ木探索（MCTS）1、探索なし2 |
 //! | 113..120 | `u8[7]` | 予約。全0 |
-//! | 120..128 | u64 | 教師の規模。αβのノード上限またはMCTSの探索回数 |
+//! | 120..128 | u64 | 教師の規模。αβのノード上限、MCTSの探索回数、探索なしでは0 |
 //! | 128..136 | u64 | 生成の基本シード |
 //! | 136..144 | u64 | 対局数 |
 //! | 144..152 | u64 | 手順の項目の総数 |
 //!
 //! 規則セット名は[`parse_rule_set`]と[`Rules::from_codes`]の両方を通る必要がある。
 //! NUL以後の非0バイト、不正なUTF-8、未知の規則、規則の欠落・重複・矛盾を拒否する。
-//! 規模とシードはu64全域を許す。件数は[`Writer::finish`]で確定する。
+//! 探索なしでは検査和と規模が0でなければ拒否する。
+//! それ以外の規模とシードはu64全域を許す。件数は[`Writer::finish`]で確定する。
 //!
 //! # 対局ヘッダ（161バイト）
 //!
@@ -56,7 +57,7 @@
 //! # 手順の項目と方策の候補
 //!
 //! k番目の項目は開始局面からk手後の局面を表す。最後の項目だけが指した手を持たない。
-//! 固定部はαβで7バイト、MCTSで11バイトであり、その直後に候補を並べる。
+//! 固定部はαβと探索なしで7バイト、MCTSで11バイトであり、その直後に候補を並べる。
 //!
 //! | 位置 | 型 | 内容と値域 |
 //! |---|---|---|
@@ -69,6 +70,9 @@
 //!
 //! 価値なしなら価値欄は0。ビット4は指した手がある場合だけ使い、候補数は0とする。
 //! この印は指した手を確率1とする方策である。価値の種類と訪問回数の有無はヘッダと一致させる。
+//! 探索なしの項目は、価値なしのビット3が立ち、価値欄は0で、訪問回数と除外理由を持たない。
+//! 方策は指した手があれば[`Policy::PlayedMove`]、最後の項目では[`Policy::None`]に限る。
+//! これらの制約は読み込みと書き込みの両方で検査する。
 //! 候補1つは4バイトで、0..2が着手番号u16、2..4が確率u16である。
 //! 候補は着手番号の厳密な昇順で、重複、合法手数以上の番号、確率0、確率和が65,535でない列を拒否する。
 //! メモリ上の候補も同じ順序で渡す。候補が明示されない合法手の確率は0である。
@@ -138,8 +142,10 @@ pub enum Error {
     Rules(RulesError),
     /// 生成コミットが40桁の16進ASCIIではない。
     InvalidGenerationCommit,
-    /// 教師の種類が0か1ではない。
+    /// 教師の種類が0〜2ではない。
     InvalidTeacherKind(u8),
+    /// 探索なしの教師に非0の検査和または探索規模がある。
+    NoSearchTeacherFields,
     /// 予約欄に非0の値がある。
     NonzeroReservedBytes,
     /// 由来が0〜3ではない。
@@ -184,8 +190,12 @@ pub enum Error {
     NonzeroAbsentValue,
     /// 価値の種類がファイルの教師と異なる。
     ValueKindMismatch,
-    /// αβの項目に訪問回数がある。
+    /// αβまたは探索なしの項目に訪問回数がある。
     UnexpectedVisits,
+    /// 探索なしの項目に除外理由がある。
+    NoSearchExclusion,
+    /// 探索なしの項目の方策が、指した手または最後の方策なしではない。
+    NoSearchPolicy,
     /// MCTSの項目に訪問回数がない。
     MissingVisits,
     /// 最善手が指した手と同じ印に指した手がない。
@@ -249,6 +259,13 @@ impl fmt::Display for Error {
             Self::Position(e) => write!(f, "invalid position: {e}"),
             Self::Replay(e) => write!(f, "cannot replay game: {e}"),
             Self::Io(e) => e.fmt(f),
+            Self::NoSearchTeacherFields => {
+                f.write_str("no-search teacher checksum and search budget must be zero")
+            }
+            Self::NoSearchExclusion => f.write_str("no-search entries must have no exclusion"),
+            Self::NoSearchPolicy => {
+                f.write_str("no-search policy must be the played move or absent on the last entry")
+            }
             _ => write!(f, "invalid MNSD v3 data: {self:?}"),
         }
     }
@@ -280,6 +297,8 @@ pub enum TeacherKind {
     AlphaBeta = 0,
     /// モンテカルロ木探索。
     Mcts = 1,
+    /// 探索値、訪問回数、および探索の方策を持たない対局記録。
+    NoSearch = 2,
 }
 
 /// 検証済みのファイルヘッダ。件数は書き込み完了時に設定される。
@@ -298,6 +317,7 @@ pub struct Header {
 impl Header {
     /// 規則セットと来歴を検査し、件数0のヘッダを作る。
     /// `teacher_search_budget`は教師の探索規模で、αβ探索ならノード上限、モンテカルロ木探索なら探索回数を表す。
+    /// 探索なしでは`network_checksum`と`teacher_search_budget`をすべて0にする。
     pub fn new(
         rule_set: String,
         generation_commit: String,
@@ -315,6 +335,11 @@ impl Header {
             || !generation_commit.bytes().all(|b| b.is_ascii_hexdigit())
         {
             return Err(Error::InvalidGenerationCommit);
+        }
+        if teacher_kind == TeacherKind::NoSearch
+            && (network_checksum != [0; 32] || teacher_search_budget != 0)
+        {
+            return Err(Error::NoSearchTeacherFields);
         }
         Ok(Self {
             rule_set,
@@ -348,7 +373,7 @@ impl Header {
     pub fn teacher_kind(&self) -> TeacherKind {
         self.teacher_kind
     }
-    /// 教師の探索規模を返す。αβ探索ならノード上限、モンテカルロ木探索なら探索回数である。
+    /// 教師の探索規模を返す。αβ探索ならノード上限、MCTSなら探索回数、探索なしなら0である。
     pub fn teacher_search_budget(&self) -> u64 {
         self.teacher_search_budget
     }
@@ -420,6 +445,7 @@ impl Header {
         let kind = match kind {
             0 => TeacherKind::AlphaBeta,
             1 => TeacherKind::Mcts,
+            2 => TeacherKind::NoSearch,
             x => return Err(Error::InvalidTeacherKind(x)),
         };
         if input::<7>(&mut r, Section::Header)? != [0; 7] {
@@ -662,15 +688,31 @@ impl Entry {
     fn validate_teacher(&self, kind: TeacherKind) -> Result<(), Error> {
         if matches!(
             (kind, self.value),
-            (TeacherKind::AlphaBeta, Value::Mcts(_)) | (TeacherKind::Mcts, Value::AlphaBeta(_))
+            (TeacherKind::AlphaBeta, Value::Mcts(_))
+                | (TeacherKind::Mcts, Value::AlphaBeta(_))
+                | (TeacherKind::NoSearch, Value::AlphaBeta(_) | Value::Mcts(_))
         ) {
             return Err(Error::ValueKindMismatch);
         }
         match (kind, self.visits) {
-            (TeacherKind::AlphaBeta, Some(_)) => Err(Error::UnexpectedVisits),
-            (TeacherKind::Mcts, None) => Err(Error::MissingVisits),
-            _ => Ok(()),
+            (TeacherKind::AlphaBeta | TeacherKind::NoSearch, Some(_)) => {
+                return Err(Error::UnexpectedVisits);
+            }
+            (TeacherKind::Mcts, None) => return Err(Error::MissingVisits),
+            _ => {}
         }
+        if kind == TeacherKind::NoSearch {
+            if self.exclusion != Exclusion::None {
+                return Err(Error::NoSearchExclusion);
+            }
+            if !matches!(
+                (self.played_move, &self.policy),
+                (Some(_), Policy::PlayedMove) | (None, Policy::None)
+            ) {
+                return Err(Error::NoSearchPolicy);
+            }
+        }
+        Ok(())
     }
 }
 
@@ -1074,7 +1116,7 @@ fn read_entry(
     let [flags] = input(r, Section::Entry)?;
     let count = u16::from_le_bytes(input(r, Section::Entry)?);
     let visits = match kind {
-        TeacherKind::AlphaBeta => None,
+        TeacherKind::AlphaBeta | TeacherKind::NoSearch => None,
         TeacherKind::Mcts => Some(u32::from_le_bytes(input(r, Section::Entry)?)),
     };
     if flags & 0xe0 != 0 || flags & 7 > 4 {
@@ -1089,6 +1131,7 @@ fn read_entry(
         match kind {
             TeacherKind::AlphaBeta => Value::AlphaBeta(i16::from_le_bytes(value_bytes)),
             TeacherKind::Mcts => Value::Mcts(u16::from_le_bytes(value_bytes)),
+            TeacherKind::NoSearch => return Err(Error::ValueKindMismatch),
         }
     };
     if flags & 16 != 0 {
@@ -1128,6 +1171,7 @@ fn read_entry(
         _ => return Err(Error::InvalidEntryFlags(flags)),
     };
     let entry = Entry::new(played_move, value, exclusion, policy, visits)?;
+    entry.validate_teacher(kind)?;
     if let Some(mv) = played_move {
         game.play(mv).map_err(Error::Replay)?;
     }
@@ -1318,6 +1362,238 @@ impl<R: Read> Reader<R> {
 mod tests {
     use super::*;
     use std::io::Cursor;
+
+    fn no_search_header() -> Header {
+        Header::new(
+            Rules::LISHOGI.to_string(),
+            "a".repeat(40),
+            [0; 32],
+            TeacherKind::NoSearch,
+            0,
+            20261113,
+        )
+        .unwrap()
+    }
+
+    fn no_search_game() -> GameRecord {
+        let mut game = Game::new(Rules::LISHOGI);
+        let mut entries = Vec::new();
+        for text in ["1i1h", "1d1e"] {
+            let mv = minase_core::notation::usi::parse(game.position(), text).unwrap();
+            game.play(mv).unwrap();
+            entries.push(
+                Entry::new(
+                    Some(mv),
+                    Value::None,
+                    Exclusion::None,
+                    Policy::PlayedMove,
+                    None,
+                )
+                .unwrap(),
+            );
+        }
+        entries.push(Entry::new(None, Value::None, Exclusion::None, Policy::None, None).unwrap());
+        GameRecord::new(
+            1,
+            Origin::HumanGame,
+            Outcome::Game(GameResult::Win {
+                winner: Color::White,
+                reason: WinReason::Resignation,
+            }),
+            0,
+            Position::initial(),
+            entries,
+        )
+        .unwrap()
+    }
+
+    fn no_search_bytes() -> Vec<u8> {
+        let mut writer = Writer::new(Cursor::new(Vec::new()), no_search_header()).unwrap();
+        writer.write_game(&no_search_game()).unwrap();
+        writer.finish().unwrap().into_inner()
+    }
+
+    // フェーズ1指示書: 版3、教師コード2、固定部7バイト、最後だけ着手なし。
+    #[test]
+    fn no_search_round_trips_header_game_and_entries_in_v3() {
+        let bytes = no_search_bytes();
+        assert_eq!(bytes.len(), 152 + 161 + 3 * 7);
+        assert_eq!(&bytes[4..8], &3_u32.to_le_bytes());
+        assert_eq!(bytes[112], 2);
+        assert_eq!(&bytes[80..112], &[0; 32]);
+        assert_eq!(&bytes[120..128], &[0; 8]);
+        for (index, flags) in [(0, 24), (1, 24), (2, 8)] {
+            let start = 152 + 161 + index * 7;
+            assert_eq!(&bytes[start + 2..start + 7], &[0, 0, flags, 0, 0]);
+        }
+        let mut expected_header = no_search_header();
+        expected_header.game_count = 1;
+        expected_header.entry_count = 3;
+        let mut reader = Reader::new(bytes.as_slice()).unwrap();
+        assert_eq!(reader.header(), &expected_header);
+        assert_eq!(
+            reader.read_game().unwrap().unwrap().record(),
+            &no_search_game()
+        );
+        assert!(reader.read_game().unwrap().is_none());
+    }
+
+    #[test]
+    fn no_search_rejects_nonzero_teacher_fields_on_construction_and_read() {
+        for (checksum, budget, offset) in [([1; 32], 0, 80), ([0; 32], 1, 120)] {
+            assert!(matches!(
+                Header::new(
+                    "lishogi".into(),
+                    "a".repeat(40),
+                    checksum,
+                    TeacherKind::NoSearch,
+                    budget,
+                    1
+                ),
+                Err(Error::NoSearchTeacherFields)
+            ));
+            let mut bytes = no_search_header().encode_with_counts(0, 0);
+            bytes[offset] = 1;
+            assert!(matches!(
+                Reader::new(bytes.as_slice()),
+                Err(Error::NoSearchTeacherFields)
+            ));
+        }
+        for kind in [3, 255] {
+            let mut bytes = no_search_header().encode_with_counts(0, 0);
+            bytes[112] = kind;
+            assert!(
+                matches!(Reader::new(bytes.as_slice()), Err(Error::InvalidTeacherKind(actual)) if actual == kind)
+            );
+        }
+    }
+
+    #[test]
+    fn no_search_rejects_values_visits_exclusions_and_other_policies_on_write() {
+        let valid = no_search_game();
+        let mv = valid.entries()[0].played_move().unwrap();
+        let candidates = Policy::Candidates(vec![(mv, 65_535)]);
+        for (index, value, visits, exclusion, policy, expected) in [
+            (
+                0,
+                Value::AlphaBeta(0),
+                None,
+                Exclusion::None,
+                Policy::PlayedMove,
+                Error::ValueKindMismatch,
+            ),
+            (
+                0,
+                Value::Mcts(0),
+                None,
+                Exclusion::None,
+                Policy::PlayedMove,
+                Error::ValueKindMismatch,
+            ),
+            (
+                0,
+                Value::None,
+                Some(0),
+                Exclusion::None,
+                Policy::PlayedMove,
+                Error::UnexpectedVisits,
+            ),
+            (
+                0,
+                Value::None,
+                None,
+                Exclusion::Check,
+                Policy::PlayedMove,
+                Error::NoSearchExclusion,
+            ),
+            (
+                0,
+                Value::None,
+                None,
+                Exclusion::None,
+                Policy::None,
+                Error::NoSearchPolicy,
+            ),
+            (
+                0,
+                Value::None,
+                None,
+                Exclusion::None,
+                candidates.clone(),
+                Error::NoSearchPolicy,
+            ),
+            (
+                2,
+                Value::None,
+                None,
+                Exclusion::None,
+                candidates,
+                Error::NoSearchPolicy,
+            ),
+        ] {
+            let mut record = valid.clone();
+            record.entries[index] = Entry::new(
+                record.entries[index].played_move(),
+                value,
+                exclusion,
+                policy,
+                visits,
+            )
+            .unwrap();
+            let mut writer = Writer::new(Cursor::new(Vec::new()), no_search_header()).unwrap();
+            let error = writer.write_game(&record).unwrap_err();
+            assert_eq!(
+                std::mem::discriminant(&error),
+                std::mem::discriminant(&expected),
+                "{error}"
+            );
+        }
+    }
+
+    #[test]
+    fn no_search_rejects_value_exclusion_and_missing_policy_flags_on_read() {
+        // 正しい1項目のフラグだけを書き換え、値0も「価値あり」なら拒否する。
+        for (flags, expected) in [
+            (16, Error::ValueKindMismatch),
+            (25, Error::NoSearchExclusion),
+            (8, Error::NoSearchPolicy),
+        ] {
+            let mut bytes = no_search_bytes();
+            bytes[152 + 161 + 4] = flags;
+            let error = Reader::new(bytes.as_slice())
+                .unwrap()
+                .read_game()
+                .unwrap_err();
+            assert_eq!(
+                std::mem::discriminant(&error),
+                std::mem::discriminant(&expected),
+                "{error}"
+            );
+        }
+    }
+
+    #[test]
+    fn no_search_rejects_candidate_policies_on_read_including_the_last_entry() {
+        for index in [0, 2] {
+            let mut record = no_search_game();
+            let mut game = Game::new(Rules::LISHOGI);
+            for entry in &record.entries[..index] {
+                game.play(entry.played_move().unwrap()).unwrap();
+            }
+            record.entries[index].policy =
+                Policy::Candidates(vec![(game.legal_moves()[0], 65_535)]);
+            let mut header = no_search_header();
+            header.teacher_kind = TeacherKind::AlphaBeta;
+            let mut writer = Writer::new(Cursor::new(Vec::new()), header).unwrap();
+            writer.write_game(&record).unwrap();
+            let mut bytes = writer.finish().unwrap().into_inner();
+            bytes[112] = 2;
+            assert!(matches!(
+                Reader::new(bytes.as_slice()).unwrap().read_game(),
+                Err(Error::NoSearchPolicy)
+            ));
+        }
+    }
 
     #[test]
     fn header_encoding_uses_requested_counts_without_changing_the_header() {

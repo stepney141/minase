@@ -22,7 +22,7 @@ minaseの教師データ形式MNSDは、評価関数NNUE（差分更新できる
 学習器の前処理は手順の再生の分だけ長くなるので、ファイル単位で並列に読む。
 既存の版1の教師データは利用者の判断で生成し直さず、`data/`の44ファイル（約18.3 GB）を削除した。
 以後の学習に要るデータは、それを必要とする計画の着手時に生成し直す。
-設計判断は、[対局単位の連鎖](../../adr/record-teacher-data-as-chained-games.md)、[着手の番号と方策の確率](../../adr/index-moves-into-sorted-legal-moves-and-store-policies-as-probabilities.md)、[除外の理由を付けた記録](../../adr/record-excluded-positions-with-a-reason.md)、および[学習器の`unsafe`の範囲](../../adr/allow-unsafe-only-in-the-trainer-gpu-code.md)のADRへ移した。
+設計判断は、[対局単位の連鎖](../../adr/archive/record-teacher-data-as-chained-games.md)、[着手の番号と方策の確率](../../adr/index-moves-into-sorted-legal-moves-and-store-policies-as-probabilities.md)、[除外の理由を付けた記録](../../adr/record-excluded-positions-with-a-reason.md)、および[学習器の`unsafe`の範囲](../../adr/allow-unsafe-only-in-the-trainer-gpu-code.md)のADRへ移した。
 
 ## 目的
 

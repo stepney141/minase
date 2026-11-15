@@ -973,22 +973,36 @@ fn only_eligible_positions_receive_indices_and_share_the_game_split() {
 }
 
 #[test]
-fn mcts_teacher_is_rejected_with_a_dedicated_error_even_when_empty() {
+fn unsupported_teachers_are_rejected_with_their_kind_even_when_empty() {
     let fixture = Fixture::new();
-    let header = Header::new(
-        "L0,P0,R1,E0".into(),
-        "1".repeat(40),
-        [0; 32],
-        TeacherKind::Mcts,
-        100,
-        11,
-    )
-    .unwrap();
-    let path = fixture.0.join("mcts.bin");
-    fs::write(&path, mnsd::bytes(header, &[])).unwrap();
-    assert!(
-        matches!(Dataset::open(std::slice::from_ref(&path), None, std::num::NonZeroUsize::new(1).unwrap()), Err(Error::MctsTeacher { path: actual }) if actual == path)
-    );
+    for (kind, budget) in [(TeacherKind::Mcts, 100), (TeacherKind::NoSearch, 0)] {
+        let header = Header::new(
+            "L0,P0,R1,E0".into(),
+            "1".repeat(40),
+            [0; 32],
+            kind,
+            budget,
+            11,
+        )
+        .unwrap();
+        let path = fixture.0.join(format!("{kind:?}.bin"));
+        fs::write(&path, mnsd::bytes(header, &[])).unwrap();
+        let error = Dataset::open(
+            std::slice::from_ref(&path),
+            None,
+            std::num::NonZeroUsize::new(1).unwrap(),
+        )
+        .err()
+        .unwrap();
+        assert!(
+            matches!(&error, Error::UnsupportedTeacher { path: actual, kind: actual_kind }
+            if actual == &path && *actual_kind == kind)
+        );
+        assert_eq!(
+            error.to_string(),
+            format!("{}: {kind:?} teacher data is not supported", path.display())
+        );
+    }
 }
 
 #[test]

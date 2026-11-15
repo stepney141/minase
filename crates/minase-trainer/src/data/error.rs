@@ -29,10 +29,12 @@ pub enum Error {
     Io(io::Error),
     /// MNSDの復号または局面復元に失敗した。
     Mnsd(records::Error),
-    /// MCTSの教師値には対応していない。
-    MctsTeacher {
+    /// αβ探索以外の教師データには対応していない。
+    UnsupportedTeacher {
         /// 問題のファイル。
         path: PathBuf,
+        /// 対応していない教師の種類。
+        kind: records::TeacherKind,
     },
     /// 局面の組み立てに失敗した。
     PositionBuild(minase_core::PositionBuildError),
@@ -128,7 +130,7 @@ impl fmt::Display for Error {
             Self::Invalid(reason) => f.write_str(reason),
             Self::Spill { path, reason } => write!(f, "{}: {reason}", path.display()),
             Self::BucketOverflow { bucket, positions, limit, buckets } => write!(f, "bucket {bucket}: {positions} positions exceed limit {limit} (B={buckets})"),
-            Self::MctsTeacher { path } => write!(f, "{}: MCTS teacher data is not supported", path.display()),
+            Self::UnsupportedTeacher { path, kind } => write!(f, "{}: {kind:?} teacher data is not supported", path.display()),
             Self::PositionBuild(error) => write!(f, "cannot restore position: {error}"),
             Self::Position(error) => write!(f, "restored position is invalid: {error}"),
             Self::LionPromotionMismatch { recorded, restored } => write!(f, "lion-promotion flag mismatch: recorded {recorded}, restored {restored}"),

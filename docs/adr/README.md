@@ -238,7 +238,7 @@ PSTは駒の種類と升ごとの値の表による評価、FMはFactorization M
 - 2026年10月13日 [教師データの由来をMNSDのレコードに置き、来歴ファイルと全体の検査和をやめる](archive/record-the-origin-in-mnsd-records.md)（置き換え済み）
 - 2026年10月13日 [各ファイル形式の版を1つにし、過去のファイルを読み続けない](archive/keep-one-version-per-file-format.md)（置き換え済み）
 - 2026年10月13日 [学習器のチェックポイントをNPZに置き、設定そのものを収めて比べる](store-trainer-checkpoints-as-npz.md)
-- 2026年10月14日 [教師データを対局単位の連鎖で記録するMNSDの1形式にまとめる](record-teacher-data-as-chained-games.md)
+- 2026年10月14日 [教師データを対局単位の連鎖で記録するMNSDの1形式にまとめる](archive/record-teacher-data-as-chained-games.md)（置き換え済み）
 - 2026年10月14日 [教師データの着手を整列した合法手の番号で表し、方策を量子化した確率で持つ](index-moves-into-sorted-legal-moves-and-store-policies-as-probabilities.md)
 - 2026年10月14日 [詰み帯、捕獲または成りの最善手、および対局内の再出現の局面を、除外の理由を付けて教師データに記録する](record-excluded-positions-with-a-reason.md)
 - 2026年10月14日 [`unsafe`は学習器のGPUの処理だけに許し、エンジンとライブラリでは禁じ続ける](allow-unsafe-only-in-the-trainer-gpu-code.md)
@@ -400,3 +400,5 @@ PSTは駒の種類と升ごとの値の表による評価、FMはFactorization M
 - 2026年11月14日 [NNUEの教師の生成では、王手の局面を除き、評価値が傾いた開始局面を捨て、大差が続いた対局を評価値で裁定する](exclude-checks-screen-openings-and-adjudicate-decided-games-in-teacher-generation.md)
 - 2026年11月15日 [NNUEの世代反復の第n世代の教師を、1億局面に相当する本数のn倍とし、世代を追って増やす](grow-each-nnue-generation-by-the-teacher-files-for-100-million-positions.md)
 - 2026年11月15日 [NNUEは、1世代の教師の量に応じて64または80 superbatchを余弦の学習率の予定で学び、学び終えた最後のネットを書き出す](train-the-nnue-for-64-or-80-superbatches-by-the-generation-volume-and-export-the-last-network.md)
+- 2026年11月15日 [教師データと探索を行わない対局の記録を、対局単位の連鎖で記録するMNSDの1形式にまとめる](record-teacher-data-and-unsearched-games-as-chained-games.md)
+- 2026年11月15日 [AlphaZero型探索のネットを、lishogiの人間同士の棋譜から選んだ固定の検証用データで診断し、採否には使わない](diagnose-zero-networks-on-fixed-lishogi-human-games.md)

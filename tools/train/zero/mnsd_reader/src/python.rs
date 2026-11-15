@@ -1,6 +1,6 @@
 //! 読み込み中にGILを解放し、Rustの列をPythonのbytesへ渡す束縛。
 
-use std::{collections::HashSet, path::Path};
+use std::path::Path;
 
 use minase::nn::control::CONTROL_PLANES;
 use minase_core::{BOARD_SQUARE_COUNT, Rules};
@@ -44,7 +44,8 @@ fn bytes<'py, T, const N: usize>(
 ///
 /// ヘッダはorigin（intまたはNone）、teacher_kind、teacher_search_budget、seed、
 /// game_count、entry_count（int）、rule_set、generation_commit（str）、
-/// jcsa（bool）、network_checksum（32バイトのbytes）である。
+/// jcsa、lishogi（bool）、network_checksum（32バイトのbytes）である。
+/// teacher_kindはαβ0、MCTS1、探索なし2で、jcsaとlishogiは解釈した規則の一致を表す。
 /// 配列もbytesであり、game_numbersとgamesはu32、pliesはu16、valuesはi32、visitsはu32、
 /// policy_offsetsはu64、policy_probabilitiesはu16、boards、sides、lions、
 /// policy_from、policy_mid、policy_to、policy_promoteはu8である。
@@ -55,8 +56,9 @@ fn bytes<'py, T, const N: usize>(
 /// legal_offsetsはu64の局面数+1、legal_from、legal_mid、legal_to、legal_promoteは
 /// u8の全合法手数で、升と成りの表現は候補列と同じである。
 /// opponent_policy_*とopponent_legal_*も同じ型で、直後の項目に候補がなければ空区間となる。
-/// short_term_valuesはMCTSでは局面数×3のf32を行順に詰め、αβでは空とする。
+/// short_term_valuesはMCTSでは局面数×3のf32を行順に詰め、αβと探索なしでは空とする。
 /// valuesはαβのセンチポーンまたはMCTSの0〜65,535、候補の確率は65,535を1とする。
+/// 探索なしのファイルは価値がないため、局面を返さない。
 /// 入出力の失敗はOSError、形式と内容の誤りはValueErrorを送出する。
 #[pyfunction]
 fn read(py: Python<'_>, path: String) -> PyResult<Bound<'_, PyDict>> {
@@ -97,15 +99,14 @@ fn read_selected(
     record_dict(py, &records)
 }
 
-/// GILを解放して全手順を再生し、指定した基本シード・対局番号の集合の採用局面を返す。
+/// 探索なしのファイルから、指した手を持つ全項目を入力順に返す。
+///
+/// dictの形はreadと同じで、価値と訪問回数は0、候補は指した手1つで確率65,535、
+/// short_term_valuesは空となる。探索なし以外の教師と形式の誤りはValueErrorとする。
 #[pyfunction]
-fn read_games(
-    py: Python<'_>,
-    path: String,
-    games: HashSet<(u64, u32)>,
-) -> PyResult<Bound<'_, PyDict>> {
+fn read_validation(py: Python<'_>, path: String) -> PyResult<Bound<'_, PyDict>> {
     let records = py
-        .detach(|| crate::read_games(Path::new(&path), &games))
+        .detach(|| crate::read_validation(Path::new(&path)))
         .map_err(|error| python_error(&path, error))?;
     record_dict(py, &records)
 }
@@ -152,6 +153,7 @@ fn info_dict<'py>(py: Python<'py>, info: &FileInfo) -> PyResult<Bound<'py, PyDic
     output.set_item("teacher_kind", header.teacher_kind() as u8)?;
     output.set_item("rule_set", header.rule_set())?;
     output.set_item("jcsa", header.rules() == Rules::JCSA)?;
+    output.set_item("lishogi", header.rules() == Rules::LISHOGI)?;
     output.set_item("generation_commit", header.generation_commit())?;
     output.set_item(
         "network_checksum",
@@ -245,7 +247,7 @@ fn minase_mnsd_reader(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_function(wrap_pyfunction!(read, module)?)?;
     module.add_function(wrap_pyfunction!(scan, module)?)?;
     module.add_function(wrap_pyfunction!(read_selected, module)?)?;
-    module.add_function(wrap_pyfunction!(read_games, module)?)?;
+    module.add_function(wrap_pyfunction!(read_validation, module)?)?;
     module.add_function(wrap_pyfunction!(control_planes, module)?)?;
     Ok(())
 }

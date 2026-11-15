@@ -1,4 +1,5 @@
 //! lishogiのゲームNDJSONを教師データまたは実戦開始の局面一覧へ変換する。
+//! `data lishogi validation`は選別済みの棋譜をlishogi規則で照合し、探索なしの対局記録へ変換する。
 //!
 //! # 開始局面一覧
 //!
@@ -17,6 +18,7 @@ mod input;
 mod label;
 mod output;
 mod replay;
+mod validation;
 
 pub(super) use cli::Arguments;
 use cli::{Common, Operation};
@@ -219,6 +221,7 @@ pub(super) fn main(arguments: Arguments) {
             allow_dirty,
         } => run(&common, Some((seed, allow_dirty))),
         Operation::Openings(common) => run(&common, None),
+        Operation::Validation(arguments) => validation::run(arguments),
     };
     if let Err(error) = result {
         eprintln!("error: {error}");
