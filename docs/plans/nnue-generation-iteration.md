@@ -156,6 +156,10 @@ HalfKP_vmの世代反復は、本書でP型の評価関数の癖をつかんだ�
 | 学習の健全性 | 訓練と検証の損失の推移、学習の終わりの2回の検証損失の差、PSQT（駒と升ごとの点数の表）の移動量、および第0世代とのあいだの対局単位の汎化差（[教訓](../lessons/compare-nets-with-paired-game-bootstrap.md)）。学習の終わりでも検証損失が下がり続けていれば、学習の長さを延ばしたネットとの比較を利用者へ提案する（[学習の長さのADR](../adr/train-the-nnue-for-64-or-80-superbatches-by-the-generation-volume-and-export-the-last-network.md)）。 |
 | 評価の形 | 評価値の分布、駒除去差分の符号反転、合法手の評価差、および書き出しの量子化誤差（平均、符号つきの平均、最大値、層ごとの飽和の割合）（[学習の手引き](../guides/nnue-training.md#学習した重みを診断する)、[教訓](../lessons/validation-loss-hides-material-distortion.md)、tatara化の設計書）。 |
 
+世代をまたぐ推移と反復の状態は、本書に着手するときに`docs/training/`に作る系列のページに書く（[学習の系列の記録](../training/README.md)）。
+世代は最大5つであり、5点以下の推移は表で読めるので、世代をまたぐ強さは図にしない。
+系列のページには、世代ごとの暫定最良世代との対局の結果を表に書き、上の測定記録へリンクする。
+
 ## 最終候補の採否
 
 反復を終えた時点の暫定最良世代のネットを最終候補とし、旧基準と比べる。
