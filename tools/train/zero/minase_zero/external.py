@@ -29,7 +29,7 @@ from torch.nn import functional as F
 
 from .data import _dataset, _file_info
 from .encoding import policy_mask
-from .train import _batch, _load_checkpoint, _model, _policy_diagnostics_per_position, _sha256, _validate_device
+from .train import _batch, _legal_batch, _load_checkpoint, _model, _policy_diagnostics_per_position, _sha256, _validate_device
 
 
 def _average_games(games: NDArray[np.uint32], values: NDArray[np.float64]) -> dict:
@@ -76,10 +76,11 @@ def external_eval(checkpoint: Path, data: Path, device: str, out: Path) -> None:
         end = min(start + config["batch_size"], len(dataset))
         batch = np.arange(start, end, dtype=np.int64)
         logits, policy, results, _ = _batch(model.forward_logits, dataset, batch, target, config)
-        value_result = F.binary_cross_entropy_with_logits(logits.value[:, 0], results, reduction="none")
+        value_result = F.binary_cross_entropy_with_logits(logits.value.flatten(), results, reduction="none")
+        legal_rows, legal_labels = _legal_batch(dataset, batch, target)
         _, agreement = _policy_diagnostics_per_position(
             logits.policy, policy.rows, policy.labels, policy.probabilities,
-            policy.legal_rows, policy.legal_labels, mask,
+            legal_rows, legal_labels, mask,
         )
         if not all(torch.isfinite(column).all().item() for column in (value_result, agreement)):
             raise ValueError("non-finite diagnostic value")

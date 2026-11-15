@@ -20,7 +20,8 @@ cgroupに上限がなければCはcpusetのCPU数とし、v2とv1のどちらの
 学習器はtorchrun --standalone --nproc-per-node Nで起動し、--replay-threadsにfloor(C/N)を渡す。
 CがNより小さければ学習を起動しない。
 新しいサイクルでは--batch-sizeを全体のバッチとして渡し、--micro-batch-sizeは256に固定する。
-再開では--resume、--device cuda、--replay-threadsだけを学習器へ渡し、ミクロバッチはチェックポイントから読む。
+再開では--resume、--device cuda、--replay-threads、--lrを学習器へ渡し、学習率をチェックポイントの値と照合する。
+ミクロバッチはチェックポイントから読む。
 出力の照合はGPU 0で行う。
 サイクルのmachineにはkind、gpu、gpu_memory_mib、gpu_count、cpu、nproc、cpus_availableを記録し、vastではvast_instanceも残す。
 生成の記録にはthreadsの総数、threads_per_gpu、devicesを残す。
@@ -819,10 +820,10 @@ class Runner:
         out = self.options.cycle_path(cycle) + "/train"
         checkpoint = out + "/checkpoint.pt"
         if self.remote.exists(checkpoint):
-            return [*trainer, "--resume", out, *runtime]
+            return [*trainer, "--resume", out, *runtime, "--lr", str(self.options.lr)]
         if (self.root / checkpoint).exists():
             send(self.remote, self.root, [checkpoint])
-            return [*trainer, "--resume", out, *runtime]
+            return [*trainer, "--resume", out, *runtime, "--lr", str(self.options.lr)]
         initial = (self.options.cycle_path(0) + "/checkpoint.pt" if cycle == 1 else
                    self.options.cycle_path(cycle - 1) + "/train/checkpoint.pt")
         data_list = self.options.cycle_path(cycle) + "/train-data.json"

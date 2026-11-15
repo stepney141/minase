@@ -11,7 +11,7 @@
   --out-dir（存在しないか空）、--cycle、--seed、--batch-size（全体のバッチ）、--micro-batch-size、--lr、
   --momentum、--weight-decay、--clip-grad-norm、--value-lambda、--precision（bf16かfp32）、
   --checkpoint-steps、--device（cudaかcpu）、--replay-threads、--trainer-commit（40桁の16進数字）。
-- train --resume <出力先> --device --replay-threads：ほかの設定はチェックポイントから読み、中断した学習を続ける。
+- train --resume <出力先> --device --replay-threads --lr：学習率を保存値と照合し、チェックポイントの設定で学習を続ける。
 - export-onnx：--checkpointからONNXだけを--outへ書き出す。
 - fixture-eval：--checkpoint、--onnx、--fixture、--out。
 - external-eval：--checkpoint、--data（探索なしの検証用MNSD 1ファイル）、--device、--out。
@@ -56,6 +56,7 @@ def _parse(argv: list[str]) -> argparse.Namespace:
     train = commands.add_parser("train", allow_abbrev=False)
     train.add_argument("--device", choices=("cuda", "cpu"), required=True)
     train.add_argument("--replay-threads", type=int, required=True)
+    train.add_argument("--lr", type=float, required=True)
     resuming = bool(argv) and argv[0] == "train" and any(
         arg == "--resume" or arg.startswith("--resume=") for arg in argv[1:]
     )
@@ -68,7 +69,7 @@ def _parse(argv: list[str]) -> argparse.Namespace:
         train.add_argument("--out-dir", type=Path, required=True)
         for name in ("cycle", "seed", "batch-size", "micro-batch-size", "checkpoint-steps"):
             train.add_argument(f"--{name}", type=int, required=True)
-        for name in ("lr", "momentum", "weight-decay", "clip-grad-norm", "value-lambda"):
+        for name in ("momentum", "weight-decay", "clip-grad-norm", "value-lambda"):
             train.add_argument(f"--{name}", type=float, required=True)
         train.add_argument("--precision", choices=("bf16", "fp32"), required=True)
         train.add_argument("--trainer-commit", required=True)
@@ -119,7 +120,7 @@ def main() -> int:
             options = Options(**args)
             Runner(options, Remote(options.session)).run()
         elif "resume" in args:
-            resume(args["resume"], args["device"], args["replay_threads"])
+            resume(args["resume"], args["device"], args["replay_threads"], args["lr"])
         else:
             out_dir = args.pop("out_dir")
             train_new(args, out_dir)

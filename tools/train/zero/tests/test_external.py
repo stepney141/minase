@@ -159,7 +159,6 @@ class ExternalEvaluationTests(unittest.TestCase):
         self.assertEqual(raw["outcomes"], bytes([0, 1, 1, 1]))
         self.assertEqual(raw["values"], bytes(4 * 4))
         self.assertEqual(raw["visits"], bytes(4 * 4))
-        self.assertEqual(raw["short_term_values"], b"")
         self.assertEqual(raw["policy_offsets"], struct.pack("<QQQQQ", 0, 1, 2, 3, 4))
         self.assertEqual(raw["policy_probabilities"], struct.pack("<HHHH", 65535, 65535, 65535, 65535))
         self.assertEqual(raw["policy_from"], bytes([12, 0, 131, 1]))
@@ -219,13 +218,6 @@ class ExternalEvaluationTests(unittest.TestCase):
                 rank=0, world_size=1, batch_size=1, micro_batch_size=1, replay_threads=1,
             )
 
-    def test_only_the_main_value_head_is_used(self) -> None:
-        state = torch.load(self.checkpoint, weights_only=True)
-        state["model"]["value_head.6.bias"][1:] = float("nan")
-        torch.save(state, self.checkpoint)
-        summary = self.evaluate("main-value.json")
-        self.assertAlmostEqual(summary["diagnostics"]["value_result"], (2 * WIN_LOSS + LOSS_LOSS) / 3, places=5)
-
     def test_nonfinite_diagnostics_are_rejected_without_output(self) -> None:
         state = torch.load(self.checkpoint, weights_only=True)
         for value in (float("nan"), float("inf"), -float("inf")):
@@ -235,7 +227,7 @@ class ExternalEvaluationTests(unittest.TestCase):
                 self.evaluate("nonfinite.json")
             self.assertFalse((self.directory / "nonfinite.json").exists())
         state["model"]["value_head.6.bias"].fill_(math.log(3))
-        state["model"]["policy_head.bias"].fill_(float("nan"))
+        state["model"]["policy_head.3.bias"].fill_(float("nan"))
         torch.save(state, self.checkpoint)
         with self.assertRaisesRegex(ValueError, "finite maximum legal logit"):
             self.evaluate("nonfinite-policy.json")

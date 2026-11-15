@@ -16,10 +16,6 @@ from numpy.typing import NDArray
 from .encoding import BOARD_SQUARES, INPUT_PLANES, policy_labels
 
 
-# KataGo SelfplayTraining.md 58、67行の新規データ1行あたりの学習回数。
-SAMPLE_MULTIPLIER = 4
-
-
 def hash64(seed: int, games: NDArray[np.integer]) -> NDArray[np.uint64]:
     """Rustのshuffle::hash64と同じu64の折り返し演算で対局番号を混合する。"""
     if not 0 <= seed <= 0xFFFF_FFFF_FFFF_FFFF:
@@ -87,11 +83,6 @@ class Dataset:
     policy_offsetsはuint64の長さn+1、policy_labelsとpolicy_probabilitiesはuint16である。
     legal_offsetsはuint64の長さn+1、legal_labelsはuint16で、反復の履歴を考えない
     全合法手を保持する。平均81手なら100万局面で約170 MB増える計算になる。
-    short_term_valuesはfloat32の(n,3)で、探索なしの外部診断では(0,3)とする。
-    opponent_policy_*とopponent_legal_*は直後の項目を手番tの視点で符号化し、
-    自手の列と同じ型で持つ。相手の候補がなければ両区間とも空である。
-    追加メモリは1局面あたり28+4C+2Lバイトで、CとLは相手の候補数と合法手数。
-    候補を持つ割合1/4、C=8、L=81なら平均76.5バイトとなる計算である。
     1ファイルだけを読む場合もfile_indicesを0として同じ構造で返す。
     """
 
@@ -110,12 +101,6 @@ class Dataset:
     policy_probabilities: NDArray[np.uint16]
     legal_offsets: NDArray[np.uint64]
     legal_labels: NDArray[np.uint16]
-    short_term_values: NDArray[np.float32]
-    opponent_policy_offsets: NDArray[np.uint64]
-    opponent_policy_labels: NDArray[np.uint16]
-    opponent_policy_probabilities: NDArray[np.uint16]
-    opponent_legal_offsets: NDArray[np.uint64]
-    opponent_legal_labels: NDArray[np.uint16]
 
     def __len__(self) -> int:
         """選別後の局面数を返す。"""
@@ -201,24 +186,12 @@ def _dataset(raw: dict, info: FileInfo) -> Dataset:
     ).astype(np.uint16)
     results = np.where(outcomes == 2, 0.5, outcomes == sides).astype(np.float32)
     validation = is_validation(header.seed, games)
-    opponent_columns = {}
-    for prefix in ("opponent_policy", "opponent_legal"):
-        opponent_offsets = np.frombuffer(raw[f"{prefix}_offsets"], dtype="<u8")
-        opponent_columns[f"{prefix}_offsets"] = opponent_offsets
-        opponent_columns[f"{prefix}_labels"] = policy_labels(
-            *(np.frombuffer(raw[f"{prefix}_{name}"], dtype=np.uint8)
-              for name in ("from", "mid", "to", "promote")),
-            np.repeat(sides, np.diff(opponent_offsets).astype(np.intp)),
-        ).astype(np.uint16)
     return Dataset(
         boards=boards, sides=sides, lions=lions, values=values, results=results,
         validation=validation, training_sample=is_training_sample(header.seed, games), games=games, plies=plies,
         file_indices=np.zeros(len(games), dtype=np.uint32),
         policy_offsets=offsets, policy_labels=labels, policy_probabilities=probabilities,
         legal_offsets=legal_offsets, legal_labels=legal_labels,
-        short_term_values=np.frombuffer(raw["short_term_values"], dtype="<f4").reshape(-1, 3),
-        opponent_policy_probabilities=np.frombuffer(raw["opponent_policy_probabilities"], dtype="<u2"),
-        **opponent_columns,
     )
 
 
@@ -272,7 +245,7 @@ def read_replay_buffer(
     """担当する局面、全ファイル情報、抽出列、および保持した訓練局面の通し番号を返す。
 
     latest_pathsはpathsの末尾と文字列で一致する必要がある。
-    その訓練局面数の4倍を、全訓練局面の通し番号[0,T)から抽出する。
+    その訓練局面数Lと同じ数を、全訓練局面の通し番号[0,T)から重複なく抽出する。
     計数は再生なしで行い、再生はGILを解放してファイルごとに並列に1回行う。
     抽出列の端数を捨て、ミクロバッチの番号をworld_sizeで割った余りがrankの局面を保持する。
     ランク0は、端数を除いた抽出列の訓練診断標本と、最新の検証集合も保持する。
@@ -299,9 +272,11 @@ def read_replay_buffer(
                 seen_games.add(key)
         count = sum(info.training_count for info in infos[latest_start:])
         total = sum(info.training_count for info in infos)
-        if SAMPLE_MULTIPLIER * count < batch_size:
+        if count < batch_size:
             raise ValueError("sample count must be at least batch_size for one full update")
-        selected = sample_training_indices(total, SAMPLE_MULTIPLIER * count, seed)
+        # AobaZero 5eb9441のlearn/yss_dcnn.cppのADJUSTと、Gumbel dlshogi 5538f7bの
+        # 直近1サイクルを1周学ぶ既定に倣い、新規訓練局面と同じ数だけ抽出する。
+        selected = sample_training_indices(total, count, seed)
         used = selected[:len(selected) // batch_size * batch_size]
         ordered = np.unique(used.reshape(-1, micro_batch_size)[rank::world_size])
         diagnostic = np.unique(used) if rank == 0 else np.empty(0, dtype=np.int64)
@@ -321,7 +296,7 @@ def read_replay_buffer(
         results = [future.result() for future in futures]
         datasets = [data for data, _ in results]
         retained = np.concatenate([indices + offset for (_, indices), offset in zip(results, offsets, strict=True)])
-    prefixes = ("policy", "legal", "opponent_policy", "opponent_legal")
+    prefixes = ("policy", "legal")
     offset_parts = {prefix: [] for prefix in prefixes}
     counts = dict.fromkeys(prefixes, 0)
     for index, dataset in enumerate(datasets):

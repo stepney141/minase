@@ -7,38 +7,31 @@ import numpy as np
 import onnx
 import torch
 from torch import nn
-from torch.nn import functional as F
 
 from .encoding import INPUT_PLANES, policy_mask
 
 
 class ResidualBlock(nn.Module):
-    """大域プーリングのバイアスを加える残差ブロック。"""
+    """3×3畳み込み2層とバッチ正規化を持つAlphaZeroの残差ブロック。"""
 
     def __init__(self, channels: int) -> None:
         super().__init__()
         self.conv1 = nn.Conv2d(channels, channels, 3, padding=1, bias=False)
         self.bn1 = nn.BatchNorm2d(channels)
-        self.pool_bias = nn.Linear(2 * channels, channels)
         self.conv2 = nn.Conv2d(channels, channels, 3, padding=1, bias=False)
         self.bn2 = nn.BatchNorm2d(channels)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """残差接続を通して特徴面を更新する。"""
         y = torch.relu(self.bn1(self.conv1(x)))
-        pooled = torch.cat((y.mean(dim=(2, 3)), y.amax(dim=(2, 3))), dim=1)
-        y = y + self.pool_bias(pooled)[:, :, None, None]
         return torch.relu(x + self.bn2(self.conv2(y)))
 
 
 class TrainingLogits(NamedTuple):
-    """主方策、4つの価値、および3つの補助方策の学習用logit。"""
+    """方策と価値の学習用logit。"""
 
     policy: torch.Tensor
     value: torch.Tensor
-    soft_policy: torch.Tensor
-    opponent_policy: torch.Tensor
-    opponent_soft_policy: torch.Tensor
 
 
 class ZeroNet(nn.Module):
@@ -52,36 +45,32 @@ class ZeroNet(nn.Module):
             nn.ReLU(),
             *(ResidualBlock(channels) for _ in range(blocks)),
         )
-        self.policy_head = nn.Conv2d(channels, 249, 1, bias=True)
-        self.soft_policy_head = nn.Conv2d(channels, 249, 1, bias=True)
-        self.opponent_policy_head = nn.Conv2d(channels, 249, 1, bias=True)
-        self.opponent_soft_policy_head = nn.Conv2d(channels, 249, 1, bias=True)
+        self.policy_head = nn.Sequential(
+            nn.Conv2d(channels, channels, 3, padding=1, bias=False),
+            nn.BatchNorm2d(channels),
+            nn.ReLU(),
+            nn.Conv2d(channels, 249, 3, padding=1, bias=True),
+        )
         self.value_head = nn.Sequential(
-            nn.Conv2d(channels, 32, 1, bias=False),
-            nn.BatchNorm2d(32),
+            nn.Conv2d(channels, 1, 1, bias=False),
+            nn.BatchNorm2d(1),
             nn.ReLU(),
             nn.Flatten(1),
-            nn.Linear(4608, 256),
+            nn.Linear(144, 256),
             nn.ReLU(),
-            nn.Linear(256, 4),
+            nn.Linear(256, 1),
         )
 
     def forward(self, x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
         """推論用の方策のlogitとsigmoid後の勝率を返す。"""
-        x = self.trunk(x)
-        value = self.value_head[:-1](x)
-        final = self.value_head[-1]
-        # ONNXには主の価値を計算する行だけを含める。
-        value = F.linear(value, final.weight[:1], final.bias[:1]).sigmoid()
-        return self.policy_head(x).flatten(1), value
+        policy, value = self.forward_logits(x)
+        return policy, value.sigmoid()
 
     def forward_logits(self, x: torch.Tensor) -> TrainingLogits:
-        """学習用に主と補助のすべてのlogitを返す。"""
+        """学習用に方策と価値のlogitを返す。"""
         x = self.trunk(x)
         return TrainingLogits(
             self.policy_head(x).flatten(1), self.value_head(x),
-            self.soft_policy_head(x).flatten(1), self.opponent_policy_head(x).flatten(1),
-            self.opponent_soft_policy_head(x).flatten(1),
         )
 
 

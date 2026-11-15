@@ -57,11 +57,11 @@ class CompileTests(unittest.TestCase):
         expected_settings = {"deterministic": True, "emulate_precision_casts": True}
         self.assertEqual(counts["compilation_settings"], [expected_settings, expected_settings])
         summary = json.loads((self.root / "trained/summary.json").read_text())
-        # このfixtureの抽出数は2572であり、全体のバッチ16の端数12局面を捨てる。
-        self.assertEqual(summary["sample_count"], 2572)
-        self.assertEqual(summary["completed_steps"], 160)
-        self.assertEqual(summary["total_steps"], 160)
-        self.assertEqual(summary["positions_seen"], 2560)
+        # このfixtureの抽出数は643であり、全体のバッチ16の端数3局面を捨てる。
+        self.assertEqual(summary["sample_count"], 643)
+        self.assertEqual(summary["completed_steps"], 40)
+        self.assertEqual(summary["total_steps"], 40)
+        self.assertEqual(summary["positions_seen"], 640)
         self.assertEqual(set(summary["diagnostics"]),
                          {"training_sample", "latest_training_sample", "validation"})
         self.assertTrue((self.root / "trained/model.onnx").is_file())
@@ -94,7 +94,7 @@ class CompileTests(unittest.TestCase):
         self.assertIn("all four runs use fp32", actual["precision_note"])
         self.assertEqual(actual["micro_batch_size"], 4)
         self.assertEqual(actual["seed"], 42)
-        self.assertEqual(actual["sample_indices"], reference_sample(643, 2572, 42)[:4])
+        self.assertEqual(actual["sample_indices"], reference_sample(643, 643, 42)[:4])
         self.assertEqual(actual["pytorch_version"], str(torch.__version__))
         self.assertIs(actual["emulate_precision_casts"], True)
         self.assertIs(actual["deterministic"], True)

@@ -218,7 +218,7 @@ class ComparisonFileTests(unittest.TestCase):
             self.assertEqual(hashlib.sha256(path.read_bytes()).hexdigest(), checksum)
             expected = diagnose(
                 _model(_load_checkpoint(path)), data, np.flatnonzero(data.validation), torch.device("cpu"),
-                {"precision": "fp32", "value_lambda": 0.333, "batch_size": 17}, mask, auxiliary=False,
+                {"precision": "fp32", "value_lambda": 0.333, "batch_size": 17}, mask,
             )
             for loss in ("policy", "value"):
                 torch.testing.assert_close(torch.tensor(report[name]["mean_losses"][loss]), torch.tensor(expected[loss]))
@@ -272,7 +272,7 @@ class ComparisonFileTests(unittest.TestCase):
     def test_nonfinite_network_losses_fail_without_output(self) -> None:
         checkpoint = self.directory / "nonfinite.pt"
         state = _load_checkpoint(self.candidate)
-        state["model"]["policy_head.bias"].fill_(torch.nan)
+        state["model"]["policy_head.3.bias"].fill_(torch.nan)
         torch.save(state, checkpoint)
         with redirect_stderr(io.StringIO()):
             self.assertEqual(compare.main(self.arguments([FIXTURE], checkpoint)), 1)

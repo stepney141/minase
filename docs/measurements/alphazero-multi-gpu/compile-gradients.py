@@ -36,7 +36,7 @@ import torch._inductor.config
 from minase_zero.data import read_replay_buffer
 from minase_zero.encoding import policy_mask
 from minase_zero.train import (
-    _batch, _load_checkpoint, _model, _policy_batch, _validate_device,
+    _batch, _load_checkpoint, _model, _validate_device,
     compile_training, compiled_forward_context, compute_training_losses, total_loss,
 )
 
@@ -63,9 +63,6 @@ def compare_gradients(checkpoint: Path, paths: list[Path], micro_batch_size: int
     )
     indices = np.flatnonzero(~data.validation)[np.searchsorted(retained, selected[:micro_batch_size])]
     mask = torch.from_numpy(policy_mask()).to(device)
-    opponent_mask = torch.from_numpy(policy_mask(opponent=True)).to(device)
-    opponent = _policy_batch(data, indices, device, "opponent_")
-    short_term = torch.from_numpy(data.short_term_values[indices]).to(device)
     network = _model(state).to(device).train()
     compiled = compile_training(network)
     # Dynamoの状態復元で変わる前の、コンパイル時の設定を記録する。
@@ -81,7 +78,7 @@ def compare_gradients(checkpoint: Path, paths: list[Path], micro_batch_size: int
         network.zero_grad(set_to_none=True)
         with context:
             tensors = _batch(forward, data, indices, device, {"precision": case_precision})
-        losses = compute_training_losses(*tensors, opponent, short_term, value_lambda, mask, opponent_mask)
+        losses = compute_training_losses(*tensors, value_lambda, mask)
         total_loss(losses).backward()
         parts = []
         for name, parameter in network.named_parameters():

@@ -8,9 +8,10 @@ import unittest
 import numpy as np
 import onnx
 import torch
+from torch import nn
 
 from minase_zero.encoding import INPUT_PLANES, policy_mask
-from minase_zero.net import ZeroNet, export_onnx
+from minase_zero.net import ResidualBlock, ZeroNet, export_onnx
 
 
 class NetTests(unittest.TestCase):
@@ -19,10 +20,56 @@ class NetTests(unittest.TestCase):
         torch.set_num_threads(1)
         self.addCleanup(torch.set_num_threads, previous)
 
-    def test_ten_blocks_128_channels_count_all_training_heads(self) -> None:
-        # 入力183,424、残差328,320×10、方策32,121×4、価値1,185,092。
-        model = ZeroNet(10, 128)
-        self.assertEqual(sum(parameter.numel() for parameter in model.parameters()), 4_780_200)
+    def test_twenty_blocks_256_channels_have_the_specified_parameter_count(self) -> None:
+        # 設計書とフェーズ1指示書の内訳。バッチ正規化の移動統計は学習パラメータに含めない。
+        model = ZeroNet(20, 256)
+        count = lambda module: sum(parameter.numel() for parameter in module.parameters())
+        self.assertEqual(count(model.trunk[:3]), 366_848)
+        self.assertEqual(count(model.trunk[3:]), 23_613_440)
+        self.assertEqual(count(model.policy_head), 1_164_281)
+        self.assertEqual(count(model.value_head), 37_635)
+        self.assertEqual(count(model), 25_182_204)
+
+    def test_trunk_and_heads_follow_the_alphazero_architecture(self) -> None:
+        model = ZeroNet(2, 4)
+        self.assertEqual([type(layer) for layer in model.trunk],
+                         [nn.Conv2d, nn.BatchNorm2d, nn.ReLU, ResidualBlock, ResidualBlock])
+        stem = model.trunk[0]
+        self.assertEqual((stem.in_channels, stem.out_channels, stem.kernel_size, stem.padding),
+                         (159, 4, (3, 3), (1, 1)))
+        self.assertIsNone(stem.bias)
+        for block in model.trunk[3:]:
+            self.assertFalse(hasattr(block, "pool_bias"))
+            self.assertEqual([type(layer) for layer in block.children()],
+                             [nn.Conv2d, nn.BatchNorm2d, nn.Conv2d, nn.BatchNorm2d])
+            for conv in (block.conv1, block.conv2):
+                self.assertEqual((conv.in_channels, conv.out_channels, conv.kernel_size, conv.padding),
+                                 (4, 4, (3, 3), (1, 1)))
+                self.assertIsNone(conv.bias)
+            # 2層目が0なら、残差接続と最後のReLUだけが残る。
+            with torch.no_grad():
+                block.conv2.weight.zero_()
+                inputs = torch.randn(2, 4, 12, 12)
+                torch.testing.assert_close(block(inputs), inputs.relu())
+        self.assertEqual([type(layer) for layer in model.policy_head],
+                         [nn.Conv2d, nn.BatchNorm2d, nn.ReLU, nn.Conv2d])
+        first, bn, _, final = model.policy_head
+        self.assertEqual((first.in_channels, first.out_channels, first.kernel_size, first.padding),
+                         (4, 4, (3, 3), (1, 1)))
+        self.assertIsNone(first.bias)
+        self.assertEqual(bn.num_features, 4)
+        self.assertEqual((final.in_channels, final.out_channels, final.kernel_size, final.padding),
+                         (4, 249, (3, 3), (1, 1)))
+        self.assertIsNotNone(final.bias)
+        self.assertEqual([type(layer) for layer in model.value_head],
+                         [nn.Conv2d, nn.BatchNorm2d, nn.ReLU, nn.Flatten, nn.Linear, nn.ReLU, nn.Linear])
+        conv, bn, _, flatten, hidden, _, final = model.value_head
+        self.assertEqual((conv.in_channels, conv.out_channels, conv.kernel_size), (4, 1, (1, 1)))
+        self.assertIsNone(conv.bias)
+        self.assertEqual(bn.num_features, 1)
+        self.assertEqual(flatten.start_dim, 1)
+        self.assertEqual((hidden.in_features, hidden.out_features), (144, 256))
+        self.assertEqual((final.in_features, final.out_features), (256, 1))
 
     def test_forward_logits_preserves_policy_and_sigmoid_value(self) -> None:
         torch.manual_seed(7)
@@ -32,13 +79,10 @@ class NetTests(unittest.TestCase):
             policy, value = model(inputs)
             logits = model.forward_logits(inputs)
         self.assertTrue(torch.equal(policy, logits.policy))
-        torch.testing.assert_close(value, logits.value[:, :1].sigmoid())
-        self.assertEqual(logits.value.shape, (3, 4))
-        for auxiliary in logits[2:]:
-            self.assertEqual(auxiliary.shape, (3, 35_856))
-        self.assertEqual(model.value_head[0].out_channels, 32)
-        self.assertIsNone(model.value_head[0].bias)
-        self.assertEqual((model.value_head[4].in_features, model.value_head[4].out_features), (4608, 256))
+        torch.testing.assert_close(value, logits.value.sigmoid())
+        self.assertEqual(len(logits), 2)
+        self.assertEqual(logits.value.shape, (3, 1))
+        self.assertTrue(torch.all((value >= 0) & (value <= 1)))
         self.assertEqual(policy.shape, (3, 35_856))
         self.assertEqual(value.shape, (3, 1))
         self.assertEqual(policy.dtype, torch.float32)
@@ -51,8 +95,6 @@ class NetTests(unittest.TestCase):
             export_onnx(network, path)
             self.assertFalse(network.training)
             model = onnx.load(path)
-        self.assertFalse(any("soft_policy" in entry.name or "opponent_policy" in entry.name
-                             for entry in model.graph.initializer))
         value_linear = [node for node in model.graph.node if node.op_type == "Gemm"][-1]
         weights = next(entry for entry in model.graph.initializer if entry.name == value_linear.input[1])
         self.assertEqual(list(weights.dims), [1, 256])

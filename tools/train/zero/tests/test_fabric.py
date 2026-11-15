@@ -44,7 +44,7 @@ class FabricSettingsTests(unittest.TestCase):
                 destroy.assert_not_called()
             destroy.assert_called_once_with()
 
-    def test_ddp_keeps_bucket_order_and_does_not_broadcast_buffers(self):
+    def test_ddp_keeps_bucket_order_and_uses_default_buffer_broadcast(self):
         ranks = {"WORLD_SIZE": "4", "LOCAL_WORLD_SIZE": "4", "RANK": "0", "LOCAL_RANK": "0"}
         # 分散処理の起動と終了だけを差し替え、実際のFabricとDDPStrategyを検証する。
         with (patch.dict(os.environ, ranks, clear=True),
@@ -53,7 +53,8 @@ class FabricSettingsTests(unittest.TestCase):
             with training_fabric("cpu", "fp32") as fabric:
                 self.assertIsInstance(fabric.strategy, train.DDPStrategy)
                 self.assertIs(fabric.strategy._ddp_kwargs["find_unused_parameters"], True)
-                self.assertIs(fabric.strategy._ddp_kwargs["broadcast_buffers"], False)
+                # DDPの既定値Trueを上書きしない。
+                self.assertNotIn("broadcast_buffers", fabric.strategy._ddp_kwargs)
 
 
 class FabricTests(unittest.TestCase):
@@ -82,7 +83,7 @@ class FabricTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "--replay-threads"):
             _parse(["train", "--resume", str(self.root / "resume"), "--device", "cpu"])
         resumed = _parse(["train", "--resume", str(self.root / "resume"), "--device", "cpu",
-                          "--replay-threads", "2"])
+                          "--replay-threads", "2", "--lr", "0.01"])
         self.assertNotIn("micro_batch_size", vars(resumed))
 
     def test_only_rank_zero_computes_provenance(self):
@@ -119,7 +120,7 @@ class FabricTests(unittest.TestCase):
                     self.assertNotIn("provenance", state)
                     finish.assert_not_called()
 
-    def test_preclip_gradients_and_first_microbatch_statistics(self):
+    def test_preclip_gradients_are_independent_of_world_size(self):
         states = {}
         for n in (1, 2):
             out = self.root / f"gradients-{n}"
@@ -132,11 +133,6 @@ class FabricTests(unittest.TestCase):
             states[n] = torch.load(out / "rank-0.pt", weights_only=True)
             for rank in range(n):
                 state = torch.load(out / f"rank-{rank}.pt", weights_only=True)
-                for name in state["buffers"]:
-                    with self.subTest(n=n, rank=rank, buffer=name):
-                        torch.testing.assert_close(state["buffers"][name], state["expected_buffers"][name])
-                        if name.endswith("num_batches_tracked"):
-                            self.assertEqual(state["buffers"][name].item(), 1 if rank == 0 else 0)
                 for name in state["gradients"]:
                     torch.testing.assert_close(state["gradients"][name], states[n]["gradients"][name])
         for name in states[1]["gradients"]:
@@ -188,14 +184,3 @@ class FabricTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "WORLD_SIZE must equal LOCAL_WORLD_SIZE"):
                 with training_fabric("cpu", "fp32"):
                     self.fail("Fabric must not launch")
-
-    def test_old_training_checkpoint_is_rejected_explicitly(self):
-        out = self.root / "old"
-        out.mkdir()
-        state = torch.load(self.initial / "checkpoint.pt", weights_only=True)
-        state.update(optimizer={}, completed_steps=1, total_steps=2)
-        torch.save(state, out / "checkpoint.pt")
-        result = run_cli(["train", "--resume", str(out), "--device", "cpu", "--replay-threads", "1"])
-        self.assertEqual(result.returncode, 1)
-        self.assertIn("old trainer", result.stderr)
-        self.assertIn("micro_batch_size is missing", result.stderr)

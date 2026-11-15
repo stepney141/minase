@@ -94,7 +94,7 @@ class ReplayBufferTests(unittest.TestCase):
             rank=0, world_size=1, batch_size=1, micro_batch_size=1, replay_threads=1,
         )
         self.assertEqual([info.training_count for info in infos], [73, 37, 36])
-        self.assertEqual(first.tolist(), reference_sample(146, 292, 42))
+        self.assertEqual(first.tolist(), reference_sample(146, 73, 42))
         np.testing.assert_array_equal(first, repeated)
         self.assertNotEqual(first.tolist(), different.tolist())
         for field in fields(Dataset):
@@ -104,8 +104,8 @@ class ReplayBufferTests(unittest.TestCase):
         data, _, selected, _ = read_replay_buffer(self.paths, self.paths[1:], 42,
             rank=0, world_size=1, batch_size=1, micro_batch_size=1, replay_threads=1,
         )
-        self.assertEqual(len(selected), 292)
-        self.assertEqual(len(set(selected)), 146)
+        self.assertEqual(len(selected), 73)
+        self.assertEqual(len(set(selected)), 73)
         keys = training_keys()
         expected = [keys[index] for index in sorted(set(selected))]
         actual = list(zip(data.file_indices[~data.validation].tolist(), data.games[~data.validation].tolist()))
@@ -122,7 +122,7 @@ class ReplayBufferTests(unittest.TestCase):
         data, infos, selected, _ = read_replay_buffer(self.paths, self.paths[1:], 42,
             rank=0, world_size=1, batch_size=1, micro_batch_size=1, replay_threads=1,
         )
-        self.assertEqual(len(data), 146 + 7)
+        self.assertEqual(len(data), 73 + 7)
         self.assertLess(len(data), sum(info.position_count for info in infos))
         offset = 0
         rows = 0
@@ -151,7 +151,7 @@ class ReplayBufferTests(unittest.TestCase):
             rank=0, world_size=1, batch_size=1, micro_batch_size=1, replay_threads=1,
         )
         self.assertEqual([info.training_count for info in infos], [36, 37, 73])
-        self.assertEqual(len(selected), 292)
+        self.assertEqual(len(selected), 73)
 
     def test_latest_with_no_training_positions_and_invalid_sampling_ranges_raise(self) -> None:
         path = self.paths[-1]
@@ -167,23 +167,23 @@ class ReplayBufferTests(unittest.TestCase):
 
     def test_ranks_keep_assigned_occurrences_and_rank_zero_diagnostics_without_the_tail(self):
         keys = training_keys()
-        # 最新が1ファイルのときはS=144<T=146であり、B=128なら末尾16個を捨てる。
-        # 最新が2ファイルのときはS=292>Tで、同じ通し番号が複数ランクへ配られる。
-        for latest, count in ((self.paths[-1:], 144), (self.paths[1:], 292)):
+        # 最新が1ファイルならL=36、2ファイルならL=73である。
+        # B=32の倍数だけ使い、末尾の4局面または9局面を捨てる。
+        for latest, count in ((self.paths[-1:], 36), (self.paths[1:], 73)):
             selected = reference_sample(146, count, 42)
-            used = selected[:count // 128 * 128]
+            used = selected[:count // 32 * 32]
             diagnostics = {index for index in used
                            if is_training_sample(11 if keys[index][0] == 0 else 22,
                                                  np.array([keys[index][1]], dtype=np.uint32))[0]}
             for n in (1, 2, 4):
                 for rank in range(n):
                     with self.subTest(count=count, n=n, rank=rank):
-                        expected = {ordinal for position, ordinal in enumerate(used) if (position // 16) % n == rank}
+                        expected = {ordinal for position, ordinal in enumerate(used) if (position // 8) % n == rank}
                         if rank == 0:
                             expected |= diagnostics
                         data, infos, actual, retained = read_replay_buffer(
                             self.paths, latest, 42, rank=rank, world_size=n,
-                            batch_size=128, micro_batch_size=16, replay_threads=2,
+                            batch_size=32, micro_batch_size=8, replay_threads=2,
                         )
                         self.assertEqual(actual.tolist(), selected)
                         self.assertEqual(retained.tolist(), sorted(expected))
@@ -199,7 +199,18 @@ class ReplayBufferTests(unittest.TestCase):
         with patch("minase_zero.data._read_selected", side_effect=AssertionError("replay must not start")):
             with self.assertRaisesRegex(ValueError, "sample count must be at least batch_size"):
                 read_replay_buffer(self.paths, self.paths[1:], 42, rank=0, world_size=1,
-                                   batch_size=512, micro_batch_size=16, replay_threads=2)
+                                   batch_size=74, micro_batch_size=1, replay_threads=2)
+
+    def test_latest_size_equal_to_batch_size_makes_one_full_update(self):
+        # 最新2ファイルは37+36=73局面なので、B=73なら全抽出局面を1更新で使う。
+        data, _, selected, retained = read_replay_buffer(
+            self.paths, self.paths[1:], 42, rank=0, world_size=1,
+            batch_size=73, micro_batch_size=73, replay_threads=2,
+        )
+        self.assertEqual(len(selected), 73)
+        self.assertEqual(len(set(selected)), 73)
+        self.assertEqual(retained.tolist(), sorted(selected))
+        self.assertEqual(np.count_nonzero(~data.validation), 73)
 
 
 class ReplayBufferTrainTests(unittest.TestCase):
@@ -232,7 +243,7 @@ class ReplayBufferTrainTests(unittest.TestCase):
         if not 0 < interrupted["completed_steps"] < interrupted["total_steps"]:
             raise AssertionError("training was not interrupted between updates")
         shutil.copytree(cls.resumed, cls.partial)
-        require_success(run_cli(["train", "--resume", str(cls.resumed), "--device", "cpu", "--replay-threads", "1"]))
+        require_success(run_cli(["train", "--resume", str(cls.resumed), "--device", "cpu", "--replay-threads", "1", "--lr", "0.01"]))
         cls.state = torch.load(cls.continuous / "checkpoint.pt", weights_only=True)
         cls.summary = json.loads((cls.continuous / "summary.json").read_text())
 
@@ -249,32 +260,32 @@ class ReplayBufferTrainTests(unittest.TestCase):
     def test_replay_buffer_resume_preserves_order_learning_curve_and_onnx_bytes(self) -> None:
         resumed = torch.load(self.resumed / "checkpoint.pt", weights_only=True)
         summary = json.loads((self.resumed / "summary.json").read_text())
-        for key in ("data_order_sha256", "sample_sha256", "learning_curve", "positions_seen", "loss_sums", "samples_seen", "samples_seen_start"):
+        for key in ("data_order_sha256", "sample_sha256", "learning_curve", "positions_seen", "loss_sums", "optimizer_steps", "optimizer_steps_start"):
             self.assertEqual(self.state[key], resumed[key], key)
         self.assertEqual(self.summary["diagnostics"], summary["diagnostics"])
         self.assertEqual((self.continuous / "model.onnx").read_bytes(), (self.resumed / "model.onnx").read_bytes())
 
     def test_summary_and_checkpoint_record_sampling_contract_and_global_update_ordinals(self) -> None:
-        ordered = reference_sample(146, 292, 42)
+        ordered = reference_sample(146, 73, 42)
         sample_digest = hashlib.sha256(b"".join(struct.pack("<q", index) for index in ordered)).hexdigest()
-        expected = {"latest_data": [str(path) for path in self.paths[1:]], "sample_count": 292,
+        expected = {"latest_data": [str(path) for path in self.paths[1:]], "sample_count": 73,
                     "replay_buffer_training_count": 146, "file_training_counts": [73, 37, 36],
                     "sample_sha256": sample_digest}
         for record in (self.state, self.summary, self.state["config"], self.summary["config"]):
             for key, value in expected.items():
                 self.assertEqual(record[key], value, key)
         digest = bytes(32)
-        for start in range(0, 292, 2):
+        for start in range(0, 72, 2):
             digest = hashlib.sha256(digest + b"".join(struct.pack("<q", index) for index in ordered[start:start + 2])).digest()
         self.assertEqual(self.summary["data_order_sha256"], digest.hex())
-        self.assertEqual(self.summary["training_count"], 146)
+        self.assertEqual(self.summary["training_count"], 72)
         self.assertEqual(self.summary["validation_count"], 7)
-        self.assertEqual(self.summary["positions_seen"], 292)
-        self.assertEqual(self.summary["total_steps"], 292 // 2)
+        self.assertEqual(self.summary["positions_seen"], 72)
+        self.assertEqual(self.summary["total_steps"], 36)
 
-    def test_replay_buffer_larger_than_four_times_latest_trains_the_distinct_sequence(self) -> None:
+    def test_larger_replay_buffer_trains_one_latest_cycle_worth_without_duplicates(self) -> None:
         # 最新を対局0〜38の36訓練局面とし、診断用の対局32も含める。
-        # リプレイバッファは73+36+36=145局面、4N=144なので順列の反復が不要になる。
+        # リプレイバッファは73+36+36=145局面であり、最新と同数の36局面を重複なく選ぶ。
         latest = self.root / "distinct-latest.mnsd"
         write_small(latest, [single_game(game, game % 2, game % 3, 200 * game, (65_535,))
                              for game in range(39)], "JCSA")
@@ -286,24 +297,26 @@ class ReplayBufferTrainTests(unittest.TestCase):
         set_training_data(arguments, [str(self.paths[0]), str(self.paths[2]), str(latest)])
         first = arguments.index("--latest-data") + 1
         arguments[first:first + 2] = [str(latest)]
-        arguments[arguments.index("--batch-size") + 1] = "144"
+        arguments[arguments.index("--batch-size") + 1] = "36"
+        # seed=43では、最新ファイルの診断用対局32を含む36局面が選ばれる。
+        arguments[arguments.index("--seed") + 1] = "43"
         require_success(run_cli(arguments))
         summary = json.loads((out / "summary.json").read_text())
-        ordered = reference_sample(145, 144, 42)
+        ordered = reference_sample(145, 36, 43)
         encoded = b"".join(struct.pack("<q", index) for index in ordered)
-        self.assertEqual(len(set(ordered)), 144)
-        self.assertEqual(summary["sample_count"], 144)
-        self.assertEqual(summary["training_count"], 144)
+        self.assertEqual(len(set(ordered)), 36)
+        self.assertEqual(summary["sample_count"], 36)
+        self.assertEqual(summary["training_count"], 36)
         self.assertEqual(summary["total_steps"], 1)
-        self.assertEqual(summary["positions_seen"], 144)
-        self.assertEqual(summary["samples_seen"], 144)
-        self.assertEqual(summary["last_lr"], 0.01 * (144 / 2_000_000))
+        self.assertEqual(summary["positions_seen"], 36)
+        self.assertEqual(summary["optimizer_steps"], 1)
+        self.assertEqual(summary["last_lr"], 0.01 / 250)
         self.assertEqual(summary["sample_sha256"], hashlib.sha256(encoded).hexdigest())
         self.assertEqual(summary["data_order_sha256"], hashlib.sha256(bytes(32) + encoded).hexdigest())
 
     def test_diagnostics_use_sampled_games_and_latest_cycle_only(self) -> None:
         keys = training_keys()
-        selected = [keys[index] for index in sorted(set(reference_sample(146, 292, 42)))]
+        selected = [keys[index] for index in sorted(reference_sample(146, 73, 42)[:72])]
         samples = [(file, game) for file, game in selected
                    if is_training_sample(11 if file == 0 else 22, np.array([game], dtype=np.uint32))[0]]
         for name, positions in (("training_sample", samples),
@@ -329,7 +342,7 @@ class ReplayBufferTrainTests(unittest.TestCase):
                 state = torch.load(out / "checkpoint.pt", weights_only=True)
                 state["config"][key] = value
                 torch.save(state, out / "checkpoint.pt")
-                result = run_cli(["train", "--resume", str(out), "--device", "cpu", "--replay-threads", "1"])
+                result = run_cli(["train", "--resume", str(out), "--device", "cpu", "--replay-threads", "1", "--lr", "0.01"])
                 self.assertEqual(result.returncode, 1, result.stderr)
                 self.assertEqual(sum(line.startswith("minase_zero:") for line in result.stderr.splitlines()), 1)
                 self.assertFalse((out / "summary.json").exists())

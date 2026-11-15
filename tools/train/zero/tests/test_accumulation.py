@@ -1,6 +1,7 @@
 """単一CPUで勾配累積の算術、移動統計、および非有限の損失の拒否を検証する。"""
 
 import copy
+from dataclasses import replace
 import unittest
 from unittest.mock import patch
 
@@ -13,7 +14,7 @@ from minase_zero.data import read_file
 from minase_zero.encoding import policy_mask
 from minase_zero.net import ZeroNet
 from minase_zero.train import (
-    LOSS_NAMES, _batch, _policy_batch, accumulate_gradients,
+    LOSS_NAMES, _batch, accumulate_gradients,
     compile_training, compute_training_losses, total_loss,
 )
 
@@ -40,30 +41,30 @@ class AccumulationTests(unittest.TestCase):
         self.model, self.optimizer = self.fabric.setup(compiled, optimizer, _reapply_compile=False)
         self.config = {"batch_size": 16, "micro_batch_size": 4, "precision": "fp32", "value_lambda": 0.333}
         self.mask = torch.from_numpy(policy_mask())
-        self.opponent_mask = torch.from_numpy(policy_mask(opponent=True))
         self.batches = np.flatnonzero(~self.data.validation)[:16].reshape(4, 4)
 
     def accumulate(self):
         return accumulate_gradients(self.fabric, self.model, self.optimizer, self.data, self.batches,
-                                    self.config, self.mask, self.opponent_mask, 0)
+                                    self.config, self.mask, 0)
 
-    def test_gradients_are_the_mean_of_four_microbatches_and_statistics_use_only_the_first(self):
+    def test_gradients_are_the_mean_and_statistics_update_for_every_microbatch(self):
         # 各ミクロバッチを独立したネットで微分し、その勾配の算術平均を参照値とする。
         expected_gradients = {name: torch.zeros_like(value) for name, value in self.reference.named_parameters()}
         expected_losses = torch.zeros(len(LOSS_NAMES))
-        for j, batch in enumerate(self.batches):
+        for batch in self.batches:
             reference = copy.deepcopy(self.reference)
             losses = compute_training_losses(
                 *_batch(reference.forward_logits, self.data, batch, torch.device("cpu"), self.config),
-                _policy_batch(self.data, batch, torch.device("cpu"), "opponent_"),
-                torch.from_numpy(self.data.short_term_values[batch]), 0.333, self.mask, self.opponent_mask,
+                0.333, self.mask,
             )
             total_loss(losses).backward()
             for name, parameter in reference.named_parameters():
                 expected_gradients[name] += parameter.grad / 4
             expected_losses += torch.stack([loss.detach() for loss in losses]) * 4
-            if j == 0:
-                expected_buffers = {name: value.clone() for name, value in reference.named_buffers()}
+            # 推論用の移動統計は、ミクロバッチごとのPyTorchの既定更新を順に適用する。
+            with torch.no_grad():
+                _batch(self.reference.forward_logits, self.data, batch, torch.device("cpu"), self.config)
+        expected_buffers = dict(self.reference.named_buffers())
         actual_losses = self.accumulate()
         torch.testing.assert_close(actual_losses, expected_losses)
         for name, parameter in self.network.named_parameters():
@@ -71,15 +72,20 @@ class AccumulationTests(unittest.TestCase):
         for name, value in self.network.named_buffers():
             torch.testing.assert_close(value, expected_buffers[name])
             if name.endswith("num_batches_tracked"):
-                self.assertEqual(value.item(), 1)
+                self.assertEqual(value.item(), 4)
         self.accumulate()
         for name, parameter in self.network.named_parameters():
             torch.testing.assert_close(parameter.grad, expected_gradients[name])
         for name, value in self.network.named_buffers():
             if name.endswith("num_batches_tracked"):
-                self.assertEqual(value.item(), 2)
+                self.assertEqual(value.item(), 8)
 
-    def test_every_loss_is_checked_even_when_its_training_weight_is_zero(self):
+    def test_training_batches_do_not_read_legal_move_columns(self):
+        # 合法手の列を読めない状態でも、訓練の損失と逆伝播は計算できる。
+        self.data = replace(self.data, legal_offsets=None, legal_labels=None)
+        self.assertTrue(torch.all(torch.isfinite(self.accumulate())))
+
+    def test_every_loss_is_checked_including_the_monitoring_value_result(self):
         for index, name in enumerate(LOSS_NAMES):
             for nonfinite in (float("nan"), float("inf")):
                 with self.subTest(loss=name, value=nonfinite):

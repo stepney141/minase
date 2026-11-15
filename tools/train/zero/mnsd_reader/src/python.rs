@@ -55,8 +55,6 @@ fn bytes<'py, T, const N: usize>(
 /// lionsとpolicy_midのなしは255、升はdense_index、policy_promoteは0か1である。
 /// legal_offsetsはu64の局面数+1、legal_from、legal_mid、legal_to、legal_promoteは
 /// u8の全合法手数で、升と成りの表現は候補列と同じである。
-/// opponent_policy_*とopponent_legal_*も同じ型で、直後の項目に候補がなければ空区間となる。
-/// short_term_valuesはMCTSでは局面数×3のf32を行順に詰め、αβと探索なしでは空とする。
 /// valuesはαβのセンチポーンまたはMCTSの0〜65,535、候補の確率は65,535を1とする。
 /// 探索なしのファイルは価値がないため、局面を返さない。
 /// 入出力の失敗はOSError、形式と内容の誤りはValueErrorを送出する。
@@ -101,8 +99,8 @@ fn read_selected(
 
 /// 探索なしのファイルから、指した手を持つ全項目を入力順に返す。
 ///
-/// dictの形はreadと同じで、価値と訪問回数は0、候補は指した手1つで確率65,535、
-/// short_term_valuesは空となる。探索なし以外の教師と形式の誤りはValueErrorとする。
+/// dictの形はreadと同じで、価値と訪問回数は0、候補は指した手1つで確率65,535とする。
+/// 探索なし以外の教師と形式の誤りはValueErrorとする。
 #[pyfunction]
 fn read_validation(py: Python<'_>, path: String) -> PyResult<Bound<'_, PyDict>> {
     let records = py
@@ -183,26 +181,6 @@ fn record_dict<'py>(py: Python<'py>, records: &Records) -> PyResult<Bound<'py, P
     output.set_item("values", bytes(py, &records.values, |v| v.to_le_bytes())?)?;
     output.set_item("visits", bytes(py, &records.visits, |v| v.to_le_bytes())?)?;
     output.set_item(
-        "short_term_values",
-        bytes(py, records.short_term_values.as_flattened(), |v| {
-            v.to_le_bytes()
-        })?,
-    )?;
-    output.set_item(
-        "opponent_policy_offsets",
-        bytes(py, &records.opponent_policy_offsets, |v| v.to_le_bytes())?,
-    )?;
-    output.set_item(
-        "opponent_policy_probabilities",
-        bytes(py, &records.opponent_policy_probabilities, |v| {
-            v.to_le_bytes()
-        })?,
-    )?;
-    output.set_item(
-        "opponent_legal_offsets",
-        bytes(py, &records.opponent_legal_offsets, |v| v.to_le_bytes())?,
-    )?;
-    output.set_item(
         "policy_offsets",
         bytes(py, &records.policy_offsets, |v| v.to_le_bytes())?,
     )?;
@@ -227,14 +205,6 @@ fn record_dict<'py>(py: Python<'py>, records: &Records) -> PyResult<Bound<'py, P
         ("legal_mid", &records.legal_mid),
         ("legal_to", &records.legal_to),
         ("legal_promote", &records.legal_promote),
-        ("opponent_policy_from", &records.opponent_policy_from),
-        ("opponent_policy_mid", &records.opponent_policy_mid),
-        ("opponent_policy_to", &records.opponent_policy_to),
-        ("opponent_policy_promote", &records.opponent_policy_promote),
-        ("opponent_legal_from", &records.opponent_legal_from),
-        ("opponent_legal_mid", &records.opponent_legal_mid),
-        ("opponent_legal_to", &records.opponent_legal_to),
-        ("opponent_legal_promote", &records.opponent_legal_promote),
     ] {
         output.set_item(key, bytes(py, values, |&v| [v])?)?;
     }

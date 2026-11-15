@@ -11,8 +11,8 @@ checkpoint.ptは--checkpoint-steps回の更新ごとと最後の更新の後に�
 再開ではリストのファイルを読まない。
 --latest-dataは最新サイクルの生成ファイルの列で、読み込んだ配列の末尾とパスの文字列も順も一致させる。
 リプレイバッファのファイルを指定順に並べ、各ファイルの訓練局面だけに0からT−1の通し番号を振る。
-最新サイクルの訓練局面数Lの4倍を抽出数Sとし、Lは1以上とする。
-抽出はdata.sample_training_indicesの部分的なFisher–Yates法に従い、Generator(PCG64(seed))を使い続けて、T個の順列をfloor(4L/T)回と残りの重複なし抽出をつなぐ。
+最新サイクルの訓練局面数Lを抽出数Sとし、Lは1以上とする。
+抽出はdata.sample_training_indicesの部分的なFisher–Yates法に従い、Generator(PCG64(seed))でT個の局面からL個を重複なく選ぶ。
 列sが抽出結果と更新順を同時に定める。
 sample_sha256は列sをリトルエンディアンのint64で並べたバイト列のSHA-256である。
 計数はMNSDの項目フラグを読んで再生なしで行い、その後、全ファイルを並列に1回再生して、各ランクが担当するミクロバッチに含まれる局面を、通し番号の重複を除いて保持する。
@@ -29,18 +29,18 @@ k番目の更新はs[kB:(k+1)B]を使い、全更新回数はfloor(S/B)となる
 Lightning Fabricは精度32-trueの分散データ並列（DDP）を使い、自分の最後のミクロバッチだけで勾配を同期する。
 DDPのfind_unused_parameters=Trueで勾配のバケットの組み替えを止め、再開前後の加算順をそろえる。
 学習用の全出力を返すTrainingModuleの順伝播を、torch.compile(..., fullgraph=True)の既定モードで常にコンパイルする。
-bf16のamaxの逆伝播でNaNが生じるのを防ぐため、torch._inductor.config.emulate_precision_casts=Trueをプロセス全体に設定し、コンパイルしない実行と同じ丸めを残す。
+torch._inductor.config.emulate_precision_casts=Trueをプロセス全体に設定し、コンパイルしない実行と同じ丸めを残す。
 逆伝播のグラフは最初の逆伝播時にコンパイルされるため、この設定を順伝播だけの文脈に限定しない。
 fabric.setup(..., _reapply_compile=False)に渡し、コンパイルしたラッパーをDDPの内側に置く。
 各順伝播はtorch._functorch.config.patch(backward_pass_autocast="off")の中で呼び、逆伝播をautocastの外で行う計算としてコンパイルする。
 すべての学習入力はm局面で形を固定し、端数のミクロバッチは作らない。
-入力面の符号化、損失の計算、勾配のクリップ、およびBatchNormの移動統計の退避と復元はコンパイルしない。
+入力面の符号化、損失の計算、および勾配のクリップはコンパイルしない。
 最終診断とONNXの書き出しもコンパイルせず、DDPとラッパーを通さない元のZeroNetを使う。
 各ミクロバッチの平均損失にN/Kを掛けて逆伝播し、同期後に勾配のクリップと更新を1回行う。
 損失の記録は各ミクロバッチの平均損失×mをfloat32で累計し、all_reduceのsumで全ランクの和を取る。
-バッチ正規化（BatchNorm）の移動統計はj=0だけで更新する。
-ほかのミクロバッチでは移動平均、移動分散、num_batches_trackedを順伝播前に複製し、逆伝播後にcopy_で復元する。
-DDPのbroadcast_buffersはFalseとし、保存するランク0の統計を各更新の最初のミクロバッチでそろえる。
+バッチ正規化（BatchNorm）の移動統計は、PyTorchの既定どおり各ミクロバッチの順伝播で更新する。
+DDPのbroadcast_buffersは既定のTrueとし、ランク0の統計をほかのランクへ配る。
+保存する統計はGPUの枚数で変わり、ミクロバッチ4つの1更新につき、GPU 1枚なら4回、4枚ならランク0の1回だけ更新される。
 保存と最終診断はランク0だけが行い、元のZeroNetの重みと最適化器の状態を保存する。
 全ランクが分散プロセス群を解放してから、ランク0だけが最終診断とONNX出力を行う。
 診断はDDPを通さないZeroNetで行い、バッチの大きさにはmを使う。
@@ -50,17 +50,15 @@ DDPのbroadcast_buffersはFalseとし、保存するランク0の統計を各更
 data_order_sha256は、初期値を32バイトの0とし、更新のたびに「直前の値の32バイト」と「その更新に使った抽出前の通し番号sの部分列をリトルエンディアンのint64で並べたバイト列」をつないだSHA-256で置き換えた値の16進表記である。
 同じリプレイバッファ・シード・Bなら、ランク数と中断の有無にかかわらず同じ値になる。
 
-学習率はcosine annealingで減衰させる。
-この式のTはサイクルの全更新回数、tは0始まりの更新番号を表す。
-lr * 0.5 * (1 + cos(pi * t / T))に、ウォームアップのmin(1, (samples_seen+B)/2,000,000)を掛けて全パラメータ群へ設定する。
-samples_seenは初期化時に0とし、各更新で実際に読んだ標本数を足し、--initと--resumeで引き継ぐ。
-Bは全体のバッチであり、各更新でpositions_seenとsamples_seenへBを足す。
-最後の更新でも0にはならず、新しいサイクルではt=0から始め直す。
-lrはconfigとsummary.jsonに記録し、再開時は保存した完了更新回数をtとして続ける。
+学習率はlr * min(1, (optimizer_steps+1)/250)とし、最初の250更新で線形に上げる。
+optimizer_stepsはランダム初期化からの累計更新数であり、更新の前の値を使う。
+initでは0とし、各更新で1を足し、--initと--resumeで引き継ぐ。
+サイクル内のcompleted_stepsとは別に数え、サイクルが変わっても0へ戻さない。
+基準の学習率lrはサイクルの中では一定とし、configとsummary.jsonに記録する。
+再開時も--lrを必須とし、チェックポイントのconfigの値と一致しなければエラーにする。
 mはconfigから読み、Nと再生スレッド数は再開の照合に含めない。
-mを持たない旧い学習器のチェックポイントは再開できないが、完了済みなら--initに使える。
 
-checkpoint.ptは、torch.load(weights_only=True)で読める辞書であり、重み（BatchNormの移動統計を含む）、最適化器の状態、完了した更新の回数、全更新回数、サイクル番号、シード、設定、来歴、抽出条件とsample_sha256、累計の損失、学習曲線、samples_seen、samples_seen_start、およびdata_order_sha256を持つ。
+checkpoint.ptは、torch.load(weights_only=True)で読める辞書であり、重み（BatchNormの移動統計を含む）、最適化器の状態、完了した更新の回数、全更新回数、サイクル番号、シード、設定、来歴、抽出条件とsample_sha256、累計の損失、学習曲線、optimizer_steps、optimizer_steps_start、およびdata_order_sha256を持つ。
 initのチェックポイントは最適化器の状態を持たず、完了した更新の回数と全更新回数をともに0とする。
 
 trainのsummary.jsonの欄は次のとおりである。
@@ -72,16 +70,16 @@ trainのsummary.jsonの欄は次のとおりである。
 | lr | 基準の学習率。configにも記録する。 |
 | provenance | 学習器と環境定義のコミット、実行環境、初期重みと教師ファイルの来歴、および開始時のworld_size。 |
 | latest_data | 最新サイクルの生成ファイルの列。以下の抽出の4欄とともにconfigにも記録する。 |
-| sample_count | 重複と端数を含む抽出列の長さS=4L。 |
+| sample_count | 端数を含む抽出列の長さS=L。 |
 | replay_buffer_training_count | リプレイバッファ全体の抽出前の訓練局面数T。 |
 | file_training_counts | ファイルごとの抽出前の訓練局面数。dataの順に並ぶ。 |
 | sample_sha256 | 抽出した通し番号を更新順に並べた列sのSHA-256。 |
 | training_count / validation_count | sの先頭M個の通し番号から重複を除いた数と、最新サイクルのファイルの検証局面数の和。 |
 | completed_steps / total_steps | 完了した更新回数と、このサイクルの全更新回数floor(S/B)。 |
-| positions_seen | B×completed_steps。重複を含む。 |
-| samples_seen_start / samples_seen | サイクル開始時と終了時の、初期化からの累計標本数。 |
+| positions_seen | B×completed_steps。 |
+| optimizer_steps_start / optimizer_steps | サイクル開始時と終了時の、初期化からの累計更新数。 |
 | last_lr | 最後の更新に使った学習率。 |
-| training_losses | 更新中の重み・訓練モードで局面数を重みとして平均したLOSS_NAMESの各項。補助の項も重みを掛ける前の値。 |
+| training_losses | 更新中の重み・訓練モードで局面数を重みとして平均したLOSS_NAMESの各項。 |
 | diagnostics.training_sample | 端数を除いた抽出列の訓練局面のうち標本の対局に属するものを、最終の重みの推論モードで診断した値。 |
 | diagnostics.latest_training_sample | training_sampleのうちlatest_dataに属する局面を、同じ関数で診断した値。 |
 | diagnostics.validation | latest_dataの検証局面を、同じ関数で診断した値。 |
@@ -91,7 +89,7 @@ trainのsummary.jsonの欄は次のとおりである。
 | diagnosticsの各集合の損失 | LOSS_NAMESの各項の局面単位の算術平均。 |
 | diagnosticsの各集合のlegal_probability_mass / log_legal_probability_mass | 全合法手に乗る確率質量の平均と、その自然対数の平均。 |
 | diagnosticsの各集合のpolicy_agreement | 合法手の最大logitの手が、教師の最大確率の手の集合に含まれる割合。 |
-| learning_curve | 保存間隔ごとのcompleted_steps、training_losses、および区間の最後の更新で使ったlrとsamples_seen、サイクル開始時のsamples_seen_start。 |
+| learning_curve | 保存間隔ごとのcompleted_steps、training_losses、および区間の最後の更新で使ったlrとoptimizer_steps、サイクル開始時のoptimizer_steps_start。 |
 | data_order_sha256 | 更新に使った局面の通し番号を連鎖させたSHA-256。 |
 | network_sha256 | model.onnxのSHA-256。 |
 | elapsed_seconds | loadingは全ランクの最大秒数、trainingとdiagnosticsはランク0の秒数。 |
@@ -100,13 +98,8 @@ trainのsummary.jsonの欄は次のとおりである。
 
 policyは定数マスクが真となる16,108ラベルで正規化した交差エントロピー、valueは結果と根の価値を混ぜた教師に対する二値交差エントロピー、value_resultは結果だけに対する同じ損失である。
 価値の教師は (1−λ)·結果 + λ·根の価値 であり、λは--value-lambdaで与える。
-補助のsoft_policyは全合法手上で(p+1e-7)の1/4乗を正規化した目標への交差エントロピーである。
-ソフト方策の目標はバッチの準備時にCPUのNumPyで正規化してから機器へ移す。
-教師の値がGPUの原子的な加算の順序に依存しないよう、行ごとの和は合法手のオフセットで求める。
-opponent_policyとopponent_soft_policyは、直後の項目の方策とそのソフト方策を、成りの段を反転した定数マスクで正規化したlogitに対して学ぶ。
-相手の候補がない行は両項を0とし、平均の分母にはバッチの全局面を含める。
-short_term_value_1〜3は、拡張モジュールの短期価値目標への二値交差エントロピーである。
-更新する損失は主の方策と価値にこれらの補助項をLOSS_WEIGHTSの重みで足したものとし、最適化器はネステロフのモーメンタムつきSGDとする。
+更新する損失は方策と価値の和とし、どちらの重みも1とする。
+最適化器はネステロフのモーメンタムつきSGDとする。
 --precision bf16では、ネットの順伝播だけをbf16のautocastで計算する。
 損失の計算と累計はfloat32で行う。
 訓練集合、2つの訓練標本、検証集合のいずれかが空なら、平均を定義できないためエラーにする。
@@ -157,38 +150,25 @@ import torch._inductor.config
 from torch.nn import functional as F
 
 from .data import Dataset, FileInfo, read_replay_buffer
-from .encoding import POLICY_SIZE, encode_planes, policy_mask
+from .encoding import encode_planes, policy_mask
 from .fixture import evaluate_fixture
 from .net import TrainingLogits, ZeroNet, export_onnx
 
 
-MAIN_LOSS_NAMES = ("policy", "value", "value_result")
-LOSS_NAMES = (*MAIN_LOSS_NAMES, "soft_policy", "opponent_policy", "opponent_soft_policy",
-              "short_term_value_1", "short_term_value_2", "short_term_value_3")
+LOSS_NAMES = ("policy", "value", "value_result")
 POLICY_DIAGNOSTIC_NAMES = ("legal_probability_mass", "log_legal_probability_mass", "policy_agreement")
 DIAGNOSTIC_NAMES = (*LOSS_NAMES, *POLICY_DIAGNOSTIC_NAMES)
-# 主の2項は1、value_resultは診断のみ。補助はKataGo metrics_pytorch.py 88、905〜930行、
-# python/train.py 155行の重み。短期価値は主の価値と同じ重みとする。
-LOSS_WEIGHTS = (1.0, 1.0, 0.0, 8.0, 0.15, 1.2, 1.0, 1.0, 1.0)
-# KataGo metrics_pytorch.py 596〜605行のソフト方策の変換。
-SOFT_POLICY_EPSILON = 1e-7
-SOFT_POLICY_EXPONENT = 0.25
-# KataGo python/train.py 1214〜1234行の初期ウォームアップの標本数。
-WARMUP_SAMPLES = 2_000_000
+# lczero-training ee626a9のtf/tfprocess.pyの線形ウォームアップの式と、
+# tf/configs/example.yamlのwarmup_stepsに倣う。
+WARMUP_STEPS = 250
 
 
 class PolicyTargets(NamedTuple):
-    """バッチ内の候補と全合法手、およびCPUで正規化したソフト方策の教師。
-
-    probabilitiesは0〜65,535、soft_probabilitiesは合法手の列順のfloat32確率である。
-    """
+    """バッチ内の候補の行番号、ラベル、および0〜65,535の確率。"""
 
     rows: torch.Tensor
     labels: torch.Tensor
     probabilities: torch.Tensor
-    legal_rows: torch.Tensor
-    legal_labels: torch.Tensor
-    soft_probabilities: torch.Tensor
 
 
 @contextmanager
@@ -292,7 +272,7 @@ def training_fabric(device_name: str, precision: str) -> Iterator[Fabric]:
             # バケットの組み替えで再開直後の更新の加算順が変わり、GPU 4枚での再開後の重みが食い違ったと考えられる。
             # find_unused_parameters=Trueで組み替えを止める。
             # RTX 4090 4枚で189回の更新を学ぶ再開の確認では、この設定で一致し、学習時間の差は約2%だった。
-            broadcast_buffers=False, find_unused_parameters=True, timeout=timedelta(hours=1),
+            find_unused_parameters=True, timeout=timedelta(hours=1),
         ),
         precision="32-true",
     )
@@ -330,7 +310,7 @@ def compile_training(network: ZeroNet) -> torch.nn.Module:
     実行時の計測で選ぶカーネル構成がプロセスごとに変わり再開前後の学習が食い違ったため、deterministicをプロセス全体に設定する。
     RTX 3060 Tiでの再開試験では、この設定で出力が一致し、速度は毎秒990局面のままだった。
     """
-    # bf16のamaxの逆伝播でNaNが生じるのを防ぐため、eagerと同じ丸めを残す。
+    # bf16でもコンパイルしない実行と同じ丸めを残す。
     torch._inductor.config.emulate_precision_casts = True
     # 実行時の計測によるカーネル構成の変動を避け、再開前後の計算をそろえる。
     torch._inductor.config.deterministic = True
@@ -404,7 +384,7 @@ def initialize(blocks: int, channels: int, seed: int, out_dir: Path, trainer_com
     state = {
         "model": model.state_dict(), "optimizer": None,
         "completed_steps": 0, "total_steps": 0, "cycle": 0, "seed": seed,
-        "samples_seen": 0,
+        "optimizer_steps": 0,
         "config": {"blocks": blocks, "channels": channels, "seed": seed, "trainer_commit": trainer_commit},
         "provenance": provenance,
     }
@@ -444,62 +424,24 @@ def compute_losses(
     return policy_loss, value_loss, result_loss
 
 
-def soft_policy_targets(
-    rows: NDArray[np.int64], labels: NDArray[np.int64], probabilities: NDArray[np.float32],
-    legal_offsets: NDArray[np.int64], legal_labels: NDArray[np.int64],
-) -> NDArray[np.float32]:
-    """CPUで(p+1e-7)の1/4乗を倍精度で正規化し、合法手の列順のfloat32で返す。"""
-    counts = np.diff(legal_offsets)
-    legal_rows = np.repeat(np.arange(len(counts), dtype=np.int64), counts)
-    dense = np.zeros((len(counts), POLICY_SIZE), dtype=np.float32)
-    dense[rows, labels] = probabilities
-    weights = (dense[legal_rows, legal_labels].astype(np.float64) / 65_535 + SOFT_POLICY_EPSILON) ** SOFT_POLICY_EXPONENT
-    # 空の行は区間を持たない。末尾の空行もreduceatの開始位置に含めない。
-    nonempty = counts != 0
-    totals = np.add.reduceat(weights, legal_offsets[:-1][nonempty])
-    return (weights / np.repeat(totals, counts[nonempty])).astype(np.float32)
-
-
-def _policy_loss(
-    logits: torch.Tensor, rows: torch.Tensor, labels: torch.Tensor,
-    probabilities: torch.Tensor, mask: torch.Tensor,
-) -> torch.Tensor:
-    if torch.any((labels < 0) | (labels >= len(mask))) or not torch.all(mask[labels]):
-        raise ValueError("policy target label is outside the constant mask")
-    log_probabilities = F.log_softmax(logits.float().masked_fill(~mask, -torch.inf), dim=1)
-    # 候補がない行は和に寄与しないが、分母にはバッチの全局面を含める。
-    return -(log_probabilities[rows, labels] * probabilities).sum() / len(logits)
-
-
 def compute_training_losses(
     logits: TrainingLogits, policy: PolicyTargets, results: torch.Tensor, values: torch.Tensor,
-    opponent: PolicyTargets, short_term_values: torch.Tensor,
-    value_lambda: float, mask: torch.Tensor, opponent_mask: torch.Tensor,
-) -> tuple[torch.Tensor, ...]:
-    """主と補助の平均損失をLOSS_NAMESの順で返す。重みは合計時に掛ける。"""
-    main = compute_losses(logits.policy, logits.value[:, 0], policy.rows, policy.labels,
+    value_lambda: float, mask: torch.Tensor,
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    """方策、価値、および監視用の結果損失をLOSS_NAMESの順で返す。"""
+    return compute_losses(logits.policy, logits.value, policy.rows, policy.labels,
                           policy.probabilities, results, values, value_lambda, mask)
-    soft = _policy_loss(logits.soft_policy, policy.legal_rows, policy.legal_labels,
-                        policy.soft_probabilities, mask)
-    opponent_loss = _policy_loss(logits.opponent_policy, opponent.rows, opponent.labels,
-                                 opponent.probabilities.float() / 65_535, opponent_mask)
-    opponent_soft = _policy_loss(logits.opponent_soft_policy, opponent.legal_rows, opponent.legal_labels,
-                                 opponent.soft_probabilities, opponent_mask)
-    short_term = F.binary_cross_entropy_with_logits(
-        logits.value[:, 1:].float(), short_term_values.float(), reduction="none",
-    ).mean(dim=0)
-    return (*main, soft, opponent_loss, opponent_soft, *short_term.unbind())
 
 
-def total_loss(losses: tuple[torch.Tensor, ...]) -> torch.Tensor:
-    """主と補助の各項に設計書の重みを掛け、更新用の損失を返す。"""
-    return sum(loss * weight for loss, weight in zip(losses, LOSS_WEIGHTS, strict=True))
+def total_loss(losses: tuple[torch.Tensor, torch.Tensor, torch.Tensor]) -> torch.Tensor:
+    """方策と価値をそれぞれ重み1で足し、更新用の損失を返す。"""
+    policy, value, _ = losses
+    return policy + value
 
 
-def learning_rate(base: float, step: int, total: int, samples_seen: int, batch_size: int) -> float:
-    """cosine annealingの係数と、ランダム初期化から続くウォームアップを掛ける。"""
-    factor = 0.5 * (1 + math.cos(math.pi * step / total))
-    return base * factor * min(1.0, (samples_seen + batch_size) / WARMUP_SAMPLES)
+def learning_rate(base: float, optimizer_steps: int) -> float:
+    """ランダム初期化から250更新で基準の学習率まで線形に上げ、その後は保つ。"""
+    return base * min(1.0, (optimizer_steps + 1) / WARMUP_STEPS)
 
 
 def _sparse_indices(
@@ -512,20 +454,21 @@ def _sparse_indices(
 
 
 def _policy_batch(
-    data: Dataset, indices: NDArray[np.int64], device: torch.device, prefix: str,
+    data: Dataset, indices: NDArray[np.int64], device: torch.device,
 ) -> PolicyTargets:
-    rows, candidates = _sparse_indices(getattr(data, f"{prefix}policy_offsets"), indices)
-    offsets = getattr(data, f"{prefix}legal_offsets")
-    legal_rows, legal = _sparse_indices(offsets, indices)
-    labels = getattr(data, f"{prefix}policy_labels")[candidates].astype(np.int64)
-    probabilities = getattr(data, f"{prefix}policy_probabilities")[candidates].astype(np.float32)
-    legal_labels = getattr(data, f"{prefix}legal_labels")[legal].astype(np.int64)
-    legal_offsets = np.empty(len(indices) + 1, dtype=np.int64)
-    legal_offsets[0] = 0
-    np.cumsum(offsets[indices + 1] - offsets[indices], dtype=np.int64, out=legal_offsets[1:])
-    soft = soft_policy_targets(rows, labels, probabilities, legal_offsets, legal_labels)
-    columns = (rows, labels, probabilities, legal_rows, legal_labels, soft)
-    return PolicyTargets(*(torch.from_numpy(column).to(device) for column in columns))
+    rows, candidates = _sparse_indices(data.policy_offsets, indices)
+    labels = data.policy_labels[candidates].astype(np.int64)
+    probabilities = data.policy_probabilities[candidates].astype(np.float32)
+    return PolicyTargets(*(torch.from_numpy(column).to(device) for column in (rows, labels, probabilities)))
+
+
+def _legal_batch(
+    data: Dataset, indices: NDArray[np.int64], device: torch.device,
+) -> tuple[torch.Tensor, torch.Tensor]:
+    """診断に使う全合法手の行番号とラベルを、バッチの順に組み立てる。"""
+    rows, legal = _sparse_indices(data.legal_offsets, indices)
+    labels = data.legal_labels[legal].astype(np.int64)
+    return torch.from_numpy(rows).to(device), torch.from_numpy(labels).to(device)
 
 
 def _batch(
@@ -537,7 +480,7 @@ def _batch(
         torch.from_numpy(array[indices]).to(device) for array in (data.boards, data.sides, data.lions)
     )
     inputs = encode_planes(boards, sides, lions)
-    policy = _policy_batch(data, indices, device, "")
+    policy = _policy_batch(data, indices, device)
     results = torch.from_numpy(data.results[indices]).to(device)
     values = torch.from_numpy(data.values[indices].astype(np.float32)).to(device)
     with torch.autocast("cuda", dtype=torch.bfloat16) if config["precision"] == "bf16" else nullcontext():
@@ -603,30 +546,21 @@ def _policy_diagnostics_per_position(
 @torch.inference_mode()
 def diagnose(
     model: ZeroNet, data: Dataset, indices: NDArray[np.int64],
-    device: torch.device, config: dict, mask: torch.Tensor, *, auxiliary: bool,
+    device: torch.device, config: dict, mask: torch.Tensor,
 ) -> dict[str, float]:
     """最終の重みのevalモードで、指定局面を入力順に診断する。乱数は使わない。"""
     if len(indices) == 0:
         raise ValueError("diagnostic set must contain positions")
     model.eval()
-    names = DIAGNOSTIC_NAMES if auxiliary else (*MAIN_LOSS_NAMES, *POLICY_DIAGNOSTIC_NAMES)
-    sums = dict.fromkeys(names, 0.0)
-    opponent_mask = torch.from_numpy(policy_mask(opponent=True)).to(device)
+    sums = dict.fromkeys(DIAGNOSTIC_NAMES, 0.0)
     for start in range(0, len(indices), config["batch_size"]):
         batch = indices[start:start + config["batch_size"]]
         tensors = _batch(model.forward_logits, data, batch, device, config)
-        logits, policy, results, values = tensors
-        if auxiliary:
-            losses = compute_training_losses(
-                *tensors, _policy_batch(data, batch, device, "opponent_"),
-                torch.from_numpy(data.short_term_values[batch]).to(device),
-                config["value_lambda"], mask, opponent_mask,
-            )
-        else:
-            losses = compute_losses(logits.policy, logits.value[:, 0], policy.rows, policy.labels,
-                                    policy.probabilities, results, values, config["value_lambda"], mask)
+        logits, policy, _, _ = tensors
+        losses = compute_training_losses(*tensors, config["value_lambda"], mask)
+        legal_rows, legal_labels = _legal_batch(data, batch, device)
         metrics = compute_policy_diagnostics(logits.policy, policy.rows, policy.labels, policy.probabilities,
-                                             policy.legal_rows, policy.legal_labels, mask)
+                                             legal_rows, legal_labels, mask)
         if not all(torch.isfinite(value).item() for value in (*losses, *metrics)):
             raise ValueError("non-finite diagnostic value")
         _accumulate(sums, (*losses, *metrics), len(batch))
@@ -737,7 +671,7 @@ def train_new(config: dict, out_dir: Path) -> None:
             "training_count": training_count, "validation_count": validation_count,
             **sampling,
             "positions_seen": 0, "loss_sums": _zero_losses(), "learning_curve": [],
-            "samples_seen": initial["samples_seen"], "samples_seen_start": initial["samples_seen"],
+            "optimizer_steps": initial["optimizer_steps"], "optimizer_steps_start": initial["optimizer_steps"],
             "data_order_sha256": bytes(32).hex(),
             "elapsed_seconds": {"loading": loading_seconds, "training": 0.0},
             "loading_peak_rss_bytes": loading_peak_rss,
@@ -749,16 +683,16 @@ def train_new(config: dict, out_dir: Path) -> None:
         _finish(state, data, network, out_dir, fabric.device)
 
 
-def resume(out_dir: Path, device_name: str, replay_threads: int) -> None:
-    """保存したファイル情報と抽出条件を照合し、最後に確定した更新から再開する。"""
+def resume(out_dir: Path, device_name: str, replay_threads: int, lr: float) -> None:
+    """基準学習率、ファイル情報、抽出条件を照合し、最後に確定した更新から再開する。"""
     if (out_dir / "summary.json").exists():
         raise ValueError(f"training is already complete: {out_dir}")
     state = _load_checkpoint(out_dir / "checkpoint.pt")
     if state["optimizer"] is None:
         raise ValueError("resume requires a training checkpoint")
     config = state["config"]
-    if "micro_batch_size" not in config:
-        raise ValueError("cannot resume a checkpoint from the old trainer: micro_batch_size is missing")
+    if lr != config["lr"]:
+        raise ValueError(f"resume lr {lr} differs from checkpoint lr {config['lr']}")
     with training_fabric(device_name, config["precision"]) as fabric:
         _validate_batches(config, fabric.world_size, replay_threads)
         data, network = _resume(state, out_dir, fabric, replay_threads)
@@ -801,37 +735,26 @@ def _resume(state: dict, out_dir: Path, fabric: Fabric, replay_threads: int) -> 
 def accumulate_gradients(
     fabric: Fabric, model: torch.nn.Module, optimizer: torch.optim.Optimizer,
     data: Dataset, batches: NDArray[np.int64], config: dict,
-    mask: torch.Tensor, opponent_mask: torch.Tensor, step: int,
+    mask: torch.Tensor, step: int,
 ) -> torch.Tensor:
     """1更新分の勾配を同期し、クリップ前の勾配と全局面の損失の和を得る。
 
     batchesは、このランクに割り当てられたミクロバッチを番号順に並べた2次元配列である。
-    バッチ正規化の移動統計はj=0だけで更新し、ほかは逆伝播の後に復元する。
+    バッチ正規化の移動統計は、各ミクロバッチの順伝播で更新する。
     """
     optimizer.zero_grad(set_to_none=True)
     sums = torch.zeros(len(LOSS_NAMES), dtype=torch.float32, device=fabric.device)
     micro_batch_size = config["micro_batch_size"]
     scale = fabric.world_size / (config["batch_size"] // micro_batch_size)
-    buffers = [buffer for layer in model.modules() if isinstance(layer, torch.nn.modules.batchnorm._BatchNorm)
-               for buffer in (layer.running_mean, layer.running_var, layer.num_batches_tracked)]
     for index, batch in enumerate(batches):
-        j = fabric.global_rank + index * fabric.world_size
-        saved = [buffer.clone() for buffer in buffers] if j != 0 else []
         with fabric.no_backward_sync(model, enabled=index + 1 < len(batches)):
             with compiled_forward_context():
                 tensors = _batch(model, data, batch, fabric.device, config)
-            losses = compute_training_losses(
-                *tensors,
-                _policy_batch(data, batch, fabric.device, "opponent_"),
-                torch.from_numpy(data.short_term_values[batch]).to(fabric.device),
-                config["value_lambda"], mask, opponent_mask,
-            )
+            losses = compute_training_losses(*tensors, config["value_lambda"], mask)
             if not all(torch.isfinite(loss).item() for loss in losses):
                 raise ValueError(f"non-finite training loss at update {step + 1}, rank {fabric.global_rank}")
             fabric.backward(total_loss(losses) * scale)
         with torch.no_grad():
-            for buffer, value in zip(buffers, saved):
-                buffer.copy_(value)
             sums.add_(torch.stack([loss.detach() for loss in losses]) * micro_batch_size)
     return fabric.all_reduce(sums, reduce_op="sum")
 
@@ -844,7 +767,6 @@ def _run(
     device = fabric.device
     network = _model(state).train()
     mask = torch.from_numpy(policy_mask()).to(device)
-    opponent_mask = torch.from_numpy(policy_mask(opponent=True)).to(device)
     optimizer = torch.optim.SGD(
         network.parameters(), lr=config["lr"], momentum=config["momentum"],
         weight_decay=config["weight_decay"], nesterov=True,
@@ -870,18 +792,17 @@ def _run(
     interval_started = time.perf_counter()
     for step in range(state["completed_steps"], state["total_steps"]):
         losses = accumulate_gradients(
-            fabric, model, optimizer, data, order[step], config, mask, opponent_mask, step,
+            fabric, model, optimizer, data, order[step], config, mask, step,
         )
         torch.nn.utils.clip_grad_norm_(model.parameters(), config["clip_grad_norm"], error_if_nonfinite=True)
-        lr = learning_rate(config["lr"], step, state["total_steps"],
-                           state["samples_seen"], batch_size)
+        lr = learning_rate(config["lr"], state["optimizer_steps"])
         for group in optimizer.param_groups:
             group["lr"] = lr
         optimizer.step()
         _accumulate(state["loss_sums"], losses, 1)
         _accumulate(interval_sums, losses, 1)
         state["positions_seen"] += batch_size
-        state["samples_seen"] += batch_size
+        state["optimizer_steps"] += 1
         interval_count += batch_size
         state["completed_steps"] = step + 1
         state["data_order_sha256"] = hashlib.sha256(
@@ -893,8 +814,8 @@ def _run(
             state["elapsed_seconds"]["training"] += elapsed
             averages = _mean(interval_sums, interval_count)
             state["learning_curve"].append({"completed_steps": step + 1, "training_losses": averages, "lr": lr,
-                                            "samples_seen_start": state["samples_seen_start"],
-                                            "samples_seen": state["samples_seen"]})
+                                            "optimizer_steps_start": state["optimizer_steps_start"],
+                                            "optimizer_steps": state["optimizer_steps"]})
             if fabric.global_rank == 0:
                 state["model"], state["optimizer"] = network.state_dict(), optimizer.state_dict()
                 _save_checkpoint(out_dir / "checkpoint.pt", state)
@@ -932,7 +853,7 @@ def _finish(state: dict, data: Dataset, network: ZeroNet, out_dir: Path, device:
             "hash_modulus": 20, "hash_remainder": remainder, "games": games,
         }
         diagnostics[name] = {**metadata, **diagnose(
-            network, data, indices, device, {**config, "batch_size": config["micro_batch_size"]}, mask, auxiliary=True,
+            network, data, indices, device, {**config, "batch_size": config["micro_batch_size"]}, mask,
         )}
     diagnostic_seconds = time.perf_counter() - started
     with _atomic_path(out_dir / "model.onnx") as temporary:
@@ -945,7 +866,7 @@ def _finish(state: dict, data: Dataset, network: ZeroNet, out_dir: Path, device:
                                       "file_training_counts", "sample_sha256")},
         "completed_steps": state["completed_steps"], "total_steps": state["total_steps"],
         "positions_seen": state["positions_seen"],
-        "samples_seen_start": state["samples_seen_start"], "samples_seen": state["samples_seen"],
+        "optimizer_steps_start": state["optimizer_steps_start"], "optimizer_steps": state["optimizer_steps"],
         "last_lr": state["learning_curve"][-1]["lr"],
         "training_losses": _mean(state["loss_sums"], state["positions_seen"]),
         "diagnostics": diagnostics, "learning_curve": state["learning_curve"],

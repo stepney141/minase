@@ -22,8 +22,8 @@ import torch
 
 from minase_zero.data import is_training_sample, is_validation, read_replay_buffer
 from minase_zero.encoding import encode_planes, policy_mask
-from minase_zero.net import ZeroNet
-from minase_zero.train import compute_losses
+from minase_zero.net import TrainingLogits, ZeroNet
+from minase_zero.train import LOSS_NAMES, PolicyTargets, compute_losses, compute_training_losses, total_loss
 
 from tests.cli import (COMMIT, ZERO, command, environment, init_arguments, kill_training,
                   require_success, run_cli, set_training_data, train_arguments)
@@ -66,10 +66,27 @@ class LossTests(unittest.TestCase):
         self.assertAlmostEqual(losses[2].item(), (bce(80, 1) + bce(-80, 0.5)) / 2, places=6)
         self.assertFalse(losses[2].requires_grad)
         self.assertTrue(all(loss.dtype == torch.float32 for loss in losses))
-        (losses[0] + losses[1]).backward()
+        total_loss(losses).backward()
         self.assertAlmostEqual(values.grad[0, 0].item(), (1 - 0.667) / 2, places=6)
         self.assertAlmostEqual(values.grad[1, 0].item(), -(0.667 * 0.5 + 0.333) / 2, places=6)
         self.assertGreater(logits.grad[0, 17].item(), 0)
+
+    def test_training_loss_is_the_unweighted_sum_of_policy_and_value(self) -> None:
+        # 一様方策のCEはlog(16108)、logit=0のBCEは教師によらずlog(2)となる。
+        policy = torch.zeros(1, 35_856, requires_grad=True)
+        value = torch.zeros(1, 1, requires_grad=True)
+        targets = PolicyTargets(torch.tensor([0]), torch.tensor([2]), torch.tensor([65_535]))
+        losses = compute_training_losses(TrainingLogits(policy, value), targets,
+                                         torch.tensor([1.0]), torch.tensor([0.0]), 0.25,
+                                         torch.from_numpy(policy_mask()))
+        self.assertEqual(LOSS_NAMES, ("policy", "value", "value_result"))
+        self.assertEqual(len(losses), 3)
+        self.assertFalse(losses[2].requires_grad)
+        loss = total_loss(losses)
+        self.assertAlmostEqual(loss.item(), math.log(16_108) + math.log(2), places=5)
+        loss.backward()
+        self.assertAlmostEqual(value.grad.item(), -0.25, places=7)
+        self.assertAlmostEqual(policy.grad[0, 2].item(), 1 / 16_108 - 1, places=6)
 
     def test_policy_loss_and_gradients_match_positionwise_scatter_mean(self) -> None:
         # 局面ごとの旧集計と、候補数が異なり確率0も含む教師で照合する。
@@ -176,7 +193,7 @@ class TrainTests(unittest.TestCase):
             raise AssertionError("SIGKILL did not interrupt an unfinished cycle")
         shutil.copytree(b, partial)
         b.with_name(b.name + "-data.json").unlink()
-        resumption = run_cli(["train", "--resume", str(b), "--device", "cpu", "--replay-threads", "1"], n)
+        resumption = run_cli(["train", "--resume", str(b), "--device", "cpu", "--replay-threads", "1", "--lr", "0.01"], n)
         require_success(resumption)
         return dict(a=a, b=b, partial=partial, uninterrupted=uninterrupted,
                     interrupted_returncode=interrupted_returncode, interrupted_state=interrupted_state,
@@ -229,7 +246,7 @@ class TrainTests(unittest.TestCase):
         else:
             self.assertEqual(left, right)
 
-    def test_one_and_two_ranks_have_the_same_updates_and_batch_norm_statistics(self):
+    def test_one_and_two_ranks_have_the_same_updates(self):
         states = {}
         for n in (1, 2):
             out = self.root / f"short-{n}"
@@ -238,23 +255,21 @@ class TrainTests(unittest.TestCase):
             args[args.index("--micro-batch-size") + 1] = "128"
             require_success(run_cli(args, n))
             state = torch.load(out / "checkpoint.pt", weights_only=True)
-            self.assertEqual(state["sample_count"], 2572)
-            self.assertEqual(state["completed_steps"], 5)
-            self.assertEqual(state["total_steps"], 5)
+            self.assertEqual(state["sample_count"], 643)
+            self.assertEqual(state["completed_steps"], 1)
+            self.assertEqual(state["total_steps"], 1)
             self.assertEqual(state["provenance"]["world_size"], n)
             self.assertNotIn("replay_threads", state["config"])
             self.assertEqual({p.name for p in out.iterdir()}, {"checkpoint.pt", "model.onnx", "summary.json"})
             states[n] = state
         one, two = (states[n] for n in (1, 2))
-        for key in ("data_order_sha256", "completed_steps", "total_steps", "positions_seen", "samples_seen",
+        for key in ("data_order_sha256", "completed_steps", "total_steps", "positions_seen", "optimizer_steps",
                     "sample_count", "sample_sha256", "training_count", "validation_count"):
             self.assertEqual(one[key], two[key], key)
         buffers = ("running_mean", "running_var", "num_batches_tracked")
         for name in one["model"]:
-            with self.subTest(name=name, buffer=name.endswith(buffers)):
-                if name.endswith("num_batches_tracked"):
-                    self.assertTrue(torch.equal(one["model"][name], two["model"][name]))
-                else:
+            if not name.endswith(buffers):
+                with self.subTest(parameter=name):
                     torch.testing.assert_close(one["model"][name], two["model"][name])
         for key in ("optimizer", "loss_sums", "learning_curve"):
             self.assert_close_nested(one[key], two[key])
@@ -262,12 +277,12 @@ class TrainTests(unittest.TestCase):
     def test_resume_can_change_world_size_and_replay_threads(self):
         out = self.root / "changed-world-size"
         shutil.copytree(self.partial, out)
-        result = run_cli(["train", "--resume", str(out), "--device", "cpu", "--replay-threads", "2"], 2)
+        result = run_cli(["train", "--resume", str(out), "--device", "cpu", "--replay-threads", "2", "--lr", "0.01"], 2)
         require_success(result)
         state = torch.load(out / "checkpoint.pt", weights_only=True)
         self.assertEqual(state["provenance"]["world_size"], 1)
         self.assertEqual(state["completed_steps"], state["total_steps"])
-        for key in ("data_order_sha256", "completed_steps", "total_steps", "positions_seen", "samples_seen"):
+        for key in ("data_order_sha256", "completed_steps", "total_steps", "positions_seen", "optimizer_steps"):
             self.assertEqual(state[key], self.state_a[key])
 
     def test_data_list_stores_only_paths_and_resume_does_not_read_the_list(self) -> None:
@@ -278,21 +293,21 @@ class TrainTests(unittest.TestCase):
             self.assertEqual([item["path"] for item in saved["provenance"]["files"]], saved["config"]["data"])
 
     def test_order_digest_counts_and_batch_normalization_follow_the_contract(self) -> None:
-        training = np.flatnonzero(~self.data.validation)
-        ordered = reference_sample(len(training), 4 * len(training), 42)
+        training_count = self.infos[0].training_count
+        ordered = reference_sample(training_count, training_count, 42)
         digest = bytes(32)
         for start in range(0, len(ordered) // 16 * 16, 16):
             digest = hashlib.sha256(digest + b"".join(struct.pack("<q", index) for index in ordered[start:start + 16])).digest()
-        updates = 4 * len(training) // 16
+        updates = training_count // 16
         self.assertGreaterEqual(updates, 30)
-        self.assertNotEqual(4 * len(training) % 16, 0)
+        self.assertNotEqual(training_count % 16, 0)
         for state in (self.state_a, self.state_b, self.summary_a, self.summary_b):
             self.assertEqual(state["data_order_sha256"], digest.hex())
             self.assertEqual(state["completed_steps"], updates)
             self.assertEqual(state["total_steps"], updates)
             self.assertEqual(state["positions_seen"], 16 * updates)
-            self.assertEqual(state["sample_count"], 4 * len(training))
-            self.assertEqual(state["samples_seen"], state["samples_seen_start"] + 16 * updates)
+            self.assertEqual(state["sample_count"], training_count)
+            self.assertEqual(state["optimizer_steps"], state["optimizer_steps_start"] + updates)
         checkpoints = list(range(4, updates + 1, 4))
         if checkpoints[-1] != updates:
             checkpoints.append(updates)
@@ -300,7 +315,7 @@ class TrainTests(unittest.TestCase):
         self.assertEqual(sum(line.startswith("steps=") for line in self.uninterrupted.stderr.splitlines()), len(checkpoints))
         for name, value in self.state_a["model"].items():
             if name.endswith("num_batches_tracked"):
-                self.assertEqual(value.item(), updates)
+                self.assertEqual(value.item(), 4 * updates)
         initial = torch.load(self.initial / "checkpoint.pt", weights_only=True)
         self.assertFalse(torch.equal(initial["model"]["trunk.0.weight"], self.state_a["model"]["trunk.0.weight"]))
 
@@ -310,7 +325,7 @@ class TrainTests(unittest.TestCase):
         (out / "model.onnx").unlink()
         (out / "summary.json").unlink()
         saved_bytes = (out / "checkpoint.pt").read_bytes()
-        require_success(run_cli(["train", "--resume", str(out), "--device", "cpu", "--replay-threads", "1"]))
+        require_success(run_cli(["train", "--resume", str(out), "--device", "cpu", "--replay-threads", "1", "--lr", "0.01"]))
         self.assertEqual(saved_bytes, (out / "checkpoint.pt").read_bytes())
         self.assertEqual((out / "model.onnx").read_bytes(), (self.a / "model.onnx").read_bytes())
         summary = json.loads((out / "summary.json").read_text())
@@ -325,7 +340,7 @@ class TrainTests(unittest.TestCase):
         self.assertEqual(record["path"], "fixtures/zero-selfplay-small.mnsd")
         self.assertEqual(record["size"], info.size)
         self.assertEqual(record["sha256"], hashlib.sha256(info.path.read_bytes()).hexdigest())
-        self.assertEqual(record["position_count"], len(self.data))
+        self.assertEqual(record["position_count"], info.position_count)
         self.assertEqual(record["header"]["generation_commit"], info.header.generation_commit)
         self.assertEqual(record["header"]["network_checksum"], info.header.network_checksum.hex())
         self.assertEqual(provenance["init_sha256"], hashlib.sha256((self.initial / "checkpoint.pt").read_bytes()).hexdigest())
@@ -333,7 +348,7 @@ class TrainTests(unittest.TestCase):
             self.assertTrue(provenance[key])
         self.assertIn("cuda_version", provenance)
 
-    def test_init_ignores_legacy_fields_and_carries_momentum_with_new_settings(self) -> None:
+    def test_init_carries_momentum_and_optimizer_steps_with_new_settings(self) -> None:
         previous_threads = torch.get_num_threads()
         torch.set_num_threads(1)
         self.addCleanup(torch.set_num_threads, previous_threads)
@@ -353,14 +368,14 @@ class TrainTests(unittest.TestCase):
             rank=0, world_size=1, batch_size=1, micro_batch_size=1, replay_threads=1,
         )
         indices = np.flatnonzero(~data.validation)
-        indices = indices[reference_sample(len(indices), 4 * len(indices), 42)]
+        indices = indices[reference_sample(len(indices), len(indices), 42)]
         model = ZeroNet(1, 16).train()
         model.load_state_dict(self.state_a["model"])
         inputs = encode_planes(*(torch.from_numpy(column[indices]) for column in (data.boards, data.sides, data.lions)))
         logits = model.forward_logits(inputs)
         policy, value = logits.policy, logits.value[:, 0]
         # 参照計算では密な方策と、結果・根の価値に対する別々のBCEを使う。
-        targets = torch.zeros(8, 35_856)
+        targets = torch.zeros(2, 35_856)
         for row, index in enumerate(indices):
             for candidate in range(int(data.policy_offsets[index]), int(data.policy_offsets[index + 1])):
                 targets[row, int(data.policy_labels[candidate])] = int(data.policy_probabilities[candidate]) / 65_535
@@ -371,24 +386,13 @@ class TrainTests(unittest.TestCase):
         result_loss = torch.nn.functional.binary_cross_entropy_with_logits(value.flatten(), results)
         root_loss = torch.nn.functional.binary_cross_entropy_with_logits(value.flatten(), roots)
         value_loss = 0.667 * result_loss + 0.333 * root_loss
-        legal = torch.zeros_like(targets)
-        for row, index in enumerate(indices):
-            labels = data.legal_labels[data.legal_offsets[index]:data.legal_offsets[index + 1]]
-            legal[row, torch.tensor(labels.astype(np.int64))] = 1
-        softened = (targets + 1e-7).pow(0.25) * legal
-        softened /= softened.sum(dim=1, keepdim=True)
-        soft_loss = -(softened[:, mask] * logits.soft_policy[:, mask].log_softmax(1)).sum(1).mean()
-        # この棋譜は投了の最終項目だけなので、3つの短期目標はすべて対局結果となる。
-        short_loss = sum(torch.nn.functional.binary_cross_entropy_with_logits(logits.value[:, column], results)
-                         for column in (1, 2, 3))
-        loss = policy_loss + value_loss + 8 * soft_loss + short_loss
-        loss += 0 * (logits.opponent_policy.sum() + logits.opponent_soft_policy.sum())
+        loss = policy_loss + value_loss
         loss.backward()
         norm = sum(parameter.grad.double().square().sum() for parameter in model.parameters()).sqrt().item()
         self.assertGreater(norm, 0.1)
         expected_parameters, expected_buffers = [], []
         old_optimizer = self.state_a["optimizer"]
-        rate = 0.03 * (self.state_a["samples_seen"] + 8) / 2_000_000
+        rate = 0.03 * min(1, (self.state_a["optimizer_steps"] + 1) / 250)
         for parameter, identifier in zip(model.parameters(), old_optimizer["param_groups"][0]["params"]):
             old_buffer = old_optimizer["state"][identifier]["momentum_buffer"].double()
             gradient = parameter.grad.double() * (0.1 / norm) + 0.0002 * parameter.detach().double()
@@ -397,31 +401,21 @@ class TrainTests(unittest.TestCase):
             expected_parameters.append(parameter.detach().double() - rate * (gradient + 0.8 * buffer))
 
         out = self.root / "next-cycle"
-        # 本線のサイクル21〜25から26への移行を守る試験。余分な設定は引き継がず、
-        # 余分な重みを読み込めない状態でも、通常の重みとモーメンタムで次の学習を始める。
-        legacy = torch.load(self.a / "checkpoint.pt", weights_only=True)
-        legacy["ema"] = {"model": {}, "samples_since_update": 0, "updates": 1}
-        obsolete_settings = {"ema_period_samples": 500_000, "ema_scale": 8, "lr_schedule": "constant"}
-        legacy["config"].update(obsolete_settings)
-        del legacy["config"]["micro_batch_size"]
-        initial = self.root / "legacy-checkpoint.pt"
-        torch.save(legacy, initial)
-        arguments = train_arguments(initial, out)
+        arguments = train_arguments(self.a / "checkpoint.pt", out)
         set_training_data(arguments, [str(path)])
-        for flag, value in (("--latest-data", str(path)), ("--cycle", "2"), ("--batch-size", "8"),
-                            ("--micro-batch-size", "8"), ("--lr", "0.03"), ("--momentum", "0.8"), ("--weight-decay", "0.0002"),
+        for flag, value in (("--latest-data", str(path)), ("--cycle", "2"), ("--batch-size", "2"),
+                            ("--micro-batch-size", "2"), ("--lr", "0.03"), ("--momentum", "0.8"), ("--weight-decay", "0.0002"),
                             ("--clip-grad-norm", "0.1")):
             arguments[arguments.index(flag) + 1] = value
         require_success(run_cli(arguments))
         state = torch.load(out / "checkpoint.pt", weights_only=True)
         summary = json.loads((out / "summary.json").read_text())
-        self.assertNotIn("ema", state)
-        for record in (state["config"], summary["config"], summary):
-            self.assertTrue(obsolete_settings.keys().isdisjoint(record))
         self.assertEqual({path.name for path in out.iterdir()}, {"checkpoint.pt", "model.onnx", "summary.json"})
         self.assertEqual(state["cycle"], 2)
         self.assertEqual(state["completed_steps"], 1)
-        self.assertEqual(state["positions_seen"], 8)
+        self.assertEqual(state["positions_seen"], 2)
+        self.assertEqual(state["optimizer_steps_start"], self.state_a["optimizer_steps"])
+        self.assertEqual(state["optimizer_steps"], self.state_a["optimizer_steps"] + 1)
         group = state["optimizer"]["param_groups"][0]
         self.assertEqual((group["lr"], group["momentum"], group["weight_decay"], group["nesterov"]), (rate, 0.8, 0.0002, True))
         names = [name for name, _ in model.named_parameters()]
@@ -431,12 +425,12 @@ class TrainTests(unittest.TestCase):
             torch.testing.assert_close(state["model"][name].double(), expected_parameter, rtol=2e-6, atol=2e-7)
             torch.testing.assert_close(state["optimizer"]["state"][identifier]["momentum_buffer"].double(), expected_buffer,
                                        rtol=1e-5, atol=2e-6)
-        for key, expected in (("policy", policy_loss), ("value", value_loss), ("value_result", result_loss), ("soft_policy", soft_loss)):
+        for key, expected in (("policy", policy_loss), ("value", value_loss), ("value_result", result_loss)):
             self.assertAlmostEqual(summary["training_losses"][key], expected.item(), places=5)
 
     def test_finished_nonempty_unfinished_init_and_cpu_bf16_are_rejected(self) -> None:
         cases = [
-            ["train", "--resume", str(self.a), "--device", "cpu", "--replay-threads", "1"],
+            ["train", "--resume", str(self.a), "--device", "cpu", "--replay-threads", "1", "--lr", "0.01"],
             train_arguments(self.initial / "checkpoint.pt", self.a),
             train_arguments(self.partial / "checkpoint.pt", self.root / "bad-init"),
         ]
@@ -461,7 +455,7 @@ class TrainTests(unittest.TestCase):
                 else:
                     record[field] += 1
                 torch.save(state, out / "checkpoint.pt")
-                result = run_cli(["train", "--resume", str(out), "--device", "cpu", "--replay-threads", "1"])
+                result = run_cli(["train", "--resume", str(out), "--device", "cpu", "--replay-threads", "1", "--lr", "0.01"])
                 self.assertEqual(result.returncode, 1, result.stderr)
                 self.assertEqual(sum(line.startswith("minase_zero:") for line in result.stderr.splitlines()), 1, result.stderr)
                 self.assertFalse((out / "summary.json").exists())
@@ -483,7 +477,7 @@ class TrainTests(unittest.TestCase):
         recorded = state["provenance"]["files"][0]["sha256"]
         self.assertNotEqual(recorded, hashlib.sha256(content).hexdigest())
         torch.save(state, out / "checkpoint.pt")
-        require_success(run_cli(["train", "--resume", str(out), "--device", "cpu", "--replay-threads", "1"]))
+        require_success(run_cli(["train", "--resume", str(out), "--device", "cpu", "--replay-threads", "1", "--lr", "0.01"]))
         summary = json.loads((out / "summary.json").read_text())
         self.assertEqual(summary["provenance"]["files"][0]["sha256"], recorded)
         self.assertEqual(summary["diagnostics"], self.summary_a["diagnostics"])
@@ -523,7 +517,8 @@ class TrainTests(unittest.TestCase):
         arguments = train_arguments(self.initial / "checkpoint.pt", out)
         set_training_data(arguments, [str(path)])
         arguments[arguments.index("--latest-data") + 1] = str(path)
-        arguments[arguments.index("--batch-size") + 1] = "4"
+        arguments[arguments.index("--batch-size") + 1] = "1"
+        arguments[arguments.index("--micro-batch-size") + 1] = "1"
         result = run_cli(arguments)
         self.assertEqual(result.returncode, 1, result.stderr)
         self.assertIn("training diagnostic sample", result.stderr)
@@ -535,7 +530,7 @@ class TrainTests(unittest.TestCase):
         wrong_commit[-1] = "z" * 40
         missing = train_arguments(self.root / "missing.pt", self.root / "missing-output")
         cases = [[], ["init"], wrong_commit, missing,
-                 ["train", "--resume", str(self.partial), "--device", "cpu", "--replay-threads", "1", "--seed", "1"]]
+                 ["train", "--resume", str(self.partial), "--device", "cpu", "--replay-threads", "1", "--lr", "0.01", "--seed", "1"]]
         for arguments in cases:
             with self.subTest(arguments=arguments):
                 result = run_cli(arguments)

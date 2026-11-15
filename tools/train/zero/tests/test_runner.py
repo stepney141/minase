@@ -721,7 +721,7 @@ class ResumeTests(RunnerCase):
             with self.subTest(location=location):
                 command = runner.training_command(1, files, files)
                 self.assertEqual(command, [*prefix, "--resume", "cycles/cycle-0001/train",
-                                           "--device", "cuda", "--replay-threads", "4"])
+                                           "--device", "cuda", "--replay-threads", "4", "--lr", "0.01"])
                 self.assertNotIn("--micro-batch-size", command)
         self.assertEqual(self.remote.uploads, [checkpoint])
 
@@ -784,7 +784,7 @@ class ResumeTests(RunnerCase):
         write(self.root / relative, b"older checkpoint")
         files = ["cycles/cycle-0001/selfplay/chunk-00000.mnsd"]
         command = self.runner.training_command(1, files, files)
-        self.assertEqual(command[command.index("train"):], ["train", "--resume", "cycles/cycle-0001/train", "--device", "cuda", "--replay-threads", "12"])
+        self.assertEqual(command[command.index("train"):], ["train", "--resume", "cycles/cycle-0001/train", "--device", "cuda", "--replay-threads", "12", "--lr", "0.01"])
         self.assertEqual(self.remote.uploads, [])
 
     def test_nas_checkpoint_is_uploaded_for_resume(self):
@@ -792,7 +792,7 @@ class ResumeTests(RunnerCase):
         write(self.root / relative, b"saved checkpoint")
         files = ["cycles/cycle-0001/selfplay/chunk-00000.mnsd"]
         command = self.runner.training_command(1, files, files)
-        self.assertEqual(command[command.index("train"):], ["train", "--resume", "cycles/cycle-0001/train", "--device", "cuda", "--replay-threads", "12"])
+        self.assertEqual(command[command.index("train"):], ["train", "--resume", "cycles/cycle-0001/train", "--device", "cuda", "--replay-threads", "12", "--lr", "0.01"])
         self.assertEqual(self.remote.uploads, [relative])
         self.assertEqual((self.remote_root / relative).read_bytes(), b"saved checkpoint")
 
@@ -814,7 +814,7 @@ class ResumeTests(RunnerCase):
             with self.subTest(location=location):
                 command = runner.training_command(3, files, files)
                 self.assertEqual(command[command.index("train"):],
-                                 ["train", "--resume", "cycles-branch/cycle-0003/train", "--device", "cuda", "--replay-threads", "12"])
+                                 ["train", "--resume", "cycles-branch/cycle-0003/train", "--device", "cuda", "--replay-threads", "12", "--lr", "0.01"])
                 self.assertEqual((self.remote_root / checkpoint).read_bytes(), b"branch checkpoint")
         self.assertEqual(self.remote.uploads, [checkpoint])
 
@@ -1458,7 +1458,7 @@ class CycleTests(RunnerCase):
         self.assertEqual(shlex.split(self.remote.starts[0][1]), [
             "uv", "run", "--frozen", "--project", "/workspace/src/tools/train/zero", "torchrun",
             "--standalone", "--nproc-per-node", "4", "-m", "minase_zero", "train",
-            "--resume", "cycles/cycle-0001/train", "--device", "cuda", "--replay-threads", "4",
+            "--resume", "cycles/cycle-0001/train", "--device", "cuda", "--replay-threads", "4", "--lr", "0.01",
         ])
         self.assertEqual((self.root / "seed-ledger.jsonl").read_bytes(), ledger)
         self.assertEqual(json.loads((self.root / "cycles.jsonl").read_text())["machine"]["vast_instance"], 12345)
@@ -2057,7 +2057,7 @@ if engine:
         self.execute(self.options)
         self.assertEqual([Path(item[0]).name for item in self.remote.starts], ["train", "check"])
         command = shlex.split(self.remote.starts[0][1])
-        self.assertEqual(command[command.index("train"):], ["train", "--resume", "cycles/cycle-0001/train", "--device", "cuda", "--replay-threads", "12"])
+        self.assertEqual(command[command.index("train"):], ["train", "--resume", "cycles/cycle-0001/train", "--device", "cuda", "--replay-threads", "12", "--lr", "0.01"])
         self.assertIn("cycles/cycle-0001/train/checkpoint.pt", self.remote.uploads)
         self.assertEqual((self.root / "seed-ledger.jsonl").read_bytes(), ledger)
         row = json.loads((self.root / "cycles.jsonl").read_text())
