@@ -68,7 +68,7 @@
 | 対局用MCTSを全部の規則コードで探索できるようにする | [plans/archived/mcts-rule-codes.md](plans/archived/mcts-rule-codes.md) | 完了（採用） | 2026年11月13日 |
 | AlphaZero型探索の強さを測る固定の相手 | [plans/archived/mcts-fixed-opponents.md](plans/archived/mcts-fixed-opponents.md) | 完了（採用） | 2026年11月14日 |
 | AlphaZero型探索のネットを診断する固定の検証用データ | [plans/archived/zero-validation-games.md](plans/archived/zero-validation-games.md) | 完了（採用） | 2026年11月15日 |
-| AlphaZero型探索の学習レシピを先行実装に揃える | [plans/zero-recipe-precedents.md](plans/zero-recipe-precedents.md) | 起案 | |
+| AlphaZero型探索の学習レシピを先行実装に揃える | [plans/zero-recipe-precedents.md](plans/zero-recipe-precedents.md) | 着手 | |
 | 対局用MCTSのPUCTの係数と方策の温度のSPSAによる調整 | [plans/mcts-puct-spsa.md](plans/mcts-puct-spsa.md) | 起案 | |
 | 学習の系列の記録と進捗図 | [plans/training-series-records.md](plans/training-series-records.md) | 待機中 | |
 | AlphaZero型探索の学習と自己対局生成の複数GPU化 | [plans/archived/alphazero-multi-gpu.md](plans/archived/alphazero-multi-gpu.md) | 完了（採用） | 2026年11月11日 |
@@ -221,7 +221,7 @@ NNUEの作業の本線は、NNUEに関わる実装をすべて直し、自玉の
 2026年11月13日にこの設計書から分けた3本の準備、[対局用MCTSの規則コードへの対応](plans/archived/mcts-rule-codes.md)、[強さを測る固定の相手](plans/archived/mcts-fixed-opponents.md)、および[固定の検証用データ](plans/archived/zero-validation-games.md)は完了している。
 残る前提は、[学習レシピを先行実装に揃える設計書](plans/zero-recipe-precedents.md)である。
 この設計書は、学習の設定のうちminaseが独自に決めた値と組合せ（毎サイクルの学習率の下げ直し、序盤の一様な乱択、探索回数の乱択とGumbel AlphaZeroの組合せ、パラメータ数で決めるリプレイバッファ、固定の閾値の投了など）をチェスと将棋のエンジンの方法に置き換え、補助目標を外し、胴体とヘッドをAlphaZeroの形にした新しい初期ネットを作る（2026年11月15日の利用者の決定）。
-起案の段階で、利用者の承認を待っている。
+2026年11月16日に利用者の指示で着手し、生成器、学習器、および実行器の変更を進めている。
 
 次の3件は、2回目の実行と独立に進められる。
 
