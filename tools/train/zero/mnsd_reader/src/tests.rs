@@ -20,6 +20,177 @@ use std::{
 static NEXT_DIRECTORY: AtomicU64 = AtomicU64::new(0);
 
 #[test]
+fn validation_keeps_played_moves_without_values_in_input_order() {
+    let fixture = Fixture::new();
+    let header = Header::new(
+        "lishogi".into(),
+        "a1".repeat(20),
+        [0; 32],
+        TeacherKind::NoSearch,
+        0,
+        11,
+    )
+    .unwrap();
+    let mut writer = Writer::new(Cursor::new(Vec::new()), header).unwrap();
+    let mut expected_boards = Vec::new();
+    let mut expected_moves = Vec::new();
+    let mut expected_legal = Vec::new();
+    // 対局1は訓練側、4は検証側だが、指した手は両方ともすべて診断に使う。
+    for (number, count, start_ply, winner) in [
+        (1, 1, 0, Color::Black),
+        (4, 2, 39, Color::White),
+        (9, 0, 200, Color::Black),
+    ] {
+        let start = Position::initial();
+        let mut game = Game::from_position(Rules::LISHOGI, start.clone());
+        let mut entries = Vec::new();
+        for _ in 0..count {
+            let legal = sorted_legal_moves(&game).unwrap();
+            let mv = legal[0];
+            expected_boards.extend(records::encode_board(game.position()).unwrap());
+            expected_moves.push(mv);
+            expected_legal.push(legal);
+            entries.push(
+                Entry::new(
+                    Some(mv),
+                    Value::None,
+                    Exclusion::None,
+                    Policy::PlayedMove,
+                    None,
+                )
+                .unwrap(),
+            );
+            game.play(mv).unwrap();
+        }
+        entries.push(Entry::new(None, Value::None, Exclusion::None, Policy::None, None).unwrap());
+        writer
+            .write_game(
+                &GameRecord::new(
+                    number,
+                    Origin::HumanGame,
+                    Outcome::Game(GameResult::Win {
+                        winner,
+                        reason: WinReason::Resignation,
+                    }),
+                    start_ply,
+                    start,
+                    entries,
+                )
+                .unwrap(),
+            )
+            .unwrap();
+    }
+    let path = fixture.0.join("validation.mnsd");
+    fs::write(&path, writer.finish().unwrap().into_inner()).unwrap();
+    let actual = read_validation(&path).unwrap();
+    assert_eq!(actual.info.header.teacher_kind(), TeacherKind::NoSearch);
+    assert_eq!(actual.info.header.rules(), Rules::LISHOGI);
+    assert_eq!(actual.info.header.game_count(), 3);
+    assert_eq!(actual.info.header.entry_count(), 6);
+    assert_eq!(actual.info.origin, Some(Origin::HumanGame));
+    assert_eq!(actual.info.game_numbers, [1, 4, 9]);
+    assert_eq!(
+        (actual.info.training_count, actual.info.validation_count),
+        (1, 2)
+    );
+    assert_eq!(actual.training_indices, [0]);
+    assert_eq!(actual.games, [1, 4, 4]);
+    assert_eq!(actual.plies, [0, 39, 40]);
+    assert_eq!(actual.boards, expected_boards);
+    assert_eq!(actual.sides, [0, 0, 1]);
+    assert_eq!(actual.lions, [255; 3]);
+    assert_eq!(actual.values, [0; 3]);
+    assert_eq!(actual.visits, [0; 3]);
+    assert_eq!(actual.outcomes, [0, 1, 1]);
+    assert_eq!(actual.policy_offsets, [0, 1, 2, 3]);
+    assert_eq!(actual.policy_probabilities, [65_535; 3]);
+    assert!(actual.short_term_values.is_empty());
+    assert_eq!(actual.opponent_policy_offsets, [0, 0, 1, 1]);
+    assert_eq!(actual.opponent_policy_probabilities, [65_535]);
+    for (index, mv) in expected_moves.iter().enumerate() {
+        assert_eq!(actual.policy_from[index], mv.from.dense_index() as u8);
+        assert_eq!(actual.policy_mid[index], 255);
+        assert_eq!(actual.policy_to[index], mv.to.dense_index() as u8);
+        assert_eq!(actual.policy_promote[index], u8::from(mv.promote));
+    }
+    for (index, moves) in expected_legal.iter().enumerate() {
+        let range = actual.legal_offsets[index] as usize..actual.legal_offsets[index + 1] as usize;
+        assert_eq!(
+            actual.legal_from[range.clone()],
+            moves
+                .iter()
+                .map(|mv| mv.from.dense_index() as u8)
+                .collect::<Vec<_>>()
+        );
+        assert_eq!(
+            actual.legal_mid[range.clone()],
+            moves
+                .iter()
+                .map(|mv| mv.mid.map_or(255, |sq| sq.dense_index() as u8))
+                .collect::<Vec<_>>()
+        );
+        assert_eq!(
+            actual.legal_to[range.clone()],
+            moves
+                .iter()
+                .map(|mv| mv.to.dense_index() as u8)
+                .collect::<Vec<_>>()
+        );
+        assert_eq!(
+            actual.legal_promote[range],
+            moves
+                .iter()
+                .map(|mv| u8::from(mv.promote))
+                .collect::<Vec<_>>()
+        );
+    }
+    assert_eq!(actual.opponent_policy_from, actual.policy_from[2..3]);
+    assert_eq!(actual.opponent_policy_mid, actual.policy_mid[2..3]);
+    assert_eq!(actual.opponent_policy_to, actual.policy_to[2..3]);
+    assert_eq!(actual.opponent_policy_promote, actual.policy_promote[2..3]);
+    let opponent = actual.legal_offsets[2] as usize..actual.legal_offsets[3] as usize;
+    assert_eq!(
+        actual.opponent_legal_offsets,
+        [0, 0, opponent.len() as u64, opponent.len() as u64]
+    );
+    assert_eq!(
+        actual.opponent_legal_from,
+        actual.legal_from[opponent.clone()]
+    );
+    assert_eq!(
+        actual.opponent_legal_mid,
+        actual.legal_mid[opponent.clone()]
+    );
+    assert_eq!(actual.opponent_legal_to, actual.legal_to[opponent.clone()]);
+    assert_eq!(
+        actual.opponent_legal_promote,
+        actual.legal_promote[opponent]
+    );
+
+    let training = read_file(&path).unwrap();
+    assert_eq!(training.info.game_numbers, [1, 4, 9]);
+    assert_eq!(
+        (training.info.training_count, training.info.validation_count),
+        (0, 0)
+    );
+    assert!(training.games.is_empty());
+    assert!(training.boards.is_empty());
+    assert_eq!(training.policy_offsets, [0]);
+}
+
+#[test]
+fn validation_rejects_search_teachers() {
+    let fixture = Fixture::new();
+    for kind in [TeacherKind::AlphaBeta, TeacherKind::Mcts] {
+        let path = fixture.write(kind, &[]);
+        assert!(matches!(
+            read_validation(&path),
+            Err(Error::NotValidationData { kind: actual }) if actual == kind
+        ));
+    }
+}
+
+#[test]
 fn shuffled_start_replays_boards_plies_legal_moves_and_control_planes() {
     use minase_core::rng::{XorShift64, derive_seed};
     let fixture = Fixture::new();
@@ -560,9 +731,6 @@ fn mcts_scan_and_replay_skip_value_only_entries_and_read_mate_in_three_wins() {
     assert_eq!(selected.games, [1, 4, 4]);
     assert_eq!(selected.plies, [3, 2, 3]);
     assert_eq!(selected.outcomes, [0, 1, 1]);
-    let by_game = read_games(&path, &HashSet::from([(11, 4)])).unwrap();
-    assert_eq!(by_game.plies, [2, 3]);
-    assert_eq!(by_game.outcomes, [1, 1]);
 }
 
 fn short_game(side: Color, values: &[Option<u16>], full: &[bool], outcome: Outcome) -> GameRecord {
@@ -1115,119 +1283,6 @@ fn scan_counts_flags_without_replay_and_selection_uses_training_ordinals() {
         read_selected(&path, &[], &[], false),
         Err(Error::Format(records::Error::MissingPlayedMove))
     ));
-}
-
-#[test]
-fn game_selection_uses_full_keys_without_the_training_validation_split() {
-    // 対局1は訓練、4は検証。選択した対局の採用項目1,6をすべて保持する。
-    let fixture = Fixture::new();
-    let path = fixture.write(
-        TeacherKind::AlphaBeta,
-        &[
-            alpha_game(1, 13, Position::initial()),
-            alpha_game(4, 30, Position::initial()),
-        ],
-    );
-    for (keys, games, plies) in [
-        (vec![(11, 1), (12, 4)], vec![1, 1], vec![14, 19]),
-        (vec![(12, 1), (11, 4)], vec![4, 4], vec![31, 36]),
-        (
-            vec![(11, 4), (11, 1), (11, 99)],
-            vec![1, 1, 4, 4],
-            vec![14, 19, 31, 36],
-        ),
-    ] {
-        let selected = read_games(&path, &keys.into_iter().collect()).unwrap();
-        assert_eq!(selected.games, games);
-        assert_eq!(selected.plies, plies);
-        assert_eq!(selected.boards.len(), games.len() * 144);
-        assert_eq!(selected.info.game_numbers, [1, 4]);
-        assert_eq!(selected.info.header.game_count(), 2);
-        assert_eq!(selected.info.header.entry_count(), 14);
-        assert_eq!(
-            (selected.info.training_count, selected.info.validation_count),
-            (2, 2)
-        );
-        assert_eq!(selected.policy_offsets.len(), games.len() + 1);
-        assert_eq!(selected.legal_offsets.len(), games.len() + 1);
-        for &values in selected.values.as_chunks::<2>().0 {
-            assert_eq!(values, [-200, -32768]);
-        }
-        for &probabilities in selected.policy_probabilities.as_chunks::<3>().0 {
-            assert_eq!(probabilities, [65535, 10000, 55535]);
-        }
-    }
-}
-
-#[test]
-fn empty_game_selection_preserves_metadata_without_position_arrays() {
-    let fixture = Fixture::new();
-    let path = fixture.write(
-        TeacherKind::AlphaBeta,
-        &[alpha_game(1, 0, Position::initial())],
-    );
-    for keys in [HashSet::new(), HashSet::from([(12, 1), (11, 99)])] {
-        let selected = read_games(&path, &keys).unwrap();
-        assert_eq!(selected.info.game_numbers, [1]);
-        assert_eq!(
-            (selected.info.training_count, selected.info.validation_count),
-            (2, 0)
-        );
-        assert!(selected.games.is_empty());
-        assert!(selected.boards.is_empty());
-        assert!(selected.policy_from.is_empty());
-        assert!(selected.legal_from.is_empty());
-        assert_eq!(selected.policy_offsets, [0]);
-        assert_eq!(selected.legal_offsets, [0]);
-    }
-    let path = fixture.write(TeacherKind::AlphaBeta, &[]);
-    let empty = read_games(&path, &HashSet::from([(11, 1)])).unwrap();
-    assert!(empty.info.game_numbers.is_empty());
-    assert!(empty.boards.is_empty());
-    assert_eq!(empty.policy_offsets, [0]);
-    assert_eq!(empty.legal_offsets, [0]);
-}
-
-#[test]
-fn game_selection_still_replays_and_rejects_invalid_unselected_games() {
-    let fixture = Fixture::new();
-    let path = fixture.write(
-        TeacherKind::AlphaBeta,
-        &[
-            alpha_game(1, 0, Position::initial()),
-            alpha_game(4, 0, Position::initial()),
-        ],
-    );
-    // 選択しない対局1の最初の着手を欠かす。対局4だけを選んでも形式検査は必要である。
-    let mut bytes = fs::read(&path).unwrap();
-    let entry = records::HEADER_LEN + records::GAME_HEADER_LEN;
-    bytes[entry..entry + 2].copy_from_slice(&u16::MAX.to_le_bytes());
-    fs::write(&path, bytes).unwrap();
-    for keys in [HashSet::new(), HashSet::from([(11, 4)])] {
-        assert!(matches!(
-            read_games(&path, &keys),
-            Err(Error::Format(records::Error::MissingPlayedMove))
-        ));
-    }
-}
-
-#[test]
-fn game_selection_accepts_mcts_games_without_retained_positions() {
-    let fixture = Fixture::new();
-    let path = fixture.write(
-        TeacherKind::Mcts,
-        &[unselected_game(4, Origin::RandomSelfplay)],
-    );
-    let selected = read_games(&path, &HashSet::from([(11, 4)])).unwrap();
-    assert_eq!(selected.info.header.teacher_kind(), TeacherKind::Mcts);
-    assert_eq!(selected.info.game_numbers, [4]);
-    assert_eq!(
-        (selected.info.training_count, selected.info.validation_count),
-        (0, 0)
-    );
-    assert!(selected.boards.is_empty());
-    assert_eq!(selected.policy_offsets, [0]);
-    assert_eq!(selected.legal_offsets, [0]);
 }
 
 #[test]

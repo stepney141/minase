@@ -555,6 +555,21 @@ def compute_policy_diagnostics(
     ネットの最大logitが同率なら最小ラベルを選び、教師の同率はすべて正解とする。
     マスク外の合法手、合法手がない局面、有限でない合法手の最大logitはValueErrorとする。
     """
+    log_mass, agreement = _policy_diagnostics_per_position(
+        policy_logits, rows, labels, probabilities, legal_rows, legal_labels, mask,
+    )
+    return log_mass.exp().mean(), log_mass.mean(), agreement.mean()
+
+
+def _policy_diagnostics_per_position(
+    policy_logits: torch.Tensor, rows: torch.Tensor, labels: torch.Tensor, probabilities: torch.Tensor,
+    legal_rows: torch.Tensor, legal_labels: torch.Tensor, mask: torch.Tensor,
+) -> tuple[torch.Tensor, torch.Tensor]:
+    """合法手の質量の自然対数と教師との一致を、局面ごとのfloat32で返す。
+
+    一致は合法手の最大logitのうち最小のラベルと、最大確率の教師候補のいずれかが
+    等しければ1、そうでなければ0とする。検査の条件はcompute_policy_diagnosticsと同じ。
+    """
     if torch.any((legal_labels < 0) | (legal_labels >= len(mask))) or not torch.all(mask[legal_labels]):
         raise ValueError("legal label is outside the constant mask")
     logits = policy_logits.float().masked_fill(~mask, -torch.inf)
@@ -582,7 +597,7 @@ def compute_policy_diagnostics(
     )
     matches = (labels == best_labels[rows]) & (probabilities == teacher_max[rows])
     agreement = torch.zeros(count, dtype=torch.float32, device=logits.device).scatter_add_(0, rows, matches.float()) > 0
-    return log_mass.exp().mean(), log_mass.mean(), agreement.float().mean()
+    return log_mass, agreement.float()
 
 
 @torch.inference_mode()

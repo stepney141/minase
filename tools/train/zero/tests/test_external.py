@@ -1,8 +1,8 @@
-"""指示書の固定抽出と診断専用の契約を、実際のαβ棋譜で検証する。
+"""探索なしの検証データの診断を、版3のバイト列と手計算の期待値で検証する。
 
-抽出は再現性・重複なし・全対局を選ぶ境界、診断は選択対局ごとの既知の局面数と
-交差エントロピーの定義式を正とする。入力と出力の拒否は実ファイルで確かめる。
-MNSDの組み立てはrecords.rsの版3の仕様による。学習器の実装から期待値を写さない。
+MNSDはrecords.rsの仕様から組み立てる。全重みを0、価値のバイアスをlog(3)とした
+ネットは勝率3/4を返すので、勝ちの損失はlog(4/3)、負けはlog(4)となる。
+方策の同率は最小ラベルで解き、対局内、対局間の順に平均した値を期待値とする。
 """
 
 from contextlib import redirect_stderr
@@ -28,26 +28,30 @@ from tests.cli import require_success, run_cli
 from tests.test_data import FIXTURE
 
 
-def write_alpha(path: Path, seed: int, games: list[tuple[int, tuple[int, ...], int]]) -> None:
-    """対局番号、各着手の除外フラグ、結果を指定して、αβの実ファイルを作る。"""
+WIN_LOSS = math.log(4 / 3)
+LOSS_LOSS = math.log(4)
+
+
+def write_validation(
+    path: Path, games: list[tuple[int, tuple[int, ...], int, int]],
+    *, rule_set: str = "lishogi", origin: int = 2,
+) -> None:
+    """対局番号、着手番号の列、結果、開始手数から探索なしのMNSD版3を書く。"""
     records = []
     entry_count = 0
-    for number, flags, outcome in games:
+    for number, moves, outcome, start_ply in games:
         board = bytearray(144)
-        # 王将0、飛車12、後手の王将143、歩兵131で、最初の合法手は27手ある。
+        # 王将0、飛車12、後手の王将143、歩兵131。駒の動きは競技規則第9条による。
         board[0], board[12], board[143], board[131] = 12, 8, 76, 65
-        reason = 11 if outcome == 2 else 7
-        header = struct.pack("<IBBBBHI", number, 0, outcome, reason, 0, 0, len(flags) + 1)
-        # 指した手の番号0を確率1の教師とし、最後は価値のない終局項目にする。
-        entries = b"".join(
-            struct.pack("<HhBH", 0, 0 if flag & 8 else -32768 + index, flag | 16, 0)
-            for index, flag in enumerate(flags)
-        ) + struct.pack("<HhBH", 65535, 0, 8, 0)
+        reason = 0 if origin == 3 else 7
+        header = struct.pack("<IBBBBHI", number, origin, outcome, reason, 0, start_ply, len(moves) + 1)
+        entries = b"".join(struct.pack("<HhBH", move, 0, 8 | 16, 0) for move in moves)
+        entries += struct.pack("<HhBH", 65535, 0, 8, 0)
         records.append(header + board + bytes([0, 255, 0]) + entries)
-        entry_count += len(flags) + 1
+        entry_count += len(moves) + 1
     header = (
-        b"MNSD" + struct.pack("<I", 3) + b"JCSA".ljust(32, b"\0")
-        + b"a" * 40 + bytes(32) + struct.pack("<B7xQQQQ", 0, 128, seed, len(games), entry_count)
+        b"MNSD" + struct.pack("<I", 3) + rule_set.encode().ljust(32, b"\0")
+        + b"a" * 40 + bytes(32) + struct.pack("<B7xQQQQ", 2, 0, 11, len(games), entry_count)
     )
     path.write_bytes(header + b"".join(records))
 
@@ -60,13 +64,14 @@ class ExternalEvaluationTests(unittest.TestCase):
         previous = torch.get_num_threads()
         torch.set_num_threads(1)
         self.addCleanup(torch.set_num_threads, previous)
-        self.first, self.second = self.directory / "first.mnsd", self.directory / "second.mnsd"
-        # seed=11のgame=4は既存の分割では検証対局である。game=9は全局面が選別で落ちる。
-        write_alpha(self.first, 11, [(1, (0,), 0), (4, (0, 0), 1), (9, (1, 8), 2)])
-        write_alpha(self.second, 29, [(2, (0, 0), 2), (7, (0,), 0)])
-        self.paths = [self.first, self.second]
+        self.data = self.directory / "validation.mnsd"
+        # 初手の最小ラベルは飛車12→24の12で、着手番号は13。
+        # (0,0,0)は王将0→1、後手歩兵131→119、王将1→0。
+        # 各局面の最小ラベルの手は飛車12→24、後手歩兵131→119、王将1→13なので、
+        # 一致は(0,1,0)。後手のラベルは盤を180度回転して数える。
+        # 対局9は最終項目だけを持ち、診断の分母には入らない。
+        write_validation(self.data, [(1, (13,), 0, 0), (4, (0, 0, 0), 1, 0), (9, (), 0, 0)])
         self.checkpoint = self.directory / "checkpoint.pt"
-        # 方策は定数マスク内で一様、価値は3/4とし、期待値を手計算できるようにする。
         with torch.random.fork_rng(devices=[]):
             model = ZeroNet(1, 2)
         with torch.no_grad():
@@ -76,109 +81,205 @@ class ExternalEvaluationTests(unittest.TestCase):
         torch.save({"config": {"blocks": 1, "channels": 2}, "model": model.state_dict(),
                     "completed_steps": 0, "total_steps": 0}, self.checkpoint)
 
-    def evaluate(self, name: str, games: int, seed: int) -> dict:
+    def evaluate(self, name: str) -> dict:
         """公開関数を通し、実ファイルに書かれた診断を読み直す。"""
         out = self.directory / name
-        external_eval(self.checkpoint, self.paths, games, seed, "cpu", out)
-        return json.loads(out.read_text())
+        external_eval(self.checkpoint, self.data, "cpu", out)
+        return json.loads(out.read_text(encoding="utf-8"))
 
     def arguments(self, out: Path) -> list[str]:
         """サブコマンドの必須引数をすべて明示する。"""
-        return ["external-eval", "--checkpoint", str(self.checkpoint),
-                "--data", *map(str, self.paths), "--games", "5", "--seed", "42",
+        return ["external-eval", "--checkpoint", str(self.checkpoint), "--data", str(self.data),
                 "--device", "cpu", "--out", str(out)]
 
-    def test_sampling_is_reproducible_distinct_and_keeps_only_selected_games(self) -> None:
-        first = self.evaluate("first.json", 3, 42)
-        again = self.evaluate("again.json", 3, 42)
-        changed = self.evaluate("changed.json", 3, 99)
-        self.assertEqual(first["selected_games"], again["selected_games"])
-        self.assertEqual(first["sample_sha256"], again["sample_sha256"])
-        self.assertEqual(first["diagnostics"], again["diagnostics"])
-        self.assertNotEqual(first["selected_games"], changed["selected_games"])
-        self.assertNotEqual(first["sample_sha256"], changed["sample_sha256"])
-        # NumPyのPCG64から独立に求めたchoice(5, 3, replace=False)の集合は、
-        # seed=42で{0,3,4}、seed=99で{2,3,4}となる。
-        self.assertEqual(first["selected_games"], [{"seed": 11, "game": 1},
-                                                 {"seed": 29, "game": 2}, {"seed": 29, "game": 7}])
-        self.assertEqual(changed["selected_games"], [{"seed": 11, "game": 9},
-                                                   {"seed": 29, "game": 2}, {"seed": 29, "game": 7}])
-        counts = {(11, 1): 1, (11, 4): 2, (11, 9): 0, (29, 2): 2, (29, 7): 1}
-        for summary in (first, changed):
-            selected = [(game["seed"], game["game"]) for game in summary["selected_games"]]
-            self.assertEqual(len(selected), 3)
-            self.assertEqual(len(set(selected)), 3)
-            self.assertTrue(set(selected) <= counts.keys())
-            self.assertEqual(summary["diagnostics"]["position_count"], sum(counts[key] for key in selected))
-            self.assertEqual(summary["diagnostics"]["game_count"], sum(counts[key] > 0 for key in selected))
+    def test_diagnostics_average_games_equally_and_empty_bands_are_null(self) -> None:
+        summary = self.evaluate("averages.json")
+        actual = summary["diagnostics"]
+        self.assertEqual(set(actual), {"game_count", "position_count", "value_result", "policy_agreement"})
+        self.assertEqual((actual["game_count"], actual["position_count"]), (2, 4))
+        # 1局目は勝ち1局面で一致1、2局目は負け・勝ち・負けで一致は1/3。
+        self.assertAlmostEqual(actual["value_result"], (2 * WIN_LOSS + LOSS_LOSS) / 3, places=5)
+        self.assertAlmostEqual(actual["policy_agreement"], 2 / 3, places=5)
+        self.assertNotAlmostEqual(actual["value_result"], (WIN_LOSS + LOSS_LOSS) / 2, places=5)
+        self.assertNotAlmostEqual(actual["policy_agreement"], 1 / 2, places=5)
+        self.assertEqual(summary["bands"][0], {"first_move": 1, "last_move": 40, **actual})
+        self.assertEqual(summary["bands"][1:], [
+            {"first_move": first, "last_move": last, "game_count": 0, "position_count": 0,
+             "value_result": None, "policy_agreement": None}
+            for first, last in ((41, 100), (101, 200), (201, None))
+        ])
+        self.assertEqual(summary["data"]["game_count"], 3)
 
-    def test_all_games_include_validation_and_empty_games_in_population_order(self) -> None:
-        summary = self.evaluate("all.json", 5, 42)
-        expected = [(11, 1), (11, 4), (11, 9), (29, 2), (29, 7)]
-        self.assertEqual(summary["selected_games"], [{"seed": seed, "game": game} for seed, game in expected])
-        self.assertEqual(summary["games"], 5)
-        self.assertEqual(summary["diagnostics"]["game_count"], 4)
-        self.assertEqual(summary["diagnostics"]["position_count"], 6)
-        encoded = b"".join(seed.to_bytes(8, "little") + game.to_bytes(4, "little") for seed, game in expected)
-        self.assertEqual(summary["sample_sha256"], hashlib.sha256(encoded).hexdigest())
-        self.paths.reverse()
-        reversed_summary = self.evaluate("reversed.json", 5, 42)
-        self.assertEqual(reversed_summary["selected_games"], summary["selected_games"][3:] + summary["selected_games"][:3])
-        self.assertNotEqual(reversed_summary["sample_sha256"], summary["sample_sha256"])
+    def test_move_bands_include_both_sides_of_every_boundary(self) -> None:
+        write_validation(self.data, [
+            (1, (13, 0), 0, 39), (4, (0, 0, 0), 1, 39),
+            (7, (13, 0), 1, 99), (9, (0, 0), 0, 199),
+        ])
+        summary = self.evaluate("bands.json")
+        # 41〜100手目は3局がそれぞれ負け、勝ちと負け、負けを持つ。
+        # その一致率は1、1/2、1なので、局面平均3/4ではなく5/6になる。
+        expected = [
+            (1, 40, 2, 2, (WIN_LOSS + LOSS_LOSS) / 2, 1 / 2),
+            (41, 100, 3, 4, (WIN_LOSS + 5 * LOSS_LOSS) / 6, 5 / 6),
+            (101, 200, 2, 2, WIN_LOSS, 1 / 2),
+            (201, None, 1, 1, LOSS_LOSS, 1),
+        ]
+        for actual, (first, last, games, positions, value, agreement) in zip(summary["bands"], expected, strict=True):
+            with self.subTest(first_move=first):
+                self.assertEqual(set(actual), {"first_move", "last_move", "game_count", "position_count",
+                                               "value_result", "policy_agreement"})
+                self.assertEqual((actual["first_move"], actual["last_move"]), (first, last))
+                self.assertEqual((actual["game_count"], actual["position_count"]), (games, positions))
+                self.assertAlmostEqual(actual["value_result"], value, places=5)
+                self.assertAlmostEqual(actual["policy_agreement"], agreement, places=5)
 
-    def test_losses_and_policy_metrics_follow_independent_position_means(self) -> None:
-        summary = self.evaluate("metrics.json", 5, 42)
-        # 先手の王将は2手、飛車は21手と成り4手。後手番では王将2手と歩兵1手になる。
-        # 同率時の最小ラベルは先手では飛車、後手では歩兵なので、一致するのは後手の2局面。
-        # 結果は手番順に1,0,1,1/2,1/2,1であり、平均は2/3となる。
-        expected = {
-            "policy": math.log(16_108),
-            "value_result": math.log(4) - 2 * math.log(3) / 3,
-            "legal_probability_mass": 19 / 16_108,
-            "log_legal_probability_mass": (4 * math.log(27 / 16_108) + 2 * math.log(3 / 16_108)) / 6,
-            "policy_agreement": 1 / 3,
-        }
-        self.assertEqual(summary["diagnostics"].keys(), expected.keys() | {"game_count", "position_count"})
-        for name, value in expected.items():
-            self.assertAlmostEqual(summary["diagnostics"][name], value, places=5, msg=name)
-        self.assertNotIn("value", summary["diagnostics"])
+    def test_batch_boundary_preserves_all_positions_and_game_weights(self) -> None:
+        games = [(number, (13,), 0, 0) for number in range(1, 129)]
+        write_validation(self.data, [*games, (129, (0, 0, 0), 1, 0)])
+        summary = self.evaluate("batches.json")
+        actual = summary["diagnostics"]
+        self.assertEqual((actual["game_count"], actual["position_count"]), (129, 131))
+        self.assertAlmostEqual(actual["value_result"], (385 * WIN_LOSS + 2 * LOSS_LOSS) / 387, places=5)
+        self.assertAlmostEqual(actual["policy_agreement"], 385 / 387, places=5)
+        self.assertEqual(summary["batch_size"], 128)
+
+    def test_extension_keeps_every_played_move_without_search_values(self) -> None:
+        raw = minase_mnsd_reader.read_validation(str(self.data))
+        self.assertEqual(raw["teacher_kind"], 2)
+        self.assertEqual(raw["origin"], 2)
+        self.assertIs(raw["lishogi"], True)
+        self.assertIs(raw["jcsa"], False)
+        self.assertEqual(raw["network_checksum"], bytes(32))
+        self.assertEqual(raw["teacher_search_budget"], 0)
+        self.assertEqual((raw["training_count"], raw["validation_count"]), (1, 3))
+        self.assertEqual(raw["game_numbers"], struct.pack("<III", 1, 4, 9))
+        self.assertEqual(raw["games"], struct.pack("<IIII", 1, 4, 4, 4))
+        self.assertEqual(raw["plies"], struct.pack("<HHHH", 0, 0, 1, 2))
+        self.assertEqual(raw["sides"], bytes([0, 0, 1, 0]))
+        self.assertEqual(raw["outcomes"], bytes([0, 1, 1, 1]))
+        self.assertEqual(raw["values"], bytes(4 * 4))
+        self.assertEqual(raw["visits"], bytes(4 * 4))
+        self.assertEqual(raw["short_term_values"], b"")
+        self.assertEqual(raw["policy_offsets"], struct.pack("<QQQQQ", 0, 1, 2, 3, 4))
+        self.assertEqual(raw["policy_probabilities"], struct.pack("<HHHH", 65535, 65535, 65535, 65535))
+        self.assertEqual(raw["policy_from"], bytes([12, 0, 131, 1]))
+        self.assertEqual(raw["policy_to"], bytes([24, 1, 119, 0]))
+        self.assertEqual(minase_mnsd_reader.read(str(self.data))["games"], b"")
+
+    def test_missing_played_move_policy_is_rejected_without_output(self) -> None:
+        contents = bytearray(self.data.read_bytes())
+        contents[152 + 161 + 4] = 8
+        self.data.write_bytes(contents)
+        with self.assertRaises(ValueError):
+            self.evaluate("missing-policy.json")
+        self.assertFalse((self.directory / "missing-policy.json").exists())
+
+    def test_search_teachers_are_rejected(self) -> None:
+        alpha = self.directory / "alpha.mnsd"
+        contents = bytearray(self.data.read_bytes())
+        contents[112] = 0
+        alpha.write_bytes(contents)
+        for data in (alpha, FIXTURE):
+            with self.subTest(data=data), self.assertRaisesRegex(ValueError, "NoSearch"):
+                external_eval(self.checkpoint, data, "cpu", self.directory / "search.json")
+        self.assertFalse((self.directory / "search.json").exists())
+
+    def test_nonhuman_origins_and_jcsa_rules_are_rejected(self) -> None:
+        for origin in (0, 1, 3):
+            outcome = 2 if origin == 3 else 0
+            write_validation(self.data, [(1, (13,), outcome, 0)], origin=origin)
+            with self.subTest(origin=origin), self.assertRaisesRegex(ValueError, "origin"):
+                self.evaluate("origin.json")
+            self.assertFalse((self.directory / "origin.json").exists())
+        write_validation(self.data, [(1, (13,), 0, 0)], rule_set="JCSA")
+        with self.assertRaisesRegex(ValueError, "rules must equal lishogi"):
+            self.evaluate("rules.json")
+        self.assertFalse((self.directory / "rules.json").exists())
+
+    def test_equivalent_lishogi_rule_codes_are_accepted(self) -> None:
+        rules = "L1,L2,P0,P3,R1,E1,E3"
+        write_validation(self.data, [(1, (13,), 0, 0)], rule_set=rules)
+        summary = self.evaluate("rule-codes.json")
+        self.assertEqual(summary["data"]["rule_set"], rules)
+        self.assertAlmostEqual(summary["diagnostics"]["value_result"], WIN_LOSS, places=5)
+        self.assertEqual(summary["diagnostics"]["policy_agreement"], 1)
+
+    def test_zero_games_and_zero_positions_are_rejected(self) -> None:
+        for games, message in (([], "contain games"), ([(1, (), 0, 0)], "contain positions")):
+            write_validation(self.data, games)
+            with self.subTest(games=games), self.assertRaisesRegex(ValueError, message):
+                self.evaluate("empty.json")
+            self.assertFalse((self.directory / "empty.json").exists())
+
+    def test_training_readers_reject_validation_data_as_non_mcts(self) -> None:
+        with self.assertRaisesRegex(ValueError, "teacher must be MCTS"):
+            read_file(self.data)
+        with self.assertRaisesRegex(ValueError, "teacher must be MCTS"):
+            read_replay_buffer([self.data], [self.data], 42,
+                rank=0, world_size=1, batch_size=1, micro_batch_size=1, replay_threads=1,
+            )
+
+    def test_only_the_main_value_head_is_used(self) -> None:
+        state = torch.load(self.checkpoint, weights_only=True)
+        state["model"]["value_head.6.bias"][1:] = float("nan")
+        torch.save(state, self.checkpoint)
+        summary = self.evaluate("main-value.json")
+        self.assertAlmostEqual(summary["diagnostics"]["value_result"], (2 * WIN_LOSS + LOSS_LOSS) / 3, places=5)
+
+    def test_nonfinite_diagnostics_are_rejected_without_output(self) -> None:
+        state = torch.load(self.checkpoint, weights_only=True)
+        for value in (float("nan"), float("inf"), -float("inf")):
+            state["model"]["value_head.6.bias"][0] = value
+            torch.save(state, self.checkpoint)
+            with self.subTest(value=value), self.assertRaisesRegex(ValueError, "non-finite diagnostic"):
+                self.evaluate("nonfinite.json")
+            self.assertFalse((self.directory / "nonfinite.json").exists())
+        state["model"]["value_head.6.bias"].fill_(math.log(3))
+        state["model"]["policy_head.bias"].fill_(float("nan"))
+        torch.save(state, self.checkpoint)
+        with self.assertRaisesRegex(ValueError, "finite maximum legal logit"):
+            self.evaluate("nonfinite-policy.json")
+        self.assertFalse((self.directory / "nonfinite-policy.json").exists())
 
     def test_cli_records_provenance_and_does_not_modify_checkpoint(self) -> None:
         before = self.checkpoint.read_bytes()
+        data_bytes = self.data.read_bytes()
+        alias = self.directory / "alias.mnsd"
+        alias.symlink_to(self.data)
         out = self.directory / "cli.json"
-        require_success(run_cli(self.arguments(out)))
-        summary = json.loads(out.read_text())
+        args = self.arguments(out)
+        args[args.index("--data") + 1] = str(alias)
+        require_success(run_cli(args))
+        text = out.read_text(encoding="utf-8")
+        summary = json.loads(text)
         self.assertEqual(self.checkpoint.read_bytes(), before)
+        self.assertEqual(self.data.read_bytes(), data_bytes)
+        self.assertEqual(set(summary), {"checkpoint_sha256", "blocks", "channels", "data", "device",
+                                        "precision", "batch_size", "diagnostics", "bands", "elapsed_seconds"})
         self.assertEqual(summary["checkpoint_sha256"], hashlib.sha256(before).hexdigest())
         self.assertEqual((summary["blocks"], summary["channels"]), (1, 2))
-        self.assertEqual((summary["games"], summary["seed"], summary["device"]), (5, 42, "cpu"))
-        self.assertEqual(summary["files"], [
-            {"path": str(path), "size": len(path.read_bytes()), "sha256": hashlib.sha256(path.read_bytes()).hexdigest()}
-            for path in self.paths
-        ])
+        self.assertEqual((summary["device"], summary["precision"], summary["batch_size"]), ("cpu", "fp32", 128))
+        self.assertEqual(summary["data"], {
+            "path": str(self.data.resolve(strict=True)), "size": len(data_bytes),
+            "sha256": hashlib.sha256(data_bytes).hexdigest(), "rule_set": "lishogi",
+            "generation_commit": "a" * 40, "seed": 11, "game_count": 3,
+        })
         self.assertGreater(summary["elapsed_seconds"], 0)
         self.assertTrue(math.isfinite(summary["elapsed_seconds"]))
-
-    def test_legacy_checkpoint_uses_regular_weights(self) -> None:
-        expected = self.evaluate("regular-weights.json", 5, 42)
-        # 移行前のチェックポイントの余分な重みは、外部棋譜の評価でも読み込まない。
-        state = torch.load(self.checkpoint, weights_only=True)
-        state["ema"] = {"model": {}}
-        torch.save(state, self.checkpoint)
-        output = self.directory / "legacy-weights.json"
-        require_success(run_cli(self.arguments(output)))
-        actual = json.loads(output.read_text())
-        self.assertEqual(actual["diagnostics"], expected["diagnostics"])
-        self.assertEqual(actual["selected_games"], expected["selected_games"])
+        self.assertEqual(text, json.dumps(summary, ensure_ascii=False, allow_nan=False, indent=2) + "\n")
 
     def test_every_cli_argument_is_required_and_device_is_restricted(self) -> None:
-        groups = [["--checkpoint", str(self.checkpoint)], ["--data", *map(str, self.paths)],
-                  ["--games", "5"], ["--seed", "42"], ["--device", "cpu"],
-                  ["--out", str(self.directory / "missing.json")]]
+        out = self.directory / "missing.json"
+        groups = [["--checkpoint", str(self.checkpoint)], ["--data", str(self.data)],
+                  ["--device", "cpu"], ["--out", str(out)]]
         invalid = [(groups[missing][0],
                     ["external-eval", *(arg for index, group in enumerate(groups) if index != missing for arg in group)])
                    for missing in range(len(groups))]
-        invalid.append(("--device", ["external-eval", *(arg if arg != "cpu" else "auto" for group in groups for arg in group)]))
+        for device in ("auto", "cuda:0", "mps"):
+            args = self.arguments(out)
+            args[args.index("--device") + 1] = device
+            invalid.append(("--device", args))
+        invalid.append(("unrecognized", [*self.arguments(out), str(self.data)]))
         for option, arguments in invalid:
             with self.subTest(arguments=arguments), patch("sys.argv", ["minase_zero", *arguments]):
                 error = io.StringIO()
@@ -186,110 +287,30 @@ class ExternalEvaluationTests(unittest.TestCase):
                     self.assertEqual(main(), 1)
                 self.assertEqual(len(error.getvalue().splitlines()), 1)
                 self.assertIn(option, error.getvalue())
-        self.assertFalse((self.directory / "missing.json").exists())
-
-    def test_mcts_is_rejected_and_alpha_beta_remains_unavailable_for_training(self) -> None:
-        with self.assertRaisesRegex(ValueError, "alpha-beta"):
-            external_eval(self.checkpoint, [FIXTURE], 1, 42, "cpu", self.directory / "mcts.json")
-        with self.assertRaisesRegex(ValueError, "MCTS"):
-            read_file(self.first)
-        with self.assertRaisesRegex(ValueError, "MCTS"):
-            read_replay_buffer([self.first], [self.first], 42,
-                rank=0, world_size=1, batch_size=1, micro_batch_size=1, replay_threads=1,
-            )
-        self.assertFalse((self.directory / "mcts.json").exists())
-
-    def test_out_of_range_sample_and_seed_are_rejected(self) -> None:
-        for games, seed in ((6, 42), (0, 42), (-1, 42), (1, -1), (1, 1 << 64)):
-            with self.subTest(games=games, seed=seed), self.assertRaises(ValueError):
-                self.evaluate("invalid.json", games, seed)
-        self.assertFalse((self.directory / "invalid.json").exists())
-        self.assertEqual(self.evaluate("largest-seed.json", 5, (1 << 64) - 1)["games"], 5)
-
-    def test_existing_output_is_rejected_without_changing_its_contents(self) -> None:
-        out = self.directory / "existing.json"
-        out.write_text("keep this file\n")
-        result = run_cli(self.arguments(out))
-        self.assertEqual(result.returncode, 1)
-        self.assertEqual(len(result.stderr.splitlines()), 1)
-        self.assertEqual(out.read_text(), "keep this file\n")
-        dangling = self.directory / "dangling.json"
-        dangling.symlink_to(self.directory / "absent.json")
-        with self.assertRaises(FileExistsError):
-            external_eval(self.checkpoint, self.paths, 5, 42, "cpu", dangling)
-        self.assertTrue(dangling.is_symlink())
-        self.assertFalse((self.directory / "absent.json").exists())
-
-    def test_duplicate_game_keys_are_rejected_but_different_base_seeds_are_distinct(self) -> None:
-        copy = self.directory / "copy.mnsd"
-        copy.write_bytes(self.first.read_bytes())
-        for paths in ([self.first, self.first], [self.first, copy]):
-            with self.subTest(paths=paths), self.assertRaisesRegex(ValueError, "duplicate game"):
-                external_eval(self.checkpoint, paths, 1, 42, "cpu", self.directory / "duplicate.json")
-        write_alpha(self.second, 29, [(1, (0,), 0)])
-        summary = self.evaluate("distinct.json", 4, 42)
-        self.assertEqual(summary["diagnostics"]["game_count"], 3)
-        self.assertIn({"seed": 11, "game": 1}, summary["selected_games"])
-        self.assertIn({"seed": 29, "game": 1}, summary["selected_games"])
-
-    def test_empty_inputs_and_selections_without_positions_are_rejected(self) -> None:
-        out = self.directory / "empty.json"
-        with self.assertRaises(ValueError):
-            external_eval(self.checkpoint, [], 1, 42, "cpu", out)
-        write_alpha(self.first, 11, [])
-        with self.assertRaises(ValueError):
-            external_eval(self.checkpoint, [self.first], 1, 42, "cpu", out)
-        write_alpha(self.first, 11, [(9, (1, 2, 3, 8), 2)])
-        with self.assertRaisesRegex(ValueError, "contain positions"):
-            external_eval(self.checkpoint, [self.first], 1, 42, "cpu", out)
+        # CUDAの利用可否に達すれば、選択肢としては受理されている。
+        cuda_args = self.arguments(out)
+        cuda_args[cuda_args.index("--device") + 1] = "cuda"
+        with patch("sys.argv", ["minase_zero", *cuda_args]), patch("torch.cuda.is_available", return_value=False):
+            error = io.StringIO()
+            with redirect_stderr(error):
+                self.assertEqual(main(), 1)
+            self.assertIn("CUDA is unavailable", error.getvalue())
         self.assertFalse(out.exists())
 
-    def test_fixture_contains_played_move_targets_and_both_split_memberships(self) -> None:
-        raw = minase_mnsd_reader.read(str(self.first))
-        self.assertEqual(raw["teacher_kind"], 0)
-        self.assertEqual((raw["training_count"], raw["validation_count"]), (1, 2))
-        self.assertEqual(raw["games"], struct.pack("<III", 1, 4, 4))
-        self.assertEqual(raw["policy_offsets"], struct.pack("<QQQQ", 0, 1, 2, 3))
-        self.assertEqual(raw["policy_probabilities"], struct.pack("<HHH", 65535, 65535, 65535))
-        self.assertEqual(raw["values"], struct.pack("<iii", -32768, -32768, -32767))
-
-    def test_extension_selects_game_pairs_and_preserves_every_column(self) -> None:
-        # 対局1だけの集合と対局4だけの集合は、この棋譜の訓練・検証の分割と一致する。
-        training = minase_mnsd_reader.read_games(str(self.first), {(11, 1), (29, 4)})
-        validation = minase_mnsd_reader.read_games(str(self.first), {(29, 1), (11, 4)})
-        self.assertEqual(training, minase_mnsd_reader.read_selected(str(self.first), [0], [], False))
-        self.assertEqual(validation, minase_mnsd_reader.read_selected(str(self.first), [], [], True))
-        self.assertEqual(training["games"], struct.pack("<I", 1))
-        self.assertEqual(validation["games"], struct.pack("<II", 4, 4))
-        self.assertEqual(len(training["boards"]), 144)
-        self.assertEqual(len(validation["boards"]), 2 * 144)
-        self.assertEqual(validation["game_numbers"], struct.pack("<III", 1, 4, 9))
-        self.assertEqual((validation["training_count"], validation["validation_count"]), (1, 2))
-        all_games = minase_mnsd_reader.read_games(str(self.first), {(11, 4), (11, 9), (11, 1)})
-        self.assertEqual(all_games, minase_mnsd_reader.read(str(self.first)))
-
-    def test_extension_empty_or_absent_game_keys_keep_only_metadata(self) -> None:
-        for keys in (set(), {(29, 1), (11, 999)}, {(11, 9)}):
-            with self.subTest(keys=keys):
-                raw = minase_mnsd_reader.read_games(str(self.first), keys)
-                self.assertEqual(raw["game_numbers"], struct.pack("<III", 1, 4, 9))
-                self.assertEqual((raw["training_count"], raw["validation_count"]), (1, 2))
-                for name in ("boards", "games", "policy_from", "policy_probabilities", "legal_from"):
-                    self.assertEqual(raw[name], b"")
-                for name in ("policy_offsets", "legal_offsets"):
-                    self.assertEqual(raw[name], struct.pack("<Q", 0))
-
-    def test_extension_rejects_game_keys_outside_unsigned_integer_ranges(self) -> None:
-        for key in ((-1, 1), (1 << 64, 1), (11, -1), (11, 1 << 32)):
-            with self.subTest(key=key), self.assertRaises(OverflowError):
-                minase_mnsd_reader.read_games(str(self.first), {key})
-
-    def test_external_evaluation_does_not_use_full_file_expansion(self) -> None:
-        # 全局面を返すAPIを使うと、抽出後の件数が正しくてもメモリの契約に違反する。
-        with patch.object(minase_mnsd_reader, "read", side_effect=AssertionError("full file expansion")):
-            summary = self.evaluate("selected-only.json", 3, 42)
-        self.assertEqual(summary["diagnostics"]["game_count"], 3)
-        self.assertEqual(summary["diagnostics"]["position_count"], 4)
+    def test_existing_output_and_dangling_symlink_are_rejected_immediately(self) -> None:
+        existing = self.directory / "existing.json"
+        original = b"keep this output\n"
+        existing.write_bytes(original)
+        dangling = self.directory / "dangling.json"
+        missing = self.directory / "absent.json"
+        dangling.symlink_to(missing)
+        for out in (existing, dangling):
+            with self.subTest(out=out), self.assertRaises(FileExistsError):
+                external_eval(missing, missing, "cpu", out)
+        self.assertEqual(existing.read_bytes(), original)
+        self.assertTrue(dangling.is_symlink())
+        self.assertEqual(dangling.readlink(), missing)
+        self.assertFalse(missing.exists())
 
 
 if __name__ == "__main__":

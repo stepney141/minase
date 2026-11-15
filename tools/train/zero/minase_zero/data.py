@@ -51,6 +51,7 @@ class Header:
     teacher_kind: int
     rule_set: str
     jcsa: bool
+    lishogi: bool
     generation_commit: str
     network_checksum: bytes
     teacher_search_budget: int
@@ -86,7 +87,7 @@ class Dataset:
     policy_offsetsはuint64の長さn+1、policy_labelsとpolicy_probabilitiesはuint16である。
     legal_offsetsはuint64の長さn+1、legal_labelsはuint16で、反復の履歴を考えない
     全合法手を保持する。平均81手なら100万局面で約170 MB増える計算になる。
-    short_term_valuesはfloat32の(n,3)で、αβの外部診断では(0,3)とする。
+    short_term_valuesはfloat32の(n,3)で、探索なしの外部診断では(0,3)とする。
     opponent_policy_*とopponent_legal_*は直後の項目を手番tの視点で符号化し、
     自手の列と同じ型で持つ。相手の候補がなければ両区間とも空である。
     追加メモリは1局面あたり28+4C+2Lバイトで、CとLは相手の候補数と合法手数。
@@ -130,25 +131,31 @@ def read_file(path: str | Path) -> tuple[Dataset, FileInfo]:
     """
     path = Path(path).resolve(strict=True)
     raw = minase_mnsd_reader.read(str(path))
-    info = _file_info(path, raw, teacher_kind=1)
+    info = _training_file_info(path, raw)
     return _dataset(raw, info), info
 
 
-def _file_info(path: Path, raw: dict, *, teacher_kind: int) -> FileInfo:
+def _file_info(path: Path, raw: dict) -> FileInfo:
+    """拡張モジュールのヘッダと件数を、用途による選別なしで保持する。"""
     header = Header(**{field.name: raw[field.name] for field in fields(Header)})
-    if header.teacher_kind != teacher_kind:
-        teacher = {0: "alpha-beta", 1: "MCTS"}[teacher_kind]
-        raise ValueError(f"{path}: teacher must be {teacher}")
-    if header.game_count != 0 and header.origin != 0:
-        raise ValueError(f"{path}: origin must be random selfplay")
-    if not header.jcsa:
-        raise ValueError(f"{path}: rules must equal JCSA")
     return FileInfo(
         path=path, size=path.stat().st_size, header=header,
         position_count=raw["training_count"] + raw["validation_count"],
         training_count=raw["training_count"], validation_count=raw["validation_count"],
         game_numbers=tuple(np.frombuffer(raw["game_numbers"], dtype="<u4").tolist()),
     )
+
+
+def _training_file_info(path: Path, raw: dict) -> FileInfo:
+    info = _file_info(path, raw)
+    header = info.header
+    if header.teacher_kind != 1:
+        raise ValueError(f"{path}: teacher must be MCTS")
+    if header.game_count != 0 and header.origin != 0:
+        raise ValueError(f"{path}: origin must be random selfplay")
+    if not header.jcsa:
+        raise ValueError(f"{path}: rules must equal JCSA")
+    return info
 
 
 def _dataset(raw: dict, info: FileInfo) -> Dataset:
@@ -241,14 +248,14 @@ def sample_training_indices(total: int, count: int, seed: int) -> NDArray[np.int
 
 
 def _scan_file(path: Path) -> FileInfo:
-    return _file_info(path, minase_mnsd_reader.scan(str(path)), teacher_kind=1)
+    return _training_file_info(path, minase_mnsd_reader.scan(str(path)))
 
 
 def _read_selected(
     info: FileInfo, indices: list[int], diagnostic_indices: list[int], include_validation: bool,
 ) -> tuple[Dataset, NDArray[np.int64]]:
     raw = minase_mnsd_reader.read_selected(str(info.path), indices, diagnostic_indices, include_validation)
-    if _file_info(info.path, raw, teacher_kind=1) != info:
+    if _training_file_info(info.path, raw) != info:
         raise ValueError(f"{info.path}: file metadata changed between counting and replay")
     dataset = _dataset(raw, info)
     retained = np.frombuffer(raw["training_indices"], dtype="<u8").astype(np.int64)

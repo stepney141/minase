@@ -3,16 +3,17 @@
 //!
 //! Pythonの`read(path: str) -> dict`は、次のキーを持つ辞書を返す。
 //! ヘッダの`origin`はint（0〜3）、対局が0局ならNoneである。
-//! `teacher_kind`（αβ0、MCTS1）、`teacher_search_budget`、`seed`、`game_count`、
-//! `entry_count`はint、`rule_set`と`generation_commit`はstr、`jcsa`はbool、
+//! `teacher_kind`（αβ0、MCTS1、探索なし2）、`teacher_search_budget`、`seed`、`game_count`、
+//! `entry_count`はint、`rule_set`と`generation_commit`はstr、`jcsa`と`lishogi`はbool、
 //! `network_checksum`は32バイトのbytesである。
-//! `jcsa`は規則名ではなく、解釈した規則と`Rules::JCSA`の一致を表す。
+//! `jcsa`と`lishogi`は規則名ではなく、解釈した規則とそれぞれの規則セットの一致を表す。
+//! `read_validation(path)`は探索なしのファイルだけを受け付け、指した手を持つ全項目を返す。
+//! 価値と訪問回数は0、方策は指した手1つで確率65,535とする。
+//! `read`は探索なしのファイルから局面を返さない。
 //! `scan(path)`は手順を再生せずにtraining_countとvalidation_countを数える。
 //! `read_selected(path, training_indices, diagnostic_indices, include_validation)`は全手順を再生する。
 //! 第1の列の訓練局面と、第2の列のうち訓練診断標本の対局に属する局面を保持する。
 //! 検証局面は指定時だけ保持し、保持した訓練局面の通し番号も昇順で返す。
-//! `read_games(path, games)`は基本シードと対局番号の組の集合を受け取り、
-//! 訓練・検証の分割を問わず、指定した対局の採用局面だけを返す。
 //! いずれも件数は抽出前の値であり、完全な形式検査は再生時に行う。
 //!
 //! `control_planes(boards, sides)`はuint8のNumPy配列`(n,144)`と`(n,)`を受け取り、
@@ -33,9 +34,9 @@
 //! | `boards` | u8 | n×144。MNSDの駒コード。保留印も保持 |
 //! | `sides` | u8 | n。先手0、後手1 |
 //! | `lions` | u8 | n。先獅子のdense_index。なしは255 |
-//! | `values` | i32 | n。αβはセンチポーン、MCTSは0〜65,535 |
+//! | `values` | i32 | n。αβはセンチポーン、MCTSは0〜65,535、探索なしは0 |
 //! | `outcomes` | u8 | n。先手勝ち0、後手勝ち1、引き分け2 |
-//! | `visits` | u32 | n。根の総訪問回数。αβは0 |
+//! | `visits` | u32 | n。根の総訪問回数。αβと探索なしは0 |
 //! | `policy_offsets` | u64 | n+1。各局面の候補区間。先頭0、末尾m |
 //! | `policy_from` | u8 | m。移動元のdense_index |
 //! | `policy_mid` | u8 | m。経由升のdense_index。なしは255 |
@@ -49,11 +50,11 @@
 //! | `legal_promote` | u8 | l。成り0か1 |
 //!
 //! `short_term_values`はMCTSの保持局面数×3のf32で、短期の価値の目標である。
-//! αβの棋譜ではこの列は空である。
+//! αβと探索なしの棋譜ではこの列は空である。
 //! `opponent_policy_*`と`opponent_legal_*`は、直後の項目の候補と全合法手を
 //! `policy_*`と`legal_*`と同じ型・正準座標で表す。候補がなければ両区間とも空とする。
 
-use std::{collections::HashSet, fmt, fs::File, io, io::BufReader, path::Path};
+use std::{fmt, fs::File, io, io::BufReader, path::Path};
 
 use minase::training::records::{
     self, Exclusion, GameRecord, Header, Origin, Outcome, Policy, Reader, TeacherKind, Value,
@@ -80,6 +81,8 @@ pub enum Error {
     Io(io::Error),
     /// MNSDの復号または局面の復元に失敗した。
     Format(records::Error),
+    /// 検証用の読み込みに、探索なし以外の教師が指定されている。
+    NotValidationData { kind: TeacherKind },
     /// 対局に由来しない合成局面を含む。
     SyntheticOrigin { game: u32 },
     /// 同じファイル内で対局の由来が異なる。
@@ -107,6 +110,9 @@ impl fmt::Display for Error {
         match self {
             Self::Io(error) => write!(f, "cannot read MNSD: {error}"),
             Self::Format(error) => write!(f, "cannot decode MNSD: {error}"),
+            Self::NotValidationData { kind } => {
+                write!(f, "validation teacher must be NoSearch, got {kind:?}")
+            }
             Self::SyntheticOrigin { game } => {
                 write!(f, "game {game}: synthetic origin is unsupported")
             }
@@ -345,20 +351,18 @@ fn short_term_targets(
 /// # Errors
 /// 入出力、形式、由来の混在、合成の由来、および手数の桁あふれを専用エラーで返す。
 pub fn read_file(path: &Path) -> Result<Records, Error> {
-    read_positions(path, |_, _, _| true)
+    read_positions(path, false, |_, _, _| true)
 }
 
-/// 全手順を再生し、基本シードと対局番号の組が集合に含まれる対局の採用局面を返す。
+/// 探索なしのファイルを末尾まで検査し、指した手を持つ全項目を入力順に返す。
 ///
-/// 訓練・検証の分割を問わず、価値と方策の候補を持ち除外されていない項目を入力順に保持する。
-/// 集合は複数ファイルの対局を含めてよく、このファイルにない組は選択されない。
-/// 空集合なら局面は保持せず、ファイル全体のヘッダ・対局番号・件数だけを返す。
-/// 復号器が一時的に保持する1対局分を除き、局面のメモリは選択した局面数に比例する。
+/// 各対局の最後の項目は返さない。価値と訪問回数は0、方策は指した手1つで確率65,535、
+/// 短期価値の列は空とする。ほかの列は`read_file`と同じ規則で作る。
 ///
 /// # Errors
-/// 選択しなかった対局も再生し、`read_file`と同じ形式・由来の検査を行う。
-pub fn read_games(path: &Path, games: &HashSet<(u64, u32)>) -> Result<Records, Error> {
-    read_positions(path, |key, _, _| games.contains(&key))
+/// `read_file`の失敗に加え、教師が`NoSearch`以外なら`NotValidationData`を返す。
+pub fn read_validation(path: &Path) -> Result<Records, Error> {
+    read_positions(path, true, |_, _, _| true)
 }
 
 /// 全手順を再生し、指定した訓練局面と、指定時だけ検証局面を保持する。
@@ -384,7 +388,7 @@ pub fn read_selected(
     }
     let mut selected = training_indices.iter().peekable();
     let mut diagnostic = diagnostic_indices.iter().peekable();
-    let output = read_positions(path, |(seed, game), validation, index| {
+    let output = read_positions(path, false, |(seed, game), validation, index| {
         if validation {
             return include_validation;
         }
@@ -418,10 +422,16 @@ fn game_hash(seed: u64, game: u32) -> u64 {
 
 fn read_positions(
     path: &Path,
+    validation_data: bool,
     mut keep: impl FnMut((u64, u32), bool, u64) -> bool,
 ) -> Result<Records, Error> {
     let file = File::open(path).map_err(Error::Io)?;
     let mut reader = Reader::new(BufReader::new(file))?;
+    if validation_data && reader.header().teacher_kind() != TeacherKind::NoSearch {
+        return Err(Error::NotValidationData {
+            kind: reader.header().teacher_kind(),
+        });
+    }
     let mut output = Records::new(reader.header().clone());
     let generator = MoveGenerator::new(output.info.header.rules().moves);
     let mut legal = Vec::new();
@@ -441,11 +451,18 @@ fn read_positions(
         let mut selected_entries = Vec::new();
         for (index, (entry, position)) in record.entries().iter().zip(game.positions()).enumerate()
         {
-            if entry.exclusion() != Exclusion::None || entry.policy() == &Policy::None {
+            let eligible = if validation_data {
+                entry.played_move().is_some()
+            } else {
+                entry.exclusion() == Exclusion::None
+                    && entry.policy() != &Policy::None
+                    && entry.value() != Value::None
+            };
+            if !eligible {
                 continue;
             }
             let value = match entry.value() {
-                Value::None => continue,
+                Value::None => 0,
                 Value::AlphaBeta(value) => i32::from(value),
                 Value::Mcts(value) => i32::from(value),
             };
@@ -472,18 +489,9 @@ fn read_positions(
                     game: number,
                     index,
                 })?;
-            let visits = match (output.info.header.teacher_kind(), entry.visits()) {
-                (records::TeacherKind::NoSearch, _) => {
-                    return Err(records::Error::ValueKindMismatch.into());
-                }
-                (records::TeacherKind::AlphaBeta, None) => 0,
-                (records::TeacherKind::Mcts, Some(visits)) => visits,
-                (records::TeacherKind::AlphaBeta, Some(_)) => {
-                    return Err(records::Error::UnexpectedVisits.into());
-                }
-                (records::TeacherKind::Mcts, None) => {
-                    return Err(records::Error::MissingVisits.into());
-                }
+            let visits = match output.info.header.teacher_kind() {
+                TeacherKind::AlphaBeta | TeacherKind::NoSearch => 0,
+                TeacherKind::Mcts => entry.visits().ok_or(records::Error::MissingVisits)?,
             };
             output.games.push(number);
             output.plies.push(ply);
