@@ -36,7 +36,7 @@ CPUとTensorRTのFP16を、それぞれバッチの大きさ1、7、および256
 
 ```bash
 run() {  # 実行プロバイダ、バッチの大きさ、出力のパス
-  { printf 'usi\nsetoption name RuleSet value JCSA\nsetoption name NnModel value %s\n' '<ネット.onnx>'
+  { printf 'usi\nsetoption name RuleSet value lishogi\nsetoption name NnModel value %s\n' '<ネット.onnx>'
     printf 'setoption name NnBackend value %s\nsetoption name NnBatchSize value %s\n' "$1" "$2"
     [ "$1" = tensorrt ] && printf 'setoption name NnCacheDir value %s\n' '<キャッシュの親ディレクトリ>'
     printf 'isready\nnn-eval out %s\nquit\n' "$3"
@@ -99,6 +99,9 @@ FP16の照合を確率と価値の形にしたのは2026年10月28日の開発�
 
 最大の手の不一致は合否に使わない。
 要素ごとの検査が通れば、最大の手は、logitがほぼ同点の局面でだけ入れ替わるからである。
+
+2回目の学習の作業機での照合は、3節の6つの書き出しと、この節の6つの照合を続けて行うスクリプト`docs/measurements/alphazero-rl-2/alphazero-rl-2-routine-scripts/check_outputs.py`で行う。
+使い方は[深層強化学習を回す手引き](alphazero-training.md)の「定例の測定を行う」の節にある。
 
 ランダム初期化のネットは、合法手のlogitの散らばりが小さく（局面ごとの標準偏差0.05〜0.07）、確率がほぼ一様になるので、FP16の確率の照合では読み違えを検出できない。
 価値の散らばりも0.003しかなく、FP16の照合では価値の読み出しのずれも検出できない。

@@ -17,15 +17,17 @@
 
 ## 状態
 
-起案。2026年11月9日に起案し、2026年11月13日に着手の前の点検の結果を受けた利用者の決定で構成を改め、2026年11月15日に学習の設定を先例に揃える利用者の決定を反映した。まだ着手していない。
-本書のサイクル1は、2026年11月13日に起案した3本の設計書の完了を前提とする。
-[対局用MCTSの規則コードへの対応](archived/mcts-rule-codes.md)、[強さを測る固定の相手](archived/mcts-fixed-opponents.md)、および[固定の検証用データ](archived/zero-validation-games.md)である。
-3本は、それぞれ2026年11月13日、14日、および15日に完了した。
-2026年11月15日には、学習の設定を先例に揃える[学習レシピを先行実装に揃える設計書](archived/zero-recipe-precedents.md)を起案してサイクル1の前提に加え、この設計書は2026年11月16日に完了した。
+着手。2026年11月9日に起案し、2026年11月13日と15日の利用者の決定で構成と学習の設定を改め、2026年11月16日の利用者の指示でフェーズ1に着手した。
+サイクル1の前提の4本の設計書は、[対局用MCTSの規則コードへの対応](archived/mcts-rule-codes.md)、[強さを測る固定の相手](archived/mcts-fixed-opponents.md)、[固定の検証用データ](archived/zero-validation-games.md)、および[学習レシピを先行実装に揃える設計書](archived/zero-recipe-precedents.md)であり、それぞれ2026年11月13日、14日、15日、および16日に完了した。
+以前からの前提である[準備の設計書](archived/alphazero-rl-2-prep.md)、[複数GPU化の設計書](archived/alphazero-multi-gpu.md)、および[推論の転送の削減の設計書](archived/alphazero-inference-transfer.md)も完了している。
 新しい初期ネットは、NASの系列`cycles-rl2-az`の`cycle-0000/`にある。
-以前からの前提である[準備の設計書](archived/alphazero-rl-2-prep.md)、[複数GPU化の設計書](archived/alphazero-multi-gpu.md)、および[推論の転送の削減の設計書](archived/alphazero-inference-transfer.md)は、すべて完了している。
+
+フェーズ1の3つの作業は、ブランチ`alphazero-rl-2`で済ませた。
+生成器、学習器、および実行器の規則を`lishogi`へ切り替え、学習器の試験の固定データを`lishogi`で作り直した。
+定例の測定のスクリプトを`docs/measurements/alphazero-rl-2/alphazero-rl-2-routine-scripts/`に用意し、初期ネットで最後まで動くことを確かめた（[試運転の記録](../measurements/alphazero-rl-2/alphazero-rl-2-smoke.md)）。
+[深層強化学習を回す手引き](../guides/alphazero-training.md)にある定例の測定の手順を、本書に合わせて改めた。
 いま詰まっている点はない。
-次の一手は、利用者の承認を得たうえで、本書のフェーズ1を進めることである。
+次の一手は、利用者の許可を得てフェーズ1のブランチをmasterへマージし、フェーズ2の試走の機械を選んで料金を利用者へ示すことである。
 借りている機械はなく、Google Colab（以下、Colab）の計算単位（CU）の残高は、2026年11月13日の時点で247.72 CUである。
 
 ## 目的
@@ -221,7 +223,7 @@ E1では詰みが終局にならず、勝ちが決まるのは王駒を取る手
 規則の切り替えは、生成した教師データのヘッダと、学習器が`JCSA`のファイルを拒むことで確かめる。
 
 テストでは、生成器が`lishogi`のコード列を教師データのヘッダに書くことと、学習器が`JCSA`のファイルを拒むことを確かめる。
-学習器が受け付ける規則は、教師データの形式MNSDを学習器で読む方式を定めた[ADR](../adr/archive/read-mnsd-into-the-zero-trainer-and-build-control-planes-and-replay-targets-in-a-rust-extension.md)が`JCSA`としているので、規則の切り替えと同じ変更の中で、このADRを、受け付ける規則を`lishogi`とするADRへ置き換える。
+学習器が受け付ける規則は、教師データの形式MNSDを学習器で読む方式を定めた[ADR](../adr/archive/read-mnsd-into-the-zero-trainer-and-build-control-planes-in-a-rust-extension.md)が`JCSA`としていたので、規則の切り替えと同じ変更の中で、このADRを、受け付ける規則を`lishogi`とする[ADR](../adr/read-lishogi-mnsd-into-the-zero-trainer-and-build-control-planes-in-a-rust-extension.md)へ置き換えた。
 自己対局と強さの測定の規則についての決定は、NNUEとMCTSのうち先に規則を切り替える方の作業でADRに書く（統括計画の「自己対局と測定の規則」の節）。
 
 ### 千日手で終わった対局
@@ -369,6 +371,17 @@ CUの追加購入はRL全体の累計で1万円を上限とし、購入は利用
 系列を通した推移と系列の状態は、系列のページ`docs/training/alphazero-rl-2/`に置き、定例の測定のたびに、CSVと進捗図を道具`series_progress.py`で作り直して、ページを上書きする（[学習の系列の記録](../training/README.md)）。
 進捗図には、1回目の系列`docs/training/alphazero-rl-1/`を参照として重ねる。
 定例の測定の記録には、サイクルごとの値の表を書かない。
+
+### 着手時に補った決定
+
+次の事項は本書の起案時に定めておらず、2026年11月16日のフェーズ1の着手時にClaudeが決めた（利用者の決定ではない）。
+
+- 学習器の試験が読む固定データ`tools/train/zero/fixtures/zero-selfplay-small.mnsd`は、旧版の生成器が`JCSA`で作ったファイルであり、学習器が`JCSA`を拒むようになると読めないので、`lishogi`に切り替えた生成器で作り直した。基本シード20261038と32局は旧データと同じにした。検証集合と訓練の診断の標本は基本シードと対局番号だけで決まるので、試験の書き換えが少なくて済む。作り方は[ファイル形式の手引き](../guides/file-formats.md)にある。
+- 拡張モジュール`minase_mnsd_reader`が返していた、規則が`JCSA`と一致するかの欄は、切り替えの後は試験でしか参照しないので取り除いた。
+- 定例の測定のスクリプトは、判定を含むのでPythonで書き、固定の相手のスクリプト`run_match.py`の定数と関数を読み込んで使う。αβ探索のコミット、規則、手数の上限、および推論のバッチの大きさを、固定の相手との対局と同じ値に保つためである。
+- STCの対局を起動するスクリプト`run_rl2_match.py`には、サイクル10の探索なしのネットと乱択のエンジンの対局（`random`）と、フェーズ2の試走でサイクル3のネットと初期ネットを比べるMCTSどうしの対局（`versus`）も含めた。どちらも規則`lishogi`、手数の上限4,096手、同時対局数2で対局させる。同時対局数2は、1回目の学習の進捗測定や、統括計画の「到達の判定」の節で定めたMCTSどうしの測定と同じ条件である。
+- STCの相手のαβ探索は、固定の相手と同じコミット45d5db54とそのNNUEとし、200ペア、同時対局数1、両エンジンの`Threads`を1とする。1回目の学習のサイクル32のSTCと同じ条件であり、規則だけを`lishogi`に改めた。
+- 定例の測定の対局の実行ディレクトリは本体のリポジトリの`data/matches/`に置き、スクリプトと対局ハーネスは、MCTSのコミットに固定した作業ツリーのものを使う。[強さを測る固定の相手の設計書](archived/mcts-fixed-opponents.md)で基準を測ったときと同じ形である。
 
 ## 実装フェーズ
 

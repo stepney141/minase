@@ -49,7 +49,6 @@ NASの`$A`の下の主な置き場所は次のとおりである。
 | `rentals.jsonl` | 機械を借りた時刻と止めた時刻、および残高 |
 | `seed-ledger.jsonl` | 生成に割り当てたシードの台帳。1回目の学習と共有する |
 | `logs/runner-<セッション名>.log` | 起動スクリプトと実行器のログ |
-| `progress/cycles-rl2-az/` | 作業機の進捗測定の出力 |
 | `external/cycles-rl2-az/` | 固定の検証用データによる診断の出力 |
 | `validation/` | 固定の検証用データ`zero-validation-games.mnsd`、選別した棋譜`selected.ndjson`、選別の報告`selection.json`、および照合の報告`replay.json`。読み取り専用 |
 
@@ -209,64 +208,73 @@ pgrep -af "[r]un-cycles"
 
 ### 定例の測定を行う
 
-10サイクルごとに、作業機で進捗測定と診断を行う。
-どれもノード数で制限した対局か、時間に依存しない処理なので、作業機でほかの処理が動いていても結果は変わらない。
+10サイクルごとに、作業機で、出力の照合、固定した2つの相手との対局、固定の検証用データによる診断、および長い対局の集計を行う。
+対局はシミュレーション回数、ノード数、または深さで思考を制限し、ほかの処理も思考時間に依存しないので、作業機でほかの処理が動いていても結果は変わらない。
 測定の結果で次のサイクルの設定が決まるので、測定を終えるまで次のセッションを起動しない。
-対局に使うバイナリは、サイクル1を始めたときのmasterのコミットに固定する（設計書の「進捗の測定」の節）。
-そのコミットの作業ツリーを作って`cargo build --release --bin minase`でビルドし、この節のコマンドはその作業ツリーのルートで実行する。
-スクリプトは、置かれた作業ツリーの`target/release/minase`と`tools/train/zero`を使う。
+
+対局のMCTSは、サイクル1を始めたときのmasterのコミットに固定する（設計書の「進捗の測定」の節）。
+そのコミットの作業ツリーを`data/worktrees/`の下に作り、その作業ツリーで`cargo build --release --bin minase`を実行してビルドし、`tools/train/zero/setup.sh`で推論の環境を導入しておく。
+以降の測定のコマンドは本体のリポジトリのルートで実行し、スクリプトと対局ハーネスはその作業ツリーのものを使う。
+対局の実行ディレクトリは本体の`data/matches/<測定名>`にでき、ログは`data/matches/<測定名>.log`に追記される。
+測定名は`alphazero-rl-2-progress-cNNNN-<相手>`とし、相手の部分は`ab500`、`hachu3`、または`random`とする。
+シードには、過去の測定で使っていない値を使う。
 サイクル20の場合の手順は次のとおりである。
 
-```console
-D=docs/measurements/alphazero-rl-2/alphazero-rl-2-progress-c0020
-mkdir -p $D
-cp docs/measurements/alphazero-rl-2-prep/alphazero-rl-2-prep-random-net-output-check/check.sh $D/
-cp docs/measurements/alphazero-rl-2-prep/alphazero-rl-2-prep-match-timing/progress-workstation.sh $D/
+```bash
+source tools/train/zero/env.sh   # bashで実行する
+export XDG_CACHE_HOME=$HOME/.cache
+A=/mnt/synology_nas/minase/alphazero
+W=data/worktrees/<固定したコミットの作業ツリー>
+M=<固定したコミットの40桁のハッシュ>
+S=$W/docs/measurements/alphazero-rl-2/alphazero-rl-2-routine-scripts
+F=$W/docs/measurements/mcts-fixed-opponents/mcts-fixed-opponents-scripts
 C=$A/cycles-rl2-az/cycle-0020
-bash $D/check.sh $C/train/model.onnx $C/check/pytorch.json $C/check-workstation
-bash $D/progress-workstation.sh $A/nets/cycles-rl2-az/cycle-0020.onnx $A/nets/cycles-rl2-az/cycle-0010.onnx \
-  16 200 <シード> 0 <シード+1> $A/progress/cycles-rl2-az
+N=$A/nets/cycles-rl2-az/cycle-0020.onnx
+python3 -I $S/check_outputs.py --net $C/train/model.onnx --reference $C/check/pytorch.json \
+  --out $C/check-workstation
+python3 -I $F/run_match.py alphabeta --harness $W/target/release/minase --mcts-commit $M --net $N \
+  --nodes 500 --name alphazero-rl-2-progress-c0020-ab500 --seed <シード> --pairs 400 --concurrency 4
+python3 -I $F/run_match.py hachu --harness $W/target/release/minase --mcts-commit $M --net $N \
+  --hachu ../hachu-debian/hachu --depth 3 --name alphazero-rl-2-progress-c0020-hachu3 \
+  --seed <シード> --pairs 100 --concurrency 4
 ```
 
-`check.sh`は、学習した機械で`fixture-eval`が書いたPyTorchの出力を基準に、作業機のONNX RuntimeのCPUとTensorRTのFP16の出力を照合する。
-`progress-workstation.sh`は、新しいネットと10サイクル前のネットを、対局用のMCTS（PUCT）の1手800シミュレーションで対局させる。
-乱択のエンジンとのペア数が0でなければ、続けて探索なしの新しいネットを乱択のエンジンと対局させる。
-引数は次の順に渡す。
+`$N`は、照合に通った`$C/train/model.onnx`を実行器が確定したネットとして複写したもので、内容は同じである。
+`check_outputs.py`は、学習した機械で`fixture-eval`が書いたPyTorchの出力を基準として、作業機のONNX RuntimeのCPUとTensorRTのFP16の出力を、バッチの大きさ1、7、および256で照合する（[出力の照合の手引き](alphazero-network-check.md)の3節と5節）。
+`--out`には、存在しないか空のディレクトリを指定する。
+6つの組の結果は`--out`の`summary.json`に書かれ、1つでも不合格なら終了コードが1になる。その場合は[止まったときに調べる](#止まったときに調べる)に従う。
 
-| 順 | 意味 | 値 |
-|---|---|---|
-| 1 | 新しいネット | `$A/nets/cycles-rl2-az/cycle-NNNN.onnx` |
-| 2 | 10サイクル前のネット | 同じ形式のパス |
-| 3 | 推論のバッチの大きさ`NnBatchSize` | 16 |
-| 4 | MCTSどうしの対局のペア数 | 200 |
-| 5 | その対局のシード | 過去の測定で使っていない値 |
-| 6 | 乱択のエンジンとの対局のペア数 | サイクル10では100、それ以外は0 |
-| 7 | その対局のシード | 過去の測定で使っていない値 |
-| 8 | 出力先 | `$A/progress/cycles-rl2-az` |
+`run_match.py`の`alphabeta`は、MCTSの1手800シミュレーションと、コミット45d5db54のαβ探索の1手500ノードを、規則セット`lishogi`と手数の上限4,096手で対局させる。
+`hachu`は、同じMCTSと、深さ3に固定したHaChuを、HaChuの既定の設定に対応する規則`L1,L3,P0,P5,P6,R2,E1,E2`と手数の上限1,900手で対局させる。
+対局の条件は[強さを測る固定の相手の設計書](../plans/archived/mcts-fixed-opponents.md)が定め、スクリプトの定数に固定してある。
+同時対局数4は、1回目の学習のネットで基準を測ったときと同じである。
+中断した対局は、`python3 -I $F/run_match.py resume --harness $W/target/release/minase --name <測定名>`で再開する。
 
-サイクル10の10サイクル前のネットは、`$A/cycles-rl2-az/cycle-0000/model.onnx`の初期ネットである。
-`NnBatchSize`の16は、1回目の学習の[10サイクル目の進捗測定](../measurements/alphazero-rl/alphazero-rl-progress-c0010.md)で決めた値である。
-20ブロック256チャネルのネットでは、作業機の対局の時間が1回目より延びる。
-初期ネットで測った所要時間は[準備の設計書](../plans/archived/alphazero-rl-2-prep.md)のフェーズ2の記録にあり、サイクル10の測定を始める前に、サイクル10のネットで見積もり直して利用者へ示す。
-
-αβ探索との差は、同じ10サイクルごとに、1手800シミュレーションのMCTSと、コミット45d5db54のαβ探索の1手500ノードを100ペア対局させて記録する（設計書の「進捗の測定」の節）。
-MCTSの側は上と同じ固定したコミットのバイナリと最新のネット、αβ探索の側はコミット45d5db54のバイナリとそれに埋め込まれたNNUEである。
-同時対局数4などのほかの条件は、1回目の学習の[固定ノードの対局の記録](../measurements/adhoc/alphazero-rl-c0032-ab-ladder.md)と同じである。
-その記録の`run-cell.sh`はサイクル32のネットと出力先を固定しているので使わず、bashで次のように実行する。
+サイクル10では、学習の初期の確認として、探索なしのネットと乱択のエンジンの100ペアの対局も行う。
+探索なしのネットは、MCTSの1手1シミュレーションとして指させる。
 
 ```bash
-source tools/train/zero/env.sh
-export XDG_CACHE_HOME=$HOME/.cache
-M=$PWD/target/release/minase
-N=$A/nets/cycles-rl2-az/cycle-0020.onnx
-"$M" match run --run-dir $A/progress/cycles-rl2-az/cycle-0020-vs-ab500 --seed <シード> \
-  --candidate "$M --protocol usi --search mcts" --candidate-option "NnModel=$N" \
-  --baseline commit:45d5db5498e1739b2307b3719891a1eec24f7fbd --baseline-args '--rules L0,P0,R1,E0' \
-  --rules L0,P0,R1,E0 \
-  --candidate-option NnBatchSize=16 --each nodes=800 --baseline-limit nodes=500 --concurrency 4 elo --pairs 100
+python3 -I $S/run_rl2_match.py random --harness $W/target/release/minase --mcts-commit $M --net $N \
+  --name alphazero-rl-2-progress-c0010-random --seed <シード> --pairs 100
 ```
 
-コミット45d5db54は、規則を起動引数`--rules`で受けていた版なので、`--baseline-args`でその引数を足し、規則は名前`JCSA`ではなくコード列で指定する（[SPRTの手引き](sprt.md)の「エンジンの指定方法」の節）。
+`run_rl2_match.py`には、2つのネットのMCTSどうしを1手800シミュレーションで対局させる`versus`もあり、設計書のフェーズ2の試走で、サイクル3のネットと初期ネットを比べるのに使う。
+どちらも、規則セット`lishogi`、手数の上限4,096手、同時対局数2で対局させる。
+
+所要時間は、作業機の20ブロック256チャネルのネットで、αβ探索との400ペアが約3.7時間、HaChuとの100ペアが約1時間と見込む。
+これは、設計書の「進捗の測定」の節が1回目の学習のネットの実測から推論した値である。
+サイクル10の測定を始める前に、サイクル10のネットで所要時間を見積もり直して利用者へ示す。
+
+対局が終わったら、固定の相手のスクリプトの`summarize.py`で集計する。
+HaChuとの対局の集計で、拒否着手`rejected_moves`か不正着手`illegal_moves`が0件でなければ、`check_hachu_forfeits.py`で分類する。
+既知の2つの食い違いのどちらにも当たらない`unknown`があれば、原因を調べ、結果を添えて利用者に諮る（設計書の「検証」の節）。
+
+```bash
+python3 -I $F/summarize.py data/matches/alphazero-rl-2-progress-c0020-ab500 \
+  data/matches/alphazero-rl-2-progress-c0020-hachu3 > <測定記録の付随ディレクトリ>/summary.json
+python3 -I $F/check_hachu_forfeits.py data/matches/alphazero-rl-2-progress-c0020-hachu3 \
+  --hachu ../hachu-debian/hachu --minase $W/target/release/minase
+```
 
 固定の検証用データによる診断は、前回の測定より後の各サイクルについて行う。
 検証用データは、lishogiの人間同士の棋譜から選んだ811局であり、条件と用途は[検証用データのADR](../adr/diagnose-zero-networks-on-fixed-lishogi-human-games.md)にある。
@@ -292,7 +300,8 @@ mkdir -p docs/training/alphazero-rl-2/validation
 ```
 
 結果は、`docs/measurements/alphazero-rl-2/alphazero-rl-2-progress-cNNNN.md`に記録する（1回目の先例は[30サイクル目の記録](../measurements/alphazero-rl/alphazero-rl-restart-progress-c0030.md)）。
-10サイクル前のネットに対するEloの点推定が2回続けて0以下になったら、設計書の「伸びが止まったとき」の節に従う。
+固定したαβ探索との対局のEloの点推定が、2回続けて前回の測定を上回らなかったら、設計書の「伸びが止まったとき」の節に従う。
+その対局で、試行した400ペアのうち手数の上限に達して破棄したペアが5%（20ペア）を超えた回の値は、この判定に使わず、原因を調べて利用者に諮る。
 
 系列を通した推移は、系列のページ`docs/training/alphazero-rl-2/README.md`に置くので、測定記録にはサイクルごとの値の表を書かない（[学習の系列の記録](../training/README.md)）。
 最初の定例の測定では、更新の前に`docs/training/alphazero-rl-2/`へ、空の`series.toml`と、[1回目の系列のページ](../training/alphazero-rl-1/README.md)と同じ節を持つ`README.md`を置く。
@@ -314,8 +323,16 @@ mkdir -p docs/training/alphazero-rl-2/validation
 
 `series.toml`の欄、CSVの列、および`--cycles-record`に渡す記録のどの欄からどの列を作るかは、`tools/train/progress/series_progress.py`のdocstringにある。
 
-基準の学習率を下げる前と、到達の判定を行う前には、最新のネットのMCTSとαβ探索を、[棋力測定の手引き](sprt.md)の短時間条件（STC）で対局させる。
-先例は1回目の学習の[サイクル32の対局](../measurements/alphazero-rl/alphazero-rl-restart-stc-c0032.md)であり、`alphazero-rl-restart-stc-c0032/run-stc.sh`を複製して、ネットとシードだけを変えて実行する。
+基準の学習率を下げる前と、到達の判定を行う前には、最新のネットのMCTSとαβ探索を、[棋力測定の手引き](sprt.md)の短時間条件（STC）で200ペア対局させる。
+
+```bash
+python3 -I $S/run_rl2_match.py stc --harness $W/target/release/minase --mcts-commit $M --net $N \
+  --name alphazero-rl-2-stc-cNNNN --seed <シード> --pairs 200
+```
+
+αβ探索は、固定の相手と同じコミット45d5db54とそのNNUEである。
+両エンジンの`Threads`は1、置換表は256 MB、同時対局数は1、時間制御は`time=10000+100`、規則は`lishogi`、手数の上限は4,096手である。
+1回目の学習の[サイクル32の対局](../measurements/alphazero-rl/alphazero-rl-restart-stc-c0032.md)とは、規則が`JCSA`から`lishogi`に変わったことと、MCTSのコミットが45d5db54から固定したコミットに変わったことが違う。
 時間制御の対局は負荷の影響を受けるので、対局の間は作業機で重い処理を動かさない。
 このSTCの対局は到達の判定そのものではなく、判定の手順は[統括計画](../plans/alphazero.md)の「到達の判定」の節が定める。
 
@@ -544,7 +561,7 @@ GPUの枚数の違う機械でも再開できるが、加算の順序が変わ�
 
 | 項目 | 値 | 場所 |
 |---|---|---|
-| 規則 | `JCSA` | `bin/minase/zero_selfplay/mod.rs` |
+| 規則 | `lishogi`（規則コードL1,L2,P0,P3,R1,E1,E3）。学習器も、規則が`lishogi`と一致する教師データだけを訓練に受け付ける | `bin/minase/zero_selfplay/mod.rs`の`RULES`、`tools/train/zero/minase_zero/data.py`の`_training_file_info` |
 | 手数の上限 | 3,000手。到達した対局は引き分け（MNSDの終局理由14）として学習に残す | `bin/minase/zero_selfplay/mod.rs`の`MAX_PLY` |
 | 開始局面の作り方 | `initial`は標準の初期局面。`shuffled-setup`は歩兵と仲人を動かさず、1〜3段目の駒を段の中で並べ替え、2枚の角行を筋の偶奇の異なるマスに置き、後手を先手と点対称に置く | `bin/minase/zero_selfplay/game.rs`、`crates/minase-core/src/position/setup.rs`の`Position::shuffled_initial` |
 | 序盤の抽選 | 初期局面からの手数が0〜29の局面では、根の各辺の訪問回数に比例して指す手を抽選する | `bin/minase/zero_selfplay/game.rs`の`explorative_action` |

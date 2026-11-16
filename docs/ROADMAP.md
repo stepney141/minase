@@ -64,7 +64,7 @@
 | AlphaZero型探索の学習器 | [plans/archived/alphazero-trainer.md](plans/archived/alphazero-trainer.md) | 完了（採用） | 2026年10月28日 |
 | AlphaZero型探索の強化学習の実行 | [plans/archived/alphazero-rl.md](plans/archived/alphazero-rl.md) | 中断 | 2026年11月9日 |
 | AlphaZero型探索の強化学習の2回目の実行の準備 | [plans/archived/alphazero-rl-2-prep.md](plans/archived/alphazero-rl-2-prep.md) | 完了（採用） | 2026年11月10日 |
-| AlphaZero型探索の強化学習の2回目の実行 | [plans/alphazero-rl-2.md](plans/alphazero-rl-2.md) | 起案 | |
+| AlphaZero型探索の強化学習の2回目の実行 | [plans/alphazero-rl-2.md](plans/alphazero-rl-2.md) | 進行中 | |
 | 対局用MCTSを全部の規則コードで探索できるようにする | [plans/archived/mcts-rule-codes.md](plans/archived/mcts-rule-codes.md) | 完了（採用） | 2026年11月13日 |
 | AlphaZero型探索の強さを測る固定の相手 | [plans/archived/mcts-fixed-opponents.md](plans/archived/mcts-fixed-opponents.md) | 完了（採用） | 2026年11月14日 |
 | AlphaZero型探索のネットを診断する固定の検証用データ | [plans/archived/zero-validation-games.md](plans/archived/zero-validation-games.md) | 完了（採用） | 2026年11月15日 |
@@ -200,9 +200,10 @@ HalfKP_vmの世代反復は、P型の世代反復で評価関数の癖をつか�
 [1回目](plans/archived/alphazero-rl.md)はサイクル32で中断したので、2回目は20ブロック256チャネルのネットをランダムに初期化してやり直す。
 
 2回目の実行は、[2回目の実行の設計書](plans/alphazero-rl-2.md)で進める。
-この設計書は、自己対局の規則を`lishogi`へ切り替える作業、定例の測定の用意、3サイクルの試走、およびサイクルの実行を扱い、起案の段階で利用者の承認を待っている。
+この設計書は、自己対局の規則を`lishogi`へ切り替える作業、定例の測定の用意、3サイクルの試走、およびサイクルの実行を扱う。
 前提の設計書はすべて完了しており、新しい初期ネットは、NASの系列`cycles-rl2-az`の`cycle-0000/`にある。
-次は、この設計書のフェーズ1（規則の`lishogi`への切り替えと定例の測定の用意）である。
+フェーズ1の規則の`lishogi`への切り替えと定例の測定の用意はブランチ`alphazero-rl-2`で済み、masterへのマージを待っている。
+次は、フェーズ2の3サイクルの試走である。
 [学習の系列の記録と進捗図](plans/training-series-records.md)は、系列の記録の置き場[docs/training/](training/README.md)と進捗図の道具ができており、残るのは、実行器が書いた系列の記録での確認と、ADRの作成および設計書の凍結である。
 実行器が書いた記録はまだないので、確認には、2回目の実行のフェーズ2で行う3サイクルの試走の記録を使う（2026年11月16日の利用者の決定）。
 
