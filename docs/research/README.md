@@ -121,7 +121,7 @@ NNUEの標準の学習条件を決める現在の計画は、[学習レシピの
 
 | 作成日 | 文書 | 内容 |
 |---|---|---|
-| 2026年9月27日 | [エンジン開発のデバッグ手法の調査](engine-debugging-survey.md) | Chess Programming Wikiの「Debugging」頁と関連投稿、およびStockfish、YaneuraOu、Fairy-Stockfish、HaChuのソースから、デバッグ手法を照合、表示、統計、記録の4種類に整理し、minaseへの適用の可否を示す。 |
+| 2026年9月27日 | [エンジン開発のデバッグ手法の調査](engine-debugging-survey.md) | Chess Programming Wikiの「Debugging」頁と関連投稿、およびStockfish、YaneuraOu、Fairy-Stockfish、HaChuのソースから、デバッグ手法を照合、表示、統計、記録の4種類に整理し、minaseへの適用の可否を示す。2026年11月16日には、lc0、KataGo、Leela Zero、Monty、Ceres、dlshogi、およびふかうら王のソース、ならびにOpenSpielとAlphaZero.jlの試験を調べて、方策と価値のネットを使うモンテカルロ木探索（PV-MCTS）のエンジンの節を加え、手法の重心がネットの入出力の照合、試験用の評価器による探索の試験、根の子ごとの統計の表示、および探索木の不変条件の検査にあることと、minaseに欠けている道具を示した。 |
 | 2026年11月16日 | [学習の進み具合と強さの推移の記録と可視化に関する先行例の調査](training-progress-records-prior-art.md) | チェスのNNUE系、AlphaZero型、および将棋のNNUE系の開発が、学習の指標と強さの推移をどの単位で記録し、どう図にしているかを調べ、調べた範囲で強さの推移の図を自動で更新して公開しているのがlc0、Leela Zero、およびKataGoの学習サイトであること、連続するモデルの対から求めた自己対局のEloが膨張すること、および学習1回の記録を1か所にまとめる例がtataraとnnue-labであることを示す。 |
 
 ## 競技規則
