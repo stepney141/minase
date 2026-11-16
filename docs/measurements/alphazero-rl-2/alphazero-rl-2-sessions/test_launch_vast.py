@@ -104,6 +104,7 @@ class LaunchTests(unittest.TestCase):
         self.runner_timeouts = 0
         self.runner_exit_seconds = 0
         self.runner = None
+        self.runner_ledger = None
         self.validation_error = None
         self.jobs = []
         self.jobs_error = False
@@ -360,19 +361,21 @@ class LaunchTests(unittest.TestCase):
         self.assertEqual(self.events()[-1], "network_check_finished")
         self.assertEqual(self.row("network_check_finished")["exit_code"], 0)
         self.assertEqual(self.row("network_check_finished")["summary"], self.check_summary)
+        if self.runner_ledger is not None:
+            ledger = self.root / "experiments/run-a.jsonl"
+            ledger.parent.mkdir(parents=True, exist_ok=True)
+            ledger.write_text(self.runner_ledger)
         self.runner = Runner(self.clock, self.runner_code, self.runner_timeouts, self.runner_exit_seconds)
         return self.runner
 
     def test_normal_lifecycle_preserves_metadata_arguments_and_cycles(self):
         """指示書1: 0で終わり、全情報を耐久化してから削除する。"""
-        ledger = self.root / "experiments/run-a.jsonl"
-        ledger.parent.mkdir(exist_ok=True)
-        ledger.write_text("\n".join(json.dumps(row) for row in [
+        self.runner_ledger = "\n".join(json.dumps(row) for row in [
             {"cycle": 7, "machine": {"kind": "colab"}},
             {"cycle": 8, "machine": {"vast_instance": 731}},
             {"cycle": 9, "machine": {"vast_instance": 732}},
             {"cycle": 10, "machine": {"vast_instance": 731}},
-        ]) + "\n")
+        ]) + "\n"
         self.assertEqual(launch.main(self.args), 0)
         self.assertEqual(self.events(), ["created", "running", "deadline", "setup_finished", "network_check_finished", "runner_exited",
                                          "salvage_finished", "destroyed"])
@@ -785,9 +788,7 @@ class LaunchTests(unittest.TestCase):
         self.api.destroy.assert_called_once_with(731)
 
     def test_invalid_cycle_ledger_does_not_skip_final_salvage(self):
-        ledger = self.root / "experiments/run-a.jsonl"
-        ledger.parent.mkdir(exist_ok=True)
-        ledger.write_text("null\n")
+        self.runner_ledger = "null\n"
         self.assertEqual(launch.main(self.args), 1)
         self.assertEqual(self.events()[-3:], ["runner_exited", "salvage_finished", "destroyed"])
         self.assertIn("cycles_error", self.row("runner_exited"))
@@ -961,6 +962,65 @@ class LaunchTests(unittest.TestCase):
         self.run.assert_not_called()
         self.popen.assert_not_called()
         self.assertEqual(self.api.mock_calls, [])
+
+    def assert_ledger_rejected_before_commands(self):
+        self.assertEqual(launch.main(self.args), 1)
+        self.run.assert_not_called()
+        self.popen.assert_not_called()
+        self.assertEqual(self.api.mock_calls, [])
+
+    def test_recorded_first_cycle_is_rejected_before_commands(self):
+        ledger = self.root / "experiments/run-a.jsonl"
+        ledger.write_text('\n'.join(json.dumps(row) for row in [
+            {"cycle": 8, "machine": {"kind": "colab"}},
+            {"cycle": 9, "machine": {"vast_instance": 732}},
+        ]) + '\n')
+        self.assert_ledger_rejected_before_commands()
+        self.assertIn("--first-cycle 8", self.stderr.getvalue())
+        self.assertIn("--first-cycle 10", self.stderr.getvalue())
+        self.assertIn(str(ledger), self.stderr.getvalue())
+
+    def test_recorded_first_cycle_in_mainline_cycles_jsonl_is_rejected(self):
+        self.args[self.args.index("--cycles-dir") + 1] = "cycles"
+        for name in ("cycles/cycle-0007/train/model.onnx", "cycles/cycle-0007/check/pytorch.json"):
+            path = self.root / name
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_bytes(b"input")
+        ledger = self.root / "cycles.jsonl"
+        ledger.write_text(json.dumps({"cycle": 8, "machine": {"vast_instance": 732}}) + '\n')
+        self.assert_ledger_rejected_before_commands()
+        self.assertIn(str(ledger), self.stderr.getvalue())
+        self.assertIn("--first-cycle 9", self.stderr.getvalue())
+
+    def test_ledger_through_previous_cycle_allows_launch(self):
+        ledger = self.root / "experiments/run-a.jsonl"
+        ledger.write_text('\n'.join(json.dumps({"cycle": cycle, "machine": {"kind": "colab"}})
+                                    for cycle in range(1, 8)) + '\n')
+        self.assertEqual(launch.main(self.args), 0)
+        self.api.create.assert_called_once()
+        self.popen.assert_called_once()
+
+    def test_absent_cycle_ledger_allows_launch(self):
+        self.assertFalse((self.root / "experiments/run-a.jsonl").exists())
+        self.assertEqual(launch.main(self.args), 0)
+        self.api.create.assert_called_once()
+        self.popen.assert_called_once()
+
+    def test_invalid_cycle_ledger_rows_fail_before_commands(self):
+        ledger = self.root / "experiments/run-a.jsonl"
+        for line in ('not json', '', 'null', '[]', '{}', '{"cycle": 7}',
+                     '{"cycle": 7, "machine": null}', '{"cycle": 7, "machine": []}',
+                     '{"machine": {"kind": "colab"}}'):
+            with self.subTest(line=line):
+                ledger.write_text(line + '\n')
+                self.assert_ledger_rejected_before_commands()
+
+    def test_invalid_cycle_numbers_fail_before_commands(self):
+        ledger = self.root / "experiments/run-a.jsonl"
+        for cycle in (0, -1, True, False, 7.0, "7", None):
+            with self.subTest(cycle=cycle):
+                ledger.write_text(json.dumps({"cycle": cycle, "machine": {"kind": "colab"}}) + '\n')
+                self.assert_ledger_rejected_before_commands()
 
     def test_missing_reference_fails_before_any_external_command(self):
         (self.root / self.reference).unlink()

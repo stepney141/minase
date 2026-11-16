@@ -6,6 +6,7 @@ python3 launch-vast.py --offer ID --label LABEL --image IMAGE --hours HOURS --co
 起動側の引数はすべて必須で、commitは40桁の16進数字、hoursは正の有限数とする。
 生成と学習のコミットはcommitと一致させ、機械を作る前に実行器の引数を検査する。
 外部コマンドを呼ぶ前に、最初の生成に使うネットとPyTorchの基準出力がrootの下にあることを確かめる。
+外部コマンドを呼ぶ前に系列の記録を検査し、first-cycleが記録済みなら記録の最後のサイクルの次から起動するよう案内して失敗する。
 実行器のmachine、vast-instance、deadline、rootはこのスクリプトが指定し、sessionとcycle-cuは指定できない。
 ソースの書庫を用意して自己停止を予約し、貸出期限と自己停止時刻の早いほうを終了期限にする。
 導入後にネットと基準出力を送り、SHA-256を確認してからcheck_outputs.pyをbashで実行する。
@@ -505,22 +506,25 @@ def run_cycles(tree, options, journal, deadline, check_deadline):
     return process.returncode
 
 
-def completed_cycles(options, instance):
+def cycle_records(options):
     path = options.root / f"{options.cycles_dir}.jsonl"
     if not path.exists():
         # 完了したサイクルが0件なら、実行器は台帳を作成しない。
         return []
-    cycles = []
+    rows = []
     for line in path.read_text(encoding="utf-8").splitlines():
         row = json.loads(line)
-        if not isinstance(row, dict) or not isinstance(row["machine"], dict):
+        if not isinstance(row, dict) or "machine" not in row or not isinstance(row["machine"], dict):
             raise ValueError(f"サイクルの記録が不正です: {path}")
-        machine = row["machine"]
-        if "vast_instance" in machine and machine["vast_instance"] == instance:
-            if type(row["cycle"]) is not int or row["cycle"] <= 0:
-                raise ValueError(f"サイクルの番号が不正です: {path}")
-            cycles.append(row["cycle"])
-    return cycles
+        if "cycle" not in row or type(row["cycle"]) is not int or row["cycle"] <= 0:
+            raise ValueError(f"サイクルの番号が不正です: {path}")
+        rows.append(row)
+    return rows
+
+
+def completed_cycles(options, instance):
+    return [row["cycle"] for row in cycle_records(options)
+            if "vast_instance" in row["machine"] and row["machine"]["vast_instance"] == instance]
 
 
 def running_jobs(remote):
@@ -581,6 +585,11 @@ def salvage(remote, root, destination, journal, check_deadline, check_out):
 
 
 def launch(options):
+    cycles = [row["cycle"] for row in cycle_records(options)]
+    if options.first_cycle in cycles:
+        raise ValueError(f"--first-cycle {options.first_cycle}は記録済みです: "
+                         f"{options.root / f'{options.cycles_dir}.jsonl'}。"
+                         f"記録の最後のサイクルの次に当たる--first-cycle {max(cycles) + 1}から起動してください")
     for relative in (options.network, options.reference):
         path = options.root / relative
         if not path.resolve().is_relative_to(options.root.resolve()) or not path.is_file():
