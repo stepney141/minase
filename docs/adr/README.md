@@ -416,4 +416,4 @@ PSTは駒の種類と升ごとの値の表による評価、FMはFactorization M
 - 2026年11月15日 [AlphaZero型探索の自己対局は、対局数で決めた塊ごとに1つのファイルで確定させ、訓練局面数が目標に届いた最初の塊まででサイクルを締める](commit-zero-self-play-in-fixed-game-chunks-and-close-the-cycle-at-the-target-positions.md)
 - 2026年11月15日 [AlphaZero型探索の実行器は、系列の基本シードの加算値を必須の引数で受け取り、生成の区間をサイクルごとの幅10⁹に収める](take-the-zero-series-seed-offset-as-a-required-runner-argument-within-one-cycle-interval.md)
 - 2026年11月16日 [AlphaZero型探索の学習器は、規則セットlishogiのMNSDだけを訓練に受け付け、Rustの拡張モジュールで読み、利きの面を拡張モジュールで作り、駒の面と方策のラベルはPythonでバッチごとに作る](read-lishogi-mnsd-into-the-zero-trainer-and-build-control-planes-in-a-rust-extension.md)
-- 2026年11月16日 [AlphaZero型探索のネットのTensorRTのFP16の出力は、合法手の確率と価値をどちらも5×10⁻²で照合する](compare-fp16-zero-network-probabilities-and-values-within-five-hundredths.md)
+- 2026年11月16日 [AlphaZero型探索のネットのTensorRTのFP16の出力は、合法手の確率と価値をどちらも許容誤差5×10⁻²で照合する](compare-fp16-zero-network-probabilities-and-values-within-five-hundredths.md)

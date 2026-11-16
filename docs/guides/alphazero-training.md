@@ -405,6 +405,9 @@ kill -TERM $(pgrep -f "[.]venv/bin/python -m minase_zero run-cycles")
 CPUの照合が通っていてFP16の差だけが許容誤差をわずかに超えた場合は、FP16の丸めの累積とみられる。
 ただし許容誤差は[照合のADR](../adr/compare-fp16-zero-network-probabilities-and-values-within-five-hundredths.md)の決定なので、実行者の判断では変えず、数値を添えて利用者に判断を仰ぐ。
 学習をやり直すときは、不合格の出力を[止めて再開する](#止めて再開する)と同じく`rejected-<理由>/`へ移す。
+学習をやり直さずに照合だけをやり直すときも、照合の出力（`check/`、`check.exit`、`check.log`、`check.started.json`）を同じく`rejected-<理由>/`へ移してから再開する。
+このときは、学習に使った機械と同じCPUの機械で再開する。
+照合の最初の段の`fixture-eval`は、チェックポイントからONNXを書き出し直して学習したときのONNXとバイト単位で比べるが、BatchNormの融合の丸めがCPUによって変わるので、この一致は同じCPUの機械でしか成り立たないからである（[出力の照合の手引き](alphazero-network-check.md)の4節）。
 
 そのほかの止まり方の対応は次のとおりである。
 Colabの機械を使う場合の表であり、ほかの機械の場合は[借りる機械の操作の手引き](alphazero-machines.md)に従う。
