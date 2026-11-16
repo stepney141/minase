@@ -911,7 +911,7 @@ class Runner:
                 for path in (network, name + ".json", self.paths.cache):
                     if "\n" in path or "\r" in path:
                         raise ValueError(f"USI paths must not contain a newline: {path!r}")
-                commands = ["usi", "setoption name RuleSet value JCSA",
+                commands = ["usi", "setoption name RuleSet value lishogi",
                             f"setoption name NnModel value {network}",
                             f"setoption name NnBackend value {backend}",
                             f"setoption name NnBatchSize value {batch}"]

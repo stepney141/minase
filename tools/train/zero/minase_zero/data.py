@@ -46,7 +46,6 @@ class Header:
     origin: int | None
     teacher_kind: int
     rule_set: str
-    jcsa: bool
     lishogi: bool
     generation_commit: str
     network_checksum: bytes
@@ -108,10 +107,10 @@ class Dataset:
 
 
 def read_file(path: str | Path) -> tuple[Dataset, FileInfo]:
-    """MCTS・乱数開始の自己対局・JCSAの1ファイルを読み込む。
+    """MCTS・乱数開始の自己対局・lishogiの1ファイルを読み込む。
 
     成り権の保留、候補や合法手の欠落、確率和の不一致もValueErrorとする。
-    規則名の別表記は、解釈した規則がJCSAと一致すれば受け付ける。
+    規則名の別表記は、解釈した規則がlishogiと一致すれば受け付ける。
     0局のファイルは由来を問わず、空の局面配列と区切り[0]を返す。
     """
     path = Path(path).resolve(strict=True)
@@ -138,8 +137,8 @@ def _training_file_info(path: Path, raw: dict) -> FileInfo:
         raise ValueError(f"{path}: teacher must be MCTS")
     if header.game_count != 0 and header.origin != 0:
         raise ValueError(f"{path}: origin must be random selfplay")
-    if not header.jcsa:
-        raise ValueError(f"{path}: rules must equal JCSA")
+    if not header.lishogi:
+        raise ValueError(f"{path}: rules must equal lishogi")
     return info
 
 

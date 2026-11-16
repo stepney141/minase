@@ -1635,7 +1635,7 @@ if engine:
             path = f"cycles/cycle-{cycle:04d}"
             for batch in (1, 7, 256):
                 for backend, label in (("cpu", "cpu"), ("tensorrt", "trt")):
-                    commands = ["usi", "setoption name RuleSet value JCSA",
+                    commands = ["usi", "setoption name RuleSet value lishogi",
                                 f"setoption name NnModel value {path}/train/model.onnx",
                                 f"setoption name NnBackend value {backend}",
                                 f"setoption name NnBatchSize value {batch}"]

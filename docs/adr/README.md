@@ -404,7 +404,7 @@ PSTは駒の種類と升ごとの値の表による評価、FMはFactorization M
 - 2026年11月15日 [AlphaZero型探索のネットを、lishogiの人間同士の棋譜から選んだ固定の検証用データで診断し、採否には使わない](diagnose-zero-networks-on-fixed-lishogi-human-games.md)
 - 2026年11月15日 [AlphaZero型探索のネットは、AlphaZeroの残差ブロックを20個並べた256チャネルのResNetとし、方策ヘッドは3×3畳み込み2層、価値ヘッドは1チャネルの1×1畳み込みと全結合256とする](shape-the-zero-network-as-the-alphazero-resnet-with-a-two-layer-policy-head-and-a-one-channel-value-head.md)
 - 2026年11月15日 [AlphaZero型探索の学習器は、方策と価値の損失を重み1で足して学び、補助目標を持たない](train-the-zero-network-on-the-policy-and-value-losses-without-auxiliary-targets.md)
-- 2026年11月15日 [AlphaZero型探索の学習器は、MNSDをRustの拡張モジュールで読み、利きの面を拡張モジュールで作り、駒の面と方策のラベルはPythonでバッチごとに作る](read-mnsd-into-the-zero-trainer-and-build-control-planes-in-a-rust-extension.md)
+- 2026年11月15日 [AlphaZero型探索の学習器は、MNSDをRustの拡張モジュールで読み、利きの面を拡張モジュールで作り、駒の面と方策のラベルはPythonでバッチごとに作る](archive/read-mnsd-into-the-zero-trainer-and-build-control-planes-in-a-rust-extension.md)（置き換え済み）
 - 2026年11月15日 [AlphaZero型探索の学習率は、ランダム初期化から250回の更新の間だけ線形に上げてサイクルの中では一定に保ち、伸びが止まったら0.04から1/10ずつ下げる](keep-the-zero-learning-rate-constant-after-a-250-update-warmup-and-cut-it-tenfold-on-stalls.md)
 - 2026年11月15日 [AlphaZero型探索の学習は、Lightning FabricのDDPで、GPUの枚数によらず全体のバッチ1,024をミクロバッチ256の勾配累積で学び、BatchNormの移動統計はPyTorchとDDPの既定どおりに更新する](train-zero-cycles-with-fabric-ddp-over-a-fixed-global-batch-of-1024-and-default-batch-norm-statistics.md)
 - 2026年11月15日 [AlphaZero型探索の学習は、終わった対局の合計が150万局を超えない直近のサイクルをリプレイバッファとし、各サイクルで新しく生成した訓練局面と同じ数を局面ごとに一様に抽出して学ぶ](sample-as-many-positions-as-generated-from-a-zero-replay-buffer-of-the-latest-1-5-million-games.md)
@@ -415,3 +415,4 @@ PSTは駒の種類と升ごとの値の表による評価、FMはFactorization M
 - 2026年11月15日 [AlphaZero型探索の自己対局は3,000手に達したら引き分けとし、探索した全局面を学習に残す](draw-zero-self-play-games-at-3000-plies-and-keep-them-for-training.md)
 - 2026年11月15日 [AlphaZero型探索の自己対局は、対局数で決めた塊ごとに1つのファイルで確定させ、訓練局面数が目標に届いた最初の塊まででサイクルを締める](commit-zero-self-play-in-fixed-game-chunks-and-close-the-cycle-at-the-target-positions.md)
 - 2026年11月15日 [AlphaZero型探索の実行器は、系列の基本シードの加算値を必須の引数で受け取り、生成の区間をサイクルごとの幅10⁹に収める](take-the-zero-series-seed-offset-as-a-required-runner-argument-within-one-cycle-interval.md)
+- 2026年11月16日 [AlphaZero型探索の学習器は、規則セットlishogiのMNSDだけを訓練に受け付け、Rustの拡張モジュールで読み、利きの面を拡張モジュールで作り、駒の面と方策のラベルはPythonでバッチごとに作る](read-lishogi-mnsd-into-the-zero-trainer-and-build-control-planes-in-a-rust-extension.md)

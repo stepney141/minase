@@ -255,9 +255,11 @@ class TrainTests(unittest.TestCase):
             args[args.index("--micro-batch-size") + 1] = "128"
             require_success(run_cli(args, n))
             state = torch.load(out / "checkpoint.pt", weights_only=True)
-            self.assertEqual(state["sample_count"], 643)
-            self.assertEqual(state["completed_steps"], 1)
-            self.assertEqual(state["total_steps"], 1)
+            # records::Readerの各局の採用数をis_validationで分けた訓練側3808件。
+            self.assertEqual(state["sample_count"], 3808)
+            self.assertEqual(state["completed_steps"], 7)
+            self.assertEqual(state["total_steps"], 7)
+            self.assertEqual(state["positions_seen"], 3584)
             self.assertEqual(state["provenance"]["world_size"], n)
             self.assertNotIn("replay_threads", state["config"])
             self.assertEqual({p.name for p in out.iterdir()}, {"checkpoint.pt", "model.onnx", "summary.json"})
@@ -293,14 +295,16 @@ class TrainTests(unittest.TestCase):
             self.assertEqual([item["path"] for item in saved["provenance"]["files"]], saved["config"]["data"])
 
     def test_order_digest_counts_and_batch_normalization_follow_the_contract(self) -> None:
-        training_count = self.infos[0].training_count
+        # records::Readerの各局の採用数をis_validationで分けた訓練側3808件。
+        training_count = 3808
+        self.assertEqual(self.infos[0].training_count, training_count)
         ordered = reference_sample(training_count, training_count, 42)
         digest = bytes(32)
         for start in range(0, len(ordered) // 16 * 16, 16):
             digest = hashlib.sha256(digest + b"".join(struct.pack("<q", index) for index in ordered[start:start + 16])).digest()
         updates = training_count // 16
         self.assertGreaterEqual(updates, 30)
-        self.assertNotEqual(training_count % 16, 0)
+        self.assertEqual(training_count % 16, 0)
         for state in (self.state_a, self.state_b, self.summary_a, self.summary_b):
             self.assertEqual(state["data_order_sha256"], digest.hex())
             self.assertEqual(state["completed_steps"], updates)
@@ -363,7 +367,7 @@ class TrainTests(unittest.TestCase):
             (int(train_games[1]), 1, 0, 54321, (65_535,)),
             (validation_game, 0, 2, 32768, (65_535,)),
         ]
-        write_small(path, [single_game(*game) for game in sorted(games)], "JCSA")
+        write_small(path, [single_game(*game) for game in sorted(games)], "lishogi")
         data, _, _, _ = read_replay_buffer([path], [path], 42,
             rank=0, world_size=1, batch_size=1, micro_batch_size=1, replay_threads=1,
         )
@@ -512,7 +516,7 @@ class TrainTests(unittest.TestCase):
         sample = is_training_sample(20261038, numbers)
         selected = sorted([int(numbers[validation][0]), int(numbers[~(validation | sample)][0])])
         path = self.root / "no-sample.mnsd"
-        write_small(path, [single_game(game, 0, 2, 32768, (65_535,)) for game in selected], "JCSA")
+        write_small(path, [single_game(game, 0, 2, 32768, (65_535,)) for game in selected], "lishogi")
         out = self.root / "no-sample"
         arguments = train_arguments(self.initial / "checkpoint.pt", out)
         set_training_data(arguments, [str(path)])

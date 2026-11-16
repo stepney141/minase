@@ -148,7 +148,6 @@ class ExternalEvaluationTests(unittest.TestCase):
         self.assertEqual(raw["teacher_kind"], 2)
         self.assertEqual(raw["origin"], 2)
         self.assertIs(raw["lishogi"], True)
-        self.assertIs(raw["jcsa"], False)
         self.assertEqual(raw["network_checksum"], bytes(32))
         self.assertEqual(raw["teacher_search_budget"], 0)
         self.assertEqual((raw["training_count"], raw["validation_count"]), (1, 3))

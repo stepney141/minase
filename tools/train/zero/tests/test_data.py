@@ -51,29 +51,33 @@ class DataTests(unittest.TestCase):
         self.addCleanup(directory.cleanup)
         self.directory = Path(directory.name)
 
-    def test_fixture_metadata_and_selection_require_value_and_policy(self) -> None:
-        # 固定データは32局・先手11勝・後手21勝、基本シード20261038である。
-        # 価値と方策を持つ741局面を採用し、方策のない価値だけの2218項目は数えない。
+    def test_fixture_metadata_and_selection(self) -> None:
+        # 生成器のsummary.json: 32局・先手19勝・後手13勝、価値と方策を持つ4401局面。
         data, info = self.dataset, self.info
         self.assertEqual(info.header.teacher_kind, 1)
         self.assertEqual(info.header.origin, 0)
-        self.assertEqual(info.header.rule_set, "L0,P0,R1,E0")
-        self.assertTrue(info.header.jcsa)
+        self.assertEqual(info.header.rule_set, "L1,L2,P0,P3,R1,E1,E3")
+        self.assertTrue(info.header.lishogi)
+        self.assertEqual(info.header.teacher_search_budget, 32)
         self.assertEqual(info.header.seed, 20261038)
         self.assertEqual(info.header.game_count, 32)
-        self.assertEqual(info.header.entry_count, 3375)
+        # records::Readerで数えた4401探索項目と、各局の最終項目32件。
+        self.assertEqual(info.header.entry_count, 4433)
         self.assertEqual(len(info.game_numbers), 32)
-        self.assertEqual(info.position_count, 741)
-        self.assertEqual(len(data), 741)
-        self.assertEqual(data.boards.shape, (741, 144))
+        self.assertEqual(info.position_count, 4401)
+        self.assertEqual(len(data), 4401)
+        self.assertEqual(data.boards.shape, (4401, 144))
         self.assertEqual(info.path, FIXTURE.resolve())
         self.assertEqual(info.size, FIXTURE.stat().st_size)
-        self.assertEqual(info.training_count + info.validation_count, 741)
+        self.assertEqual(info.training_count + info.validation_count, 4401)
         self.assertEqual(info.validation_count, np.count_nonzero(data.validation))
-        self.assertEqual(len(np.unique(data.games[data.validation])), 4)
+        # records::Readerの各局の採用数をis_validationとis_training_sampleの対局番号で合算した。
+        self.assertEqual((info.training_count, info.validation_count), (3808, 593))
+        np.testing.assert_array_equal(np.unique(data.games[data.validation]), [1, 6, 16, 25, 29])
+        np.testing.assert_array_equal(np.unique(data.games[data.training_sample]), [7, 14, 27, 32])
+        self.assertEqual(np.count_nonzero(data.training_sample), 713)
         outcomes = np.frombuffer(self.raw["outcomes"], dtype=np.uint8)
-        # 対局6は後手勝ちだが、価値と方策の両方を持つ項目がないため採用局面を持たない。
-        self.assertEqual(set(info.game_numbers) - set(data.games), {6})
+        self.assertEqual(set(data.games), set(range(1, 33)))
         game_outcomes = []
         for game in np.unique(data.games):
             mask = data.games == game
@@ -81,8 +85,8 @@ class DataTests(unittest.TestCase):
             result = np.unique(outcomes[mask])
             self.assertEqual(len(result), 1)
             game_outcomes.append(int(result[0]))
-        self.assertEqual(game_outcomes.count(0), 11)
-        self.assertEqual(game_outcomes.count(1), 20)
+        self.assertEqual(game_outcomes.count(0), 19)
+        self.assertEqual(game_outcomes.count(1), 13)
         expected = np.where(outcomes == data.sides, 1.0, 0.0)
         np.testing.assert_array_equal(data.results, expected)
         self.assertEqual(data.results.dtype, np.float32)
@@ -90,7 +94,7 @@ class DataTests(unittest.TestCase):
 
     def test_generator_fixture_sparse_policy(self) -> None:
         data = self.dataset
-        self.assertEqual(data.policy_offsets.shape, (742,))
+        self.assertEqual(data.policy_offsets.shape, (4402,))
         self.assertEqual(data.policy_offsets[0], 0)
         self.assertEqual(data.policy_offsets[-1], len(data.policy_labels))
         self.assertEqual(len(data.policy_labels), len(data.policy_probabilities))
@@ -104,7 +108,7 @@ class DataTests(unittest.TestCase):
 
     def test_legal_labels_include_candidates_and_keep_extension_order(self) -> None:
         data = self.dataset
-        self.assertEqual(data.legal_offsets.shape, (742,))
+        self.assertEqual(data.legal_offsets.shape, (4402,))
         self.assertEqual(data.legal_offsets.dtype, np.uint64)
         self.assertEqual(data.legal_labels.dtype, np.uint16)
         self.assertEqual(data.legal_offsets[0], 0)
@@ -129,12 +133,12 @@ class DataTests(unittest.TestCase):
 
     def test_extension_returns_python_scalars_and_little_endian_bytes(self) -> None:
         path = self.directory / "scalars.mnsd"
-        write_small(path, [single_game(0x10203040, 0, 1, 0x1234, (65535,))], "JCSA")
+        write_small(path, [single_game(0x10203040, 0, 1, 0x1234, (65535,))], "lishogi")
         raw = minase_mnsd_reader.read(str(path))
         self.assertEqual(minase_mnsd_reader.FORMAT_VERSION, 3)
         for key in ("origin", "teacher_kind", "teacher_search_budget", "seed", "game_count", "entry_count"):
             self.assertIs(type(raw[key]), int)
-        self.assertIs(type(raw["jcsa"]), bool)
+        self.assertIs(type(raw["lishogi"]), bool)
         self.assertIs(type(raw["rule_set"]), str)
         self.assertEqual(raw["generation_commit"], "a" * 40)
         self.assertEqual(raw["network_checksum"], bytes(range(32)))
@@ -166,8 +170,8 @@ class DataTests(unittest.TestCase):
 
     def test_same_seed_disjoint_games_preserve_input_and_candidate_order(self) -> None:
         first, second = self.directory / "first.mnsd", self.directory / "second.mnsd"
-        write_small(first, [single_game(9, 0, 0, 123, (12345, 53190))], "JCSA")
-        write_small(second, [single_game(3, 1, 0, 456, (65535,))], "JCSA")
+        write_small(first, [single_game(9, 0, 0, 123, (12345, 53190))], "lishogi")
+        write_small(second, [single_game(3, 1, 0, 456, (65535,))], "lishogi")
         data, infos, _, _ = read_replay_buffer([first, second], [first, second], 42,
             rank=0, world_size=1, batch_size=1, micro_batch_size=1, replay_threads=1,
         )
@@ -202,7 +206,7 @@ class DataTests(unittest.TestCase):
 
     def test_same_game_number_with_different_seed_is_accepted(self) -> None:
         first, second = self.directory / "first.mnsd", self.directory / "second.mnsd"
-        write_small(first, [single_game(1, 0, 2, 32768, (65535,))], "JCSA")
+        write_small(first, [single_game(1, 0, 2, 32768, (65535,))], "lishogi")
         changed = bytearray(first.read_bytes())
         struct.pack_into("<Q", changed, 128, 42)
         second.write_bytes(changed)
@@ -215,7 +219,7 @@ class DataTests(unittest.TestCase):
 
     def test_unselected_games_still_participate_in_duplicate_detection(self) -> None:
         first, second = self.directory / "first.mnsd", self.directory / "second.mnsd"
-        write_small(first, [single_game(1, 0, 2, None, ())], "JCSA")
+        write_small(first, [single_game(1, 0, 2, None, ())], "lishogi")
         shutil.copyfile(first, second)
         data, info = read_file(first)
         self.assertEqual(len(data), 0)
@@ -227,7 +231,7 @@ class DataTests(unittest.TestCase):
 
     def test_empty_files_and_empty_replay_buffer(self) -> None:
         path = self.directory / "empty.mnsd"
-        write_small(path, [], "JCSA")
+        write_small(path, [], "lishogi")
         data, info = read_file(path)
         self.assertEqual(len(data), 0)
         self.assertEqual(data.boards.shape, (0, 144))
@@ -247,17 +251,21 @@ class DataTests(unittest.TestCase):
     def test_equivalent_rule_name_is_accepted_and_other_rules_rejected(self) -> None:
         path = self.directory / "rules.mnsd"
         game = single_game(1, 0, 2, 32768, (65535,))
-        write_small(path, [game], "L0,P0,R1,E0")
-        data, info = read_file(path)
-        self.assertEqual(len(data), 1)
-        self.assertTrue(info.header.jcsa)
-        write_small(path, [game], "L0,P1,R1,E0")
-        with self.assertRaises(ValueError):
-            read_file(path)
+        for rules in ("lishogi", "L1,L2,P0,P3,R1,E1,E3"):
+            with self.subTest(rules=rules):
+                write_small(path, [game], rules)
+                data, info = read_file(path)
+                self.assertEqual(len(data), 1)
+                self.assertTrue(info.header.lishogi)
+        for rules in ("JCSA", "L0,P0,R1,E0", "L0,P1,R1,E0"):
+            with self.subTest(rules=rules):
+                write_small(path, [game], rules)
+                with self.assertRaisesRegex(ValueError, "rules must equal lishogi"):
+                    read_file(path)
 
     def test_non_mcts_non_selfplay_and_deferred_positions_are_rejected(self) -> None:
         path = self.directory / "rejected.mnsd"
-        write_small(path, [single_game(1, 0, 2, 123, (65535,))], "JCSA")
+        write_small(path, [single_game(1, 0, 2, 123, (65535,))], "lishogi")
         original = path.read_bytes()
         alpha = bytearray(original)
         alpha[112] = 0
@@ -274,7 +282,7 @@ class DataTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 read_file(path)
         # recordsの駒コードのビット128は、盤の100番升の歩兵に付く保留印である。
-        write_small(path, [single_game(1, 0, 2, 123, (65535,))], "JCSA")
+        write_small(path, [single_game(1, 0, 2, 123, (65535,))], "lishogi")
         changed = bytearray(path.read_bytes())
         changed[152 + 14 + 100] = 129
         path.write_bytes(changed)
@@ -284,7 +292,7 @@ class DataTests(unittest.TestCase):
 
     def test_value_without_policy_is_not_a_training_position(self) -> None:
         path = self.directory / "policy.mnsd"
-        write_small(path, [single_game(1, 0, 2, 123, ())], "JCSA")
+        write_small(path, [single_game(1, 0, 2, 123, ())], "lishogi")
         info = minase_mnsd_reader.scan(str(path))
         self.assertEqual((info["training_count"], info["validation_count"]), (0, 0))
         data, metadata = read_file(path)
@@ -294,7 +302,7 @@ class DataTests(unittest.TestCase):
 
     def test_selected_positions_still_require_candidates(self) -> None:
         path = self.directory / "policy.mnsd"
-        write_small(path, [single_game(1, 0, 2, 123, (65535,))], "JCSA")
+        write_small(path, [single_game(1, 0, 2, 123, (65535,))], "lishogi")
         raw = minase_mnsd_reader.read(str(path))
         # 拡張モジュールから不完全な局面が返った場合も、Python側の検査で拒否する。
         raw["policy_offsets"] = struct.pack("<QQ", 0, 0)
@@ -305,7 +313,7 @@ class DataTests(unittest.TestCase):
 
     def test_wrong_probability_sum_is_rejected(self) -> None:
         path = self.directory / "policy.mnsd"
-        write_small(path, [single_game(1, 0, 2, 123, (65534,))], "JCSA")
+        write_small(path, [single_game(1, 0, 2, 123, (65534,))], "lishogi")
         with self.assertRaises(ValueError):
             read_file(path)
 
@@ -316,7 +324,7 @@ class DataTests(unittest.TestCase):
             game = bytearray(single_game(number, side, winner, 32768, (65535,)))
             game[6] = 12
             games.append(bytes(game))
-        write_small(path, games, "JCSA")
+        write_small(path, games, "lishogi")
         data, info = read_file(path)
         self.assertEqual(info.position_count, 4)
         np.testing.assert_array_equal(data.results, [1.0, 0.0, 0.0, 1.0])

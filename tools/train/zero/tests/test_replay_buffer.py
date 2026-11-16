@@ -45,7 +45,7 @@ def cycle_files(directory: Path) -> list[Path]:
     paths = [directory / name for name in ("older.mnsd", "latest-chunk-00000.mnsd", "latest-chunk-00001.mnsd")]
     for path, seed, games in zip(paths, (11, 22, 22), (range(80), range(40), range(40, 80)), strict=True):
         write_small(path, [single_game(game, game % 2, game % 3, 200 * game, (65_535,)) for game in games],
-                    "JCSA")
+                    "lishogi")
         content = bytearray(path.read_bytes())
         struct.pack_into("<Q", content, 128, seed)
         path.write_bytes(content)
@@ -171,7 +171,7 @@ class ReplayBufferTests(unittest.TestCase):
     def test_latest_with_no_training_positions_and_invalid_sampling_ranges_raise(self) -> None:
         path = self.paths[-1]
         # seed=20261038の対局番号によらず、価値なしの項目は訓練局面数に含まない。
-        write_small(path, [single_game(100, 0, 2, None, ())], "JCSA")
+        write_small(path, [single_game(100, 0, 2, None, ())], "lishogi")
         with self.assertRaises(ValueError):
             read_replay_buffer(self.paths, [path], 42,
                 rank=0, world_size=1, batch_size=1, micro_batch_size=1, replay_threads=1,
@@ -303,7 +303,7 @@ class ReplayBufferTrainTests(unittest.TestCase):
         # リプレイバッファは73+36+36=145局面であり、最新と同数の36局面を重複なく選ぶ。
         latest = self.root / "distinct-latest.mnsd"
         write_small(latest, [single_game(game, game % 2, game % 3, 200 * game, (65_535,))
-                             for game in range(39)], "JCSA")
+                             for game in range(39)], "lishogi")
         content = bytearray(latest.read_bytes())
         struct.pack_into("<Q", content, 128, 22)
         latest.write_bytes(content)

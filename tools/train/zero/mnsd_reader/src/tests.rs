@@ -263,7 +263,8 @@ fn control_planes_match_inference_for_every_retained_record() {
             index += 1;
         }
     }
-    assert_eq!(index, 741);
+    // 生成器のsummary.jsonに記録された訓練局面数。
+    assert_eq!(index, 4401);
 }
 
 #[test]
@@ -1028,7 +1029,9 @@ fn mcts_scan_and_selected_columns_match_the_generated_fixture() {
         .map(|(index, _)| index)
         .collect();
     assert_eq!(info.training_count as usize, training.len());
-    assert_eq!(info.validation_count as usize, 741 - training.len());
+    // records::Readerで各局の項目を数え、hash64(seed, game) % 20 == 0の対局1,6,16,25,29を合算した。
+    assert_eq!((info.training_count, info.validation_count), (3808, 593));
+    assert_eq!(info.validation_count as usize, 4401 - training.len());
     assert_eq!(info.game_numbers, all.info.game_numbers);
     let ordinals = [0, 50, training.len() as u64 - 1];
     let selected = read_selected(&path, &ordinals, &[], false).unwrap();

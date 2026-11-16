@@ -75,7 +75,11 @@ NNUEの学習器が`--buckets`を2以上にしたときに作業ディレクト�
 
 AlphaZero型探索の学習器`minase_zero`（`tools/train/zero/minase_zero/`）は、`init`と`train`の出力先に、チェックポイント、ONNXのネット、および終了報告を書き出す。
 ONNXのネットはONNXが形式を定めるので載せない。
-試験用の小さな自己対局のファイル`tools/train/zero/fixtures/zero-selfplay-small.mnsd`はMNSDの版3である。`minase data zero-selfplay`で作った版2のファイルを、版の番号と項目の印の配置だけを変えて版3に書き直した。
+試験用の小さな自己対局のファイル`tools/train/zero/fixtures/zero-selfplay-small.mnsd`は、規則セット`lishogi`で生成したMNSDの版3である。
+2026年11月16日に、学習器が`lishogi`のファイルだけを受け付けるようにした変更（[ADR](../adr/read-lishogi-mnsd-into-the-zero-trainer-and-build-control-planes-in-a-rust-extension.md)）にあわせて、コミット46ce05ffの生成器で作り直した。
+ネットは`minase_zero init --blocks 1 --channels 8 --seed 20261116`で作った1ブロック8チャネルのランダム初期化のネットであり、生成器には`--nn-backend cpu --seed 20261038 --start-position initial --games 32 --chunk-games 32 --target-positions 100000000 --simulations 32 --resign-threshold 0 --threads 1 --devices 1 --games-per-thread 32`を与え、出力の`chunk-00000.mnsd`をこの名前で置いた。
+32局、4,401局面で、全局が王手限定の3手以内の勝ちで終わっている。
+基本シードを、作り直す前のファイルと同じ20261038にしたのは、検証集合と訓練の診断の標本が基本シードと対局番号だけで決まるからである。
 
 | 形式 | 識別と版 | 書き手 | 読み手 | 仕様 |
 |---|---|---|---|---|

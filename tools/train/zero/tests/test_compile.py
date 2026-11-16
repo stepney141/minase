@@ -57,11 +57,11 @@ class CompileTests(unittest.TestCase):
         expected_settings = {"deterministic": True, "emulate_precision_casts": True}
         self.assertEqual(counts["compilation_settings"], [expected_settings, expected_settings])
         summary = json.loads((self.root / "trained/summary.json").read_text())
-        # このfixtureの抽出数は643であり、全体のバッチ16の端数3局面を捨てる。
-        self.assertEqual(summary["sample_count"], 643)
-        self.assertEqual(summary["completed_steps"], 40)
-        self.assertEqual(summary["total_steps"], 40)
-        self.assertEqual(summary["positions_seen"], 640)
+        # records::Readerの各局の採用数をis_validationで分けると訓練側3808件で、バッチ16を238回更新する。
+        self.assertEqual(summary["sample_count"], 3808)
+        self.assertEqual(summary["completed_steps"], 238)
+        self.assertEqual(summary["total_steps"], 238)
+        self.assertEqual(summary["positions_seen"], 3808)
         self.assertEqual(set(summary["diagnostics"]),
                          {"training_sample", "latest_training_sample", "validation"})
         self.assertTrue((self.root / "trained/model.onnx").is_file())
@@ -75,7 +75,8 @@ class CompileTests(unittest.TestCase):
             with self.subTest(key=key):
                 self.assertEqual(trained[key].shape, initial[key].shape)
                 if key.endswith("num_batches_tracked"):
-                    self.assertEqual(trained[key].item(), 160)
+                    # 238更新 × 4ミクロバッチ。
+                    self.assertEqual(trained[key].item(), 952)
 
     def test_gradient_tool_writes_cpu_results_from_init_and_an_external_directory(self):
         out = self.root / "gradients.json"
@@ -94,7 +95,8 @@ class CompileTests(unittest.TestCase):
         self.assertIn("all four runs use fp32", actual["precision_note"])
         self.assertEqual(actual["micro_batch_size"], 4)
         self.assertEqual(actual["seed"], 42)
-        self.assertEqual(actual["sample_indices"], reference_sample(643, 643, 42)[:4])
+        # records::Readerの各局の採用数をis_validationで分けた訓練側3808件から抽出する。
+        self.assertEqual(actual["sample_indices"], reference_sample(3808, 3808, 42)[:4])
         self.assertEqual(actual["pytorch_version"], str(torch.__version__))
         self.assertIs(actual["emulate_precision_casts"], True)
         self.assertIs(actual["deterministic"], True)

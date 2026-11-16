@@ -44,8 +44,8 @@ fn bytes<'py, T, const N: usize>(
 ///
 /// ヘッダはorigin（intまたはNone）、teacher_kind、teacher_search_budget、seed、
 /// game_count、entry_count（int）、rule_set、generation_commit（str）、
-/// jcsa、lishogi（bool）、network_checksum（32バイトのbytes）である。
-/// teacher_kindはαβ0、MCTS1、探索なし2で、jcsaとlishogiは解釈した規則の一致を表す。
+/// lishogi（bool）、network_checksum（32バイトのbytes）である。
+/// teacher_kindはαβ0、MCTS1、探索なし2で、lishogiは解釈した規則がlishogiと一致するかを表す。
 /// 配列もbytesであり、game_numbersとgamesはu32、pliesはu16、valuesはi32、visitsはu32、
 /// policy_offsetsはu64、policy_probabilitiesはu16、boards、sides、lions、
 /// policy_from、policy_mid、policy_to、policy_promoteはu8である。
@@ -150,7 +150,6 @@ fn info_dict<'py>(py: Python<'py>, info: &FileInfo) -> PyResult<Bound<'py, PyDic
     output.set_item("origin", info.origin.map(|origin| origin as u8))?;
     output.set_item("teacher_kind", header.teacher_kind() as u8)?;
     output.set_item("rule_set", header.rule_set())?;
-    output.set_item("jcsa", header.rules() == Rules::JCSA)?;
     output.set_item("lishogi", header.rules() == Rules::LISHOGI)?;
     output.set_item("generation_commit", header.generation_commit())?;
     output.set_item(

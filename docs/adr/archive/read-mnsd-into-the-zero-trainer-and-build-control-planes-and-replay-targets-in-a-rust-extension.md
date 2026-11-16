@@ -2,7 +2,7 @@
 
 ## ステータス
 
-置き換え済み。[AlphaZero型探索の学習器は、MNSDをRustの拡張モジュールで読み、利きの面を拡張モジュールで作り、駒の面と方策のラベルはPythonでバッチごとに作る](../read-mnsd-into-the-zero-trainer-and-build-control-planes-in-a-rust-extension.md)によって置き換えられた。
+置き換え済み。[AlphaZero型探索の学習器は、MNSDをRustの拡張モジュールで読み、利きの面を拡張モジュールで作り、駒の面と方策のラベルはPythonでバッチごとに作る](read-mnsd-into-the-zero-trainer-and-build-control-planes-in-a-rust-extension.md)によって置き換えられた。
 [拡張モジュールで読むADR](read-mnsd-into-the-zero-trainer-through-a-rust-extension.md)を置き換える。
 
 ## コンテキスト

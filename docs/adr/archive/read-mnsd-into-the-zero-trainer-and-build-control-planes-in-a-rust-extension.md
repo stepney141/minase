@@ -2,14 +2,14 @@
 
 ## ステータス
 
-承認済み。決定日は2026年11月15日。
-[利きの面と対局全体から決まる教師を拡張モジュールで作るADR](archive/read-mnsd-into-the-zero-trainer-and-build-control-planes-and-replay-targets-in-a-rust-extension.md)を置き換える。
+置き換え済み。決定日は2026年11月15日。[AlphaZero型探索の学習器は、規則セットlishogiのMNSDだけを訓練に受け付け、Rustの拡張モジュールで読み、利きの面を拡張モジュールで作り、駒の面と方策のラベルはPythonでバッチごとに作る](../read-lishogi-mnsd-into-the-zero-trainer-and-build-control-planes-in-a-rust-extension.md)によって置き換えられた。
+[利きの面と対局全体から決まる教師を拡張モジュールで作るADR](read-mnsd-into-the-zero-trainer-and-build-control-planes-and-replay-targets-in-a-rust-extension.md)を置き換える。
 
 ## コンテキスト
 
 強化学習の教師データは形式MNSDで記録され、局面の復元には中将棋の着手の適用と合法手の生成が要るので、PyTorchの学習器はMNSDを単体では読めない。
 置き換えたADRは、PyO3の拡張モジュール`minase_mnsd_reader`で訓練局面を読み、入力の利きの64面と、対局全体を見て決まる補助目標の教師（短期の価値、相手の次の手、相手の局面の全合法手）を拡張モジュールで作ると定めた。
-2026年11月15日に、学習器は補助目標を持たないと決まった（[方策と価値だけを学ぶADR](train-the-zero-network-on-the-policy-and-value-losses-without-auxiliary-targets.md)）。
+2026年11月15日に、学習器は補助目標を持たないと決まった（[方策と価値だけを学ぶADR](../train-the-zero-network-on-the-policy-and-value-losses-without-auxiliary-targets.md)）。
 利きの判定は中将棋の規則そのものであり、Pythonで実装し直すと推論との不一致を生むという事情は変わらない。
 
 ## 決定
@@ -36,5 +36,5 @@ MNSDは、`minase::training::records::Reader`を包むPyO3の拡張モジュー�
 拡張モジュールが返す局面の列が固定局面集の入力と一致することは、Rustの試験とPythonの試験で確かめる。
 補助目標の教師がなくなったので、データセットのメモリは1局面あたり置き換えたADRより28＋4C＋2Lバイト（Cは相手の候補数、Lは相手の局面の合法手数）減る。
 探索なしで記録した固定の検証用データを読むときは、拡張モジュールが指した手を確率1の候補として、今までと同じ局面を返す。
-訓練に受け付ける規則セットを`lishogi`へ切り替える変更は、[2回目の実行の設計書](../plans/alphazero-rl-2.md)のフェーズ1で行う。
+訓練に受け付ける規則セットを`lishogi`へ切り替える変更は、[2回目の実行の設計書](../../plans/alphazero-rl-2.md)のフェーズ1で行う。
 成り権の保留を追跡する規則セットで学習する場合は、入力の面と拡張モジュールの受け入れの検査を変える必要がある。
