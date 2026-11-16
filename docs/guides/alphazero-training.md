@@ -254,8 +254,8 @@ python3 -I $F/run_match.py hachu --harness $W/target/release/minase --mcts-commi
 探索なしのネットは、MCTSの1手1シミュレーションとして指させる。
 
 ```bash
-python3 -I $S/run_rl2_match.py random --harness $W/target/release/minase --mcts-commit $M --net $N \
-  --name alphazero-rl-2-progress-c0010-random --seed <シード> --pairs 100
+python3 -I $S/run_rl2_match.py random --harness $W/target/release/minase --mcts-commit $M \
+  --net $A/nets/cycles-rl2-az/cycle-0010.onnx --name alphazero-rl-2-progress-c0010-random --seed <シード> --pairs 100
 ```
 
 `run_rl2_match.py`には、2つのネットのMCTSどうしを1手800シミュレーションで対局させる`versus`もあり、設計書のフェーズ2の試走で、サイクル3のネットと初期ネットを比べるのに使う。
@@ -284,11 +284,12 @@ python3 -I $F/check_hachu_forfeits.py data/matches/alphazero-rl-2-progress-c0020
 診断のJSONは、2回目の実行の系列のページ`docs/training/alphazero-rl-2/README.md`と一緒にgitで持つので、同じディレクトリの`validation/`へ書き出す。
 
 ```console
-mkdir -p docs/training/alphazero-rl-2/validation
+V=$PWD/docs/training/alphazero-rl-2/validation
+mkdir -p $V
 (cd tools/train/zero && uv run --frozen python -m minase_zero external-eval \
   --checkpoint $A/cycles-rl2-az/cycle-NNNN/train/checkpoint.pt \
   --data $A/validation/zero-validation-games.mnsd \
-  --device cuda --out $PWD/docs/training/alphazero-rl-2/validation/cycle-NNNN.json)
+  --device cuda --out $V/cycle-NNNN.json)
 ```
 
 引き延ばしの兆候は、`alphazero-rl-long-games/`のスクリプトで集計する。

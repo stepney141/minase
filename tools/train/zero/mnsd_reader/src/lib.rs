@@ -5,9 +5,9 @@
 //! Pythonの`read(path: str) -> dict`は、次のキーを持つ辞書を返す。
 //! ヘッダの`origin`はint（0〜3）、対局が0局ならNoneである。
 //! `teacher_kind`（αβ0、MCTS1、探索なし2）、`teacher_search_budget`、`seed`、`game_count`、
-//! `entry_count`はint、`rule_set`と`generation_commit`はstr、`jcsa`と`lishogi`はbool、
+//! `entry_count`はint、`rule_set`と`generation_commit`はstr、`lishogi`はbool、
 //! `network_checksum`は32バイトのbytesである。
-//! `jcsa`と`lishogi`は規則名ではなく、解釈した規則とそれぞれの規則セットの一致を表す。
+//! `lishogi`は解釈した規則が規則セット`lishogi`と一致するかを表す。
 //! `read_validation(path)`は探索なしのファイルだけを受け付け、指した手を持つ全項目を返す。
 //! 価値と訪問回数は0、方策は指した手1つで確率65,535とする。
 //! `read`は探索なしのファイルから局面を返さない。
