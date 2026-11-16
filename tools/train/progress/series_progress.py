@@ -1,10 +1,13 @@
 """学習の系列の測定をCSVに収集し、6パネルの進捗図を作る。
 
 リポジトリの根で次のように実行する。collectはstrength.csvとvalidation.csvを
-上書きし、cycles.csvには触れない。plotは3つのCSVだけを読み、progress.pngを
-上書きする。系列は、サイクル0の初期ネットから続く学習のサイクルの連なりである。
+上書きする。--cycles-recordを渡すと系列の記録からcycles.csvも上書きし、
+渡さない場合はcycles.csvに触れない。記録のパスは実行時の作業ディレクトリからの
+相対パスでも絶対パスでもよく、series.tomlには書かない。すべての入力を検査してから
+CSVを書き込む。plotは3つのCSVだけを読み、progress.pngを上書きする。
+系列は、サイクル0の初期ネットから続く学習のサイクルの連なりである。
 
-    uv run --frozen --project tools/train/progress python tools/train/progress/series_progress.py collect docs/training/<系列名>
+    uv run --frozen --project tools/train/progress python tools/train/progress/series_progress.py collect docs/training/<系列名> [--cycles-record <系列の記録のjsonl>]
     uv run --frozen --project tools/train/progress python tools/train/progress/series_progress.py plot docs/training/<系列名> [--reference docs/training/<参照の系列名>]
 
 series.tomlの最上位の欄はstrengthとvalidationだけで、どちらも表の配列である。
@@ -93,9 +96,9 @@ cycles.csvはサイクル1つを1行とし、サイクルの番号は1から連�
 | 列 | 型 | 意味 |
 | --- | --- | --- |
 | cycle | 整数 | サイクルの番号 |
-| training_positions | 整数 | そのサイクルで学習用に残した局面数。検証用に分ける前の値で、手数の上限に達した対局と、生成し直しで学習から除いた投了の対局の局面を含まず、生成し直した分を含む |
+| training_positions | 整数 | 生成器が学習用のファイルへ書いた訓練局面数で、検証用に分ける前の値。どの対局の局面を含むかは生成器の版で決まる |
 | cumulative_training_positions | 整数 | サイクル1からそのサイクルまでのtraining_positionsの和 |
-| games | 整数 | 対局数。手数の上限に達した対局と、生成し直した分を含む |
+| games | 整数 | 対局数。手数の上限に達した対局を含む |
 | plies | 整数 | 手数の合計。gamesと同じ対局が対象 |
 | draws | 整数 | 規則による引き分けで終わった対局数。手数の上限に達した対局を含まない |
 | max_ply_games | 整数 | 手数の上限に達した対局数 |
@@ -110,13 +113,50 @@ cycles.csvはサイクル1つを1行とし、サイクルの番号は1から連�
 
 学習の診断は、そのサイクルの学習を終えた重みで計算した局面ごとの平均である。
 方策の損失は探索が選んだ手の分布とネットの出力の食い違いを表す。
-生成し直した分は、局面数、対局数、手数、および終わり方の3件数すべてに含める。
 1局の手数と終わり方の割合の分母は、手数の上限に達した対局を含むgamesである。
 分母を定義するため、各サイクルのgamesは1以上を要する。
+
+--cycles-recordで読む記録は、1行を1サイクルのJSONオブジェクトとする。
+各行をrとしたとき、次の対応と順序でcycles.csvの列を作る。
+
+| 列 | 記録の欄 |
+| --- | --- |
+| cycle | r.cycle |
+| training_positions | r.selfplay_summary.training_positions |
+| cumulative_training_positions | サイクル1からのtraining_positionsの累計 |
+| games | r.selfplay_summary.games |
+| plies | r.selfplay_summary.plies |
+| draws | r.selfplay_summary.draws − r.selfplay_summary.draw_reason_max_ply |
+| max_ply_games | r.selfplay_summary.draw_reason_max_ply |
+| resigned_games | r.selfplay_summary.win_reason_resignation |
+| train_policy、train_value_result、train_legal_probability_mass | r.training_summary.diagnostics.latest_training_sampleのpolicy、value_result、legal_probability_mass |
+| validation_policy、validation_value_result、validation_legal_probability_mass | r.training_summary.diagnostics.validationの同じ3つ |
+| setting_lr | r.lr |
+| setting_batch_size | r.training_summary.config.batch_size |
+| setting_momentum | r.training_summary.config.momentum |
+| setting_weight_decay | r.training_summary.config.weight_decay |
+| setting_clip_grad_norm | r.training_summary.config.clip_grad_norm |
+| setting_value_lambda | r.training_summary.config.value_lambda |
+| setting_precision | r.training_summary.config.precision |
+| setting_simulations | r.generation.simulations |
+| setting_target_positions | r.generation.target_positions |
+| setting_start_position | r.generation.start_position |
+| setting_replay_buffer_games | r.replay_buffer_games |
+
+設定の列は、実行器の起動の引数のうち、自己対局の対局の内容または学習の更新を変え、
+サイクルの記録に残るものである。投了の閾値のように実行器がサイクルごとに自動で
+決める値、シード、スレッド数、塊の局数、チェックポイントの間隔は含めない。
+記録から作る設定の列には、空でない文字列または有限の数値を文字列にして入れる。
+真偽値、null、配列、オブジェクトは拒否し、欄の欠落を既定値で埋めない。
+数値はJSONの型と値を保ち、実数はPythonのreprによる往復で同じ値に戻る最短の表記にする。
+整数の列では実数と真偽値を、実数の列では真偽値と非有限の値を拒否する。
 
 collectは、入力の欠落、測定名の欠落・重複、必要な欄の欠落、同じサイクルで
 同じ相手・制限・測定条件の対局の重複、同じ組でのrulesまたはmax_plyの不一致、
 同じサイクルの診断の重複、系列内のdata_sha256の不一致を拒否する。
+系列の記録が空の場合、サイクルの番号が行の順に1から連続しない場合、および
+drawsからdraw_reason_max_plyを引いた値が負になる場合も拒否する。
+記録の件数と診断の範囲は、plotと同じ検査を通さなければならない。
 plotもCSVの型・欠測・件数・重複・条件の整合を検査し、cycleが0でもcycles.csvに
 ある番号でもない対局と診断、および局面数の累計の不一致を拒否する。
 
@@ -169,6 +209,25 @@ CYCLE_COLUMNS = (
     "train_legal_probability_mass", "validation_policy", "validation_value_result",
     "validation_legal_probability_mass",
 )
+CYCLE_RECORD_FIELDS = {
+    "cycle": "cycle",
+    "training_positions": "selfplay_summary.training_positions",
+    "games": "selfplay_summary.games",
+    "plies": "selfplay_summary.plies",
+    "draws": "selfplay_summary.draws",
+    "max_ply_games": "selfplay_summary.draw_reason_max_ply",
+    "resigned_games": "selfplay_summary.win_reason_resignation",
+    **{f"{prefix}_{metric}": f"training_summary.diagnostics.{sample}.{metric}"
+       for prefix, sample in (("train", "latest_training_sample"), ("validation", "validation"))
+       for metric in ("policy", "value_result", "legal_probability_mass")},
+    "setting_lr": "lr",
+    **{f"setting_{name}": f"training_summary.config.{name}"
+       for name in ("batch_size", "momentum", "weight_decay", "clip_grad_norm", "value_lambda", "precision")},
+    **{f"setting_{name}": f"generation.{name}"
+       for name in ("simulations", "target_positions", "start_position")},
+    "setting_replay_buffer_games": "replay_buffer_games",
+}
+CYCLE_SETTING_COLUMNS = tuple(name for name in CYCLE_RECORD_FIELDS if name.startswith("setting_"))
 STRENGTH_COLUMNS = (
     "cycle", "opponent", "opponent_limit", "condition", "rules", "max_ply",
     "run_name", "network_sha256", "attempted_pairs", "valid_pairs", "discarded_pairs",
@@ -451,8 +510,70 @@ def _write_csv(path, columns, rows):
         writer.writerows(rows)
 
 
-def collect(directory: Path, root: Path) -> None:
-    """全入力の検査を終えてから、測定のCSVだけを上書きする。"""
+def _check_cycle(row, where, expected_cycle, total):
+    if row["cycle"] != expected_cycle:
+        _fail(f"{where}: cycle", "サイクルは1から連続する順に並べてください")
+    total += row["training_positions"]
+    if row["cumulative_training_positions"] != total:
+        _fail(f"{where}: cumulative_training_positions", "training_positionsの累計と一致しません")
+    _integer(row["games"], f"{where}: games", 1)
+    for name in ("draws", "max_ply_games", "resigned_games"):
+        if row[name] > row["games"]:
+            _fail(f"{where}: {name}", "対局数を超えています")
+    if sum(row[name] for name in ("draws", "max_ply_games", "resigned_games")) > row["games"]:
+        _fail(f"{where}: draws/max_ply_games/resigned_games", "終わり方の件数の和が対局数を超えています")
+    for name in CYCLE_COLUMNS[8:]:
+        _metric(row[name], f"{where}: {name}", probability=name.endswith("probability_mass"))
+    return total
+
+
+def _read_cycles_record(path):
+    rows = []
+    total = 0
+    line_number = 1
+    try:
+        with path.open(encoding="utf-8") as source:
+            for line_number, line in enumerate(source, 1):
+                where = f"{path}:{line_number}"
+                try:
+                    record = json.loads(line)
+                except ValueError as error:
+                    _fail(f"{where}: JSON", str(error))
+                _object(record, f"{where}: JSON")
+                row = {}
+                for column, field in CYCLE_RECORD_FIELDS.items():
+                    value, label = record, where
+                    for name in field.split("."):
+                        value = _field(value, name, label)
+                        label += f".{name}"
+                    if column.startswith("setting_"):
+                        if isinstance(value, str):
+                            _text(value, label)
+                        else:
+                            _number(value, label)
+                        row[column] = str(value)
+                    else:
+                        if column in CYCLE_COLUMNS[:8]:
+                            _integer(value, label)
+                        else:
+                            _metric(value, label, probability=column.endswith("probability_mass"))
+                        row[column] = value
+                row["draws"] -= row["max_ply_games"]
+                if row["draws"] < 0:
+                    _fail(f"{where}: selfplay_summary.draws/draw_reason_max_ply",
+                          "手数上限による引き分け数が引き分け数を超えています")
+                row["cumulative_training_positions"] = total + row["training_positions"]
+                total = _check_cycle(row, where, line_number, total)
+                rows.append(row)
+    except (OSError, UnicodeError) as error:
+        _fail(f"{path}:{line_number}: JSON", str(error))
+    if not rows:
+        _fail(f"{path}:1: cycle", "記録には1サイクル以上必要です")
+    return rows
+
+
+def collect(directory: Path, root: Path, cycles_record: Path | None = None) -> None:
+    """全入力を検査し、測定のCSVと、記録を指定した場合はcycles.csvを上書きする。"""
     directory, root = Path(directory), Path(root)
     path = directory / "series.toml"
     try:
@@ -482,8 +603,12 @@ def collect(directory: Path, root: Path) -> None:
     _check_validation_series(rows["validation"], f"{path}: validation")
     rows["strength"].sort(key=lambda row: (row["cycle"], *_strength_key(row)))
     rows["validation"].sort(key=lambda row: row["cycle"])
+    if cycles_record is not None:
+        cycles = _read_cycles_record(Path(cycles_record))
     _write_csv(directory / "strength.csv", STRENGTH_COLUMNS, rows["strength"])
     _write_csv(directory / "validation.csv", VALIDATION_COLUMNS, rows["validation"])
+    if cycles_record is not None:
+        _write_csv(directory / "cycles.csv", CYCLE_COLUMNS + CYCLE_SETTING_COLUMNS, cycles)
 
 
 @dataclass
@@ -554,20 +679,7 @@ def read_series(directory: Path) -> Series:
     header, cycles = _read_csv(path, CYCLE_COLUMNS, set(CYCLE_COLUMNS[:8]), set(), set(), settings=True)
     total = 0
     for expected_cycle, row in enumerate(cycles, 1):
-        where = f"{path}:{expected_cycle + 1}"
-        if row["cycle"] != expected_cycle:
-            _fail(f"{where}: cycle", "サイクルは1から連続する順に並べてください")
-        total += row["training_positions"]
-        if row["cumulative_training_positions"] != total:
-            _fail(f"{where}: cumulative_training_positions", "training_positionsの累計と一致しません")
-        _integer(row["games"], f"{where}: games", 1)
-        for name in ("draws", "max_ply_games", "resigned_games"):
-            if row[name] > row["games"]:
-                _fail(f"{where}: {name}", "対局数を超えています")
-        if sum(row[name] for name in ("draws", "max_ply_games", "resigned_games")) > row["games"]:
-            _fail(f"{where}: draws/max_ply_games/resigned_games", "終わり方の件数の和が対局数を超えています")
-        for name in CYCLE_COLUMNS[8:]:
-            _metric(row[name], f"{where}: {name}", probability=name.endswith("probability_mass"))
+        total = _check_cycle(row, f"{path}:{expected_cycle + 1}", expected_cycle, total)
 
     path = directory / "strength.csv"
     _, strength = _read_csv(
@@ -790,13 +902,14 @@ def main():
     commands = parser.add_subparsers(dest="command", required=True)
     collect_parser = commands.add_parser("collect", help="測定からstrength.csvとvalidation.csvを作る")
     collect_parser.add_argument("directory", type=Path)
+    collect_parser.add_argument("--cycles-record", type=Path, help="系列の記録からcycles.csvも作る")
     plot_parser = commands.add_parser("plot", help="3つのCSVからprogress.pngを作る")
     plot_parser.add_argument("directory", type=Path)
     plot_parser.add_argument("--reference", type=Path)
     args = parser.parse_args()
     try:
         if args.command == "collect":
-            collect(args.directory, Path(__file__).resolve().parents[3])
+            collect(args.directory, Path(__file__).resolve().parents[3], args.cycles_record)
         else:
             plot(args.directory, args.reference)
     except (ValueError, OSError) as error:

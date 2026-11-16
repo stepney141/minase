@@ -273,11 +273,14 @@ N=$A/nets/cycles-rl2-az/cycle-0020.onnx
 出力には、対局結果に対する価値の損失`value_result`と、人間が指した手との一致率`policy_agreement`が、全体と手数の帯ごとに記録される。
 これらの値は、同じデータで診断した1回目の学習のネットの結果（[基準の記録](../measurements/zero-validation-games/zero-validation-games-baseline.md)）と並べて読む。
 
+診断のJSONは、2回目の実行の系列のページ`docs/training/alphazero-rl-2/README.md`と一緒にgitで持つので、同じディレクトリの`validation/`へ書き出す。
+
 ```console
+mkdir -p docs/training/alphazero-rl-2/validation
 (cd tools/train/zero && uv run --frozen python -m minase_zero external-eval \
   --checkpoint $A/cycles-rl2-az/cycle-NNNN/train/checkpoint.pt \
   --data $A/validation/zero-validation-games.mnsd \
-  --device cuda --out $A/external/cycles-rl2-az/cycle-NNNN.json)
+  --device cuda --out $PWD/docs/training/alphazero-rl-2/validation/cycle-NNNN.json)
 ```
 
 引き延ばしの兆候は、`alphazero-rl-long-games/`のスクリプトで集計する。
@@ -290,6 +293,26 @@ N=$A/nets/cycles-rl2-az/cycle-0020.onnx
 
 結果は、`docs/measurements/alphazero-rl-2/alphazero-rl-2-progress-cNNNN.md`に記録する（1回目の先例は[30サイクル目の記録](../measurements/alphazero-rl/alphazero-rl-restart-progress-c0030.md)）。
 10サイクル前のネットに対するEloの点推定が2回続けて0以下になったら、設計書の「伸びが止まったとき」の節に従う。
+
+系列を通した推移は、系列のページ`docs/training/alphazero-rl-2/README.md`に置くので、測定記録にはサイクルごとの値の表を書かない（[学習の系列の記録](../training/README.md)）。
+最初の定例の測定では、更新の前に`docs/training/alphazero-rl-2/`へ、空の`series.toml`と、[1回目の系列のページ](../training/alphazero-rl-1/README.md)と同じ節を持つ`README.md`を置く。
+測定記録を書いたら、次の順に系列のページを更新する。
+
+1. 固定の相手との対局を集計スクリプト`summarize.py`で集計した`summary.json`を、測定記録の付随ディレクトリ`docs/measurements/alphazero-rl-2/<測定名>/`に置く。
+2. `series.toml`に、固定の相手との対局1件ごとの`[[strength]]`（サイクルの番号、`summary.json`のパス、測定名、測定条件の名前）と、診断したサイクルごとの`[[validation]]`（サイクルの番号、診断のJSONのパス）を足す。測定条件の名前は、MCTSのコミットと1手のシミュレーション回数を変えない間は同じ名前にし、新しい名前を使い始めたら系列のページの「測定の条件」の節にその意味を書く。
+3. リポジトリの根で、`series.toml`と実行器の系列の記録`$A/cycles-rl2-az.jsonl`から3つのCSVを作り直し、1回目の系列を参照として重ねた進捗図`progress.png`を描く。作業ツリーに`tools/train/progress`のPythonの環境がなければ、先に`uv sync --frozen --project tools/train/progress`で導入する。
+
+   ```console
+   uv run --frozen --project tools/train/progress python tools/train/progress/series_progress.py collect \
+     docs/training/alphazero-rl-2 --cycles-record $A/cycles-rl2-az.jsonl
+   uv run --frozen --project tools/train/progress python tools/train/progress/series_progress.py plot \
+     docs/training/alphazero-rl-2 --reference docs/training/alphazero-rl-1
+   ```
+
+4. 系列のページの「状態」「読み取れること」「費用」の節を上書きし、「測定記録」の節の表に今回の測定記録の行を足す。
+5. `series.toml`、3つのCSV、`progress.png`、`validation/`の診断のJSON、および系列のページを、測定記録と同じコミットに入れる。
+
+`series.toml`の欄、CSVの列、および`--cycles-record`に渡す記録のどの欄からどの列を作るかは、`tools/train/progress/series_progress.py`のdocstringにある。
 
 基準の学習率を下げる前と、到達の判定を行う前には、最新のネットのMCTSとαβ探索を、[棋力測定の手引き](sprt.md)の短時間条件（STC）で対局させる。
 先例は1回目の学習の[サイクル32の対局](../measurements/alphazero-rl/alphazero-rl-restart-stc-c0032.md)であり、`alphazero-rl-restart-stc-c0032/run-stc.sh`を複製して、ネットとシードだけを変えて実行する。
@@ -584,4 +607,6 @@ GPUの枚数の違う機械でも再開できるが、加算の順序が変わ�
 | 学習の出力の欄、損失、抽出、学習率の式、再開 | `tools/train/zero/minase_zero/train.py`のdocstring |
 | 生成の条件、開始局面、塊、投了、教師の記録 | `crates/minase/src/bin/minase/zero_selfplay/`の`mod.rs`、`game.rs`、`output.rs` |
 | 対局用MCTSのUSIオプション（`NnBackend`、`NnCacheDir`、`NnBatchSize`、`PolicyTemperature`） | `crates/minase/src/search/mcts/engine.rs` |
+| 系列のページの置き場と節 | [学習の系列の記録](../training/README.md) |
+| 系列の定義、CSVの列、進捗図の描き方 | `tools/train/progress/series_progress.py`のdocstring |
 | ファイル形式の一覧 | [ファイル形式の手引き](file-formats.md) |

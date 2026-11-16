@@ -58,12 +58,13 @@ AlphaZero型探索の強化学習では、自己対局の生成と学習を1サ�
 ## 道具
 
 CSVと進捗図は、`tools/train/progress/series_progress.py`が作る。
-`collect`は系列の定義が指すファイルを読んでCSVを書き直し、`plot`は系列のディレクトリのCSVだけを読んで`progress.png`を書き直す。
+`collect`は、系列の定義が指すファイルを読んで`strength.csv`と`validation.csv`を書き直し、引数`--cycles-record`で強化学習の実行器の系列の記録を渡したときは`cycles.csv`も書き直す。
+`plot`は系列のディレクトリのCSVだけを読んで`progress.png`を書き直す。
 `plot`がCSVだけを読むので、ネットワーク接続の記憶装置（NAS）のない場所でも図を作り直せる。
 どちらもリポジトリの根で実行する。
 
 ```console
-uv run --frozen --project tools/train/progress python tools/train/progress/series_progress.py collect docs/training/<系列名>
+uv run --frozen --project tools/train/progress python tools/train/progress/series_progress.py collect docs/training/<系列名> [--cycles-record <系列の記録>]
 uv run --frozen --project tools/train/progress python tools/train/progress/series_progress.py plot docs/training/<系列名> [--reference docs/training/<参照の系列名>]
 ```
 

@@ -1,4 +1,4 @@
-"""設計書 training-series-records とフェーズ2指示書の契約を検証する。
+"""設計書 training-series-records とフェーズ2・4指示書の契約を検証する。
 
 収集は列・値・並び順・欠測の保持と入力の拒否を、作図はartistの種類・座標・
 色・透明度を検証する。得点率の境界は0.1と0.9、設定変更の位置は直前の累計を
@@ -47,6 +47,37 @@ CYCLE_COLUMNS = (
     "train_legal_probability_mass", "validation_policy", "validation_value_result",
     "validation_legal_probability_mass",
 )
+
+CYCLE_SETTING_COLUMNS = (
+    "setting_lr", "setting_batch_size", "setting_momentum", "setting_weight_decay",
+    "setting_clip_grad_norm", "setting_value_lambda", "setting_precision",
+    "setting_simulations", "setting_target_positions", "setting_start_position",
+    "setting_replay_buffer_games",
+)
+
+
+def cycle_record(cycle=1):
+    """フェーズ4の対応表に必要な欄を持つ、小さなサイクルの記録を作る。"""
+    return {
+        "cycle": cycle, "lr": 0.04, "replay_buffer_games": 12000,
+        "generation": {"simulations": 800, "target_positions": 100,
+                       "start_position": "initial"},
+        "selfplay_summary": {"training_positions": 120, "games": 10, "plies": 200,
+                             "draws": 5, "draw_reason_max_ply": 2,
+                             "win_reason_resignation": 1},
+        "training_summary": {
+            "config": {"batch_size": 1024, "momentum": 0.9, "weight_decay": 0.0001,
+                       "clip_grad_norm": 5.0, "value_lambda": 0.5, "precision": "bf16"},
+            "diagnostics": {
+                "latest_training_sample": {"policy": 2, "value_result": 0.6,
+                                           "legal_probability_mass": 0.8},
+                "validation": {"policy": 2.2, "value_result": 0.7,
+                               "legal_probability_mass": 0.9},
+                "training_sample": {"policy": 9, "value_result": 8,
+                                    "legal_probability_mass": 0.1},
+            },
+        },
+    }
 
 
 def summary(run_name="run-a"):
@@ -209,6 +240,168 @@ class ProgressTest(unittest.TestCase):
         self.assertEqual(rows, [["0", "b" * 64, "2", "6", "0.7", "0.25", "0.8",
                                  "0.0", "0.7", "0.25", "0.6", "0.5", "", ""]])
         self.assertEqual(cycles.read_bytes(), b"untouched\n")
+
+    def write_cycles_record(self, records):
+        path = self.root / "cycles.jsonl"
+        path.write_text("".join(json.dumps(row) + "\n" for row in records), encoding="utf-8")
+        return path
+
+    def assert_cycle_record_error_preserves_csv(self, path, field, line):
+        previous = {}
+        for name in ("cycles.csv", "strength.csv", "validation.csv"):
+            previous[name] = f"previous {name}\n".encode()
+            (self.series / name).write_bytes(previous[name])
+        with self.assertRaises(ValueError) as caught:
+            progress.collect(self.series, self.root, cycles_record=path)
+        message = str(caught.exception)
+        self.assertIn(str(path), message)
+        self.assertIn(f":{line}", message)
+        self.assertIn(field, message)
+        for name, data in previous.items():
+            self.assertEqual((self.series / name).read_bytes(), data)
+
+    def test_collect_cycles_record_columns_and_values(self):
+        """対応表から手で定めた全列を比較し、累計・引き算・数値表記を守る。"""
+        first, second = cycle_record(), cycle_record(2)
+        second["selfplay_summary"].update(training_positions=80, games=12, plies=300,
+                                           draws=4, draw_reason_max_ply=3,
+                                           win_reason_resignation=2)
+        second["lr"] = 0.02
+        second["training_summary"]["diagnostics"]["latest_training_sample"].update(
+            policy=1.8, value_result=0.4, legal_probability_mass=1.0)
+        second["training_summary"]["diagnostics"]["validation"].update(
+            policy=2.0, value_result=0.5, legal_probability_mass=0.95)
+        path = self.write_cycles_record([first, second])
+        progress.collect(self.series, self.root, cycles_record=path)
+        columns, rows = self.read_csv("cycles.csv")
+        self.assertEqual(columns, list(CYCLE_COLUMNS + CYCLE_SETTING_COLUMNS))
+        settings = ["1024", "0.9", "0.0001", "5.0", "0.5", "bf16", "800", "100",
+                    "initial", "12000"]
+        self.assertEqual(rows, [
+            ["1", "120", "120", "10", "200", "3", "2", "1", "2", "0.6", "0.8",
+             "2.2", "0.7", "0.9", "0.04", *settings],
+            ["2", "80", "200", "12", "300", "1", "3", "2", "1.8", "0.4", "1.0",
+             "2.0", "0.5", "0.95", "0.02", *settings],
+        ])
+        self.assertNotIn(b"\r", (self.series / "cycles.csv").read_bytes())
+        self.assertEqual(len(progress.read_series(self.series).cycles), 2)
+        before = (self.series / "cycles.csv").read_bytes()
+        progress.collect(self.series, self.root, cycles_record=path)
+        self.assertEqual((self.series / "cycles.csv").read_bytes(), before)
+
+    def test_collect_cycles_record_preserves_zero_and_numeric_representation(self):
+        record = cycle_record()
+        record["selfplay_summary"].update(training_positions=0, draws=2)
+        record["training_summary"]["diagnostics"]["latest_training_sample"].update(
+            policy=0.0, value_result=0, legal_probability_mass=0)
+        record["training_summary"]["diagnostics"]["validation"]["legal_probability_mass"] = 1
+        record["lr"] = 1e-9
+        record["generation"]["target_positions"] = 9007199254740993
+        path = self.write_cycles_record([record])
+        progress.collect(self.series, self.root, cycles_record=path)
+        columns, rows = self.read_csv("cycles.csv")
+        row = dict(zip(columns, rows[0], strict=True))
+        self.assertEqual({name: row[name] for name in (
+            "training_positions", "cumulative_training_positions", "draws", "train_policy",
+            "train_value_result", "train_legal_probability_mass", "validation_legal_probability_mass",
+            "setting_lr", "setting_target_positions",
+        )}, {
+            "training_positions": "0", "cumulative_training_positions": "0", "draws": "0",
+            "train_policy": "0.0", "train_value_result": "0", "train_legal_probability_mass": "0",
+            "validation_legal_probability_mass": "1", "setting_lr": "1e-09",
+            "setting_target_positions": "9007199254740993",
+        })
+        progress.read_series(self.series)
+
+    def test_collect_cycles_record_requires_contiguous_cycles(self):
+        for numbers in ((2,), (1, 3), (1, 1), (1, 2, 2)):
+            with self.subTest(cycles=numbers):
+                path = self.write_cycles_record([cycle_record(number) for number in numbers])
+                self.assert_cycle_record_error_preserves_csv(path, "cycle", len(numbers))
+
+    def test_collect_cycles_record_rejects_empty_and_malformed_lines(self):
+        for content, line in (("", 1), ("\n", 1), ("{", 1), ("[]\n", 1),
+                              (json.dumps(cycle_record()) + "\n\n", 2)):
+            with self.subTest(content=content):
+                path = self.root / "cycles.jsonl"
+                path.write_text(content, encoding="utf-8")
+                self.assert_cycle_record_error_preserves_csv(path, "cycle" if content == "" else "", line)
+        path.unlink()
+        self.assert_cycle_record_error_preserves_csv(path, "JSON", 1)
+
+    def test_collect_cycles_record_missing_fields(self):
+        for keys in (("replay_buffer_games",), ("lr",), ("generation", "simulations"),
+                     ("selfplay_summary", "training_positions"),
+                     ("training_summary", "config", "precision"),
+                     ("training_summary", "diagnostics", "latest_training_sample"),
+                     ("training_summary", "diagnostics", "validation", "policy")):
+            with self.subTest(keys=keys):
+                record = cycle_record(2)
+                target = record
+                for key in keys[:-1]:
+                    target = target[key]
+                del target[keys[-1]]
+                path = self.write_cycles_record([cycle_record(), record])
+                self.assert_cycle_record_error_preserves_csv(path, keys[-1], 2)
+
+    def test_collect_cycles_record_rejects_invalid_types_and_ranges(self):
+        cases = [
+            (("cycle",), True), (("cycle",), 1.0),
+            (("selfplay_summary", "training_positions"), 12.0),
+            (("selfplay_summary", "plies"), True),
+            (("selfplay_summary", "training_positions"), -1),
+            (("selfplay_summary", "games"), 0),
+            (("selfplay_summary", "draws"), 1),
+            (("selfplay_summary", "win_reason_resignation"), 6),
+            (("selfplay_summary", "draw_reason_max_ply"), 11),
+            (("training_summary", "diagnostics", "latest_training_sample", "policy"), -0.1),
+            (("training_summary", "diagnostics", "validation", "legal_probability_mass"), 1.01),
+            (("training_summary", "diagnostics", "validation", "legal_probability_mass"), -0.01),
+            (("training_summary", "config"), []),
+            (("training_summary", "config", "batch_size"), None),
+            (("generation", "start_position"), False),
+        ]
+        for value in (True, None, [], {}, "", math.nan, math.inf, -math.inf):
+            cases.append((("lr",), value))
+        for value in (True, None, "0.5", math.nan, math.inf, -math.inf):
+            cases.append((("training_summary", "diagnostics", "validation", "policy"), value))
+        for keys, value in cases:
+            with self.subTest(keys=keys, value=value):
+                record = cycle_record()
+                target = record
+                for key in keys[:-1]:
+                    target = target[key]
+                target[keys[-1]] = value
+                path = self.write_cycles_record([record])
+                # 件数の和の違反は、CSVで対応する終わり方の列を示す。
+                field = "resigned_games" if keys[-1] == "win_reason_resignation" else keys[-1]
+                self.assert_cycle_record_error_preserves_csv(path, field, 1)
+
+    def test_collect_cycles_record_checks_measurements_before_writing(self):
+        path = self.write_cycles_record([cycle_record()])
+        for name in ("cycles.csv", "strength.csv", "validation.csv"):
+            (self.series / name).write_bytes(b"previous\n")
+        del self.diagnosis["diagnostics"]["value_result"]
+        self.write_sources()
+        with self.assertRaisesRegex(ValueError, "diagnostic.json.*value_result"):
+            progress.collect(self.series, self.root, cycles_record=path)
+        for name in ("cycles.csv", "strength.csv", "validation.csv"):
+            self.assertEqual((self.series / name).read_bytes(), b"previous\n")
+
+    def test_collected_cycles_plot_setting_change_at_cycle_start(self):
+        records = [cycle_record(number) for number in (1, 2, 3)]
+        records[2]["lr"] = 0.02
+        path = self.write_cycles_record(records)
+        progress.collect(self.series, self.root, cycles_record=path)
+        figure = progress.build_figure(self.series)
+        for axis in figure.axes:
+            lines = [item for item in axis.lines
+                     if item.get_gid() is not None and item.get_gid().startswith("setting:")]
+            self.assertEqual(len(lines), 1)
+            self.assertEqual(lines[0].get_gid(), "setting:c3")
+            self.assertEqual(list(lines[0].get_xdata()), [0.00024, 0.00024])
+        self.assertEqual([item.get_text() for item in artists(figure, "setting-label:")], ["lr=0.02"])
+        self.assertEqual(progress.plot(self.series).read_bytes()[:8], b"\x89PNG\r\n\x1a\n")
 
     def test_collect_sorts_rows_and_selects_named_run(self):
         records = [summary(name) for name in ("z", "a", "h", "n")]
@@ -668,11 +861,13 @@ class ProgressTest(unittest.TestCase):
         definition = definition.replace('"summary.json"', json.dumps(source_paths[0]))
         definition = definition.replace('"diagnostic.json"', json.dumps(source_paths[1]))
         (self.series / "series.toml").write_text(definition, encoding="utf-8")
-        write_csv(self.series / "cycles.csv", CYCLE_COLUMNS, cycle_rows())
-        result = subprocess.run([sys.executable, "-B", str(script), "collect", str(self.series)],
+        self.write_cycles_record([cycle_record()])
+        result = subprocess.run([sys.executable, "-B", str(script), "collect", str(self.series),
+                                 "--cycles-record", "cycles.jsonl"],
                                 cwd=self.root, text=True, capture_output=True, timeout=30)
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(self.read_csv("strength.csv")[1][0][1], "alphabeta")
+        self.assertEqual(self.read_csv("cycles.csv")[1][0][:3], ["1", "120", "120"])
         (self.series / "series.toml").unlink()
         output = self.series / "progress.png"
         output.write_bytes(b"previous")
