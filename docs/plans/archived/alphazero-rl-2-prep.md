@@ -19,7 +19,7 @@
 フェーズ1の生成器、実行器、学習器、測定のスクリプト、手引き、およびADRの変更は、試験とcodexのレビューを通し、利用者の許可を得てmasterへマージした。
 フェーズ2では、20ブロック256チャネルの初期ネットについて、PyTorch、ONNX RuntimeのCPU、およびTensorRTのFP16の出力が許容誤差の中で一致することを確かめ（[記録](../../measurements/alphazero-rl-2-prep/alphazero-rl-2-prep-random-net-output-check.md)）、その初期ネットをNASの`cycles-rl2/cycle-0000/`に置いた。
 作業機での対局は、1手あたり10ブロック128チャネルの約2.2倍の時間で、GPUのメモリは1 GiB未満で収まり、200ペアの進捗測定は約5.4時間と見込まれる（[記録](../../measurements/alphazero-rl-2-prep/alphazero-rl-2-prep-match-timing.md)）。
-設計判断は、[組み替えた初期配置のADR](../../adr/shuffle-the-first-three-ranks-within-each-rank-for-zero-self-play-start-positions.md)、[系列の基本シードの加算値のADR](../../adr/take-the-zero-series-seed-offset-as-a-required-runner-argument.md)、[リプレイバッファのADR](../../adr/sample-four-times-from-a-zero-replay-buffer-of-ten-times-the-parameter-count-from-cycle-3-after-cycle-13.md)、および[ネットの構成のADR](../../adr/start-the-zero-network-as-a-20-block-256-channel-resnet-with-global-pooling-and-a-32-channel-value-head.md)へ移した。
+設計判断は、[組み替えた初期配置のADR](../../adr/shuffle-the-first-three-ranks-within-each-rank-for-zero-self-play-start-positions.md)、[系列の基本シードの加算値のADR](../../adr/archive/take-the-zero-series-seed-offset-as-a-required-runner-argument.md)、[リプレイバッファのADR](../../adr/archive/sample-four-times-from-a-zero-replay-buffer-of-ten-times-the-parameter-count-from-cycle-3-after-cycle-13.md)、および[ネットの構成のADR](../../adr/archive/start-the-zero-network-as-a-20-block-256-channel-resnet-with-global-pooling-and-a-32-channel-value-head.md)へ移した。
 リプレイバッファのADRは、本文に例外を書き加えずに、新しいADRで置き換えた。承認済みのADRの本文を書き換えない規則（[ADRの書き方](../../adr/README.md)の「不変性」の節）に従ったためである。
 
 ## 目的

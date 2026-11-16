@@ -2,13 +2,13 @@
 
 ## ステータス
 
-承認済み。決定日は2026年11月10日。
+置き換え済み。[AlphaZero型探索の学習は、Lightning FabricのDDPで、GPUの枚数によらず全体のバッチ1,024をミクロバッチ256の勾配累積で学び、BatchNormの移動統計はPyTorchとDDPの既定どおりに更新する](../train-zero-cycles-with-fabric-ddp-over-a-fixed-global-batch-of-1024-and-default-batch-norm-statistics.md)によって置き換えられた。
 
 ## コンテキスト
 
-学習器はGPUを1枚だけ使い、自前の学習ループで再開をバイト単位で保証していた（[再開の方式のADR](archive/resume-zero-training-from-the-update-count-over-a-seeded-permutation.md)）。
+学習器はGPUを1枚だけ使い、自前の学習ループで再開をバイト単位で保証していた（[再開の方式のADR](resume-zero-training-from-the-update-count-over-a-seeded-permutation.md)）。
 エンジンの開発者は、2026年11月9日に学習器をPyTorch Lightningへ移して複数GPUで学ぶと決め、11月10日に全体のバッチをGPUの枚数によらず固定し、GPUが少ない機械では勾配累積で補うと決めた。
-LightningのTrainerは、2.6.6では状態を保存できないローダーでの途中からの再開、標本の並びの分配、およびautocastの範囲の3点で今の保証と食い違う（[複数GPU化の設計書](../plans/archived/alphazero-multi-gpu.md)の「学習器の枠組み」の節）。
+LightningのTrainerは、2.6.6では状態を保存できないローダーでの途中からの再開、標本の並びの分配、およびautocastの範囲の3点で今の保証と食い違う（[複数GPU化の設計書](../../plans/archived/alphazero-multi-gpu.md)の「学習器の枠組み」の節）。
 dlshogiの開発者は、全体のバッチを4,096に固定した2枚のGPUの学習が1枚の0.53倍の時間で同じ損失になったと報告し、GPUごとのバッチを固定して枚数を増やすと損失が上がったと報告している（設計書の「全体のバッチと勾配累積」の節）。
 具体の方式はClaudeが提案し、設計書の承認で決まった。
 
@@ -40,7 +40,7 @@ GPUごとのバッチを256に固定して全体のバッチを枚数ととも�
 どちらも、1枚の勾配累積と同じ移動統計にならないからである。
 
 DDPの既定（`find_unused_parameters=False`）でバケットを組み替えさせる案は採らなかった。
-vast.aiの4枚の機械で、強制終了して再開した学習が、再開した直後の区間から、途中で止めない学習と食い違ったからである（[vast.aiの測定](../measurements/alphazero-multi-gpu/alphazero-multi-gpu-vast.md)）。
+vast.aiの4枚の機械で、強制終了して再開した学習が、再開した直後の区間から、途中で止めない学習と食い違ったからである（[vast.aiの測定](../../measurements/alphazero-multi-gpu/alphazero-multi-gpu-vast.md)）。
 再開したプロセスは、再開した直後の1回だけ組み替える前のバケットで勾配を平均するので、4つの値を足す順序が変わると考えられる（推論）。
 `True`にすると同じ4枚で再開の一致が保たれ、学習の時間の差は塊0の189回の更新で約2%であった。
 

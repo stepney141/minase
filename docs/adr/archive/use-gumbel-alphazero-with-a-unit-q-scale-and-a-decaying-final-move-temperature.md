@@ -2,17 +2,17 @@
 
 ## ステータス
 
-承認済み。決定日は2026年10月31日。
-[Gumbel AlphaZeroをmctxの既定値で行うADR](archive/use-gumbel-alphazero-for-zero-self-play-search.md)を置き換える。
+置き換え済み。[AlphaZero型探索の強化学習の自己対局は、標準の初期局面から始め、最初の30手を根の訪問回数に比例して抽選し、以後はGumbel AlphaZeroの最後の選択で指す](../start-zero-self-play-from-the-initial-position-and-sample-the-first-30-moves-by-root-visit-counts.md)によって置き換えられた。
+[Gumbel AlphaZeroをmctxの既定値で行うADR](use-gumbel-alphazero-for-zero-self-play-search.md)を置き換える。
 
 ## コンテキスト
 
 強化学習（RL）の自己対局は、1手32回の少ない探索で方策の目標を作るため、Gumbel AlphaZero（Danihelka et al., "Policy improvement by planning with Gumbel", ICLR 2022）の探索をDeepMindのmctxのコミット428bfb7に合わせて実装している。
 初版は、completed Q（未訪問の手のQを混合価値で補ったもの）の変換σ(q̂)=(50＋最多訪問回数)×c_scale×q̂の尺度c_scaleをmctxの既定値0.1とし、最後に指す手を選ぶ得点にも候補の抽出と同じGumbel乱数をそのまま足していた。
 2026年10月28日から31日のサイクル1〜37では、方策は改善したが、検証の対局で対局結果に対する価値の損失は、勝敗を常に五分と予測したときの値ln 2（約0.693）をわずかに下回るまでしか下がらなかった。
-[学習効率と強さに効く技法の調査](../research/alphazero-rl-training-efficiency.md)は、mctxの既定値0.1がAtariに使った値であり、論文が囲碁とチェスに使った値は1.0で、Gumbel dlshogiも2025年12月24日に0.1から1.0へ改めたことを確かめた。
+[学習効率と強さに効く技法の調査](../../research/alphazero-rl-training-efficiency.md)は、mctxの既定値0.1がAtariに使った値であり、論文が囲碁とチェスに使った値は1.0で、Gumbel dlshogiも2025年12月24日に0.1から1.0へ改めたことを確かめた。
 同じ調査は、KataGoが指す手の温度を対局の進行とともに下げることも挙げた。
-利用者は2026年10月31日に、この2つを含む9つの技法を1つずつ比べずにまとめて採ると決めた（[学習技法の導入の設計書](../plans/archived/alphazero-restart-techniques.md)）。
+利用者は2026年10月31日に、この2つを含む9つの技法を1つずつ比べずにまとめて採ると決めた（[学習技法の導入の設計書](../../plans/archived/alphazero-restart-techniques.md)）。
 
 ## 決定
 

@@ -40,7 +40,7 @@ minaseの数値は[診断の測定記録](../measurements/adhoc/alphazero-rl-c00
 | 探索回数に差をつけた自己対局 | 未決 |
 | 探索回数の増加 | 設計書へ（[2回目の実行の設計書](../plans/alphazero-rl-2.md)の「伸びが止まったとき」の段階2） |
 | αβとの対局の局面を自己対局の開始局面にする | 不採用（2026年11月9日の利用者の決定。[自己対局の分布の提案](alphazero-selfplay-distribution.md)の「起案の前に決めたこと」の節） |
-| 10b128cで局面を増やす間に15b192cを同じ教師で並行して学ぶ | 不採用（2026年11月9日の利用者の決定。サイクル0からやり直す2回目の学習は最初から20b256cで始め、ネットを大きくする段階を持たない。[ネットの構成のADR](../adr/start-the-zero-network-as-a-20-block-256-channel-resnet-with-global-pooling-and-a-32-channel-value-head.md)） |
+| 10b128cで局面を増やす間に15b192cを同じ教師で並行して学ぶ | 不採用（2026年11月9日の利用者の決定。サイクル0からやり直す2回目の学習は最初から20b256cで始め、ネットを大きくする段階を持たない。[ネットの構成のADR](../adr/archive/start-the-zero-network-as-a-20-block-256-channel-resnet-with-global-pooling-and-a-32-channel-value-head.md)） |
 | 入力に駒の損得と駒数の面を足す | 不採用（2026年11月13日の利用者の決定。効果の報告は人間の棋譜で教師あり学習したチェスの1件に限られ、[価値の調査](../research/alphazero-strength-gap/value-bias.md)でも「ネットが駒の損得を追えない」という仮説が否定されたので、2回目の学習の入力は[入力のADR](../adr/encode-zero-network-inputs-as-159-planes-with-pseudo-control-from-the-side-to-move.md)の159面のままとする） |
 | リプレイバッファをKataGoの式で決める分岐を本線と並べて回す | 未決 |
 

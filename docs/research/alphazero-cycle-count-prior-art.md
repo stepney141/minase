@@ -6,7 +6,7 @@
 囲碁はAlphaGo Zero、ELF OpenGo、KataGo、Leela Zero、およびMinigo、チェスとその変種はlc0（Leela Chess Zero）、CrazyAra、およびMultiAra、将棋はdlshogi、Gumbel dlshogi、AobaZero、および技巧である。
 これらに加えて、小さなゲームでサイクルの刻みを変えた研究を調べた。
 先行実装の総局数と到達した強さは[規模の調査](alphazero-strength-gap/scale.md)が扱っているので、本書はサイクルの回数と大きさ、および止め方に絞る。
-本プロジェクトの中将棋エンジンminaseにおけるサイクルの定義は、2026年11月16日の時点の[強化学習の2回目の実行の設計書](../plans/alphazero-rl-2.md)と[学習レシピを先行実装に揃える設計書](../plans/zero-recipe-precedents.md)に拠る。
+本プロジェクトの中将棋エンジンminaseにおけるサイクルの定義は、2026年11月16日の時点の[強化学習の2回目の実行の設計書](../plans/alphazero-rl-2.md)と[学習レシピを先行実装に揃える設計書](../plans/archived/zero-recipe-precedents.md)に拠る。
 調査日は2026年11月16日である。
 
 本書で使う語は次のとおりである。

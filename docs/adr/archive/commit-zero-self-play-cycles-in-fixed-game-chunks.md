@@ -2,7 +2,7 @@
 
 ## ステータス
 
-置き換え済み。[AlphaZero型探索の自己対局は、対局数で決めた塊ごとに確定させ、訓練局面数が目標に届いた最初の塊まででサイクルを締める](../commit-zero-self-play-in-fixed-game-chunks-up-to-the-first-prefix-reaching-the-target-positions.md)によって置き換えられた。
+置き換え済み。[AlphaZero型探索の自己対局は、対局数で決めた塊ごとに確定させ、訓練局面数が目標に届いた最初の塊まででサイクルを締める](commit-zero-self-play-in-fixed-game-chunks-up-to-the-first-prefix-reaching-the-target-positions.md)によって置き換えられた。
 
 ## コンテキスト
 

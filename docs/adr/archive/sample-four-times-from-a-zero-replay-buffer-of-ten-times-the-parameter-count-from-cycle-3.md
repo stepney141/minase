@@ -2,7 +2,7 @@
 
 ## ステータス
 
-置き換え済み。[AlphaZero型探索の学習は、訓練局面の合計がパラメータ数の10倍に届くまでの直近のサイクルをリプレイバッファとし、最古のサイクルをサイクル13までの学習では1、サイクル14からの学習では3として、生成量の4倍の標本を一様に抽出して学ぶ](../sample-four-times-from-a-zero-replay-buffer-of-ten-times-the-parameter-count-from-cycle-3-after-cycle-13.md)によって置き換えられた。
+置き換え済み。[AlphaZero型探索の学習は、訓練局面の合計がパラメータ数の10倍に届くまでの直近のサイクルをリプレイバッファとし、最古のサイクルをサイクル13までの学習では1、サイクル14からの学習では3として、生成量の4倍の標本を一様に抽出して学ぶ](sample-four-times-from-a-zero-replay-buffer-of-ten-times-the-parameter-count-from-cycle-3-after-cycle-13.md)によって置き換えられた。
 
 ## コンテキスト
 

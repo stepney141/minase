@@ -2,7 +2,7 @@
 
 ## ステータス
 
-置き換え済み。[AlphaZero型探索のネットは、大域プーリングを入れたResNetとし、最初から20ブロック256チャネルと32チャネルの価値ヘッドで学習し、学習用の補助ヘッドを持たせる](../start-the-zero-network-as-a-20-block-256-channel-resnet-with-global-pooling-and-a-32-channel-value-head.md)によって置き換えられた。
+置き換え済み。[AlphaZero型探索のネットは、大域プーリングを入れたResNetとし、最初から20ブロック256チャネルと32チャネルの価値ヘッドで学習し、学習用の補助ヘッドを持たせる](start-the-zero-network-as-a-20-block-256-channel-resnet-with-global-pooling-and-a-32-channel-value-head.md)によって置き換えられた。
 [10ブロック128チャネルのResNetのADR](start-the-zero-network-as-a-10-block-128-channel-resnet-with-global-pooling.md)を置き換える。
 
 ## コンテキスト
@@ -19,7 +19,7 @@ dlshogiの価値ヘッドは、チャネルを広げた1×1畳み込みの後に
 ネットは、入力の159面に対する3×3畳み込みと、それに続く残差ブロックの列からなるResNetとし、各残差ブロックに大域プーリングを入れる。
 方策ヘッドは、移動元の升ごとに249種類の移動を割り当てる249チャネルの1×1畳み込みとする（[方策のADR](../encode-the-zero-policy-as-249-planes-per-from-square.md)）。
 価値ヘッドは、32チャネルの1×1畳み込み、バッチ正規化、ReLU、全結合4,608→256、ReLU、全結合256→4とし、1つ目の出力を主の価値、残りの3つを短期の価値の補助の出力とする。
-方策には、主の方策ヘッドと同じ形の補助ヘッドを3つ足し、自手のソフト方策、相手の次の手、および相手の次の手のソフト方策を学ばせる（[補助目標のADR](../train-the-zero-network-on-katago-auxiliary-targets.md)）。
+方策には、主の方策ヘッドと同じ形の補助ヘッドを3つ足し、自手のソフト方策、相手の次の手、および相手の次の手のソフト方策を学ばせる（[補助目標のADR](train-the-zero-network-on-katago-auxiliary-targets.md)）。
 補助の出力と補助ヘッドは学習だけに使い、ONNXには今までどおり方策と主の価値だけを書き出す。
 大きさの初期値は10ブロック128チャネルとし、パラメータ数は補助ヘッドを含めて4,780,200である。
 ONNXの入力の名前は`input`（形`[バッチ, 159, 12, 12]`）、出力の名前は`policy`（形`[バッチ, 35856]`）と`value`（形`[バッチ, 1]`）とし、いずれも単精度とする。

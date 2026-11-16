@@ -257,7 +257,7 @@ GPU 0のプロセスは、最終の重みの診断に使う局面も保持する
 
 メモリの合計は、プロセス数倍にはならないが、1枚のときと同じにもならない。
 リプレイバッファの訓練局面の数Tが抽出数Sより少ないサイクルでは、局面の順列を複数回つないで抽出の列を作るので、同じ局面が複数のGPUに保持される。
-1サイクルの抽出数Sは、そのサイクルで生成した訓練局面の数の4倍であり（[リプレイバッファのADR](../../adr/sample-four-times-from-a-zero-replay-buffer-of-ten-times-the-parameter-count-from-cycle-3-after-cycle-13.md)）、リプレイバッファがそのサイクルだけの最初のサイクルではS = 4Tになる。
+1サイクルの抽出数Sは、そのサイクルで生成した訓練局面の数の4倍であり（[リプレイバッファのADR](../../adr/archive/sample-four-times-from-a-zero-replay-buffer-of-ten-times-the-parameter-count-from-cycle-3-after-cycle-13.md)）、リプレイバッファがそのサイクルだけの最初のサイクルではS = 4Tになる。
 端数を除いて概算すると、各局面を4回抽出するこのサイクルでは、4枚で保持する訓練局面の合計は、重複を除いた全体の約2.73倍（4×(1−(3/4)⁴)）になり、S = 2Tでは約1.75倍（4×(1−(3/4)²)）になる（推論）。
 T ≥ Sのサイクルでは、抽出による重複はない。
 これとは別に、GPU 0のプロセスは、ほかのGPUの取り分と重なる診断の局面を保持する。
@@ -280,9 +280,9 @@ T ≥ Sのサイクルでは、抽出による重複はない。
 
 ### 自己対局の生成器
 
-今の生成器は、1つのプロセスの中で複数の探索のスレッドを動かし、スレッドごとに推論器を1つ持ち、対局番号を全スレッドで共有する原子的なカウンタから取る（[葉をまとめて推論するADR](../../adr/batch-zero-self-play-leaves-across-many-games.md)）。
+今の生成器は、1つのプロセスの中で複数の探索のスレッドを動かし、スレッドごとに推論器を1つ持ち、対局番号を全スレッドで共有する原子的なカウンタから取る（[葉をまとめて推論するADR](../../adr/archive/batch-zero-self-play-leaves-across-many-games.md)）。
 対局は、決まった数の対局ずつの塊にまとめて確定する。
-塊の確定、生成を止める規則、および再開は、このカウンタと出力先の塊のファイルだけで決まる（[塊の確定のADR](../../adr/commit-zero-self-play-in-fixed-game-chunks-up-to-the-first-prefix-reaching-the-target-positions.md)）。
+塊の確定、生成を止める規則、および再開は、このカウンタと出力先の塊のファイルだけで決まる（[塊の確定のADR](../../adr/archive/commit-zero-self-play-in-fixed-game-chunks-up-to-the-first-prefix-reaching-the-target-positions.md)）。
 本書は、スレッドtの推論器をGPU t mod Nに置くだけにとどめ、塊、停止、再開、およびシードの規則を変えない。
 対局のシードは基本シードと対局番号から導く（`crates/minase/src/bin/minase/zero_selfplay/game.rs` 109〜110行）ので、同じ基本シードと対局番号の対局は、Nによらず同じシードを使う。
 着手まで同じになるとは限らない。推論のバッチの組み方がNで変わり、FP16の推論の丸めが変わり得るからである（推論）。

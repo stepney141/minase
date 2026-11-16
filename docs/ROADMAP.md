@@ -68,7 +68,7 @@
 | 対局用MCTSを全部の規則コードで探索できるようにする | [plans/archived/mcts-rule-codes.md](plans/archived/mcts-rule-codes.md) | 完了（採用） | 2026年11月13日 |
 | AlphaZero型探索の強さを測る固定の相手 | [plans/archived/mcts-fixed-opponents.md](plans/archived/mcts-fixed-opponents.md) | 完了（採用） | 2026年11月14日 |
 | AlphaZero型探索のネットを診断する固定の検証用データ | [plans/archived/zero-validation-games.md](plans/archived/zero-validation-games.md) | 完了（採用） | 2026年11月15日 |
-| AlphaZero型探索の学習レシピを先行実装に揃える | [plans/zero-recipe-precedents.md](plans/zero-recipe-precedents.md) | 着手 | |
+| AlphaZero型探索の学習レシピを先行実装に揃える | [plans/archived/zero-recipe-precedents.md](plans/archived/zero-recipe-precedents.md) | 完了（採用） | 2026年11月16日 |
 | 対局用MCTSのPUCTの係数と方策の温度のSPSAによる調整 | [plans/mcts-puct-spsa.md](plans/mcts-puct-spsa.md) | 起案 | |
 | 学習の系列の記録と進捗図 | [plans/training-series-records.md](plans/training-series-records.md) | 待機中 | |
 | AlphaZero型探索の学習と自己対局生成の複数GPU化 | [plans/archived/alphazero-multi-gpu.md](plans/archived/alphazero-multi-gpu.md) | 完了（採用） | 2026年11月11日 |
@@ -219,14 +219,14 @@ NNUEの作業の本線は、NNUEに関わる実装をすべて直し、自玉の
 2回目の実行は、[2回目の実行の設計書](plans/alphazero-rl-2.md)で進める。
 この設計書は、自己対局の規則の`lishogi`への切り替え、定例の測定のスクリプトの用意、3サイクルの試走、機械の選択、およびサイクルの実行を扱い、起案の段階で利用者の承認を待っている。
 2026年11月13日にこの設計書から分けた3本の準備、[対局用MCTSの規則コードへの対応](plans/archived/mcts-rule-codes.md)、[強さを測る固定の相手](plans/archived/mcts-fixed-opponents.md)、および[固定の検証用データ](plans/archived/zero-validation-games.md)は完了している。
-残る前提は、[学習レシピを先行実装に揃える設計書](plans/zero-recipe-precedents.md)である。
-この設計書は、学習の設定のうちminaseが独自に決めた値と組合せ（毎サイクルの学習率の下げ直し、序盤の一様な乱択、探索回数の乱択とGumbel AlphaZeroの組合せ、パラメータ数で決めるリプレイバッファ、固定の閾値の投了など）をチェスと将棋のエンジンの方法に置き換え、補助目標を外し、胴体とヘッドをAlphaZeroの形にした新しい初期ネットを作る（2026年11月15日の利用者の決定）。
-2026年11月16日に利用者の指示で着手し、生成器、学習器、および実行器の変更を進めている。
+前提のうち最後に残った[学習レシピを先行実装に揃える設計書](plans/archived/zero-recipe-precedents.md)は、2026年11月16日に完了した。
+学習の設定のうちminaseが独自に決めた値と組合せをチェスと将棋のエンジンの方法に置き換え、補助目標を外し、胴体とヘッドをAlphaZeroの形にした新しい初期ネットを、NASの系列`cycles-rl2-az`の`cycle-0000/`に置いた。
+次は、2回目の実行の設計書のフェーズ1（規則の`lishogi`への切り替えと定例の測定の用意）である。
 
 次の3件は、2回目の実行と独立に進められる。
 
 - [対局用MCTSのPUCTの係数と方策の温度のSPSAによる調整](plans/mcts-puct-spsa.md)は起案の段階で、利用者の承認を待っている。道具の変更はすぐに始められるが、本番の調整は、2回目の実行のネットのうち利用者が指定するものを使う。自己対局の探索はPUCTの係数を使わず、定例の測定はサイクル1を始めたときのバイナリに固定するので、調整しても2回目の学習の途中で条件が変わることはない。
-- [学習の系列の記録と進捗図](plans/training-series-records.md)は待機中である。系列ごとの記録の置き場[docs/training/](training/README.md)と、固定の相手に対する強さ、損失、および自己対局の性質を1枚の進捗図にする道具`series_progress.py`はできており、1回目の強化学習の系列のページを`docs/training/alphazero-rl-1/`に作った。残る実行器の系列の記録からの収集は、学習レシピを先行実装に揃える設計書が記録の欄を改めた後に行い、2回目の実行の最初の定例の測定までに要る。
+- [学習の系列の記録と進捗図](plans/training-series-records.md)は待機中である。系列ごとの記録の置き場[docs/training/](training/README.md)と、固定の相手に対する強さ、損失、および自己対局の性質を1枚の進捗図にする道具`series_progress.py`はできており、1回目の強化学習の系列のページを`docs/training/alphazero-rl-1/`に作った。残る実行器の系列の記録からの収集は、学習レシピを先行実装に揃える設計書が記録の欄を改めたので着手でき、2回目の実行の最初の定例の測定までに要る。
 - 2回目の実行と[NNUEの世代反復のやり直し](plans/nnue-generation-iteration.md)は、借りる計算機が競合しないので並行して進め、作業機での対局の測定だけを重ならないように順番を調整する。世代反復の着手は、NNUEの外部ファイル化とtatara化の完了の後である。どちらも、自己対局とネットの強さを測る対局を規則セット`lishogi`で行う（2026年11月13日の利用者の決定、[統括計画](plans/alphazero.md)の「自己対局と測定の規則」の節）。2回目の実行のHaChuとの対局だけは、HaChuの規則で行う。
 
 NNUEの[外部ファイル化](plans/nnue-external-network-file.md)を含む版のPV-MCTSのエンジンは、勝率尺度をUSIのオプション`NnCpPerLogit`で受け取るので、2回目の実行、学習レシピの設計書、およびPUCTの係数の調整でその版を使うときに限り、この値を渡す。統括計画の到達の判定では、比べるαβ探索のNNUEのネットを`EvalFile`で渡し、そのSHA-256を記録する。強さを測る相手のαβ探索は、ネットを埋め込んだコミット`45d5db54`に固定されているので、NNUEの変更の影響を受けない。PUCTの係数の調整と外部ファイル化はどちらも`minase spsa`を変えるので、後からmasterへ入れる側が先に入った変更に合わせる。

@@ -2,7 +2,7 @@
 
 ## ステータス
 
-置き換え済み。[AlphaZero型探索の学習率は、全体のバッチ1,024に対して基準を0.04とし、ランダム初期化から200万標本の間は線形に上げ、各サイクルの中ではcosine annealingで下げる](../warm-up-the-zero-learning-rate-from-a-base-of-0-04-for-a-global-batch-of-1024.md)によって置き換えられた。
+置き換え済み。[AlphaZero型探索の学習率は、全体のバッチ1,024に対して基準を0.04とし、ランダム初期化から200万標本の間は線形に上げ、各サイクルの中ではcosine annealingで下げる](warm-up-the-zero-learning-rate-from-a-base-of-0-04-for-a-global-batch-of-1024.md)によって置き換えられた。
 
 ## コンテキスト
 

@@ -154,7 +154,7 @@ AobaZeroの利きは、遮る駒の一部を貫通する。
 
 総手数の面は、引き分けになる手数で割った値を全升に書く（同738〜756行）。
 引き分けの手数が短く設定された対局では、その手数が近づくと値をシグモイドで急に大きくする。
-AobaZeroは、手数の上限に達した対局を引き分けとして学習データに保存する（[手数の上限のADR](../adr/discard-zero-self-play-games-that-reach-3000-plies.md)の「コンテキスト」の節）。
+AobaZeroは、手数の上限に達した対局を引き分けとして学習データに保存する（[手数の上限のADR](../adr/archive/discard-zero-self-play-games-that-reach-3000-plies.md)の「コンテキスト」の節）。
 
 ### CrazyAraとCzech et al.
 

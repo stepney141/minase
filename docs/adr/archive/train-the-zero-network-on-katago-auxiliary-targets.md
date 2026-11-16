@@ -2,13 +2,13 @@
 
 ## ステータス
 
-承認済み。決定日は2026年10月31日。
+置き換え済み。[AlphaZero型探索の学習器は、方策と価値の損失を重み1で足して学び、補助目標を持たない](../train-the-zero-network-on-the-policy-and-value-losses-without-auxiliary-targets.md)によって置き換えられた。
 
 ## コンテキスト
 
 強化学習のリセット前のサイクル1〜37では、検証の対局で対局結果に対する価値の損失がln 2をわずかに下回るまでしか下がらなかった。
 勝敗の教師は対局全体で1つなので、価値ヘッドが学べる独立な信号は少ない。
-KataGoは、将来の局面の価値の指数平均を予測する短期の価値の目標（TD目標）、相手の次の手の予測、および方策の目標を平らにしたソフト方策の目標を補助として学び、学習を速めたと報告している（Wu, "Accelerating Self-Play Learning in Go", arXiv:1902.10565、および[調査](../research/alphazero-rl-training-efficiency.md)の「補助目標」の節）。
+KataGoは、将来の局面の価値の指数平均を予測する短期の価値の目標（TD目標）、相手の次の手の予測、および方策の目標を平らにしたソフト方策の目標を補助として学び、学習を速めたと報告している（Wu, "Accelerating Self-Play Learning in Go", arXiv:1902.10565、および[調査](../../research/alphazero-rl-training-efficiency.md)の「補助目標」の節）。
 利用者は2026年10月31日に、これらを含む9つの技法をまとめて採ると決めた。
 
 ## 決定

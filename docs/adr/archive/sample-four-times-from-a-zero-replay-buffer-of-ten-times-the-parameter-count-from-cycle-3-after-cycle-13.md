@@ -2,17 +2,17 @@
 
 ## ステータス
 
-承認済み。決定日は2026年11月10日。
-[サイクル3以後のリプレイバッファのADR](archive/sample-four-times-from-a-zero-replay-buffer-of-ten-times-the-parameter-count-from-cycle-3.md)を置き換える。
+置き換え済み。[AlphaZero型探索の学習は、終わった対局の合計が150万局を超えない直近のサイクルをリプレイバッファとし、各サイクルで新しく生成した訓練局面と同じ数を局面ごとに一様に抽出して学ぶ](../sample-as-many-positions-as-generated-from-a-zero-replay-buffer-of-the-latest-1-5-million-games.md)によって置き換えられた。
+[サイクル3以後のリプレイバッファのADR](sample-four-times-from-a-zero-replay-buffer-of-ten-times-the-parameter-count-from-cycle-3.md)を置き換える。
 
 ## コンテキスト
 
 置き換えたADRは、2026年11月1日に、強化学習の1回目のサイクル14の学習から、ほぼ乱択の対局からなるサイクル1と2をリプレイバッファから外し、リプレイバッファに含める最古のサイクルを3にすると決めた。
 1回目のサイクル13までの学習のリプレイバッファはサイクル1から始まっており、外すことは10サイクル目の進捗測定の後に決めた。
 2回目の学習は、ランダムに初期化した20ブロック256チャネルのネットから始めるので、サイクル1と2は再びランダムに近いネットの対局になると見込まれる。
-[2回目の実行の設計書](../plans/alphazero-rl-2.md)は、起案の時点で定めた規則を学習の途中で変えずに進めるので、1回目と同じ切り替えを最初から規則として定める。
+[2回目の実行の設計書](../../plans/alphazero-rl-2.md)は、起案の時点で定めた規則を学習の途中で変えずに進めるので、1回目と同じ切り替えを最初から規則として定める。
 最初から最古のサイクルを3にすると、サイクル3の学習のリプレイバッファはサイクル3だけになる。
-1回目の学習より前の、学習率が一定のままだった学習では、直近1サイクルだけのリプレイバッファで価値の過学習が起き、学習に使っていない対局での価値の損失が、勝敗を常に五分と予測したときの値を毎サイクル上回った（[学習の局面の選び方の調査](../research/alphazero-training-sample-selection.md)）。
+1回目の学習より前の、学習率が一定のままだった学習では、直近1サイクルだけのリプレイバッファで価値の過学習が起き、学習に使っていない対局での価値の損失が、勝敗を常に五分と予測したときの値を毎サイクル上回った（[学習の局面の選び方の調査](../../research/alphazero-training-sample-selection.md)）。
 
 ## 決定
 
@@ -44,4 +44,4 @@ KataGoの式のリプレイバッファは、サイクル3〜10の時点で1〜2
 1回目の学習の記録は置き換えたADRの規則のままであり、書き換えない。
 リプレイバッファが上限に届くサイクル280前後までは、サイクル3からの全サイクルのファイルがリプレイバッファに入り、ファイル名を1つのコマンドの引数に並べるとLinuxの1引数の上限を超えるので、実行器はファイル名の一覧を、引数ではなくファイルで学習器へ渡す。
 実装は`tools/train/zero/minase_zero/runner.py`の`replay_buffer`にある。
-学習率の予定は[学習率の予定のADR](archive/warm-up-the-zero-learning-rate-and-anneal-it-within-each-cycle-without-comparing-a-constant-rate.md)が定める。
+学習率の予定は[学習率の予定のADR](warm-up-the-zero-learning-rate-and-anneal-it-within-each-cycle-without-comparing-a-constant-rate.md)が定める。

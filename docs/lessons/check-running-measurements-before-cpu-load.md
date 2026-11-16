@@ -7,6 +7,7 @@
 LTC側の時間切れとエンジン異常は0件だった。
 2026年10月6日には、秒読みつき条件のGSPRT（`byoyomi-a-short`、同時対局数16）の実行中に、`nice -n 19`と`CARGO_BUILD_JOBS=2`、検査の並列数2でビルドと全件の検査を繰り返した。
 検査には4スレッドで探索する実時間の検査が含まれ、負荷平均は20コアに対して23まで上がり、締切の余裕が30 msしかない候補に時間切れが7件出て、測定は採否に使えなくなった。
+2026年11月16日には、同時対局数8の持ち時間つきの対局の測定の間に、AlphaZero型探索の自己対局の生成器を`--threads 2`、推論をONNX RuntimeのCPUで動かしたところ、生成の約50秒の間に約12コアを使った。
 
 ## 原因
 
@@ -17,9 +18,11 @@ LTC側の時間切れとエンジン異常は0件だった。
 ## 以後の規則
 
 測定機でCPUを多く使う処理（ビルド、模擬実験、bench、学習）を始める前に`pgrep -af '[m]inase (match run|spsa)|[m]atch_runner|[s]psa_runner'`で進行中の測定を確かめ（補助ツールは実行ファイル`minase`のサブコマンドとして動くので、プロセス名ではなく引数で探す。境界より前のコミットのrunnerは旧名で動く）、走っていれば処理のスレッド数を「物理コア数−同時対局数−1」以内に抑えるか、測定の終了を待つ。スレッド数は、ビルドの並列数と、検査が内部で起動する探索のスレッド数を足して数え、`nice`で抑えたとはみなさない。締切の余裕が小さい時間制御の採否測定の間は、ビルドと全件の検査を走らせない。
+ONNX RuntimeのCPUの推論は、呼び出し側のスレッド数とは別に演算の内部で複数のスレッドを使うので、CPUで推論する処理は`taskset`で使うコアを限ってから起動する。
 
 ## 出典
 
 - [measurements/spsa-gain-calibration/spsa-gain-simulation.md](../measurements/spsa-gain-calibration/spsa-gain-simulation.md)
 - [measurements/spsa/spsa-stage9-20260923-ltc.md](../measurements/spsa/spsa-stage9-20260923-ltc.md)
 - [measurements/byoyomi-time-usage/byoyomi-a-short.md](../measurements/byoyomi-time-usage/byoyomi-a-short.md)
+- [measurements/zero-recipe-precedents/zero-recipe-precedents-phase2-workstation-selfplay.md](../measurements/zero-recipe-precedents/zero-recipe-precedents-phase2-workstation-selfplay.md)

@@ -8,8 +8,8 @@
 
 強化学習の1サイクルは自己対局の生成と学習からなり、2回目の学習の20ブロック256チャネルのネットでは、ColabのG4で生成が約34分、学習が約19分と見込まれている（[2回目の実行の設計書](../plans/alphazero-rl-2.md)の「費用」の節）。
 GPUを複数持つ機械を借りて1サイクルの料金を下げるには、学習だけでなく生成も全部のGPUを使う必要がある（[複数GPU化の設計書](../plans/archived/alphazero-multi-gpu.md)の「目的」の節）。
-生成器は1つのプロセスの中で複数の探索のスレッドを動かし、スレッドごとに推論器を1つ持ち、対局番号を全スレッドで共有するカウンタから取る（[葉をまとめて推論するADR](batch-zero-self-play-leaves-across-many-games.md)）。
-塊の確定、生成を止める規則、および再開は、このカウンタと出力先の塊のファイルだけで決まる（[塊の確定のADR](commit-zero-self-play-in-fixed-game-chunks-up-to-the-first-prefix-reaching-the-target-positions.md)）。
+生成器は1つのプロセスの中で複数の探索のスレッドを動かし、スレッドごとに推論器を1つ持ち、対局番号を全スレッドで共有するカウンタから取る（[葉をまとめて推論するADR](archive/batch-zero-self-play-leaves-across-many-games.md)）。
+塊の確定、生成を止める規則、および再開は、このカウンタと出力先の塊のファイルだけで決まる（[塊の確定のADR](archive/commit-zero-self-play-in-fixed-game-chunks-up-to-the-first-prefix-reaching-the-target-positions.md)）。
 
 TensorRTの実行プロバイダは、GPUの機種名とメモリの容量をキャッシュの鍵に入れ、作ったエンジンを再利用する。
 `nvidia-smi`は`CUDA_VISIBLE_DEVICES`を無視し、ONNX Runtimeはこれに従うので、この変数を設定すると両者が見るGPUが食い違い得る。

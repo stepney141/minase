@@ -2,17 +2,17 @@
 
 ## ステータス
 
-承認済み。決定日は2026年11月10日。
+置き換え済み。[AlphaZero型探索の学習率は、ランダム初期化から250回の更新の間だけ線形に上げてサイクルの中では一定に保ち、伸びが止まったら0.04から1/10ずつ下げる](../keep-the-zero-learning-rate-constant-after-a-250-update-warmup-and-cut-it-tenfold-on-stalls.md)によって置き換えられた。
 
 ## コンテキスト
 
-[前のADR](archive/warm-up-the-zero-learning-rate-and-anneal-it-within-each-cycle-without-comparing-a-constant-rate.md)は、バッチ256で基準の学習率0.01に、ランダム初期化からのウォームアップとサイクル内のcosine annealingを掛けるとし、一定の学習率とは比べないとした。
+[前のADR](warm-up-the-zero-learning-rate-and-anneal-it-within-each-cycle-without-comparing-a-constant-rate.md)は、バッチ256で基準の学習率0.01に、ランダム初期化からのウォームアップとサイクル内のcosine annealingを掛けるとし、一定の学習率とは比べないとした。
 [学習器のDDPのADR](train-zero-cycles-with-fabric-ddp-over-a-fixed-global-batch-of-1024.md)により、1回の更新の局面の数（全体のバッチ）は1,024になり、1サイクルの約400万標本に対する更新の回数は約15,600回から約3,900回へ4分の1になった。
 Goyalらは、モーメンタムつきのSGDで、バッチをk倍にしたら学習率もk倍にし、学習の初めにウォームアップを置く規則（線形スケーリング則）で、バッチ8,192までのImageNetの学習をバッチ256とほぼ同じ精度で再現した（arXiv:1706.02677）。
 AlphaZeroは全体のバッチ4,096で学習率0.2から始めており、バッチ256あたりに直すと0.0125である（Silverら、2018年）。
 
-[複数GPU化の設計書](../plans/archived/alphazero-multi-gpu.md)の計画に従い、全体のバッチ256・学習率0.01と1,024・0.04を、同じ初期ネット、同じ教師データ（1回目の学習のサイクル32の生成データ）、同じ抽出のシード、GPU 1枚で1サイクルずつ学ばせた。
-そのうえで、学習に使っていない440局の価値と方策の損失の差を、対局単位の対応のあるブートストラップで比べた（[vast.aiの測定](../measurements/alphazero-multi-gpu/alphazero-multi-gpu-vast.md)）。
+[複数GPU化の設計書](../../plans/archived/alphazero-multi-gpu.md)の計画に従い、全体のバッチ256・学習率0.01と1,024・0.04を、同じ初期ネット、同じ教師データ（1回目の学習のサイクル32の生成データ）、同じ抽出のシード、GPU 1枚で1サイクルずつ学ばせた。
+そのうえで、学習に使っていない440局の価値と方策の損失の差を、対局単位の対応のあるブートストラップで比べた（[vast.aiの測定](../../measurements/alphazero-multi-gpu/alphazero-multi-gpu-vast.md)）。
 方策の損失の差（1,024−256）は−0.0063（95%区間−0.0119〜−0.0007）で1,024が良く、価値の損失の差は+0.0012（95%区間−0.0008〜+0.0033）で、設計書の規則では判定できなかった。
 エンジンの開発者は、この結果を見て、2026年11月10日に1,024のまま進めると決めた。
 基準を全体のバッチに比例させる方式はClaudeが提案し、設計書の承認で決まった。
@@ -42,5 +42,5 @@ sはチェックポイントに記録してサイクルをまたいで引き継�
 
 線形スケーリング則は、更新の列が厳密に等しくなることを保証しない近似であり、上の比較は1サイクルの初期の学習の確認であって、長い学習の強さを保証するものではない。
 ウォームアップは、標本の累計で200万（全体のバッチ1,024で約1,950回の更新）のまま、最初のサイクルの前半で終わる。
-伸びが止まったときに基準の学習率を下げる規則は、[2回目の実行の設計書](../plans/alphazero-rl-2.md)が定める。
+伸びが止まったときに基準の学習率を下げる規則は、[2回目の実行の設計書](../../plans/alphazero-rl-2.md)が定める。
 実装は`tools/train/zero/minase_zero/train.py`の`learning_rate`にある。

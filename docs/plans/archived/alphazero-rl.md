@@ -112,7 +112,7 @@ AlphaZeroはAlphaGo Zeroのゲーティングを廃止しても学習が進む�
 以後の学習は前のサイクルのネットから再開し、リプレイバッファから抽出した局面を1回ずつ読む（「リプレイバッファと局面の抽出」の節）。
 各サイクルの生成と学習は、[自己対局生成器](alphazero-selfplay.md)と[学習器](alphazero-trainer.md)の手順に従う。
 投了は最初のサイクルでは無効にし、以後は各サイクルの開始時に、直前のサイクルの較正の結果で有効と無効を切り替える（「投了の有効化の条件」の節）。
-生成器`minase data zero-selfplay`は、1サイクルの総対局数の上限と訓練局面数の目標を受け取り、決まった対局数の塊ごとに確定させ、訓練局面数の累計が目標に届いた最初の塊まででサイクルを締める（[塊のADR](../../adr/commit-zero-self-play-in-fixed-game-chunks-up-to-the-first-prefix-reaching-the-target-positions.md)）。
+生成器`minase data zero-selfplay`は、1サイクルの総対局数の上限と訓練局面数の目標を受け取り、決まった対局数の塊ごとに確定させ、訓練局面数の累計が目標に届いた最初の塊まででサイクルを締める（[塊のADR](../../adr/archive/commit-zero-self-play-in-fixed-game-chunks-up-to-the-first-prefix-reaching-the-target-positions.md)）。
 目標は100万局面とし、総対局数の上限は、試走または前のサイクルの1局あたりの局面数から、100万局面に要る対局数として決める。
 対局が前のサイクルより長くなれば上限の手前で目標に届いて締まり、短くなれば上限で終わって目標に届かない。
 1局あたりの局面数は、生成器の集計`summary.json`の学習データの局面数`training_positions`を、上限到達で除いた対局を含む総対局数`games`で割った値とする。
@@ -143,15 +143,15 @@ GPUが律速している場合は、速いGPU種別か、終了期限のない�
 
 | 項目 | 初期10サイクルの値 | 根拠 |
 |---|---|---|
-| 規則、ネット、探索 | `engine-default`、10ブロック128チャネル（入力159面、価値ヘッド32チャネル）、Gumbelの探索回数32（確率0.25の完全探索。それ以外の手番は8回）、候補数の上限16、変換の係数50と1.0、指す手の温度、および王手限定の3手以内の勝ちによる打ち切り | 統括計画の適用範囲、[学習技法の導入の設計書](alphazero-restart-techniques.md)、[ネットの構成のADR](../../adr/archive/start-the-zero-network-as-a-10-block-128-channel-resnet-with-global-pooling-and-a-32-channel-value-head.md)、[Gumbel AlphaZeroのADR](../../adr/use-gumbel-alphazero-with-a-unit-q-scale-and-a-decaying-final-move-temperature.md) |
+| 規則、ネット、探索 | `engine-default`、10ブロック128チャネル（入力159面、価値ヘッド32チャネル）、Gumbelの探索回数32（確率0.25の完全探索。それ以外の手番は8回）、候補数の上限16、変換の係数50と1.0、指す手の温度、および王手限定の3手以内の勝ちによる打ち切り | 統括計画の適用範囲、[学習技法の導入の設計書](alphazero-restart-techniques.md)、[ネットの構成のADR](../../adr/archive/start-the-zero-network-as-a-10-block-128-channel-resnet-with-global-pooling-and-a-32-channel-value-head.md)、[Gumbel AlphaZeroのADR](../../adr/archive/use-gumbel-alphazero-with-a-unit-q-scale-and-a-decaying-final-move-temperature.md) |
 | 学習率と最適化器 | 基準の学習率0.01に、サイクルごとのcosine annealingとランダム初期化から累計200万標本のウォームアップを掛ける。モーメンタム0.9、ネステロフあり、重み減衰1×10⁻⁴、勾配のノルムの上限10 | dlshogiの学習器の既定値（[学習器](alphazero-trainer.md)の「着手時に補った決定」の節）、「学習率の予定」の節 |
 | 価値の教師 | λ=0.333、主の方策と主の価値の損失の係数は1対1。短期の価値、相手の次の手、およびソフト方策の補助目標を足す | [学習器の定数マスクと診断のADR](../../adr/mask-impossible-policy-labels-and-diagnose-the-zero-trainer-on-final-weights.md)、学習技法の導入の設計書 |
 | バッチと精度 | バッチ256、bf16の順伝播、単精度の損失、リプレイバッファから新規の訓練局面の数の4倍を抽出して1回ずつ読む | [実現性の実測](../../measurements/alphazero-environment/alphazero-feasibility.md)でL4が最も速かった設定 |
 | リプレイバッファ | 再出発の最初のサイクルから「リプレイバッファと局面の抽出」の節の規則 | リセット前のサイクル1〜5の診断で価値の過学習が確かめられたので、2026年10月29日の利用者の決定で改めた |
 | チェックポイントの間隔 | 200更新 | 監査対応で定めた暫定値。学習器の確認は50更新の間隔で再開を確かめた。試走で保存と転送の時間を確かめる |
 | 生成の並列と塊 | スレッド数とスレッドごとの同時対局数は試走で選ぶ。塊の対局数は、1サイクルを約20個の塊に分ける値から始める | 「試走」の節 |
-| 投了 | 完全探索の手番で選んだ手の勝率が1%未満なら投了。最初のサイクルは無効（最後まで指させる割合100%）、有効にしたサイクルは最後まで指させる割合20% | [投了のADR](../../adr/resign-zero-self-play-games-below-one-percent-after-bounding-false-resignations.md) |
-| 手数の上限 | 3,000手（サイクル9までは1,000手） | [手数の上限のADR](../../adr/discard-zero-self-play-games-that-reach-3000-plies.md)、[長い対局の調査](../../measurements/alphazero-rl/alphazero-rl-long-games.md) |
+| 投了 | 完全探索の手番で選んだ手の勝率が1%未満なら投了。最初のサイクルは無効（最後まで指させる割合100%）、有効にしたサイクルは最後まで指させる割合20% | [投了のADR](../../adr/archive/resign-zero-self-play-games-below-one-percent-after-bounding-false-resignations.md) |
+| 手数の上限 | 3,000手（サイクル9までは1,000手） | [手数の上限のADR](../../adr/archive/discard-zero-self-play-games-that-reach-3000-plies.md)、[長い対局の調査](../../measurements/alphazero-rl/alphazero-rl-long-games.md) |
 
 表のうち、規則、候補数の上限、変換の係数、手数の上限、および投了の閾値は生成器の定数であり、ネットの大きさは学習器の`init`の引数で決まる。
 ほかの値は生成器と学習器の起動引数で与える。
@@ -215,7 +215,7 @@ L4で1サイクル約40分という見積もりは、探索木が経路を再生
 ### 投了の有効化の条件
 
 較正には直前のサイクルの完了した全塊を使い、1対局を1標本とする。
-投了の条件は、ある側の手番でSequential Halvingが最後に残した手の勝率が1%を下回ることである（[投了のADR](../../adr/resign-zero-self-play-games-below-one-percent-after-bounding-false-resignations.md)）。
+投了の条件は、ある側の手番でSequential Halvingが最後に残した手の勝率が1%を下回ることである（[投了のADR](../../adr/archive/resign-zero-self-play-games-below-one-percent-after-bounding-false-resignations.md)）。
 分母nは、投了させずに最後まで指させた対局のうち、投了の条件がいずれかの側で成立したものの数であり、分子xは、条件が最初に成立した側が負けなかった対局の数（引き分けと手数の上限での打ち切りを含む）である。
 nとxは、生成器の`summary.json`の`resign_triggered_playthrough_games`と`false_resignations`から取る。
 xとnから二項分布のClopper–Pearson法による片側95%上限を求め、n≥100かつ上限が0.05以下の場合に限り次のサイクルの投了を有効にし、n=0または標本が足りないときは有効にしない。

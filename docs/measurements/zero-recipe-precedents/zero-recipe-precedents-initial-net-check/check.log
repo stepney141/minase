@@ -1,0 +1,14 @@
+== cpu batch 1
+{"positions":288,"max_logit_abs_diff":3.042613990783538e-05,"max_probability_abs_diff":7.942391521548187e-07,"max_value_abs_diff":8.869476320061409e-08,"best_move_mismatches":1,"best_move_mismatch_gaps":[[257,4.675239324569702e-06]]}
+== tensorrt batch 1
+{"positions":288,"max_logit_abs_diff":0.00048156035755157756,"max_probability_abs_diff":1.2783509742188282e-05,"max_value_abs_diff":0.0002494266883850127,"best_move_mismatches":2,"best_move_mismatch_gaps":[[257,4.675239324569702e-06],[279,3.086403012275696e-05]]}
+== cpu batch 7
+{"positions":288,"max_logit_abs_diff":3.042613990783538e-05,"max_probability_abs_diff":7.942391521548187e-07,"max_value_abs_diff":8.869476320061409e-08,"best_move_mismatches":1,"best_move_mismatch_gaps":[[257,4.675239324569702e-06]]}
+== tensorrt batch 7
+{"positions":288,"max_logit_abs_diff":0.0005836227139835379,"max_probability_abs_diff":1.123921928590857e-05,"max_value_abs_diff":0.0002518704788208037,"best_move_mismatches":4,"best_move_mismatch_gaps":[[40,1.2226402759552002e-05],[170,0.0001382678747177124],[257,4.675239324569702e-06],[279,3.086403012275696e-05]]}
+== cpu batch 256
+{"positions":288,"max_logit_abs_diff":3.042613990783538e-05,"max_probability_abs_diff":7.942391521548187e-07,"max_value_abs_diff":8.869476320061409e-08,"best_move_mismatches":1,"best_move_mismatch_gaps":[[257,4.675239324569702e-06]]}
+== tensorrt batch 256
+{"positions":288,"max_logit_abs_diff":0.0005099908635892852,"max_probability_abs_diff":1.1066832727692905e-05,"max_value_abs_diff":0.0002625001055908127,"best_move_mismatches":4,"best_move_mismatch_gaps":[[20,0.00021149218082427979],[40,1.2226402759552002e-05],[64,8.981674909591675e-05],[279,3.086403012275696e-05]]}
+elapsed_seconds 66
+failed 0

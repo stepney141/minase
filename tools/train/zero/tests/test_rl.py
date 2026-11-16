@@ -1,4 +1,4 @@
-"""シードの閉区間と、設計書zero-recipe-precedents.mdの投了の較正の式を検証する。"""
+"""シードの閉区間と、設計書docs/plans/archived/zero-recipe-precedents.mdの投了の較正の式を検証する。"""
 
 from datetime import UTC, datetime
 import json

@@ -108,7 +108,7 @@ minaseの生の価値が800回でほとんど変わらないこと、KataGoの�
 Wangらも、探索は頑健さを改善するが探索だけでは頑健にならないと結論する。
 
 一方、相手の前提の差には、探索回数が効く余地がある。
-minaseの手番の75%は8回の探索なので、対局結果は弱い相手の前提を含む（[探索回数の乱択のADR](../../adr/randomize-zero-self-play-playout-caps-and-learn-the-policy-only-from-full-searches.md)）。
+minaseの手番の75%は8回の探索なので、対局結果は弱い相手の前提を含む（[探索回数の乱択のADR](../../adr/archive/randomize-zero-self-play-playout-caps-and-learn-the-policy-only-from-full-searches.md)）。
 AobaZeroは1手800から1,600プレイアウトへの増加と序盤の学習割合の変更を合わせて+60 Eloを得た（[2023年の文書](https://www.apply.computer-shogi.org/wcsc33/appeal/AobaZero/2023csa_appeal.pdf)、[既存調査](../../research/teacher-generation-strong-engines/shogi.md) 336行）。
 Gumbel dlshogiは16、32、64回の段階のうち64回へ増やした100サイクル目以後に、評価の損失と価値の正解率が改善したと書く（[その12](https://tadaoyamaoka.hatenablog.com/entry/2025/07/25/230204)）。
 ただしリプレイバッファとバッチも同時に変えているので、探索回数だけの効果ではない。
@@ -190,7 +190,7 @@ AobaZeroは30手目の局面の種類が学習とともに35%まで減ったの�
 KataGoの論文の付録Dは、対局の分岐や置き石について、最低限の多様さを与える以外は効率と強さへの影響は限られるだろうと書く。
 tanuki-では対局途中の乱数をやめた方が強かった（同じ調査の結論5）。
 
-minaseの現行の生成器はGumbel乱数を毎手使い、倍率が手数とともに0.15へ下がる（[ADR](../../adr/use-gumbel-alphazero-with-a-unit-q-scale-and-a-decaying-final-move-temperature.md)）。
+minaseの現行の生成器はGumbel乱数を毎手使い、倍率が手数とともに0.15へ下がる（[ADR](../../adr/archive/use-gumbel-alphazero-with-a-unit-q-scale-and-a-decaying-final-move-temperature.md)）。
 乱数を強めても、悪手の相関を増やすだけで、棋風への加点を強める恐れがある（推論）。
 
 ### 構造を持つ広げ方

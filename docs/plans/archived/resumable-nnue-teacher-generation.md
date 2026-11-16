@@ -77,7 +77,7 @@ Spot VMは、空いた資源を割安で貸す代わりに、GCPがいつでも�
 
 ## 依存関係
 
-塊の確定と再開の手順は、`zero-selfplay`の[出力の実装](../../../crates/minase/src/bin/minase/zero_selfplay/output.rs)と、[塊ごとに確定させる設計判断の記録（ADR）](../../adr/commit-zero-self-play-in-fixed-game-chunks-up-to-the-first-prefix-reaching-the-target-positions.md)に従う。
+塊の確定と再開の手順は、`zero-selfplay`の[出力の実装](../../../crates/minase/src/bin/minase/zero_selfplay/output.rs)と、[塊ごとに確定させる設計判断の記録（ADR）](../../adr/archive/commit-zero-self-play-in-fixed-game-chunks-up-to-the-first-prefix-reaching-the-target-positions.md)に従う。
 NNUEの教師生成には局面数の目標で塊を締める規則がないので、そのADRのうち、塊の配置、一時ファイルからの確定、生成条件の照合、および再開の部分だけを使う。
 
 [NNUEの標準レシピの計画](nnue-standard-recipe.md)は、フェーズ3で第1世代の37本を生成する前に、生成器と生成チェーンの規則セットを`lishogi`へ切り替える。
@@ -227,7 +227,7 @@ M=250では、C=30で約151秒、C=384で約27秒である。
 
 ## 先行実装
 
-`zero-selfplay`は、本書と同じく固定局数の塊を一時ファイルに書いてから確定させ、集計JSONを確定の印とし、起動し直すと欠けた塊だけを生成する（[ADR](../../adr/commit-zero-self-play-in-fixed-game-chunks-up-to-the-first-prefix-reaching-the-target-positions.md)）。
+`zero-selfplay`は、本書と同じく固定局数の塊を一時ファイルに書いてから確定させ、集計JSONを確定の印とし、起動し直すと欠けた塊だけを生成する（[ADR](../../adr/archive/commit-zero-self-play-in-fixed-game-chunks-up-to-the-first-prefix-reaching-the-target-positions.md)）。
 本書はこの方式に、本への組み直しと、組み直しでの統計の計算を加える。
 
 囲碁のKataGoの自己対局は、学習データを`maxRowsPerTrainFile`行ごとに乱数の名前の`.npz.tmp`へ書いてから改名し（`cpp/dataio/trainingwrite.cpp`の`flushIfNonempty`）、停止の通知を受けて正常に止まるときには残りの行を書き出す（`cpp/program/selfplaymanager.cpp`）。
@@ -312,7 +312,7 @@ minaseでは、本がシードの単位であり、学習器が訓練用と検�
 
 ## 参考資料
 
-- [AlphaZero型の自己対局を塊ごとに確定させるADR](../../adr/commit-zero-self-play-in-fixed-game-chunks-up-to-the-first-prefix-reaching-the-target-positions.md)と、その[前のADR](../../adr/archive/commit-zero-self-play-cycles-in-fixed-game-chunks.md)。
+- [AlphaZero型の自己対局を塊ごとに確定させるADR](../../adr/archive/commit-zero-self-play-in-fixed-game-chunks-up-to-the-first-prefix-reaching-the-target-positions.md)と、その[前のADR](../../adr/archive/commit-zero-self-play-cycles-in-fixed-game-chunks.md)。
 - [第2世代の生成記録](../../measurements/nnue-generation-reset/nnue-generation-reset-gen2-training.md)。1本の所要時間と、本の末尾の計算資源の測定を含む。
 - [GCPでのNNUE教師生成の費用の調査](../../research/nnue-teacher-gcp-cost.md)。
 - KataGo、コミット`d91ea855110dae533f0aada947b2b7d78cc8a4e1`の[`cpp/dataio/trainingwrite.cpp`](https://github.com/lightvector/KataGo/blob/d91ea855110dae533f0aada947b2b7d78cc8a4e1/cpp/dataio/trainingwrite.cpp)と[`cpp/program/selfplaymanager.cpp`](https://github.com/lightvector/KataGo/blob/d91ea855110dae533f0aada947b2b7d78cc8a4e1/cpp/program/selfplaymanager.cpp)。

@@ -7,7 +7,7 @@
 ## コンテキスト
 
 [前のADR](archive/resume-zero-training-from-the-update-count-over-a-seeded-permutation.md)は、シードで固定した順列と完了した更新の回数で読取位置を決め、チェックポイント、ONNX、および集計を原子的に確定させ、最後の更新を端数のバッチで行うとした。
-[学習器のDDPのADR](train-zero-cycles-with-fabric-ddp-over-a-fixed-global-batch-of-1024.md)により、学習器は複数のGPUのプロセスで全体のバッチ1,024をミクロバッチ256に分けて学ぶようになった。
+[学習器のDDPのADR](archive/train-zero-cycles-with-fabric-ddp-over-a-fixed-global-batch-of-1024.md)により、学習器は複数のGPUのプロセスで全体のバッチ1,024をミクロバッチ256に分けて学ぶようになった。
 端数のバッチがあると、GPUごとのミクロバッチの数がそろわず、`torch.compile`が受け取る入力の形が最後の更新で変わる。
 借りた機械を替えると、GPUの枚数が変わることもある。
 方式はClaudeが提案し、[複数GPU化の設計書](../plans/archived/alphazero-multi-gpu.md)の承認で決まった。
@@ -15,7 +15,7 @@
 作業機のGPUで、途中で強制終了して再開した学習を途中で止めない学習と比べると、コンパイルしない学習器でも、学習曲線の1つの値がfloat32の最後の1桁で食い違った（[作業機の測定](../measurements/alphazero-multi-gpu/alphazero-multi-gpu-workstation.md)）。
 記録にだけ使う方策の損失を、GPUの原子的な加算（`scatter_add_`）で局面ごとに足していたことによると考えられる。
 vast.aiの4枚の機械では、DDPが最初の更新の後に勾配のバケットを組み替えるので、再開した学習が途中で止めない学習と重みまで食い違った（[vast.aiの測定](../measurements/alphazero-multi-gpu/alphazero-multi-gpu-vast.md)）。
-記録の計算の変更と、バケットの組み替えを止める設定（[学習器のDDPのADR](train-zero-cycles-with-fabric-ddp-over-a-fixed-global-batch-of-1024.md)）は、着手後にClaudeが補った決定である。
+記録の計算の変更と、バケットの組み替えを止める設定（[学習器のDDPのADR](archive/train-zero-cycles-with-fabric-ddp-over-a-fixed-global-batch-of-1024.md)）は、着手後にClaudeが補った決定である。
 
 ## 決定
 
@@ -31,7 +31,7 @@ GPUごとのミクロバッチの数がそろわず、コンパイルした順�
 捨てる局面は多くとも1,023個で、1サイクルの抽出数約400万の0.03%未満である。
 
 端数の局面を、抽出の列の先頭から補って最後の更新を満たす案は採らなかった。
-同じ局面をそのサイクルで余分に学び、抽出の規則（[リプレイバッファのADR](sample-four-times-from-a-zero-replay-buffer-of-ten-times-the-parameter-count-from-cycle-3-after-cycle-13.md)）の重みが変わるからである。
+同じ局面をそのサイクルで余分に学び、抽出の規則（[リプレイバッファのADR](archive/sample-four-times-from-a-zero-replay-buffer-of-ten-times-the-parameter-count-from-cycle-3-after-cycle-13.md)）の重みが変わるからである。
 
 学習曲線の値の1桁の違いを、許容誤差で一致とみなす案は採らなかった。
 記録の計算を足す順序の決まった形に改めれば、勾配と重みを変えずにバイト単位の一致を保てるからである。

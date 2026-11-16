@@ -2,7 +2,7 @@
 
 本書のminaseに関する記述は2026年11月2日時点のものである。
 本書は[大敗の原因の調査](../../proposals/alphazero-strength-gap.md)の付属として書き、2026年11月13日に調査メモへ移した。
-調査の後、2026年11月9日に利用者は、2回目の学習を最初から20b256cのネットで始め、ネットを大きくする段階を持たないと決めた（[ネットの構成のADR](../../adr/start-the-zero-network-as-a-20-block-256-channel-resnet-with-global-pooling-and-a-32-channel-value-head.md)）。
+調査の後、2026年11月9日に利用者は、2回目の学習を最初から20b256cのネットで始め、ネットを大きくする段階を持たないと決めた（[ネットの構成のADR](../../adr/archive/start-the-zero-network-as-a-20-block-256-channel-resnet-with-global-pooling-and-a-32-channel-value-head.md)）。
 その学習の費用の見積もりは、[2回目の実行の設計書](../../plans/alphazero-rl-2.md)の「費用」の節にある。
 現行の学習器の`ZeroNet`で数えたパラメータ数は、補助ヘッドを含めて15b192cが12,728,104、20b256cが28,052,008であり、「minaseの大きさと持ち時間の関係」の節の推計より多い。
 同じ節は、毎秒の評価数の比から、20b256cでは探索回数が10b128cの約4.3分の1になると推論している。

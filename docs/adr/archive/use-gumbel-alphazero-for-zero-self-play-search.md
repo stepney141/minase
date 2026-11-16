@@ -2,7 +2,7 @@
 
 ## ステータス
 
-置き換え済み。[AlphaZero型探索の強化学習の自己対局は、Gumbel AlphaZeroの探索をQの尺度1.0で行い、指す手のGumbel乱数にだけ手数で減る倍率を掛ける](../use-gumbel-alphazero-with-a-unit-q-scale-and-a-decaying-final-move-temperature.md)によって置き換えられた。決定日は2026年10月27日。
+置き換え済み。[AlphaZero型探索の強化学習の自己対局は、Gumbel AlphaZeroの探索をQの尺度1.0で行い、指す手のGumbel乱数にだけ手数で減る倍率を掛ける](use-gumbel-alphazero-with-a-unit-q-scale-and-a-decaying-final-move-temperature.md)によって置き換えられた。決定日は2026年10月27日。
 
 ## コンテキスト
 

@@ -28,7 +28,7 @@ uv run --frozen python -m minase_zero external-eval --checkpoint <チェック�
 両エンジンとも、masterのコミット33e94041をビルドしたminaseのMCTS（`--search mcts`）であり、規則は`engine-default`（`L0,P0,R1,E0`）である。
 ネットはNASの`nets/cycle-0010.onnx`と`nets/cycle-0000.onnx`である。
 サイクル1〜10の生成器と学習器のコミットは、サイクル1〜2がmasterの522192f3、サイクル3〜9の学習とサイクル4〜9の生成がf8eac7e9、サイクル10が29b01a5cであり、サイクル3の生成は522192f3の対局を新しい生成器で締めたものである（各サイクルの記録は`cycles.jsonl`にある）。
-サイクル9までの手数の上限は1,000手、サイクル10からは3,000手である（[手数の上限のADR](../../adr/discard-zero-self-play-games-that-reach-3000-plies.md)）。
+サイクル9までの手数の上限は1,000手、サイクル10からは3,000手である（[手数の上限のADR](../../adr/archive/discard-zero-self-play-games-that-reach-3000-plies.md)）。
 
 ## 環境
 

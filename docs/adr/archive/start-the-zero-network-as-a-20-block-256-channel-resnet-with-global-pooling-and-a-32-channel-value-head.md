@@ -2,18 +2,18 @@
 
 ## ステータス
 
-承認済み。決定日は2026年11月9日。
-[10ブロック128チャネルと32チャネルの価値ヘッドのADR](archive/start-the-zero-network-as-a-10-block-128-channel-resnet-with-global-pooling-and-a-32-channel-value-head.md)を置き換える。
+置き換え済み。[AlphaZero型探索のネットは、AlphaZeroの残差ブロックを20個並べた256チャネルのResNetとし、方策ヘッドは3×3畳み込み2層、価値ヘッドは1チャネルの1×1畳み込みと全結合256とする](../shape-the-zero-network-as-the-alphazero-resnet-with-a-two-layer-policy-head-and-a-one-channel-value-head.md)によって置き換えられた。
+[10ブロック128チャネルと32チャネルの価値ヘッドのADR](start-the-zero-network-as-a-10-block-128-channel-resnet-with-global-pooling-and-a-32-channel-value-head.md)を置き換える。
 
 ## コンテキスト
 
 置き換えたADRは、ネットの構成を、入力の159面に対する3×3畳み込み、大域プーリングを入れた残差ブロックの列、249チャネルの方策ヘッド、32チャネルの1×1畳み込みと全結合256からなる価値ヘッド、および学習だけに使う補助ヘッドと定め、大きさの初期値を10ブロック128チャネルとした。
-10ブロック128チャネルから始めたのは、KataGoの学習効率の報告、lc0（Leela Chess Zero）の学習の系列T70、およびColab機のL4での1サイクルの所要時間による（[初版のADR](archive/start-the-zero-network-as-a-10-block-128-channel-resnet-with-global-pooling.md)）。
+10ブロック128チャネルから始めたのは、KataGoの学習効率の報告、lc0（Leela Chess Zero）の学習の系列T70、およびColab機のL4での1サイクルの所要時間による（[初版のADR](start-the-zero-network-as-a-10-block-128-channel-resnet-with-global-pooling.md)）。
 その構成で回した強化学習の1回目は、サイクル32で中断した。
-サイクル30のネットはサイクル20のネットにEloの点推定+237で勝ち、伸びは止まっていなかったが、サイクル32のMCTSはαβ探索とのSTC（短い持ち時間の対局）で97ペア2勝192敗であった（[記録](../measurements/alphazero-rl/alphazero-rl-restart-stc-c0032.md)）。
-2026年11月9日に、利用者は、ランダムに初期化した20ブロック256チャネルのネットから2回目の学習を始めると決めた（[2回目の実行の設計書](../plans/alphazero-rl-2.md)）。
-AlphaZero（19ブロック256チャネル）とAobaZero（20ブロック256チャネル）は、最初からこの規模のネットで学習している（[先行実装の調査](../research/alphazero-prior-art.md)）。
-[実現性の測定](../measurements/alphazero-environment/alphazero-feasibility.md)では、ColabのG4の機械で20ブロック256チャネルをFP16で推論すると毎秒34,370評価であり、ColabのL4の機械で10ブロック128チャネルを推論した毎秒33,935評価とほぼ同じであった。
+サイクル30のネットはサイクル20のネットにEloの点推定+237で勝ち、伸びは止まっていなかったが、サイクル32のMCTSはαβ探索とのSTC（短い持ち時間の対局）で97ペア2勝192敗であった（[記録](../../measurements/alphazero-rl/alphazero-rl-restart-stc-c0032.md)）。
+2026年11月9日に、利用者は、ランダムに初期化した20ブロック256チャネルのネットから2回目の学習を始めると決めた（[2回目の実行の設計書](../../plans/alphazero-rl-2.md)）。
+AlphaZero（19ブロック256チャネル）とAobaZero（20ブロック256チャネル）は、最初からこの規模のネットで学習している（[先行実装の調査](../../research/alphazero-prior-art.md)）。
+[実現性の測定](../../measurements/alphazero-environment/alphazero-feasibility.md)では、ColabのG4の機械で20ブロック256チャネルをFP16で推論すると毎秒34,370評価であり、ColabのL4の機械で10ブロック128チャネルを推論した毎秒33,935評価とほぼ同じであった。
 
 ## 決定
 
@@ -31,6 +31,6 @@ ONNXの入力と出力の名前、形、および精度は、置き換えたADR�
 
 リプレイバッファはパラメータ数の10倍の規則のままなので、上限は280,520,080局面に広がる（[リプレイバッファのADR](sample-four-times-from-a-zero-replay-buffer-of-ten-times-the-parameter-count-from-cycle-3-after-cycle-13.md)）。
 進捗測定の対局を行う開発用の機械（作業機）では、実現性の測定の大きいバッチの条件で、20ブロック256チャネルの推論は10ブロック128チャネルの4.3〜6.3分の1の速さであり、進捗測定の対局の時間が延びる。
-初期ネットの出力の照合と、作業機での対局の所要時間は、[準備の設計書](../plans/archived/alphazero-rl-2-prep.md)のフェーズ2で記録する。
+初期ネットの出力の照合と、作業機での対局の所要時間は、[準備の設計書](../../plans/archived/alphazero-rl-2-prep.md)のフェーズ2で記録する。
 1回目の10ブロック128チャネルのネットとチェックポイントは、NASの`cycles/`と`nets/`に残す。
 実装は`tools/train/zero/minase_zero/net.py`の`ZeroNet`にあり、大きさは学習器の`init`の`--blocks`と`--channels`で与え、以後のサイクルはチェックポイントから受け継ぐ。

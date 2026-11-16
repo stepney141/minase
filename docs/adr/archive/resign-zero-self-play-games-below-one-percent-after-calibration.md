@@ -2,7 +2,7 @@
 
 ## ステータス
 
-置き換え済み。[AlphaZero型探索の自己対局は、選んだ手の勝率が1%を下回った側を投了させ、誤った投了の割合の片側95%上限が5%以下と確かめてから有効にする](../resign-zero-self-play-games-below-one-percent-after-bounding-false-resignations.md)によって置き換えられた。
+置き換え済み。[AlphaZero型探索の自己対局は、選んだ手の勝率が1%を下回った側を投了させ、誤った投了の割合の片側95%上限が5%以下と確かめてから有効にする](resign-zero-self-play-games-below-one-percent-after-bounding-false-resignations.md)によって置き換えられた。
 
 ## コンテキスト
 

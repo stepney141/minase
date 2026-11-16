@@ -2,19 +2,19 @@
 
 ## ステータス
 
-承認済み。決定日は2026年10月31日。
+置き換え済み。[AlphaZero型探索の自己対局は、対局数で決めた塊ごとに1つのファイルで確定させ、訓練局面数が目標に届いた最初の塊まででサイクルを締める](../commit-zero-self-play-in-fixed-game-chunks-and-close-the-cycle-at-the-target-positions.md)によって置き換えられた。
 
 ## コンテキスト
 
 強化学習（RL）の自己対局は、Google ColabのColab機またはvast.aiとRunpodのレンタル機で生成する。
-Colab機はセッションの上限時間、残高の枯渇、およびColab側の都合で、レンタル機は貸し手の都合で止まり得る（[Colab機の操作の手引き](../guides/alphazero-machines.md)）。
+Colab機はセッションの上限時間、残高の枯渇、およびColab側の都合で、レンタル機は貸し手の都合で止まり得る（[Colab機の操作の手引き](../../guides/alphazero-machines.md)）。
 止まった機械で生成した結果は、作業機へ転送していなければ失われる。
 借りた機械は`git archive`で作ったソースの書庫からminaseをビルドするので、リポジトリを持たない。
-隣接する基本シードを使うと、1局ずれた同じ対局列ができる（[隣接する基本シードの教訓](../lessons/derive-seed-adjacent-collision.md)）。
+隣接する基本シードを使うと、1局ずれた同じ対局列ができる（[隣接する基本シードの教訓](../../lessons/derive-seed-adjacent-collision.md)）。
 投了の誤りを判定する割合は、サイクルの対局がすべて終わるまで決まらない（[投了のADR](resign-zero-self-play-games-below-one-percent-after-bounding-false-resignations.md)）。
 
-2026年10月27日の[前のADR](archive/commit-zero-self-play-cycles-in-fixed-game-chunks.md)は、1サイクルの生成量を対局数で与え、決まった対局数の塊に分けて確定させると決めた。
-100万局面に要る対局数は、[強化学習の実行](../plans/archived/alphazero-rl.md)が、前のサイクルの1局あたりの訓練局面数から見積もる。
+2026年10月27日の[前のADR](commit-zero-self-play-cycles-in-fixed-game-chunks.md)は、1サイクルの生成量を対局数で与え、決まった対局数の塊に分けて確定させると決めた。
+100万局面に要る対局数は、[強化学習の実行](../../plans/archived/alphazero-rl.md)が、前のサイクルの1局あたりの訓練局面数から見積もる。
 前のADRは、生成量を局面数で与える案を、塊の数が生成の結果で決まり、再開時にどの塊が欠けているかを定められなくなるとして採らなかった。
 
 2026年10月31日に学び直した本線では、サイクル2の1局あたりの訓練局面数が14.4で、サイクル3の対局数は69,581局と見積もられた。

@@ -72,4 +72,4 @@ CPUはIntel Core Ultra 7 265KF（20コア20スレッド）、GPUはNVIDIA GeForc
 
 ## 結論
 
-上限に達する対局は、少ない駒で有利な側が勝ちきれないまま長く続く終盤であり、上限を外すと3分の2は勝敗がつき、その約9割は1,000手の時点で評価値が有利な側の勝ちになるので、上限を3,000手に上げる（[手数の上限のADR](../../adr/discard-zero-self-play-games-that-reach-3000-plies.md)）。
+上限に達する対局は、少ない駒で有利な側が勝ちきれないまま長く続く終盤であり、上限を外すと3分の2は勝敗がつき、その約9割は1,000手の時点で評価値が有利な側の勝ちになるので、上限を3,000手に上げる（[手数の上限のADR](../../adr/archive/discard-zero-self-play-games-that-reach-3000-plies.md)）。

@@ -2,7 +2,7 @@
 
 ## ステータス
 
-置き換え済み。[AlphaZero型探索の自己対局は3,000手で打ち切り、打ち切った対局を学習データから除く](../discard-zero-self-play-games-that-reach-3000-plies.md)によって置き換えられた。
+置き換え済み。[AlphaZero型探索の自己対局は3,000手で打ち切り、打ち切った対局を学習データから除く](discard-zero-self-play-games-that-reach-3000-plies.md)によって置き換えられた。
 
 ## コンテキスト
 

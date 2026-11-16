@@ -2,7 +2,7 @@
 
 ## ステータス
 
-承認済み。決定日は2026年10月31日。
+置き換え済み。[AlphaZero型探索の自己対局は、全手番を同じ32回で探索し、探索した全局面を訓練局面にする](../search-every-zero-self-play-move-with-32-simulations-and-train-on-every-searched-position.md)によって置き換えられた。
 
 ## コンテキスト
 
@@ -36,6 +36,6 @@ KataGoのplayout cap randomization（以下PCR）は、一部の手番だけを�
 
 記録する訓練局面は1局の手番の約4分の1になるので、1サイクル100万局面に入る対局と独立な勝敗は約4倍になる。
 手番あたりの探索回数の平均は0.25×32＋0.75×8＝14回になり、1つの訓練局面を作るネットの評価の回数は約1.8倍になる。
-作業機のランダム初期化のネットの1,024局では、完全探索の手番が19,103、速い探索の手番が58,050で、完全探索の割合は0.248であった（[作業機の再開の確認](../measurements/alphazero-restart-techniques/alphazero-restart-techniques-resume-check.md)）。
+作業機のランダム初期化のネットの1,024局では、完全探索の手番が19,103、速い探索の手番が58,050で、完全探索の割合は0.248であった（[作業機の再開の確認](../../measurements/alphazero-restart-techniques/alphazero-restart-techniques-resume-check.md)）。
 生成器の集計`summary.json`は、完全探索と速い探索の手番の数を`full_searches`と`fast_searches`として持つ。
 実装は`crates/minase/src/bin/minase/zero_selfplay/game.rs`にある。

@@ -2,20 +2,20 @@
 
 ## ステータス
 
-承認済み。決定日は2026年10月27日。
+置き換え済み。[AlphaZero型探索の自己対局生成器は、多数の局の探索木から葉を1つずつ集めて推論をまとめ、各局は1手ごとに新しい探索木で探索する](../batch-zero-self-play-leaves-across-many-games-with-a-fresh-tree-per-move.md)によって置き換えられた。
 
 ## コンテキスト
 
 強化学習（RL）の計算の大半は自己対局の生成であり、1手32回のシミュレーションの探索では、GPUの推論とCPUの探索木の操作のどちらも律速になり得る。
 GPUの推論は、バッチを大きくするほど1局面あたりの推論時間が短くなる。
 10ブロック128チャネルのネットのFP16の推論は、作業機とColab機のL4のどちらでも、1つのセッションでバッチ256のときに最大の毎秒評価数の98%以上に達した。
-また、L4ではセッションを2つにすると毎秒の評価数が約2倍に伸びた（[実現性の実測](../measurements/alphazero-environment/alphazero-feasibility.md)）。
+また、L4ではセッションを2つにすると毎秒の評価数が約2倍に伸びた（[実現性の実測](../../measurements/alphazero-environment/alphazero-feasibility.md)）。
 
 自己対局の探索はGumbel AlphaZeroで行う（[Gumbel AlphaZeroのADR](use-gumbel-alphazero-with-a-unit-q-scale-and-a-decaying-final-move-temperature.md)）。
 Gumbelの探索は仮想損失を使わず、1つの探索木で評価を待つ葉を1つまでとする。
 このため、1局の探索から一度に推論へ出せる局面は1つしかない。
 dlshogiの自己対局生成器は、多数の局を1つのプロセスで同時に進め、各局の葉をまとめて1回の推論にかける構成をとる（DeepLearningShogiの`selfplay/self_play.cpp`、コミット79df19e）。
-エンジンの開発者は、[自己対局生成器の設計書](../plans/archived/alphazero-selfplay.md)でこの構成を決めた。
+エンジンの開発者は、[自己対局生成器の設計書](../../plans/archived/alphazero-selfplay.md)でこの構成を決めた。
 
 ## 決定
 

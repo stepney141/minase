@@ -4,7 +4,7 @@
 一時ディレクトリを借りた機械に見立てたRemoteを使い、実ファイルで再開と転送を確かめる。
 照合のシェルは外部コマンドだけを小さな実行ファイルへ置き換えて実際に走らせる。
 台帳の欠落とチェックポイントの置き換え競合はbrief-rl-runner-fix.mdの契約に従う。
-docs/plans/zero-recipe-precedents.mdの局数によるリプレイバッファ、生成と学習のコミットの分離、一括転送を検証する。
+docs/plans/archived/zero-recipe-precedents.mdの局数によるリプレイバッファ、生成と学習のコミットの分離、一括転送を検証する。
 機械の種類と複数GPUの契約はphase3a.mdとdocs/plans/archived/alphazero-multi-gpu.mdに従う。
 """
 

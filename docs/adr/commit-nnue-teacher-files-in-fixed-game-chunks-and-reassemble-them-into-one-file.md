@@ -18,7 +18,7 @@ NNUEの教師は、生成器`minase data selfplay generate`が自己対局から
 学習器は、乱数の序盤から始めた自己対局のファイルどうしでシードが重なると入力を拒み、学習器の`--train-subsample`は局面の抽出にファイルの番号を使う。
 対局を訓練用と検証用に分ける割り振りも、シードと対局番号で決まる。
 
-AlphaZero型探索の自己対局の生成器`minase data zero-selfplay`は、対局数で決めた塊を一時ファイルに書いてから確定させ、同じ出力先で起動し直すと欠けた塊だけを生成する（[ADR](commit-zero-self-play-in-fixed-game-chunks-up-to-the-first-prefix-reaching-the-target-positions.md)）。
+AlphaZero型探索の自己対局の生成器`minase data zero-selfplay`は、対局数で決めた塊を一時ファイルに書いてから確定させ、同じ出力先で起動し直すと欠けた塊だけを生成する（[ADR](archive/commit-zero-self-play-in-fixed-game-chunks-up-to-the-first-prefix-reaching-the-target-positions.md)）。
 先行実装では、囲碁のKataGoが自己対局の学習データを決まった行数ごとに一時ファイルへ書いてから改名し、Stockfishのtoolsブランチが教師生成で決まった局面数ごとに書き先のファイルを切り替える。
 この2つはいずれも、強制終了で止まるとまだ書き出していないデータを失い、起動し直すと新しいファイルを足すだけで、同じ位置からは再開しない。
 

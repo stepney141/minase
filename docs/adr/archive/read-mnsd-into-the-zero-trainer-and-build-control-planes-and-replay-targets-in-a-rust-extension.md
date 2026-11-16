@@ -2,14 +2,14 @@
 
 ## ステータス
 
-承認済み。決定日は2026年10月31日。
-[拡張モジュールで読むADR](archive/read-mnsd-into-the-zero-trainer-through-a-rust-extension.md)を置き換える。
+置き換え済み。[AlphaZero型探索の学習器は、MNSDをRustの拡張モジュールで読み、利きの面を拡張モジュールで作り、駒の面と方策のラベルはPythonでバッチごとに作る](../read-mnsd-into-the-zero-trainer-and-build-control-planes-in-a-rust-extension.md)によって置き換えられた。
+[拡張モジュールで読むADR](read-mnsd-into-the-zero-trainer-through-a-rust-extension.md)を置き換える。
 
 ## コンテキスト
 
 強化学習の教師データは形式MNSDの版2で記録され、局面の復元には中将棋の着手の適用と合法手の生成が要るので、PyTorchの学習器はMNSDを単体では読めない。
 初版は、PyO3の拡張モジュール`minase_mnsd_reader`で価値を持つ項目を読み、入力の95面と方策のラベルはPythonでバッチごとに作った。
-[学習技法の導入の設計書](../plans/archived/alphazero-restart-techniques.md)で、入力に駒種ごとの利きと利き数の64面を足し、方策を記録しない速い探索の手番を加え、対局全体を見て決まる補助目標（短期の価値、相手の次の手）を学ぶことにした。
+[学習技法の導入の設計書](../../plans/archived/alphazero-restart-techniques.md)で、入力に駒種ごとの利きと利き数の64面を足し、方策を記録しない速い探索の手番を加え、対局全体を見て決まる補助目標（短期の価値、相手の次の手）を学ぶことにした。
 利きの判定は中将棋の規則そのものであり、Pythonで実装し直すと推論との不一致を生む。
 補助目標の教師は、抽出した局面より後の手番の記録から決まり、学習器はリプレイバッファのファイルを先頭から再生しながら抽出した局面だけを残す。
 

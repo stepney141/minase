@@ -63,7 +63,7 @@ lishogiの人間同士の棋譜から811局の検証用データを作ってチ�
 ## 依存関係
 
 本書は、lishogiの棋譜を取得した`data/lishogi/games.ndjson`（2026年11月13日の時点で23,567局）と、学習器`minase_zero`の診断の道具を使う。
-教師データの形式MNSDは、[教師データの形式のADR](../../adr/record-teacher-data-and-unsearched-games-as-chained-games.md)が定め、学習器はPythonの拡張モジュール`mnsd_reader`で読む（[読み込みのADR](../../adr/read-mnsd-into-the-zero-trainer-and-build-control-planes-and-replay-targets-in-a-rust-extension.md)）。
+教師データの形式MNSDは、[教師データの形式のADR](../../adr/record-teacher-data-and-unsearched-games-as-chained-games.md)が定め、学習器はPythonの拡張モジュール`mnsd_reader`で読む（[読み込みのADR](../../adr/archive/read-mnsd-into-the-zero-trainer-and-build-control-planes-and-replay-targets-in-a-rust-extension.md)）。
 lishogiの棋譜を規則セット`lishogi`で再生して結果を照合する土台は、既存の試験`crates/minase-core/tests/lishogi_replay.rs`にある。
 基準の診断には、ネットワーク接続の記憶装置（NAS）に残っている、強化学習の1回目のチェックポイント（各サイクルのネットと学習の状態を保存したファイル）を使う。
 本書は、[対局用MCTSの規則コードへの対応](mcts-rule-codes.md)と[強さを測る固定の相手](mcts-fixed-opponents.md)の2本の設計書と独立であり、どちらとも並行して進められる。
