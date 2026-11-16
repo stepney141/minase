@@ -151,6 +151,7 @@ fn summary_counts_games_positions_lengths_and_end_reasons_across_files() {
             "draw_piece_exhaustion": 0,
             "draw_bare_king": 0,
             "draw_agreement": 2,
+            "draw_max_ply": 0,
         })
     );
 }
@@ -234,4 +235,14 @@ fn summary_counts_evaluation_adjudication_for_both_winners() {
     let summary = summarize(&[path]).unwrap();
     assert_eq!(summary["games"], 2);
     assert_eq!(summary["end_reasons"]["win_evaluation_adjudication"], 2);
+}
+
+#[test]
+fn max_ply_draw_has_its_own_end_reason_count() {
+    let directory = TemporaryDirectory::new();
+    let path = directory.0.join("max-ply.mnsd");
+    write_games(&path, &[record(1, 0, 2, Outcome::MaxPlyDraw)]);
+    let summary = summarize(&[path]).unwrap();
+    assert_eq!(summary["end_reasons"]["draw_max_ply"], 1);
+    assert_eq!(summary["games"], 1);
 }

@@ -1,11 +1,11 @@
-//! 反復による投了の抑止、誤投了の分類、および自己対局の引き分け値の契約。
+//! 反復による投了の抑止、手数の境界、および自己対局の引き分け値の契約。
 
 use super::*;
 use minase::nn::test_util::UniformEvaluator;
 use minase::nn::{Evaluator, NnError, Query};
 use minase::search::mcts::tree::{Child, Outcome as ProofOutcome, Proof, Tree};
 use minase_core::test_util::{position, sq};
-use minase_core::{DrawReason, ExhaustionRule, GameStatus, PieceKind, WinReason};
+use minase_core::{ExhaustionRule, GameResult, GameStatus, PieceKind, WinReason};
 
 fn play_to_end(game: &mut PlayingGame, evaluator: &mut impl Evaluator) -> usize {
     let mut logits = Vec::new();
@@ -22,122 +22,18 @@ fn play_to_end(game: &mut PlayingGame, evaluator: &mut impl Evaluator) -> usize 
 }
 
 #[test]
-fn playout_caps_use_an_independent_seed_and_record_only_full_search_policies() {
-    let settings = Settings {
-        start_position: StartPosition::RandomOpening,
-        rules: Rules::JCSA,
-        seed: 7,
-        simulations: 8,
-        playthrough_percent: 100,
-        max_ply: 24,
-    };
-    let seed = derive_seed(settings.seed, 1);
-    let (opening_game, opening) = generate_opening(settings.rules, seed).unwrap();
-    let mut first = PlayingGame::new(1, settings).unwrap();
-    let mut second = PlayingGame::new(1, settings).unwrap();
-    assert!(first.game.same_state(&opening_game));
-    assert!(second.game.same_state(&opening_game));
-    let mut expected_rng = XorShift64::new(derive_seed(seed.get(), 3));
-    let searched = (settings.max_ply - opening.len() as u32) as usize;
-    // 仕様の上位2ビットが0という条件は、u64の下位1/4の区間に相当する。
-    let full: Vec<_> = (0..searched)
-        .map(|_| expected_rng.next() < (1_u64 << 62))
-        .collect();
-    assert!(full.iter().any(|&value| value));
-    assert!(full.iter().any(|&value| !value));
-    play_to_end(&mut first, &mut UniformEvaluator);
-    play_to_end(&mut second, &mut UniformEvaluator);
-    assert_eq!(first.entries, second.entries);
-    assert_eq!(first.entries.len(), settings.max_ply as usize);
-    assert_eq!(first.full_searches + first.fast_searches, searched as u64);
-    assert_eq!(
-        first.full_searches,
-        full.iter().filter(|&&value| value).count() as u64
-    );
-    assert_eq!(
-        first.fast_searches,
-        full.iter().filter(|&&value| !value).count() as u64
-    );
-    for (entry, full_search) in first.entries[opening.len()..].iter().zip(full) {
-        assert!(entry.played_move().is_some());
-        assert_eq!(entry.value(), Value::Mcts(32768));
-        assert_eq!(entry.visits(), Some(if full_search { 8 } else { 2 }));
-        assert_eq!(matches!(entry.policy(), Policy::Candidates(_)), full_search);
-        if !full_search {
-            assert_eq!(entry.policy(), &Policy::None);
-        }
-    }
-}
-
-#[test]
-fn full_search_frequency_is_within_six_binomial_standard_deviations() {
-    let seed = derive_seed(7, 1);
-    let mut rng = XorShift64::new(derive_seed(seed.get(), 3));
-    let trials = 65_536;
-    let count = (0..trials).filter(|_| choose_full_search(&mut rng)).count();
-    let expected = f64::from(trials) * 0.25;
-    let sigma = (f64::from(trials) * 0.25 * 0.75).sqrt();
-    assert!((count as f64 - expected).abs() <= 6.0 * sigma);
-}
-
-#[test]
-fn fast_search_neither_resigns_nor_records_a_calibration_trigger() {
-    // 基本シード7の対局1は初手が速い探索である。
-    // どの子も勝率0.999なので、選んだ辺のQは1%を下回る。
-    struct LosingEvaluator;
-    impl Evaluator for LosingEvaluator {
-        fn evaluate(
-            &mut self,
-            queries: &[Query<'_>],
-            logits: &mut Vec<f32>,
-            values: &mut Vec<f32>,
-        ) -> Result<(), NnError> {
-            UniformEvaluator.evaluate(queries, logits, values)?;
-            values.fill(0.999);
-            Ok(())
-        }
-    }
-    for playthrough_percent in [1, 100] {
-        let mut game = PlayingGame::new(
-            1,
-            Settings {
-                start_position: StartPosition::RandomOpening,
-                rules: Rules::JCSA,
-                seed: 7,
-                simulations: 4,
-                playthrough_percent,
-                max_ply: 1000,
-            },
-        )
-        .unwrap();
-        let opening = game.entries.len();
-        game.settings.max_ply = game.game.ply_count() + 1;
-        play_to_end(&mut game, &mut LosingEvaluator);
-        assert_eq!(game.entries.len(), opening + 1);
-        let entry = &game.entries[opening];
-        assert!(entry.played_move().is_some());
-        assert_eq!(entry.value(), Value::Mcts(66));
-        assert_eq!(entry.policy(), &Policy::None);
-        assert_eq!(entry.visits(), Some(1));
-        assert_eq!((game.full_searches, game.fast_searches), (0, 1));
-        assert!(!game.resigned);
-        assert_eq!(game.first_trigger, None);
-    }
-}
-
-#[test]
 fn a_searched_move_can_end_in_a_mate_in_three_win_for_the_next_side() {
     // 白が遠方の歩兵を指すと、黒は飛車を捨てて3手で勝てる。
-    // 白の探索した着手の直後に黒の勝ちを記録し、手数上限による破棄より先に扱う。
-    for playthrough_percent in [1, 100] {
+    // 白の探索した着手の直後に黒の勝ちを記録し、手数上限による引き分けより先に扱う。
+    for resign_threshold in [0.0, 1.0] {
         let mut game = PlayingGame::new(
-            1,
+            2,
             Settings {
-                start_position: StartPosition::RandomOpening,
+                start_position: StartPosition::Initial,
                 rules: Rules::JCSA,
                 seed: 7,
                 simulations: 4,
-                playthrough_percent,
+                resign_threshold,
                 max_ply: 1,
             },
         )
@@ -162,16 +58,9 @@ fn a_searched_move_can_end_in_a_mate_in_three_win_for_the_next_side() {
         play_to_end(&mut game, &mut FavorMove(mv));
         assert!(game.game.result().is_none());
         let completed = game.finish().unwrap();
-        assert!(!completed.resigned);
         assert_eq!(completed.plies, 1);
-        assert_eq!((completed.full_searches, completed.fast_searches), (0, 1));
-        assert_eq!(
-            completed.result,
-            Some(Outcome::MateInThree {
-                winner: Color::Black
-            })
-        );
-        let record = completed.record.unwrap();
+        assert_eq!(completed.searches, 1);
+        let record = completed.record;
         assert_eq!(
             record.outcome(),
             Outcome::MateInThree {
@@ -191,13 +80,13 @@ fn a_searched_move_can_end_in_a_mate_in_three_win_for_the_next_side() {
 #[test]
 fn two_royals_do_not_cut_off_a_game_after_a_searched_move() {
     let mut game = PlayingGame::new(
-        1,
+        2,
         Settings {
-            start_position: StartPosition::RandomOpening,
+            start_position: StartPosition::Initial,
             rules: Rules::JCSA,
             seed: 7,
             simulations: 4,
-            playthrough_percent: 100,
+            resign_threshold: 0.0,
             max_ply: 1,
         },
     )
@@ -230,83 +119,13 @@ fn two_royals_do_not_cut_off_a_game_after_a_searched_move() {
     assert_eq!(game.game.ply_count(), 1);
     assert_eq!(game.mate_winner, None);
     assert_eq!(mate_in_three(&game.game).unwrap(), Verdict::TwoRoyals);
-    assert!(game.finish().unwrap().record.is_none());
-}
-
-#[test]
-fn move_temperature_matches_the_schedule_at_specified_plies() {
-    // 設計書のT(t)=0.15+0.85×0.5^(t/12)から求めた倍精度の参照値。
-    for (ply, expected) in [
-        (0, 1.0),
-        (8, 0.6854664462053212),
-        (12, 0.575),
-        (16, 0.48732272354324235),
-        (50, 0.19732899440120552),
-    ] {
-        let actual = f64::from(move_temperature(ply));
-        assert!(
-            (actual - expected).abs() <= expected * 1e-6,
-            "t={ply}: {actual} != {expected}"
-        );
-    }
-}
-
-#[test]
-fn search_decision_counts_the_random_opening_in_its_temperature() {
-    let playing = PlayingGame::new(
-        1,
-        Settings {
-            start_position: StartPosition::RandomOpening,
-            rules: Rules::JCSA,
-            seed: 7,
-            simulations: 8,
-            playthrough_percent: 100,
-            max_ply: 20,
-        },
-    )
-    .unwrap();
-    let game = &playing.game;
-    assert!((8..=16).contains(&game.ply_count()));
-    let snapshot = SearchSnapshot::from_game(game).unwrap();
-    let moves = snapshot.root_moves().to_vec();
-    let mut search =
-        Search::new(snapshot, &mut XorShift64::new(derive_seed(7, 1)), 2, true).unwrap();
-    let mut noise = vec![0.0; moves.len()];
-    noise[0] = 1.0;
-    search.gumbel = Gumbel::new(noise, 2, 1.0).unwrap();
-    for simulation in 0..=2 {
-        let Step::Evaluate(request) = search
-            .driver
-            .select_leaf(SelectionRule::Gumbel(&search.gumbel))
-            .unwrap()
-        else {
-            panic!("the root and its two children need evaluation");
-        };
-        let mut logits = vec![0.0; request.query().moves.len()];
-        if simulation == 0 {
-            logits.fill(-1000.0);
-            logits[0] = 0.0;
-            logits[1] = 0.75;
-        }
-        search.driver.evaluate(&request, &logits, 0.5).unwrap();
-    }
-    assert!(search.finished());
-    let root = search.driver.tree().root();
-    assert_eq!(root.edges[0].visits, 1);
-    assert_eq!(root.edges[1].visits, 1);
-    // 全Qが1/2なのでσは0。倍率1ではg=1の第1辺、8〜16手後の倍率ではlogit=0.75の第2辺。
-    assert_eq!(search.gumbel.action(root, 1.0).unwrap(), 0);
-    for full_search in [true, false] {
-        search.full_search = full_search;
-        assert_eq!(search.decision(game).unwrap().mv, moves[1]);
-    }
+    assert_eq!(game.finish().unwrap().record.outcome(), Outcome::MaxPlyDraw);
 }
 
 #[test]
 fn search_uses_value_scale_one() {
     let snapshot = SearchSnapshot::from_game(&Game::new(Rules::JCSA)).unwrap();
-    let mut search =
-        Search::new(snapshot, &mut XorShift64::new(derive_seed(7, 1)), 2, true).unwrap();
+    let mut search = Search::new(snapshot, &mut XorShift64::new(derive_seed(7, 1)), 2).unwrap();
     for (simulation, value) in [0.5, 0.25, 0.75].into_iter().enumerate() {
         let Step::Evaluate(request) = search
             .driver
@@ -379,11 +198,16 @@ fn repetition_proven_loss_never_resigns_at_zero_q() {
     ));
     let action = gumbel.action(tree.root(), 1.0).unwrap();
     assert_eq!(tree.root().edges[action].q(), Some(0.0));
-    assert!(!should_resign(tree.root(), action).unwrap());
+    assert!(!should_resign(
+        tree.root(),
+        selected_value(tree.root(), action).unwrap(),
+        10,
+        0.01
+    ));
 }
 
 #[test]
-fn unvisited_final_action_uses_mixed_value_and_never_resigns() {
+fn unvisited_final_action_uses_mixed_value_and_checks_repetition() {
     // 訪問済みの候補がすべて負けでも、未訪問の手を混合価値つきで選べる。
     for repetition in [false, true] {
         let mut tree = small_tree(3);
@@ -404,8 +228,8 @@ fn unvisited_final_action_uses_mixed_value_and_never_resigns() {
             value.to_bits(),
             gumbel::mixed_value(root).unwrap().to_bits()
         );
-        assert!(value > 0.0 && value < RESIGN_THRESHOLD);
-        assert!(!should_resign(root, action).unwrap());
+        assert!(value > 0.0 && value < 0.01);
+        assert_eq!(should_resign(root, value, 10, 0.01), !repetition);
     }
 }
 
@@ -451,47 +275,15 @@ fn unresolved_root_with_unvisited_edges_resigns_only_without_repetition_cutoffs(
         assert!(tree.root().edges.iter().any(|edge| edge.visits == 0));
         let selected = first.path[0];
         assert!(tree.root().edges[selected].q().unwrap() < 0.01);
-        assert_eq!(should_resign(tree.root(), selected).unwrap(), expected);
-    }
-}
-
-#[test]
-fn false_resignation_counts_wins_draws_and_discards_but_not_losses() {
-    for side in Color::ALL {
-        for (result, expected) in [
-            (
-                Some(Outcome::Game(GameResult::Win {
-                    winner: side.opposite(),
-                    reason: WinReason::Mate,
-                })),
-                false,
+        assert_eq!(
+            should_resign(
+                tree.root(),
+                selected_value(tree.root(), selected).unwrap(),
+                10,
+                0.01
             ),
-            (
-                Some(Outcome::Game(GameResult::Win {
-                    winner: side,
-                    reason: WinReason::RoyalCapture,
-                })),
-                true,
-            ),
-            (
-                Some(Outcome::Game(GameResult::Draw {
-                    reason: DrawReason::Repetition,
-                })),
-                true,
-            ),
-            (
-                Some(Outcome::MateInThree {
-                    winner: side.opposite(),
-                }),
-                false,
-            ),
-            (Some(Outcome::MateInThree { winner: side }), true),
-            (None, true),
-        ] {
-            assert_eq!(false_resignation(true, Some(side), result), expected);
-            assert!(!false_resignation(false, Some(side), result));
-            assert!(!false_resignation(true, None, result));
-        }
+            expected
+        );
     }
 }
 
@@ -559,8 +351,7 @@ fn selfplay_driver_keeps_repetition_draw_at_half_despite_nonzero_draw_option() {
             .with_draw_value(draw_value)
             .unwrap();
         // 本番と同じSearch::newを通し、DrawValue::SelfPlayの配線を検査する。
-        let mut search =
-            Search::new(snapshot, &mut XorShift64::new(derive_seed(7, 1)), 1, false).unwrap();
+        let mut search = Search::new(snapshot, &mut XorShift64::new(derive_seed(7, 1)), 1).unwrap();
         let Step::Evaluate(request) = search
             .driver
             .select_leaf(SelectionRule::Gumbel(&search.gumbel))
@@ -599,83 +390,16 @@ fn selfplay_driver_keeps_repetition_draw_at_half_despite_nonzero_draw_option() {
 }
 
 #[test]
-fn single_simulation_plays_unvisited_action_after_repetition_loss() {
-    // R1の直近1周では、白飛車だけが黒の歩兵への攻撃を続ける。
-    // 4手目の反復は探索では白の負けになり、唯一訪問した候補から除かれる。
-    let rules = Rules {
-        exhaustion: ExhaustionRule::E2,
-        ..Rules::JCSA
-    };
-    let mut game = PlayingGame::new(
-        1,
-        Settings {
-            start_position: StartPosition::RandomOpening,
-            rules,
-            seed: 7,
-            simulations: 4,
-            playthrough_percent: 1,
-            max_ply: 6,
-        },
-    )
-    .unwrap();
-    game.game = Game::from_position(
-        rules,
-        position(
-            Color::Black,
-            &[
-                (sq(0, 0), Color::Black, PieceKind::King),
-                (sq(3, 3), Color::Black, PieceKind::Rook),
-                (sq(8, 1), Color::Black, PieceKind::Pawn),
-                (sq(8, 8), Color::White, PieceKind::Rook),
-                (sq(11, 11), Color::White, PieceKind::King),
-            ],
-        ),
-    );
-    let line = [
-        step(sq(3, 3), sq(3, 4)),
-        step(sq(8, 8), sq(8, 7)),
-        step(sq(3, 4), sq(3, 3)),
-        step(sq(8, 7), sq(8, 8)),
-    ];
-    for &mv in &line[..3] {
-        assert_eq!(game.game.play(mv).unwrap(), GameStatus::Ongoing);
-    }
-    game.entries.clear();
-    assert!(!game.playthrough);
-    let mut evaluator = FavorMove(line[3]);
-    while let Some(request) = game.advance().unwrap() {
-        let mut logits = Vec::new();
-        let mut values = Vec::new();
-        evaluator
-            .evaluate(&[request.query()], &mut logits, &mut values)
-            .unwrap();
-        game.evaluate(&request, &logits, values[0]).unwrap();
-    }
-    assert_eq!(game.game.ply_count(), 6);
-    assert_eq!(game.entries.len(), 3);
-    let entry = &game.entries[0];
-    let played = entry.played_move().expect("the unvisited action is played");
-    assert_ne!(played, line[3]);
-    assert_eq!(entry.visits(), Some(1));
-    // 根の評価0.5と、唯一の訪問の負け0を混合した0.25を量子化する。
-    assert_eq!(entry.value(), Value::Mcts(16384));
-    // 基本シード7の対局1は最初が速い探索なので、混合価値は残して方策を省く。
-    assert_eq!(entry.policy(), &Policy::None);
-    assert!(!game.resigned);
-    assert_eq!(game.first_trigger, None);
-}
-
-#[test]
 fn proven_root_stops_before_budget_and_terminal_move_has_an_unsearched_last_entry() {
     let mut game = PlayingGame::new(
-        1,
+        2,
         Settings {
-            start_position: StartPosition::RandomOpening,
+            start_position: StartPosition::Initial,
             rules: Rules::JCSA,
             seed: 7,
             simulations: 8,
-            playthrough_percent: 100,
-            max_ply: 1000,
+            resign_threshold: 0.0,
+            max_ply: 1,
         },
     )
     .unwrap();
@@ -698,15 +422,14 @@ fn proven_root_stops_before_budget_and_terminal_move_has_an_unsearched_last_entr
     game.entries.clear();
     assert_eq!(play_to_end(&mut game, &mut FavorMove(capture)), 1);
     let completed = game.finish().unwrap();
-    assert!(!completed.resigned);
     assert_eq!(
-        completed.result,
-        Some(Outcome::Game(GameResult::Win {
+        completed.record.outcome(),
+        Outcome::Game(GameResult::Win {
             winner: Color::Black,
             reason: WinReason::RoyalCapture
-        }))
+        })
     );
-    let record = completed.record.unwrap();
+    let record = completed.record;
     assert_eq!(record.entries().len(), 2);
     assert_eq!(record.entries()[0].played_move(), Some(capture));
     assert_eq!(record.entries()[0].value(), Value::Mcts(65535));
@@ -719,166 +442,352 @@ fn proven_root_stops_before_budget_and_terminal_move_has_an_unsearched_last_entr
 }
 
 // 第8条・第21条: 王手放置後の1手の勝ちは、探索の確定と着手後の打ち切りの双方に効く。
+
+fn settings(max_ply: u32) -> Settings {
+    Settings {
+        rules: Rules::JCSA,
+        seed: 7,
+        start_position: StartPosition::Initial,
+        simulations: 1,
+        resign_threshold: 1.0,
+        max_ply,
+    }
+}
+
+fn root_with_visits(visits: &[u32]) -> Node {
+    use minase::search::mcts::tree::Edge;
+    let moves = Game::new(Rules::JCSA).legal_moves();
+    let count = visits.len();
+    Node {
+        value: Some(0.5),
+        state: NodeState::Expanded,
+        visited_policy: 0.0,
+        edges: visits
+            .iter()
+            .enumerate()
+            .map(|(i, &visits)| Edge {
+                mv: moves[i],
+                logit: 0.0,
+                policy: 1.0 / count as f32,
+                visits,
+                virtual_loss: 0,
+                value_sum: f64::from(visits) * 0.5,
+                child: None,
+            })
+            .collect(),
+    }
+}
+
 #[test]
-fn royal_capture_proven_root_preserves_resignation_and_playthrough_cutoffs() {
+fn explorative_actions_use_all_visits_at_29_and_final_selection_at_30() {
+    let root = root_with_visits(&[0, 1, 3, 0]);
+    let seed = derive_seed(7, 2);
+    let mut rng = XorShift64::new(seed);
+    let mut expected_rng = XorShift64::new(seed);
+    let mut counts = [0; 4];
+    for _ in 0..16384 {
+        // 仕様の累積区間は[0, 1)と[1, 4)。未訪問の辺は空区間になる。
+        let expected = if expected_rng.index(NonZeroUsize::new(4).unwrap()) == 0 {
+            1
+        } else {
+            2
+        };
+        let actual = explorative_action(&root, 2, 29, &mut rng);
+        assert_eq!(actual, expected);
+        counts[actual] += 1;
+    }
+    assert_eq!(counts[0], 0);
+    assert_eq!(counts[3], 0);
+    assert!((counts[1] as f64 / 16384.0 - 0.25).abs() < 0.02);
+    for _ in 0..100 {
+        assert_eq!(explorative_action(&root, 1, 30, &mut rng), 1);
+    }
+    assert_eq!(
+        rng.next(),
+        expected_rng.next(),
+        "p=30 does not consume a draw"
+    );
+    let unvisited = root_with_visits(&[0, 0]);
+    assert_eq!(explorative_action(&unvisited, 1, 29, &mut rng), 1);
+    assert_eq!(
+        rng.next(),
+        expected_rng.next(),
+        "zero visits do not consume a draw"
+    );
+}
+
+#[test]
+fn resignation_obeys_ply_threshold_and_approximation_boundaries() {
+    let mut root = root_with_visits(&[0]);
+    assert!(!should_resign(&root, 0.0, 9, 0.5));
+    assert!(should_resign(&root, 0.0, 10, 0.5));
+    assert!(!should_resign(&root, 0.5, 10, 0.5));
+    assert!(should_resign(&root, 0.5, 10, 0.5000000001));
+    assert!(!should_resign(&root, 0.0, 10, 0.0));
+    root.edges[0].child = Some(Box::new(Node {
+        state: NodeState::Draw {
+            value: 0.5,
+            approximate: true,
+        },
+        ..root_with_visits(&[])
+    }));
+    assert!(!should_resign(&root, 0.0, 10, 0.5));
+}
+
+#[test]
+fn every_tenth_game_disables_resignation_and_other_games_resign_at_ply_ten() {
+    for number in [1, 2, 10, 11, 12, 20, 21] {
+        let mut playing = PlayingGame::new(number, settings(12)).unwrap();
+        play_to_end(&mut playing, &mut UniformEvaluator);
+        let completed = playing.finish().unwrap();
+        let no_resign = [1, 11, 21].contains(&number);
+        assert_eq!(completed.plies, if no_resign { 12 } else { 10 });
+        assert_eq!(completed.searches, if no_resign { 12 } else { 11 });
+        assert_eq!(completed.calibration.is_some(), no_resign);
+        assert_eq!(
+            completed.record.outcome(),
+            if no_resign {
+                Outcome::MaxPlyDraw
+            } else {
+                Outcome::Game(GameResult::Win {
+                    winner: Color::White,
+                    reason: WinReason::Resignation,
+                })
+            }
+        );
+        assert!(completed.record.entries()[9].played_move().is_some());
+        assert_eq!(
+            completed.record.entries()[10].played_move().is_some(),
+            no_resign
+        );
+    }
+}
+
+#[test]
+fn proven_values_override_stale_q_in_both_directions_including_approximation() {
+    for approximate in [false, true] {
+        for (outcome, expected) in [(ProofOutcome::Loss, 1.0), (ProofOutcome::Win, 0.0)] {
+            let mut root = root_with_visits(&[1]);
+            root.edges[0].value_sum = 0.37;
+            root.edges[0].child = Some(Box::new(Node {
+                state: NodeState::Proven(Proof {
+                    outcome,
+                    distance: 0,
+                    repetition: approximate,
+                    approximate,
+                }),
+                ..root_with_visits(&[])
+            }));
+            assert_eq!(selected_value(&root, 0).unwrap(), expected);
+        }
+    }
+}
+
+#[test]
+fn selected_values_reject_nonfinite_and_out_of_range_values() {
+    for value in [f64::NAN, f64::INFINITY, -0.1, 1.1] {
+        let mut root = root_with_visits(&[1]);
+        root.edges[0].value_sum = value;
+        assert!(matches!(
+            selected_value(&root, 0),
+            Err(Error::InvalidValue(_))
+        ));
+    }
+}
+
+#[test]
+fn calibration_uses_each_sides_minimum_including_the_first_ten_positions() {
+    struct SequenceEvaluator(usize);
+    impl Evaluator for SequenceEvaluator {
+        fn evaluate(
+            &mut self,
+            queries: &[Query<'_>],
+            logits: &mut Vec<f32>,
+            values: &mut Vec<f32>,
+        ) -> Result<(), NnError> {
+            UniformEvaluator.evaluate(queries, logits, values)?;
+            // 1手1探索では根と子を順に評価する。子の値から根の値へ反転する。
+            let child_values = [0.875, 0.75, 0.5, 0.25];
+            values[0] = if self.0.is_multiple_of(2) {
+                0.5
+            } else {
+                child_values[self.0 / 2]
+            };
+            self.0 += 1;
+            Ok(())
+        }
+    }
+    let mut playing = PlayingGame::new(1, settings(4)).unwrap();
+    play_to_end(&mut playing, &mut SequenceEvaluator(0));
+    let completed = playing.finish().unwrap();
+    let calibration = completed.calibration.unwrap();
+    assert_eq!(calibration.min_value_black, 0.125);
+    assert_eq!(calibration.min_value_white, 0.25);
+    assert_eq!(calibration.result, CalibrationResult::Draw);
+    assert_eq!(completed.record.outcome(), Outcome::MaxPlyDraw);
+    assert_eq!(completed.record.entries().len(), 5);
+    assert!(
+        completed.record.entries()[..4]
+            .iter()
+            .all(|entry| matches!(entry.policy(), Policy::Candidates(_)))
+    );
+}
+
+#[test]
+fn missing_side_in_calibration_is_a_typed_error() {
+    let mut playing = PlayingGame::new(1, settings(1)).unwrap();
+    play_to_end(&mut playing, &mut UniformEvaluator);
+    assert!(matches!(
+        playing.finish(),
+        Err(Error::MissingCalibrationValue {
+            game: 1,
+            side: Color::White
+        })
+    ));
+}
+
+#[test]
+fn decision_keeps_final_selection_value_and_policy_when_exploration_plays_another_move() {
+    let game = Game::new(Rules::JCSA);
+    let mut search = Search::new(
+        SearchSnapshot::from_game(&game).unwrap(),
+        &mut XorShift64::new(derive_seed(7, 1)),
+        2,
+    )
+    .unwrap();
+    for (simulation, value) in [0.5, 0.25, 0.75].into_iter().enumerate() {
+        let Step::Evaluate(request) = search
+            .driver
+            .select_leaf(SelectionRule::Gumbel(&search.gumbel))
+            .unwrap()
+        else {
+            panic!("evaluation expected")
+        };
+        let mut logits = vec![0.0; request.query().moves.len()];
+        if simulation == 0 {
+            logits.fill(-1000.0);
+            logits[..2].fill(0.0);
+        }
+        search.driver.evaluate(&request, &logits, value).unwrap();
+    }
+    let root = search.driver.tree().root();
+    let action = search.gumbel.action(root, 1.0).unwrap();
+    // 子の値1/4を根から見た3/4の手が最終選択となり、量子化値は49,151となる。
+    assert_eq!(root.edges[action].q(), Some(0.75));
+    let expected_value = Value::Mcts(49151);
+    let expected_policy = search.policy(&game).unwrap();
+    let mut differs = false;
+    for seed in 1..32 {
+        let decision = search
+            .decision(&game, &mut XorShift64::new(derive_seed(seed, 2)), 0.0)
+            .unwrap();
+        differs |= decision.mv != root.edges[action].mv;
+        assert_eq!(decision.value, expected_value);
+        assert_eq!(decision.policy, expected_policy);
+    }
+    assert!(differs);
+}
+
+#[test]
+fn proven_loss_records_zero_and_mate_takes_precedence_over_the_ply_limit() {
     let rules = Rules {
         e1: true,
         exhaustion: ExhaustionRule::E2,
         ..Rules::JCSA
     };
-    for full_search in [false, true] {
-        for playthrough_percent in [1, 100] {
-            let mut game = PlayingGame::new(
-                1,
-                Settings {
-                    start_position: StartPosition::RandomOpening,
-                    rules,
-                    seed: 7,
-                    simulations: 32,
-                    playthrough_percent,
-                    max_ply: 1,
-                },
-            )
-            .unwrap();
-            game.game = Game::from_position(
-                rules,
-                position(
-                    Color::Black,
-                    &[
-                        (sq(0, 0), Color::Black, PieceKind::King),
-                        (sq(0, 2), Color::White, PieceKind::Rook),
-                        (sq(1, 2), Color::White, PieceKind::Rook),
-                        (sq(11, 11), Color::White, PieceKind::King),
-                    ],
-                ),
-            );
-            game.entries.clear();
-            assert_eq!(game.playthrough, playthrough_percent == 100);
-            let legal = game.game.legal_moves();
-            assert_eq!(legal.len(), 3);
-            let mut search = Search::new(
-                SearchSnapshot::from_game(&game.game).unwrap(),
-                &mut game.rng,
-                if full_search { 32 } else { 8 },
-                full_search,
-            )
-            .unwrap();
-            let mut evaluations = 0;
-            while !search.finished() {
-                match search
-                    .driver
-                    .select_leaf(SelectionRule::Gumbel(&search.gumbel))
-                    .unwrap()
-                {
-                    Step::Evaluate(request) => {
-                        let mut logits = Vec::new();
-                        let mut values = Vec::new();
-                        UniformEvaluator
-                            .evaluate(&[request.query()], &mut logits, &mut values)
-                            .unwrap();
-                        search
-                            .driver
-                            .evaluate(&request, &logits, values[0])
-                            .unwrap();
-                        evaluations += 1;
-                    }
-                    Step::BackedUp => {}
-                    _ => panic!("sequential search has sufficient capacity"),
-                }
+    let mut playing = PlayingGame::new(
+        2,
+        Settings {
+            rules,
+            simulations: 32,
+            ..settings(1)
+        },
+    )
+    .unwrap();
+    playing.game = Game::from_position(
+        rules,
+        position(
+            Color::Black,
+            &[
+                (sq(0, 0), Color::Black, PieceKind::King),
+                (sq(0, 2), Color::White, PieceKind::Rook),
+                (sq(1, 2), Color::White, PieceKind::Rook),
+                (sq(11, 11), Color::White, PieceKind::King),
+            ],
+        ),
+    );
+    playing.start_position = playing.game.position().clone();
+    assert_eq!(play_to_end(&mut playing, &mut UniformEvaluator), 1);
+    let completed = playing.finish().unwrap();
+    assert_eq!(
+        completed.record.outcome(),
+        Outcome::MateInThree {
+            winner: Color::White
+        }
+    );
+    assert_eq!(completed.record.entries()[0].value(), Value::Mcts(0));
+    assert!(matches!(
+        completed.record.entries()[0].policy(),
+        Policy::Candidates(_)
+    ));
+    assert_eq!(completed.record.entries()[0].visits(), Some(3));
+}
+
+#[test]
+fn decision_uses_exploration_at_29_and_gumbel_scale_one_at_30() {
+    let mut playing = PlayingGame::new(1, settings(30)).unwrap();
+    for ply in [29, 30] {
+        playing.settings.max_ply = ply;
+        play_to_end(&mut playing, &mut UniformEvaluator);
+        assert_eq!(playing.game.ply_count(), ply);
+        let game = &playing.game;
+        let snapshot = SearchSnapshot::from_game(game).unwrap();
+        let moves = snapshot.root_moves().to_vec();
+        let mut search = Search::new(snapshot, &mut XorShift64::new(derive_seed(7, 1)), 2).unwrap();
+        let mut noise = vec![0.0; moves.len()];
+        noise[0] = 1.0;
+        search.gumbel = Gumbel::new(noise, 2, 1.0).unwrap();
+        for simulation in 0..=2 {
+            let Step::Evaluate(request) = search
+                .driver
+                .select_leaf(SelectionRule::Gumbel(&search.gumbel))
+                .unwrap()
+            else {
+                panic!("evaluation expected")
+            };
+            let mut logits = vec![0.0; request.query().moves.len()];
+            if simulation == 0 {
+                logits.fill(-1000.0);
+                logits[0] = 0.0;
+                logits[1] = 0.75;
             }
-            assert_eq!(evaluations, 1, "only the root requires inference");
-            let root = search.driver.tree().root();
-            assert_eq!(
-                root.state,
-                NodeState::Proven(Proof {
-                    outcome: ProofOutcome::Loss,
-                    distance: 2,
-                    repetition: false,
-                    approximate: false,
-                })
-            );
-            for edge in &root.edges {
-                assert_eq!(edge.visits, 1);
-                assert_eq!(edge.q(), Some(0.0));
-                assert_eq!(
-                    edge.child.as_ref().unwrap().state,
-                    NodeState::Proven(Proof {
-                        outcome: ProofOutcome::Win,
-                        distance: 1,
-                        repetition: false,
-                        approximate: false,
-                    })
-                );
-            }
-            let target = search.gumbel.policy_target(root).unwrap();
-            assert_eq!(target.len(), legal.len());
-            assert!(
-                target
-                    .iter()
-                    .all(|p| p.is_finite() && (0.0..=1.0).contains(p))
-            );
-            assert!((target.iter().sum::<f32>() - 1.0).abs() < 1e-6);
-            let decision = search.decision(&game.game).unwrap();
-            assert!(legal.contains(&decision.mv));
-            assert_eq!(decision.value, Value::Mcts(0));
-            assert_eq!(decision.visits, 3);
-            assert!(decision.visits < search.simulations);
-            assert_eq!(decision.resign, full_search);
-            if full_search {
-                let Policy::Candidates(candidates) = &decision.policy else {
-                    panic!("a full search records its policy");
-                };
-                assert_eq!(candidates.len(), legal.len());
-                assert_eq!(
-                    candidates.iter().map(|(_, p)| u32::from(*p)).sum::<u32>(),
-                    65535
-                );
+            search.driver.evaluate(&request, &logits, 0.5).unwrap();
+        }
+        let mut rng = XorShift64::new(derive_seed(7, 2));
+        let mut expected_rng = XorShift64::new(derive_seed(7, 2));
+        let mut played_second = false;
+        for _ in 0..64 {
+            let expected = if ply == 29 {
+                expected_rng.index(NonZeroUsize::new(2).unwrap())
             } else {
-                assert_eq!(decision.policy, Policy::None);
-            }
-            game.search = Some(search);
-            assert_eq!(play_to_end(&mut game, &mut UniformEvaluator), 0);
-            let resigned = full_search && !game.playthrough;
-            if !resigned {
-                assert_eq!(game.game.status(), GameStatus::Ongoing);
-                assert_eq!(mate_in_three(&game.game).unwrap(), Verdict::Win);
-                assert_eq!(game.mate_winner, Some(Color::White));
-            }
-            let completed = game.finish().unwrap();
-            assert_eq!(completed.resigned, resigned);
-            assert_eq!(completed.first_trigger, full_search.then_some(Color::Black));
-            assert_eq!(completed.plies, u32::from(!resigned));
-            assert_eq!(
-                (completed.full_searches, completed.fast_searches),
-                (u64::from(full_search), u64::from(!full_search))
-            );
-            assert_eq!(
-                completed.result,
-                Some(if resigned {
-                    Outcome::Game(GameResult::Win {
-                        winner: Color::White,
-                        reason: WinReason::Resignation,
-                    })
-                } else {
-                    Outcome::MateInThree {
-                        winner: Color::White,
-                    }
-                })
-            );
-            let record = completed.record.unwrap();
-            assert_eq!(record.entries().len(), if resigned { 1 } else { 2 });
-            let entry = &record.entries()[0];
-            assert_eq!(entry.played_move(), (!resigned).then_some(decision.mv));
-            assert_eq!(entry.value(), Value::Mcts(0));
-            assert_eq!(entry.policy(), &decision.policy);
-            assert_eq!(entry.visits(), Some(3));
-            if !resigned {
-                let last = &record.entries()[1];
-                assert_eq!(last.played_move(), None);
-                assert_eq!(last.value(), Value::None);
-                assert_eq!(last.policy(), &Policy::None);
-                assert_eq!(last.visits(), Some(0));
-            }
+                0
+            };
+            let decision = search.decision(game, &mut rng, 0.0).unwrap();
+            assert_eq!(decision.mv, moves[expected]);
+            played_second |= decision.mv == moves[1];
+        }
+        assert_eq!(played_second, ply == 29);
+    }
+}
+
+#[test]
+fn exploration_rng_uses_the_game_seed_with_derivation_two() {
+    for number in [1, 2, 11] {
+        let mut playing = PlayingGame::new(number, settings(12)).unwrap();
+        let game_seed = derive_seed(7, u64::from(number));
+        let mut expected = XorShift64::new(derive_seed(game_seed.get(), 2));
+        for _ in 0..32 {
+            assert_eq!(playing.action_rng.next(), expected.next());
         }
     }
 }

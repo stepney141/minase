@@ -119,6 +119,7 @@ impl Histogram {
 
 fn end_reason(outcome: Outcome) -> &'static str {
     match outcome {
+        Outcome::MaxPlyDraw => "draw_max_ply",
         Outcome::NotFromGame => "not_from_game",
         Outcome::MateInThree { .. } => "win_mate_in_three",
         Outcome::EvaluationAdjudication { .. } => "win_evaluation_adjudication",
@@ -158,6 +159,7 @@ fn summarize(paths: &[PathBuf]) -> Result<Value, Error> {
         "draw_piece_exhaustion",
         "draw_bare_king",
         "draw_agreement",
+        "draw_max_ply",
     ]
     .into_iter()
     .map(|reason| (reason, 0))

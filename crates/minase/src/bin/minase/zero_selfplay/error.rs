@@ -44,6 +44,11 @@ pub(super) enum Error {
     InvalidAction,
     InvalidValue(f32),
     MissingSearch,
+    UnfinishedGame(u32),
+    MissingCalibrationValue {
+        game: u32,
+        side: minase_core::Color,
+    },
     UnexpectedGame(u32),
     IncompleteChunks,
     ReceiverClosed,
@@ -97,6 +102,11 @@ impl fmt::Display for Error {
             Self::InvalidValue(value) => write!(
                 f,
                 "selected root value is not finite and within [0, 1]: {value}"
+            ),
+            Self::UnfinishedGame(game) => write!(f, "game {game} has not finished"),
+            Self::MissingCalibrationValue { game, side } => write!(
+                f,
+                "no searched position for {side:?} in calibration game {game}"
             ),
             Self::MissingSearch => f.write_str("evaluation has no active search"),
             Self::UnexpectedGame(number) => {

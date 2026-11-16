@@ -1189,3 +1189,20 @@ fn scan_and_replay_exclude_check_and_accept_evaluation_adjudication() {
         ));
     }
 }
+
+#[test]
+fn max_ply_draw_keeps_all_policy_positions_with_draw_outcomes() {
+    let fixture = Fixture::new();
+    let game = mcts_game(
+        Color::Black,
+        &[Some(40000), Some(30000), None],
+        &[true, true, false],
+        Outcome::MaxPlyDraw,
+    );
+    let path = fixture.write(TeacherKind::Mcts, &[game]);
+    let info = scan_file(&path).unwrap();
+    assert_eq!(info.training_count + info.validation_count, 2);
+    let records = read_file(&path).unwrap();
+    assert_eq!(records.plies, [0, 1]);
+    assert_eq!(records.outcomes, [2, 2]);
+}

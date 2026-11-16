@@ -68,7 +68,7 @@ impl InspectionSummary {
                     self.losses += 1;
                 }
             }
-            Outcome::Game(GameResult::Draw { .. }) => self.draws += 1,
+            Outcome::Game(GameResult::Draw { .. }) | Outcome::MaxPlyDraw => self.draws += 1,
             Outcome::NotFromGame => unreachable!("synthetic entries were excluded"),
         }
         match position.side_to_move() {
@@ -251,7 +251,7 @@ fn print_entry(
     }
     let outcome = match game.outcome() {
         Outcome::NotFromGame => "none",
-        Outcome::Game(GameResult::Draw { .. }) => "Draw",
+        Outcome::Game(GameResult::Draw { .. }) | Outcome::MaxPlyDraw => "Draw",
         Outcome::Game(GameResult::Win { winner, .. })
         | Outcome::MateInThree { winner }
         | Outcome::EvaluationAdjudication { winner }

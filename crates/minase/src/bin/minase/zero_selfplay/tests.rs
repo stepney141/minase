@@ -54,11 +54,11 @@ pub(super) fn config() -> Config {
         network_sha256: minase::datagen::hex(&CHECKSUM),
         nn_backend: "cpu".into(),
         seed: 7,
-        start_position: cli::StartPosition::RandomOpening,
+        start_position: cli::StartPosition::Initial,
         games: 6,
         chunk_games: 2,
         simulations: 4,
-        playthrough_percent: 1,
+        resign_threshold: 0.01,
         max_ply: 20,
     }
 }
@@ -113,203 +113,132 @@ fn read_games(path: &Path) -> (Header, Vec<DecodedGame>) {
     (header, games)
 }
 
-fn all_records(path: &Path, config: &Config, resigned: bool) -> Vec<DecodedGame> {
-    let mut games = Vec::new();
-    for chunk in 0..config.games.div_ceil(config.chunk_games) {
-        let suffix = if resigned { ".resigned.mnsd" } else { ".mnsd" };
-        games.extend(read_games(&path.join(format!("chunk-{chunk:05}{suffix}"))).1);
-    }
-    games
-}
-
-/// 基本シードと対局番号から、仕様で定める完全探索の手番列を求める。
-fn full_searches(config: &Config, number: u32) -> impl Iterator<Item = bool> {
-    let seed = derive_seed(config.seed, u64::from(number));
-    let mut rng = XorShift64::new(derive_seed(seed.get(), 3));
-    std::iter::from_fn(move || Some(rng.next() < (1_u64 << 62)))
-}
-
-fn first_full_black_search(config: &Config, number: u32) -> Option<usize> {
-    let seed = derive_seed(config.seed, u64::from(number));
-    let (game, _) = minase::datagen::opening::generate_opening(Rules::JCSA, seed).unwrap();
-    (game.ply_count()..config.max_ply)
-        .zip(full_searches(config, number))
-        .position(|(ply, full)| ply.is_multiple_of(2) && full)
+fn all_records(path: &Path, config: &Config) -> Vec<DecodedGame> {
+    (0..config.games.div_ceil(config.chunk_games))
+        .flat_map(|chunk| read_games(&path.join(format!("chunk-{chunk:05}.mnsd"))).1)
+        .collect()
 }
 
 #[test]
-fn playthrough_hundred_disables_resignation_and_counts_false_triggers_including_discards() {
-    let directory = TemporaryDirectory::new();
-    let config = Config {
-        playthrough_percent: 100,
-        ..config()
-    };
-    let report = generate(&directory.0, &config, 2, 3);
-    let counts = &report.summary.counts;
-    assert_eq!(counts.games, u64::from(config.games));
-    assert_eq!(counts.playthrough_games, counts.games);
-    assert_eq!(counts.resigned_games, 0);
-    let triggers = (1..=config.games)
-        .filter(|&number| first_full_black_search(&config, number).is_some())
-        .count() as u64;
-    assert_eq!(counts.resign_triggered_playthrough_games, triggers);
-    assert!(all_records(&directory.0, &config, true).is_empty());
-    assert!(all_records(&directory.0, &config, false).is_empty());
-    assert_eq!(counts.false_resignations, triggers);
-    assert_eq!(counts.discarded_max_ply, u64::from(config.games));
-    assert_eq!(
-        counts.plies,
-        u64::from(config.games) * u64::from(config.max_ply)
-    );
-    assert_eq!(counts.positions, 0);
-    assert_eq!(counts.resigned_positions, 0);
-    assert_eq!(report.summary.training_positions, 0);
-    assert_eq!(report.summary.target_positions, u64::MAX);
-    assert_eq!(report.summary.chunks, 3);
-    assert_eq!(report.summary.false_resignation_rate, Some(1.0));
-    assert!(report.summary.resigned_games_excluded);
-}
-
-#[test]
-fn enabled_resignation_records_first_full_black_search_with_mcts_headers_policy_and_visits() {
-    let directory = TemporaryDirectory::new();
-    let config = Config {
-        games: 8,
-        chunk_games: 3,
-        playthrough_percent: 20,
-        ..config()
-    };
-    let report = generate(&directory.0, &config, 2, 2);
-    let playthrough = |number: u32| {
-        let seed = derive_seed(config.seed, u64::from(number));
-        derive_seed(seed.get(), 2).get() % 100 < u64::from(config.playthrough_percent)
-    };
-    let expected: Vec<_> = (1..=config.games)
-        .filter(|&number| {
-            !playthrough(number) && first_full_black_search(&config, number).is_some()
-        })
-        .collect();
-    assert!(!expected.is_empty());
-    assert!(expected.len() < config.games as usize);
-    let resigned = all_records(&directory.0, &config, true);
-    assert_eq!(
-        resigned
-            .iter()
-            .map(|game| game.record().game_number())
-            .collect::<Vec<_>>(),
-        expected
-    );
-    assert_eq!(report.summary.counts.resigned_games, expected.len() as u64);
-    assert_eq!(
-        report.summary.counts.win_reason_resignation,
-        expected.len() as u64
-    );
-    for chunk in 0..config.games.div_ceil(config.chunk_games) {
-        for suffix in [".mnsd", ".resigned.mnsd"] {
-            let (header, _) = read_games(&directory.0.join(format!("chunk-{chunk:05}{suffix}")));
-            assert_eq!(header.teacher_kind(), TeacherKind::Mcts);
+fn all_searches_and_resignations_are_recorded_in_one_training_file_per_chunk() {
+    for threshold in [0.0, 0.01] {
+        let directory = TemporaryDirectory::new();
+        let config = Config {
+            games: 22,
+            chunk_games: 7,
+            resign_threshold: threshold,
+            simulations: 1,
+            max_ply: 12,
+            ..config()
+        };
+        let report = generate(&directory.0, &config, 2, 3);
+        let counts = &report.summary.counts;
+        let games = all_records(&directory.0, &config);
+        assert_eq!(games.len(), 22);
+        assert_eq!(counts.no_resign_games, 3);
+        assert_eq!(
+            counts
+                .resign_calibration_games
+                .iter()
+                .map(|g| g.game)
+                .collect::<Vec<_>>(),
+            [1, 11, 21]
+        );
+        let mut positions = 0;
+        for decoded in games {
+            let record = decoded.record();
+            let no_resign = [1, 11, 21].contains(&record.game_number());
+            let resigned = threshold > 0.0 && !no_resign;
+            assert_eq!(record.start_ply(), 0);
+            assert_eq!(record.start_position(), &minase_core::Position::initial());
+            assert_eq!(record.origin(), records::Origin::RandomSelfplay);
             assert_eq!(
-                header.teacher_search_budget(),
-                u64::from(config.simulations)
+                record.outcome(),
+                if resigned {
+                    Outcome::Game(GameResult::Win {
+                        winner: Color::White,
+                        reason: WinReason::Resignation,
+                    })
+                } else {
+                    Outcome::MaxPlyDraw
+                }
             );
+            let searched = if resigned { 11 } else { 12 };
+            assert_eq!(record.entries().len(), searched + usize::from(!resigned));
+            for (ply, entry) in record.entries()[..searched].iter().enumerate() {
+                assert_eq!(entry.played_move().is_none(), resigned && ply == 10);
+                assert_eq!(
+                    entry.value(),
+                    if ply % 2 == 0 {
+                        Value::Mcts(66)
+                    } else {
+                        Value::Mcts(65469)
+                    }
+                );
+                let Policy::Candidates(candidates) = entry.policy() else {
+                    panic!("every search has a policy")
+                };
+                assert_eq!(
+                    candidates.iter().map(|(_, p)| u32::from(*p)).sum::<u32>(),
+                    65535
+                );
+                assert_eq!(entry.visits(), Some(1));
+            }
+            if !resigned {
+                let last = record.entries().last().unwrap();
+                assert_eq!(
+                    (
+                        last.played_move(),
+                        last.value(),
+                        last.policy(),
+                        last.visits()
+                    ),
+                    (None, Value::None, &Policy::None, Some(0))
+                );
+            }
+            positions += searched as u64;
+        }
+        assert_eq!(counts.positions, positions);
+        assert_eq!(counts.searches, positions);
+        assert_eq!(report.summary.training_positions, positions);
+        assert_eq!(
+            counts.win_reason_resignation,
+            if threshold > 0.0 { 19 } else { 0 }
+        );
+        assert_eq!(
+            counts.draw_reason_max_ply,
+            if threshold > 0.0 { 3 } else { 22 }
+        );
+        for item in &counts.resign_calibration_games {
+            assert_eq!(item.result, game::CalibrationResult::Draw);
+            assert_eq!(item.min_value_black, f64::from(1.0_f32 - 0.999_f32));
+            assert_eq!(item.min_value_white, f64::from(1.0_f32 - 0.001_f32));
+        }
+        for chunk in 0..4 {
+            let (header, _) = read_games(&directory.0.join(format!("chunk-{chunk:05}.mnsd")));
+            assert_eq!(header.teacher_kind(), TeacherKind::Mcts);
+            assert_eq!(header.teacher_search_budget(), 1);
             assert_eq!(header.seed(), config.seed);
             assert_eq!(header.rule_set(), config.rules);
             assert_eq!(header.generation_commit(), config.generation_commit);
             assert_eq!(header.network_checksum(), &CHECKSUM);
+            assert!(
+                !directory
+                    .0
+                    .join(format!("chunk-{chunk:05}.resigned.mnsd"))
+                    .exists()
+            );
         }
-    }
-    let mut positions = 0;
-    for decoded in resigned {
-        let record = decoded.record();
-        let seed = derive_seed(config.seed, u64::from(record.game_number()));
-        let (_, opening) = minase::datagen::opening::generate_opening(Rules::JCSA, seed).unwrap();
-        let opening_len = opening.len();
-        assert!((8..=16).contains(&opening_len));
-        let searched = first_full_black_search(&config, record.game_number()).unwrap() + 1;
-        assert_eq!(record.entries().len(), opening_len + searched);
-        assert_eq!(record.start_position(), &minase_core::Position::initial());
-        assert_eq!(record.start_ply(), 0);
-        assert_eq!(record.origin(), records::Origin::RandomSelfplay);
-        assert_eq!(
-            record.outcome(),
-            Outcome::Game(GameResult::Win {
-                winner: Color::White,
-                reason: WinReason::Resignation
-            })
-        );
-        let mut replay = minase_core::Game::new(Rules::JCSA);
-        let mut full = full_searches(&config, record.game_number());
-        for (index, entry) in record.entries().iter().enumerate() {
-            assert_eq!(entry.exclusion(), records::Exclusion::None);
-            if index < opening_len {
-                assert_eq!(entry.played_move(), Some(opening[index]));
-                assert_eq!(entry.value(), Value::None);
-                assert_eq!(entry.visits(), Some(0));
-                assert_eq!(entry.policy(), &Policy::None);
-            } else {
-                assert!(matches!(entry.value(), Value::Mcts(_)));
-                if full.next().unwrap() {
-                    positions += 1;
-                    assert_eq!(entry.visits(), Some(config.simulations));
-                    let Policy::Candidates(candidates) = entry.policy() else {
-                        panic!("full search policy is required")
-                    };
-                    assert_eq!(
-                        candidates
-                            .iter()
-                            .map(|(_, probability)| u32::from(*probability))
-                            .sum::<u32>(),
-                        65535
-                    );
-                    assert!(candidates.iter().all(|(_, probability)| *probability > 0));
-                    let legal = records::sorted_legal_moves(&replay).unwrap();
-                    let indices: Vec<_> = candidates
-                        .iter()
-                        .map(|(mv, _)| legal.iter().position(|legal| legal == mv).unwrap())
-                        .collect();
-                    assert!(indices.windows(2).all(|pair| pair[0] < pair[1]));
-                } else {
-                    assert_eq!(entry.visits(), Some(config.simulations / 4));
-                    assert_eq!(entry.policy(), &Policy::None);
-                    assert!(entry.played_move().is_some());
-                }
-            }
-            if let Some(mv) = entry.played_move() {
-                replay.play(mv).unwrap();
-            }
-        }
-        let last = record.entries().last().unwrap();
-        assert_eq!(last.played_move(), None);
-        assert_eq!(last.value(), Value::Mcts(66));
-        assert_eq!(
-            decoded.positions().last().unwrap().side_to_move(),
-            Color::Black
-        );
-    }
-    assert_eq!(positions, report.summary.counts.resigned_positions);
-    assert!(report.summary.counts.fast_searches > 0);
-    let saved: Summary =
-        serde_json::from_reader(File::open(directory.0.join("summary.json")).unwrap()).unwrap();
-    assert_eq!(saved, report.summary);
-    let saved_config: serde_json::Value =
-        serde_json::from_reader(File::open(directory.0.join("config.json")).unwrap()).unwrap();
-    assert_eq!(saved_config["nn_backend"], "cpu");
-    assert_eq!(saved_config.as_object().unwrap().len(), 11);
-    for absent in [
-        "version",
-        "threads",
-        "devices",
-        "games_per_thread",
-        "target_positions",
-    ] {
-        assert!(saved_config.get(absent).is_none());
+        let saved: Summary =
+            serde_json::from_slice(&fs::read(directory.0.join("summary.json")).unwrap()).unwrap();
+        assert_eq!(saved, report.summary);
     }
 }
 
 #[test]
 fn resume_regenerates_only_missing_chunk_deterministically_across_parallelism() {
     for start_position in [
-        cli::StartPosition::RandomOpening,
+        cli::StartPosition::Initial,
         cli::StartPosition::ShuffledSetup,
     ] {
         let directory = TemporaryDirectory::new();
@@ -318,14 +247,14 @@ fn resume_regenerates_only_missing_chunk_deterministically_across_parallelism() 
             ..config()
         };
         let first = generate(&directory.0, &config, 2, 2);
-        assert!(first.summary.counts.resigned_games > 0);
+        assert!(first.summary.counts.win_reason_resignation > 0);
         let repeated_directory = TemporaryDirectory::new();
         let repeated = generate(&repeated_directory.0, &config, 1, 3);
         assert_eq!(repeated.summary, first.summary);
         let mut before = Vec::new();
         let old_time = UNIX_EPOCH + Duration::from_secs(1_000_000);
         for chunk in 0..3 {
-            for suffix in [".mnsd", ".resigned.mnsd", ".json"] {
+            for suffix in [".mnsd", ".json"] {
                 let path = directory.0.join(format!("chunk-{chunk:05}{suffix}"));
                 assert_eq!(
                     fs::read(&path).unwrap(),
@@ -347,7 +276,7 @@ fn resume_regenerates_only_missing_chunk_deterministically_across_parallelism() 
         }
         fs::remove_file(directory.0.join("chunk-00001.json")).unwrap();
         fs::write(
-            directory.0.join("chunk-00001.resigned.mnsd.tmp"),
+            directory.0.join("chunk-00001.mnsd.tmp"),
             vec![0xff; 100_000],
         )
         .unwrap();
@@ -396,13 +325,13 @@ fn resume_regenerates_only_missing_chunk_deterministically_across_parallelism() 
 }
 
 #[test]
-fn reaching_target_stops_generation_and_removes_unfinished_chunk_files() {
+fn reaching_target_stops_generation_at_the_first_complete_chunk() {
     let directory = TemporaryDirectory::new();
     let config = Config {
         seed: 1,
         ..config()
     };
-    let report = output::generate(&directory.0, &config, 1, &CHECKSUM, nz(1), nz(6), |_| {
+    let report = output::generate(&directory.0, &config, 1, &CHECKSUM, nz(1), nz(1), |_| {
         Ok(Box::new(BiasedEvaluator))
     })
     .unwrap();
@@ -415,7 +344,7 @@ fn reaching_target_stops_generation_and_removes_unfinished_chunk_files() {
     assert_eq!(saved.chunks, 1);
     assert_eq!(saved.counts, first.counts);
     assert_eq!(saved.counts.games, 2);
-    assert!(saved.counts.positions + saved.counts.resigned_positions >= 1);
+    assert!(saved.counts.positions >= 1);
     let mut committed_games = 0;
     for entry in fs::read_dir(&directory.0).unwrap() {
         let path = entry.unwrap().path();
@@ -436,14 +365,10 @@ fn reaching_target_stops_generation_and_removes_unfinished_chunk_files() {
             committed_games += chunk.counts.games;
         }
     }
-    // 確定済みの局数との差により、書きかけの塊が実際にあったことも確かめる。
-    assert!(report.generated_games > committed_games);
-    assert!(committed_games > saved.counts.games);
+    assert_eq!(report.generated_games, committed_games);
+    assert_eq!(committed_games, saved.counts.games);
     assert!(report.generated_games < u64::from(config.games));
-    assert_eq!(
-        saved.training_files,
-        ["chunk-00000.mnsd", "chunk-00000.resigned.mnsd"]
-    );
+    assert_eq!(saved.training_files, ["chunk-00000.mnsd"]);
 }
 
 struct BatchRecorder(Arc<Mutex<Vec<usize>>>);
@@ -461,11 +386,11 @@ impl Evaluator for BatchRecorder {
 }
 
 #[test]
-fn inference_batches_contain_multiple_games_and_max_ply_discards_have_no_records() {
+fn inference_batches_contain_multiple_games_and_max_ply_draws_keep_records() {
     let directory = TemporaryDirectory::new();
     let config = Config {
         games: 4,
-        playthrough_percent: 100,
+        resign_threshold: 0.0,
         max_ply: 18,
         ..config()
     };
@@ -483,14 +408,11 @@ fn inference_batches_contain_multiple_games_and_max_ply_discards_have_no_records
     let batches = batches.lock().unwrap();
     assert!(batches.contains(&3));
     assert!(batches.iter().all(|&count| (1..=3).contains(&count)));
-    assert_eq!(report.summary.counts.discarded_max_ply, 4);
+    assert_eq!(report.summary.counts.draw_reason_max_ply, 4);
     assert_eq!(report.summary.counts.plies, 4 * 18);
-    assert_eq!(report.summary.counts.games_file_games, 0);
-    assert_eq!(report.summary.counts.resigned_games, 0);
-    assert_eq!(report.summary.counts.resign_triggered_playthrough_games, 0);
-    assert_eq!(report.summary.false_resignation_rate, None);
-    assert!(all_records(&directory.0, &config, false).is_empty());
-    assert!(all_records(&directory.0, &config, true).is_empty());
+    assert_eq!(report.summary.counts.positions, 4 * 18);
+    assert_eq!(report.summary.counts.win_reason_resignation, 0);
+    assert_eq!(all_records(&directory.0, &config).len(), 4);
 }
 
 #[derive(Clone, Copy)]
@@ -599,71 +521,41 @@ fn inference_failures_keep_typed_causes_join_all_workers_and_allow_resume() {
 }
 
 #[test]
-fn shuffled_records_start_at_seeded_setup_without_random_opening_entries() {
+fn shuffled_records_start_at_seeded_setup_and_record_every_search() {
+    let directory = TemporaryDirectory::new();
+    let config = Config {
+        start_position: cli::StartPosition::ShuffledSetup,
+        games: 2,
+        max_ply: 12,
+        simulations: 1,
+        ..config()
+    };
+    generate(&directory.0, &config, 2, 2);
     let mut starts = Vec::new();
-    for resigned in [false, true] {
-        let directory = TemporaryDirectory::new();
-        let config = Config {
-            start_position: cli::StartPosition::ShuffledSetup,
-            games: if resigned { 6 } else { 2 },
-            max_ply: MAX_PLY,
-            playthrough_percent: if resigned { 1 } else { 100 },
-            ..config()
-        };
-        output::generate(
-            &directory.0,
-            &config,
-            u64::MAX,
-            &CHECKSUM,
-            nz(2),
-            nz(2),
-            |_| {
-                if resigned {
-                    Ok(Box::new(BiasedEvaluator))
-                } else {
-                    Ok(Box::new(UniformEvaluator))
-                }
-            },
-        )
-        .unwrap();
-        assert!(
-            !all_records(&directory.0, &config, resigned).is_empty(),
-            "resigned={resigned}"
-        );
-        for file_resigned in [false, true] {
-            for decoded in all_records(&directory.0, &config, file_resigned) {
-                let record = decoded.record();
-                let seed = derive_seed(config.seed, u64::from(record.game_number()));
-                let expected = minase_core::Position::shuffled_initial(&mut XorShift64::new(
-                    derive_seed(seed.get(), 0),
-                ));
-                assert_eq!(record.start_ply(), 0);
-                assert_eq!(record.start_position(), &expected);
-                assert_eq!(record.origin(), records::Origin::RandomSelfplay);
-                let first = &record.entries()[0];
-                assert!(matches!(first.value(), Value::Mcts(_)));
-                let full = full_searches(&config, record.game_number()).next().unwrap();
-                assert_eq!(matches!(first.policy(), Policy::Candidates(_)), full);
-                assert_eq!(
-                    first.visits(),
-                    Some(if full {
-                        config.simulations
-                    } else {
-                        config.simulations / 4
-                    })
-                );
-                starts.push(expected);
-            }
-        }
+    for decoded in all_records(&directory.0, &config) {
+        let record = decoded.record();
+        let seed = derive_seed(config.seed, u64::from(record.game_number()));
+        let expected = minase_core::Position::shuffled_initial(&mut XorShift64::new(derive_seed(
+            seed.get(),
+            0,
+        )));
+        assert_eq!(record.start_ply(), 0);
+        assert_eq!(record.start_position(), &expected);
+        assert_eq!(record.origin(), records::Origin::RandomSelfplay);
+        let first = &record.entries()[0];
+        assert!(matches!(first.value(), Value::Mcts(_)));
+        assert!(matches!(first.policy(), Policy::Candidates(_)));
+        assert_eq!(first.visits(), Some(1));
+        starts.push(expected);
     }
-    assert!(starts.iter().any(|start| start != &starts[0]));
+    assert_ne!(starts[0], starts[1]);
 }
 
 #[test]
 fn start_position_is_saved_in_config_and_summary_with_cli_spelling() {
     for (start_position, spelling) in [
         (cli::StartPosition::ShuffledSetup, "shuffled-setup"),
-        (cli::StartPosition::RandomOpening, "random-opening"),
+        (cli::StartPosition::Initial, "initial"),
     ] {
         let directory = TemporaryDirectory::new();
         let config = Config {
@@ -756,8 +648,8 @@ fn start_position_cli_is_required_and_accepts_only_the_two_kinds() {
         "2",
         "--simulations",
         "4",
-        "--playthrough-percent",
-        "100",
+        "--resign-threshold",
+        "0",
         "--threads",
         "1",
         "--devices",
@@ -772,9 +664,48 @@ fn start_position_cli_is_required_and_accepts_only_the_two_kinds() {
     assert!(
         Cli::try_parse_from(required.into_iter().chain(["--start-position", "unknown"])).is_err()
     );
+    assert!(
+        Cli::try_parse_from(
+            required
+                .into_iter()
+                .chain(["--start-position", "random-opening"])
+        )
+        .is_err()
+    );
+    let complete: Vec<_> = required
+        .into_iter()
+        .chain(["--start-position", "initial"])
+        .collect();
+    for index in (1..complete.len()).step_by(2) {
+        let mut missing = complete.clone();
+        missing.drain(index..index + 2);
+        assert_eq!(
+            Cli::try_parse_from(missing).err().unwrap().kind(),
+            clap::error::ErrorKind::MissingRequiredArgument
+        );
+    }
+    for threshold in ["NaN", "inf", "-inf", "-0.1", "1.1"] {
+        let mut args = required.to_vec();
+        let index = args
+            .iter()
+            .position(|arg| *arg == "--resign-threshold")
+            .unwrap();
+        args[index + 1] = threshold;
+        assert!(
+            Cli::try_parse_from(args.into_iter().chain(["--start-position", "initial"])).is_err()
+        );
+    }
+    for simulations in ["1", "3", "5"] {
+        let mut args = required.to_vec();
+        let index = args.iter().position(|arg| *arg == "--simulations").unwrap();
+        args[index + 1] = simulations;
+        assert!(
+            Cli::try_parse_from(args.into_iter().chain(["--start-position", "initial"])).is_ok()
+        );
+    }
     for (spelling, kind) in [
         ("shuffled-setup", cli::StartPosition::ShuffledSetup),
-        ("random-opening", cli::StartPosition::RandomOpening),
+        ("initial", cli::StartPosition::Initial),
     ] {
         let parsed =
             Cli::try_parse_from(required.into_iter().chain(["--start-position", spelling]))
@@ -795,12 +726,12 @@ fn execution_arguments(
         nn_backend: backend,
         generation_commit: "0123456789abcdef0123456789abcdef01234567".to_owned(),
         seed: 1,
-        start_position: cli::StartPosition::RandomOpening,
+        start_position: cli::StartPosition::Initial,
         games: 2,
         target_positions: 100,
         chunk_games: 2,
         simulations: 4,
-        playthrough_percent: 100,
+        resign_threshold: 0.0,
         threads: nz(threads),
         devices: nz(devices),
         games_per_thread: nz(1),
@@ -889,7 +820,7 @@ fn evaluator_factory_receives_each_thread_index_in_order() {
     let directory = TemporaryDirectory::new();
     let config = Config {
         games: 2,
-        playthrough_percent: 100,
+        resign_threshold: 0.0,
         max_ply: 18,
         ..config()
     };

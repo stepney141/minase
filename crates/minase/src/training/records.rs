@@ -29,7 +29,7 @@
 //! | 0..4 | u32 | 対局番号。0も許す。ファイル内では厳密な昇順 |
 //! | 4 | u8 | 由来。乱数開始の自己対局0、実戦開始の自己対局1、実戦対局2、合成3 |
 //! | 5 | u8 | 結果。先手勝ち0、後手勝ち1、引き分け2 |
-//! | 6 | u8 | 終局理由。下記の0〜13 |
+//! | 6 | u8 | 終局理由。下記の0〜14 |
 //! | 7 | u8 | 予約。0 |
 //! | 8..10 | u16 | 開始局面までの着手数。0〜65,535手 |
 //! | 10..14 | u32 | 項目数n。1以上で、開始手数+n−1が65,535以下 |
@@ -45,7 +45,9 @@
 //! 理由12は王手限定の3手以内の勝ちによる打ち切りで、結果0か1の場合に限る。
 //! この打ち切りは審判層の裁定ではなく、[`Outcome::MateInThree`]として保持する。
 //! 理由13は評価値による裁定で、結果0か1に限り、[`Outcome::EvaluationAdjudication`]として保持する。
-//! 結果は来歴として保持する。投了・合意・理由12と13の打ち切りもあるため、再生結果との一致は要求しない。
+//! 理由14は手数上限による引き分けで、結果2に限り、[`Outcome::MaxPlyDraw`]として保持する。
+//! 理由の追加は既存の符号化を変えないため、版3を保つ。
+//! 結果は来歴として保持する。投了・合意・理由12〜14の打ち切りもあるため、再生結果との一致は要求しない。
 //!
 //! 空升は0、駒は`1 + PieceKind::index() + 29×成りビット + 64×陣営`で表す。
 //! 先手は1〜58、後手は65〜122のうち、`PieceCode`の検査付きコンストラクタが受理する組だけを許す。
@@ -152,7 +154,7 @@ pub enum Error {
     InvalidOrigin(u8),
     /// 結果が0〜2ではない。
     InvalidOutcome(u8),
-    /// 終局理由が0〜13ではない。
+    /// 終局理由が0〜14ではない。
     InvalidEndReason(u8),
     /// 結果と終局理由が整合しない。
     OutcomeReasonMismatch,
@@ -509,6 +511,8 @@ pub enum Outcome {
         /// 連続して優勢だった側。
         winner: Color,
     },
+    /// 手数上限による引き分け。審判層の裁定とは区別する。
+    MaxPlyDraw,
     /// 合成局面であり対局結果がない。
     NotFromGame,
 }
@@ -516,6 +520,7 @@ impl Outcome {
     fn codes(self) -> (u8, u8) {
         match self {
             Self::NotFromGame => (2, 0),
+            Self::MaxPlyDraw => (2, 14),
             Self::MateInThree { winner } => (winner as u8, 12),
             Self::EvaluationAdjudication { winner } => (winner as u8, 13),
             Self::Game(GameResult::Win { winner, reason }) => (
@@ -574,6 +579,7 @@ impl Outcome {
             }),
             12 => Self::MateInThree { winner },
             13 => Self::EvaluationAdjudication { winner },
+            14 => Self::MaxPlyDraw,
             x => return Err(Error::InvalidEndReason(x)),
         };
         if value.codes().0 != result {

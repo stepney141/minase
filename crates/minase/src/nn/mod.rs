@@ -16,7 +16,7 @@
 //! - `run-zero-network-inference-through-ort-load-dynamic.md`
 //! - `select-zero-networks-by-the-usi-option-nnmodel.md`
 //! - `key-tensorrt-engine-caches-by-network-checksum-gpu-and-max-batch.md`
-//! - `start-the-zero-network-as-a-20-block-256-channel-resnet-with-global-pooling-and-a-32-channel-value-head.md`
+//! - `shape-the-zero-network-as-the-alphazero-resnet-with-a-two-layer-policy-head-and-a-one-channel-value-head.md`
 //! - `exchange-zero-inference-tensors-as-uint8-inputs-and-packed-fp16-policies-in-pinned-memory.md`
 //!
 //! 出力の照合の手順は`docs/guides/alphazero-network-check.md`にある。

@@ -186,8 +186,8 @@ mod tests {
             "2",
             "--simulations",
             "4",
-            "--playthrough-percent",
-            "100",
+            "--resign-threshold",
+            "0.01",
             "--threads",
             "1",
             "--devices",
@@ -195,11 +195,11 @@ mod tests {
             "--games-per-thread",
             "2",
             "--start-position",
-            "random-opening",
+            "initial",
         ]
     }
 
-    // zero-selfplayはすべての引数を必須とし、割合・件数・コミットの範囲を検査する。
+    // zero-selfplayはすべての引数を必須とし、閾値・件数・コミットの範囲を検査する。
     #[test]
     fn zero_selfplay_requires_every_option_and_validates_values() {
         let parse =
@@ -217,20 +217,22 @@ mod tests {
             );
         }
         for (option, invalid) in [
-            ("--playthrough-percent", "0"),
-            ("--playthrough-percent", "101"),
+            ("--resign-threshold", "-0.01"),
+            ("--resign-threshold", "1.01"),
+            ("--resign-threshold", "NaN"),
+            ("--resign-threshold", "inf"),
+            ("--resign-threshold", "-inf"),
+            ("--resign-threshold", "invalid"),
+            ("--resign-threshold", ""),
             ("--games", "0"),
             ("--target-positions", "0"),
             ("--target-positions", "-1"),
             ("--target-positions", "18446744073709551616"),
             ("--chunk-games", "0"),
             ("--simulations", "0"),
-            ("--simulations", "1"),
-            ("--simulations", "2"),
-            ("--simulations", "3"),
-            ("--simulations", "5"),
-            ("--simulations", "6"),
-            ("--simulations", "4294967295"),
+            ("--simulations", "-1"),
+            ("--simulations", "1.5"),
+            ("--simulations", "4294967296"),
             ("--threads", "0"),
             ("--devices", "0"),
             ("--devices", "-1"),
@@ -243,6 +245,7 @@ mod tests {
                 "g123456789abcdef0123456789abcdef01234567",
             ),
             ("--nn-backend", "auto"),
+            ("--start-position", "random-opening"),
             ("--start-position", "random"),
             ("--start-position", ""),
         ] {
@@ -252,17 +255,38 @@ mod tests {
             assert!(parse(args).is_err(), "{option} {invalid}");
         }
         for backend in ["tensorrt", "cuda", "cpu"] {
-            for percent in ["1", "100"] {
+            for threshold in ["0", "0.01", "1"] {
                 let mut args = complete.clone();
                 args[7] = backend;
                 let index = args
                     .iter()
-                    .position(|&arg| arg == "--playthrough-percent")
+                    .position(|&arg| arg == "--resign-threshold")
                     .unwrap();
-                args[index + 1] = percent;
+                args[index + 1] = threshold;
                 assert!(parse(args).is_ok());
             }
         }
+        for simulations in ["1", "2", "3", "4", "5", "6", "32", "4294967295"] {
+            let mut args = complete.clone();
+            let index = args.iter().position(|&arg| arg == "--simulations").unwrap();
+            args[index + 1] = simulations;
+            assert!(parse(args).is_ok(), "--simulations {simulations}");
+        }
+        for start in ["initial", "shuffled-setup"] {
+            let mut args = complete.clone();
+            let index = args
+                .iter()
+                .position(|&arg| arg == "--start-position")
+                .unwrap();
+            args[index + 1] = start;
+            assert!(parse(args).is_ok(), "--start-position {start}");
+        }
+        let mut removed_option = complete.clone();
+        removed_option.extend(["--playthrough-percent", "100"]);
+        assert_eq!(
+            parse(removed_option).err().unwrap().kind(),
+            clap::error::ErrorKind::UnknownArgument
+        );
         for target in ["1", "18446744073709551615"] {
             let mut args = complete.clone();
             let index = args

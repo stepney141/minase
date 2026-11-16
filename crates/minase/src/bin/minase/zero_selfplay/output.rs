@@ -1,99 +1,70 @@
-//! 出力先の排他、塊の順序付き保存、再開、および投了の較正結果の集計。
+//! 固定局数の塊を保存し、確定済みの塊からサイクルの集計を作る。
 //!
-//! 出力先には生成条件を`config.json`、サイクル全体の集計を`summary.json`として保存する。
-//! 塊ごとに、投了以外で終えた対局の`chunk-00000.mnsd`、投了で終えた対局の
-//! `chunk-00000.resigned.mnsd`、および集計の`chunk-00000.json`を作る。
-//! 番号は0から始まり、少なくとも5桁で表す。
-//! 対局が0件のMNSDファイルもヘッダを持つ。
-//! `.zero_selfplay.lock`に対するOSの排他ロックを処理中保持し、同じ出力先の同時使用を拒否する。
-//! ロックファイルが残っているだけでは使用中とみなさない。
+//! `config.json`では規則、生成コミット、ネットの検査和、推論の方式、シード、開始局面、
+//! 対局数、塊の局数、探索回数、投了の閾値、および手数上限を保存し、再開時に等価比較する。
+//! 開始局面は`initial`か`shuffled-setup`、閾値はf64で比較する。
+//! 閾値は実行器がAobaZeroの較正の方式で決め、`--resign-threshold`で渡す。
+//! スレッド数、同時対局数、GPUの種類、ネットのパス、および目標局面数は照合しない。
 //!
-//! 新規の出力先は、親ディレクトリが存在する場所に作るか、空のディレクトリを使う。
-//! `config.json`がない場合の空の判定では、`.zero_selfplay.lock`と`config.json.tmp`だけを無視する。
-//! それ以外の項目があればエラーにする。
-//! 保存済みの生成条件とは、`rules`、`generation_commit`、`network_sha256`、`nn_backend`、
-//! `start_position`、`seed`、`games`、`chunk_games`、`simulations`、`playthrough_percent`、`max_ply`を照合し、相違する欄の名前を報告する。
-//! `start_position`は`shuffled-setup`か`random-opening`で、サイクルの集計にも保存する。
-//! `nn_backend`の綴りは`tensorrt`、`cuda`、`cpu`とする。
-//! スレッド数、スレッドごとの同時対局数、GPUの種類、およびネットのファイルパスは照合しない。
-//! ネットの同一性は`network_sha256`で照合する。
-//! `target_positions`は各対局の結果を変えないため、生成条件には保存も照合もしない。
+//! 塊kには対局番号kG+1からmin((k+1)G, M)までを番号順に記録する。
+//! 各塊は投了も含めて`chunk-NNNNN.mnsd`の1ファイルとし、手数上限の引き分けも残す。
+//! 塊0から連続する確定済み塊の`positions`が初めて目標以上になる塊までをサイクルに含める。
+//! 全塊で届かなければ全塊を含め、範囲外の確定済み塊は保持する。
 //!
-//! 対局数の上限をM、塊の対局数をGとすると、塊の総数はM/Gを切り上げた値になる。
-//! 0から数えてk番目の塊は、対局番号kG+1からmin((k+1)G, M)までを担当する。
-//! 各塊は対局番号順に記録し、最後の塊はG局未満でも確定する。
-//! 手数上限で破棄した対局も塊の対局数に含める。
-//! 塊は番号順に確定するとは限らない。
-//! 塊0から連続する確定済み塊の`positions + resigned_positions`が、初めて目標以上になる塊までをサイクルに含める。
-//! 全塊を確定しても目標に届かなければ全塊を含める。
-//! サイクルに含める最後の塊より後の確定済み塊は、ファイルを保持し、集計と学習ファイルの一覧からは外す。
+//! 書き込み中は`.tmp`を付け、MNSDの件数確定、フラッシュ、同期、改名の後に塊のJSONを確定する。
+//! JSONの存在を確定の印とし、再開時はMNSDや保存済みの塊の条件を再検証しない。
+//! 未確定の塊は全局を生成し直す。範囲が決まればワーカーを回収し、書きかけの塊を削除する。
+//! MNSDの版は3、教師の種類はMCTS、探索規模は指定した探索回数とする。
+//! MNSDの項目数には、探索しなかった終局の最終項目も含まれる。
 //!
-//! 書き込み中のファイル名には`.tmp`を付ける。
-//! 塊の全対局が揃ったら、2つのMNSDファイルのヘッダの件数を確定し、フラッシュと`sync_all`を行う。
-//! 投了以外のファイル、投了のファイルの順に`.tmp`を外す改名を行い、ディレクトリも同期する。
-//! 最後に塊の集計をJSONの一時ファイルへ書き、同期して改名し、再びディレクトリを同期する。
-//! `config.json`と`summary.json`も同じ一時ファイル、同期、改名の手順で保存する。
-//! 塊の集計JSONの存在を、その塊が確定した印とする。
-//!
-//! 再開時は確定済みの塊の集計だけを読み、その塊のMNSDファイルは読み直さず、書き換えない。
-//! 集計JSONのない塊は全対局を生成し直し、残った一時ファイルや未確定のMNSDファイルを置き換える。
-//! 保存済みの塊だけでサイクルの範囲が決まれば、対局番号を配らず、推論器も作らずに`summary.json`を作り直す。
-//! 決まらなければ未確定の塊の対局番号を番号順に配り、塊を確定するたびに目標への到達を調べる。
-//! 範囲が決まった時点で結果の受信を打ち切り、ワーカーを停止して回収し、書きかけの塊の一時ファイルを削除する。
-//! ワーカーがすべて終了しても範囲が決まらなければ、塊の未完了をエラーにする。
-//! 保存と再開の方式は`docs/adr/commit-zero-self-play-in-fixed-game-chunks-up-to-the-first-prefix-reaching-the-target-positions.md`を参照。
-//!
-//! MNSDヘッダの識別子は`MNSD`、版は2、予約欄はすべて0とする。
-//! 規則セット、生成コミット、ネットのSHA-256検査和、教師の種類、教師の探索規模、および基本シードを保存する。
-//! 教師の種類はモンテカルロ木探索を表す`TeacherKind::Mcts`、探索規模は`simulations`、シードはサイクルの`seed`とする。
-//! 対局数と手順の項目の総数は、そのMNSDファイルに実際に書いた件数である。
-//! 項目の総数には序盤、速い探索、および最終項目も含み、下記の訓練局面数とは異なる。
-//! 各欄の符号化は[`minase::training::records`]に従う。
-//!
-//! 塊の集計は、塊の番号`chunk`と担当範囲の先頭の対局番号`first_game`に加え、次の件数を同じJSONオブジェクトに持つ。
-//! サイクルの集計にも次表の欄を置き、サイクルに含めた塊の件数だけを合算する。
-//! サイクルの集計には、目標の`target_positions`と含めた塊の数`chunks`も保存する。
+//! 塊とサイクルの両方の集計に、次の欄を保存する。
 //!
 //! | 欄 | 意味 |
 //! |---|---|
-//! | `games` | 破棄を含めて処理した対局数を表す。 |
-//! | `discarded_max_ply` | 手数上限で未終局のまま破棄した対局数を表す。 |
-//! | `resigned_games` | 投了のMNSDファイルへ保存した対局数を表す。 |
-//! | `games_file_games` | 投了以外のMNSDファイルへ保存した対局数を表す。 |
-//! | `positions` | 投了以外で終えた対局の訓練局面数を表す。 |
-//! | `resigned_positions` | 投了で終えた対局の訓練局面数を表し、投了した局面も数える。 |
-//! | `full_searches` | 完全探索の手番数を表し、破棄した対局も含む。 |
-//! | `fast_searches` | 速い探索の手番数を表し、破棄した対局も含む。 |
-//! | `mate_in_three_games` | 王手限定の3手以内の勝ちで打ち切った対局数を表す。 |
-//! | `playthrough_games` | 最後まで指させる抽選に当たった対局数を表し、手数上限での破棄も含む。 |
-//! | `resign_triggered_playthrough_games` | 最後まで指させる対局のうち、投了条件が1回以上成立した対局数を表す。 |
-//! | `false_resignations` | その条件が最初に成立した側が負けなかった対局数を表し、引き分けと手数上限での破棄も含む。 |
+//! | `games` | 記録した対局数を表す。 |
+//! | `positions` | 探索し、価値と方策を記録した訓練局面数を表す。 |
+//! | `searches` | 探索した手番数を表す。 |
+//! | `no_resign_games` | 対局番号1、11、21…の投了禁止の対局数を表す。 |
+//! | `resign_calibration_games` | 投了禁止の対局番号、結果、両者の値の最小値を対局番号順に持つ。 |
+//! | `draw_reason_max_ply` | 手数上限による引き分け数を表す。 |
+//! | `mate_in_three_games` | 王手限定の3手以内の勝ちによる打ち切り数を表す。 |
 //! | `black_wins` | 先手が勝った対局数を表す。 |
 //! | `white_wins` | 後手が勝った対局数を表す。 |
 //! | `draws` | 引き分けた対局数を表す。 |
-//! | `win_reason_royal_capture` | 王駒の捕獲による決着数を表す。 |
-//! | `win_reason_repetition` | 反復による勝敗の決着数を表す。 |
-//! | `win_reason_piece_exhaustion` | 駒枯れによる勝敗の決着数を表す。 |
-//! | `win_reason_bare_king` | 裸玉による勝敗の決着数を表す。 |
-//! | `win_reason_stalemate` | 合法手なしによる決着数を表す。 |
-//! | `win_reason_mate` | 詰みによる決着数を表す。 |
-//! | `win_reason_resignation` | 投了による決着数を表す。 |
-//! | `draw_reason_repetition` | 反復による引き分け数を表す。 |
+//! | `win_reason_royal_capture` | 相手の最後の王駒の捕獲による勝利数を表す。 |
+//! | `win_reason_repetition` | 反復裁定による勝利数を表す。 |
+//! | `win_reason_piece_exhaustion` | 駒枯れによる勝利数を表す。 |
+//! | `win_reason_bare_king` | 裸玉による勝利数を表す。 |
+//! | `win_reason_stalemate` | 相手に合法手がないことによる勝利数を表す。 |
+//! | `win_reason_mate` | 相手の最後の王駒の詰みによる勝利数を表す。 |
+//! | `win_reason_resignation` | 相手の投了による勝利数を表す。 |
+//! | `draw_reason_repetition` | 反復裁定による引き分け数を表す。 |
 //! | `draw_reason_piece_exhaustion` | 駒枯れによる引き分け数を表す。 |
 //! | `draw_reason_bare_king` | 裸玉による引き分け数を表す。 |
-//! | `draw_reason_agreement` | 合意による引き分け数を表す。 |
-//! | `plies` | 序盤を含む着手数の合計を表し、破棄した対局の手数も含む。 |
+//! | `draw_reason_agreement` | 双方の合意による引き分け数を表す。 |
+//! | `plies` | 着手数の合計を表す。 |
 //!
-//! 訓練局面は価値と方策の候補の両方を持つ項目であり、完全探索の手番だけが該当する。
-//! `positions`と`resigned_positions`は、破棄した対局、乱択の序盤、速い探索、および探索していない終局の局面を数えない。
-//! `false_resignation_rate`は`false_resignations / resign_triggered_playthrough_games`で求め、分母が0ならJSONの`null`とする。
-//! この割合が5%を厳密に超えたときだけ、`resigned_games_excluded`を`true`にする。
-//! `training_files`は塊の番号順の学習ファイル一覧であり、投了以外のファイルは常に含め、投了のファイルは除外が決まった場合だけ外す。
-//! `training_positions`はこの一覧に残したファイルの訓練局面数の合計とする。
-//! 投了ファイルの除外はサイクルの範囲を決めた後に判定するため、`training_positions`は目標への到達の判定に使わない。
-//! 割合が未定義の場合は投了のファイルも一覧に含め、除外する場合も確定したファイル自体は保持する。
-//! 除外した訓練局面数を目標、除外した対局数を上限として投了無効で生成し直す処理は、呼び出し側が別の出力先を指定して行う。
-//! 投了の較正は`docs/adr/resign-zero-self-play-games-below-one-percent-after-bounding-false-resignations.md`を参照。
+//! 塊とサイクルそれぞれの集計には、対象範囲と学習ファイルを示す欄も保存する。
+//!
+//! | 欄 | 保存先と意味 |
+//! |---|---|
+//! | `chunk` | 塊の集計で、0から数えた塊の番号を表す。 |
+//! | `first_game` | 塊の集計で、最初の対局番号を表す。対局番号は1から数える。 |
+//! | `start_position` | サイクルの集計で、開始局面の指定を`initial`か`shuffled-setup`で表す。 |
+//! | `target_positions` | サイクルの集計で、目標とする訓練局面数を表す。 |
+//! | `chunks` | サイクルの集計で、含めた塊の数を表す。 |
+//! | `training_files` | サイクルの集計で、含めた塊のMNSDファイル名を塊の番号順に持つ。 |
+//! | `training_positions` | サイクルの集計で、含めた塊の訓練局面数の和を表す。 |
+//!
+//! `resign_calibration_games`の各項目には、次の欄を保存する。
+//! 最小値は、比較に使ったf32の値をf64へ広げて保存する。
+//!
+//! | 欄 | 意味 |
+//! |---|---|
+//! | `game` | 1から数えた対局番号を表す。 |
+//! | `result` | 先手の勝ちを`black`、後手の勝ちを`white`、引き分けを`draw`で表す。 |
+//! | `min_value_black` | 先手の全探索局面での投了判定値の最小値を表す。 |
+//! | `min_value_white` | 後手の全探索局面での投了判定値の最小値を表す。 |
 
 use std::collections::BTreeMap;
 use std::fs::{self, File};
@@ -108,18 +79,18 @@ use minase::training::records::{Header, Outcome, TeacherKind, Writer};
 use minase_core::{Color, DrawReason, GameResult, WinReason};
 use serde::{Deserialize, Serialize};
 
+use super::Error;
 use super::cli::StartPosition;
-use super::game::{CompletedGame, Settings, false_resignation};
+use super::game::{CompletedGame, ResignCalibrationGame, Settings};
 use super::worker::Workers;
-use super::{Error, FALSE_RESIGNATION_LIMIT};
 
 /// 出力を決める生成条件。すべての欄を再開時に照合する。
 ///
 /// CPUとTensorRTの16ビット浮動小数点演算では推論の数値が異なるため、
 /// `nn_backend`も照合し、同じサイクルに異なる実行プロバイダの結果を混ぜない。
 /// 推論の並列数は照合せず、借りた機械を替えて再開できるようGPUの種類も照合しない。
-/// `docs/adr/commit-zero-self-play-in-fixed-game-chunks-up-to-the-first-prefix-reaching-the-target-positions.md`を参照。
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+/// `docs/adr/commit-zero-self-play-in-fixed-game-chunks-and-close-the-cycle-at-the-target-positions.md`を参照。
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub(super) struct Config {
     pub(super) rules: String,
     pub(super) generation_commit: String,
@@ -130,7 +101,7 @@ pub(super) struct Config {
     pub(super) games: u32,
     pub(super) chunk_games: u32,
     pub(super) simulations: u32,
-    pub(super) playthrough_percent: u8,
+    pub(super) resign_threshold: f64,
     pub(super) max_ply: u32,
 }
 
@@ -139,13 +110,10 @@ impl Config {
         for (invalid, field) in [
             (self.games == 0, "games"),
             (self.chunk_games == 0, "chunk_games"),
+            (self.simulations == 0, "simulations"),
             (
-                self.simulations < 4 || !self.simulations.is_multiple_of(4),
-                "simulations",
-            ),
-            (
-                !(1..=100).contains(&self.playthrough_percent),
-                "playthrough_percent",
+                !self.resign_threshold.is_finite() || !(0.0..=1.0).contains(&self.resign_threshold),
+                "resign_threshold",
             ),
             (
                 !(1..=u32::from(u16::MAX)).contains(&self.max_ply),
@@ -180,8 +148,8 @@ impl Config {
             (self.chunk_games != saved.chunk_games, "chunk_games"),
             (self.simulations != saved.simulations, "simulations"),
             (
-                self.playthrough_percent != saved.playthrough_percent,
-                "playthrough_percent",
+                self.resign_threshold != saved.resign_threshold,
+                "resign_threshold",
             ),
             (self.max_ply != saved.max_ply, "max_ply"),
         ]
@@ -201,21 +169,16 @@ impl Config {
     }
 }
 
-/// 塊とサイクルの双方で加算する件数。訓練局面数には破棄した対局を含めない。
-#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+/// 塊とサイクルの双方で加算する件数と、投了禁止の対局の較正の材料。
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub(super) struct Counts {
     pub(super) games: u64,
-    pub(super) discarded_max_ply: u64,
-    pub(super) resigned_games: u64,
-    pub(super) games_file_games: u64,
+    pub(super) no_resign_games: u64,
+    pub(super) resign_calibration_games: Vec<ResignCalibrationGame>,
+    pub(super) draw_reason_max_ply: u64,
     pub(super) positions: u64,
-    pub(super) resigned_positions: u64,
-    pub(super) full_searches: u64,
-    pub(super) fast_searches: u64,
+    pub(super) searches: u64,
     pub(super) mate_in_three_games: u64,
-    pub(super) playthrough_games: u64,
-    pub(super) resign_triggered_playthrough_games: u64,
-    pub(super) false_resignations: u64,
     pub(super) black_wins: u64,
     pub(super) white_wins: u64,
     pub(super) draws: u64,
@@ -237,29 +200,16 @@ impl Counts {
     fn add_game(&mut self, game: &CompletedGame) {
         self.games += 1;
         self.plies += u64::from(game.plies);
-        self.full_searches += game.full_searches;
-        self.fast_searches += game.fast_searches;
-        self.playthrough_games += u64::from(game.playthrough);
-        self.resign_triggered_playthrough_games +=
-            u64::from(game.playthrough && game.first_trigger.is_some());
-        self.false_resignations += u64::from(false_resignation(
-            game.playthrough,
-            game.first_trigger,
-            game.result,
-        ));
-        if game.record.is_none() {
-            self.discarded_max_ply += 1;
-        } else if game.resigned {
-            self.resigned_games += 1;
-            self.resigned_positions += game.full_searches;
-        } else {
-            self.games_file_games += 1;
-            self.positions += game.full_searches;
+        self.searches += game.searches;
+        self.positions += game.searches;
+        if let Some(calibration) = &game.calibration {
+            self.no_resign_games += 1;
+            self.resign_calibration_games.push(calibration.clone());
         }
-        let winner = match game.result {
-            Some(
-                Outcome::Game(GameResult::Win { winner, .. }) | Outcome::MateInThree { winner },
-            ) => Some(winner),
+        let winner = match game.record.outcome() {
+            Outcome::Game(GameResult::Win { winner, .. }) | Outcome::MateInThree { winner } => {
+                Some(winner)
+            }
             _ => None,
         };
         match winner {
@@ -267,8 +217,8 @@ impl Counts {
             Some(Color::White) => self.white_wins += 1,
             None => {}
         }
-        match game.result {
-            Some(Outcome::Game(GameResult::Win { reason, .. })) => match reason {
+        match game.record.outcome() {
+            Outcome::Game(GameResult::Win { reason, .. }) => match reason {
                 WinReason::RoyalCapture => self.win_reason_royal_capture += 1,
                 WinReason::Repetition => self.win_reason_repetition += 1,
                 WinReason::PieceExhaustion => self.win_reason_piece_exhaustion += 1,
@@ -277,7 +227,7 @@ impl Counts {
                 WinReason::Mate => self.win_reason_mate += 1,
                 WinReason::Resignation => self.win_reason_resignation += 1,
             },
-            Some(Outcome::Game(GameResult::Draw { reason })) => {
+            Outcome::Game(GameResult::Draw { reason }) => {
                 self.draws += 1;
                 match reason {
                     DrawReason::Repetition => self.draw_reason_repetition += 1,
@@ -286,24 +236,24 @@ impl Counts {
                     DrawReason::Agreement => self.draw_reason_agreement += 1,
                 }
             }
-            Some(Outcome::MateInThree { .. }) => self.mate_in_three_games += 1,
-            Some(Outcome::NotFromGame | Outcome::EvaluationAdjudication { .. }) | None => {}
+            Outcome::MateInThree { .. } => self.mate_in_three_games += 1,
+            Outcome::MaxPlyDraw => {
+                self.draws += 1;
+                self.draw_reason_max_ply += 1;
+            }
+            Outcome::NotFromGame | Outcome::EvaluationAdjudication { .. } => {}
         }
     }
 
     fn add(&mut self, other: &Self) {
         self.games += other.games;
-        self.discarded_max_ply += other.discarded_max_ply;
-        self.resigned_games += other.resigned_games;
-        self.games_file_games += other.games_file_games;
+        self.no_resign_games += other.no_resign_games;
+        self.draw_reason_max_ply += other.draw_reason_max_ply;
+        self.resign_calibration_games
+            .extend_from_slice(&other.resign_calibration_games);
         self.positions += other.positions;
-        self.resigned_positions += other.resigned_positions;
-        self.full_searches += other.full_searches;
-        self.fast_searches += other.fast_searches;
+        self.searches += other.searches;
         self.mate_in_three_games += other.mate_in_three_games;
-        self.playthrough_games += other.playthrough_games;
-        self.resign_triggered_playthrough_games += other.resign_triggered_playthrough_games;
-        self.false_resignations += other.false_resignations;
         self.black_wins += other.black_wins;
         self.white_wins += other.white_wins;
         self.draws += other.draws;
@@ -322,7 +272,7 @@ impl Counts {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub(super) struct ChunkSummary {
     pub(super) chunk: u32,
     pub(super) first_game: u32,
@@ -337,14 +287,12 @@ pub(super) struct Summary {
     pub(super) chunks: u32,
     #[serde(flatten)]
     pub(super) counts: Counts,
-    pub(super) false_resignation_rate: Option<f64>,
-    pub(super) resigned_games_excluded: bool,
     pub(super) training_files: Vec<String>,
     pub(super) training_positions: u64,
 }
 
 /// 塊の集計だけから、サイクルの件数と学習ファイルを決める。
-/// 誤投了率の分母が0なら率は未定義とし、投了ファイルを除外しない。
+/// 較正の材料とファイルの一覧は対局番号に対応する順に並べる。
 pub(super) fn summarize(
     chunks: &[ChunkSummary],
     target_positions: u64,
@@ -354,32 +302,21 @@ pub(super) fn summarize(
     for chunk in chunks {
         counts.add(&chunk.counts);
     }
-    let rate = (counts.resign_triggered_playthrough_games > 0).then(|| {
-        counts.false_resignations as f64 / counts.resign_triggered_playthrough_games as f64
-    });
-    let excluded = rate.is_some_and(|rate| rate > FALSE_RESIGNATION_LIMIT);
+    counts
+        .resign_calibration_games
+        .sort_unstable_by_key(|game| game.game);
     let mut ordered: Vec<_> = chunks.iter().collect();
     ordered.sort_unstable_by_key(|chunk| chunk.chunk);
-    let mut files = Vec::new();
-    for chunk in ordered {
-        files.push(games_filename(chunk.chunk, false));
-        if !excluded {
-            files.push(games_filename(chunk.chunk, true));
-        }
-    }
-    let training_positions = counts.positions
-        + if excluded {
-            0
-        } else {
-            counts.resigned_positions
-        };
+    let files = ordered
+        .into_iter()
+        .map(|chunk| games_filename(chunk.chunk))
+        .collect();
+    let training_positions = counts.positions;
     Summary {
         start_position,
         target_positions,
         chunks: chunks.len() as u32,
         counts,
-        false_resignation_rate: rate,
-        resigned_games_excluded: excluded,
         training_files: files,
         training_positions,
     }
@@ -401,6 +338,7 @@ impl RunReport {
         writeln!(stdout, "commit: {}", config.generation_commit)?;
         writeln!(stdout, "network_sha256: {}", config.network_sha256)?;
         writeln!(stdout, "simulations: {}", config.simulations)?;
+        writeln!(stdout, "resign_threshold: {}", config.resign_threshold)?;
         writeln!(stdout, "max_ply: {}", config.max_ply)?;
         if let serde_json::Value::Object(fields) = serde_json::to_value(&self.summary)? {
             for (name, value) in fields {
@@ -433,7 +371,7 @@ fn included_chunks(
     let mut positions = 0;
     for chunk in 0..chunk_count {
         let counts = &completed.get(&chunk)?.counts;
-        positions += counts.positions + counts.resigned_positions;
+        positions += counts.positions;
         if positions >= target_positions {
             return Some(chunk + 1);
         }
@@ -492,7 +430,7 @@ pub(super) fn generate(
             seed: config.seed,
             start_position: config.start_position,
             simulations: config.simulations,
-            playthrough_percent: config.playthrough_percent,
+            resign_threshold: config.resign_threshold,
             max_ply: config.max_ply,
         };
         let mut workers = Workers::start(numbers, settings, games_per_thread, evaluators)?;
@@ -510,9 +448,7 @@ pub(super) fn generate(
                 entry.insert(ChunkWriter::new(directory, config, &header, chunk)?);
             }
             generated_games += 1;
-            if game.record.is_some() {
-                generated_positions += game.full_searches;
-            }
+            generated_positions += game.searches;
             if active
                 .get_mut(&chunk)
                 .expect("the chunk writer was opened above")
@@ -589,14 +525,13 @@ struct ChunkWriter {
     end: u64,
     pending: BTreeMap<u32, CompletedGame>,
     games: Writer<BufWriter<File>>,
-    resigned: Writer<BufWriter<File>>,
 }
 
 impl ChunkWriter {
     fn new(directory: &Path, config: &Config, header: &Header, chunk: u32) -> Result<Self, Error> {
         let range = config.game_range(chunk);
-        let open = |resigned| -> Result<_, Error> {
-            let path = directory.join(format!("{}.tmp", games_filename(chunk, resigned)));
+        let open = || -> Result<_, Error> {
+            let path = directory.join(format!("{}.tmp", games_filename(chunk)));
             Ok(Writer::new(
                 BufWriter::new(File::create(path)?),
                 header.clone(),
@@ -611,8 +546,7 @@ impl ChunkWriter {
             next: range.start,
             end: range.end,
             pending: BTreeMap::new(),
-            games: open(false)?,
-            resigned: open(true)?,
+            games: open()?,
         })
     }
 
@@ -629,13 +563,7 @@ impl ChunkWriter {
             let Some(game) = self.pending.remove(&(self.next as u32)) else {
                 break;
             };
-            if let Some(record) = &game.record {
-                if game.resigned {
-                    self.resigned.write_game(record)?;
-                } else {
-                    self.games.write_game(record)?;
-                }
-            }
+            self.games.write_game(&game.record)?;
             self.summary.counts.add_game(&game);
             self.next += 1;
         }
@@ -644,23 +572,12 @@ impl ChunkWriter {
 
     fn commit(self, directory: &Path) -> Result<ChunkSummary, Error> {
         let mut games = self.games.finish()?;
-        let mut resigned = self.resigned.finish()?;
         games.flush()?;
-        resigned.flush()?;
-        drop((games, resigned));
-        let games_name = games_filename(self.summary.chunk, false);
-        let resigned_name = games_filename(self.summary.chunk, true);
+        drop(games);
+        let games_name = games_filename(self.summary.chunk);
         let games_temporary = directory.join(format!("{games_name}.tmp"));
         let games_final = directory.join(games_name);
-        let resigned_temporary = directory.join(format!("{resigned_name}.tmp"));
-        let resigned_final = directory.join(resigned_name);
-        commit_files(
-            directory,
-            &[
-                (&games_temporary, &games_final),
-                (&resigned_temporary, &resigned_final),
-            ],
-        )?;
+        commit_files(directory, &[(&games_temporary, &games_final)])?;
         atomic_json(
             directory,
             &format!("chunk-{:05}.json", self.summary.chunk),
@@ -672,19 +589,13 @@ impl ChunkWriter {
     fn discard(self, directory: &Path) -> Result<(), Error> {
         let chunk = self.summary.chunk;
         drop(self);
-        for resigned in [false, true] {
-            fs::remove_file(directory.join(format!("{}.tmp", games_filename(chunk, resigned))))?;
-        }
+        fs::remove_file(directory.join(format!("{}.tmp", games_filename(chunk))))?;
         Ok(())
     }
 }
 
-fn games_filename(chunk: u32, resigned: bool) -> String {
-    if resigned {
-        format!("chunk-{chunk:05}.resigned.mnsd")
-    } else {
-        format!("chunk-{chunk:05}.mnsd")
-    }
+fn games_filename(chunk: u32) -> String {
+    format!("chunk-{chunk:05}.mnsd")
 }
 
 #[cfg(test)]

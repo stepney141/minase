@@ -33,18 +33,18 @@ pub(crate) struct Arguments {
     /// サイクルで生成する対局数の上限。
     #[arg(long, required = true, value_parser = clap::value_parser!(u32).range(1..))]
     pub(super) games: u32,
-    /// 投了ファイルの除外前に数える訓練局面数の目標。1以上とし、塊0からの累計で判定する。
+    /// 探索した全局面から数える訓練局面数の目標。1以上とし、塊0からの累計で判定する。
     #[arg(long, required = true, value_parser = clap::value_parser!(u64).range(1..))]
     pub(super) target_positions: u64,
     /// 1つの塊の対局数。最後の塊は端数を許す。
     #[arg(long, required = true, value_parser = clap::value_parser!(u32).range(1..))]
     pub(super) chunk_games: u32,
-    /// 完全探索のシミュレーション数。4以上の4の倍数。速い探索はこの4分の1。
-    #[arg(long, required = true, value_parser = parse_simulations)]
+    /// 全手番のシミュレーション数。1以上。
+    #[arg(long, required = true, value_parser = clap::value_parser!(u32).range(1..))]
     pub(super) simulations: u32,
-    /// 最後まで指させる対局の割合。100なら投了を無効にする。
-    #[arg(long, required = true, value_parser = clap::value_parser!(u8).range(1..=100))]
-    pub(super) playthrough_percent: u8,
+    /// 投了の閾値。有限な0以上1以下の値とし、0なら投了しない。
+    #[arg(long, required = true, value_parser = parse_resign_threshold)]
+    pub(super) resign_threshold: f64,
     /// 推論器を1つずつ所有するスレッド数。
     #[arg(long, required = true)]
     pub(super) threads: NonZeroUsize,
@@ -79,14 +79,14 @@ impl Arguments {
 #[serde(rename_all = "kebab-case")]
 pub(super) enum StartPosition {
     ShuffledSetup,
-    RandomOpening,
+    Initial,
 }
 
 impl std::fmt::Display for StartPosition {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str(match self {
             Self::ShuffledSetup => "shuffled-setup",
-            Self::RandomOpening => "random-opening",
+            Self::Initial => "initial",
         })
     }
 }
@@ -119,10 +119,37 @@ fn parse_commit(text: &str) -> Result<String, std::io::Error> {
     Ok(text.to_owned())
 }
 
-fn parse_simulations(text: &str) -> Result<u32, String> {
-    let simulations = text.parse::<u32>().map_err(|error| error.to_string())?;
-    if simulations < 4 || !simulations.is_multiple_of(4) {
-        return Err("simulations must be a multiple of 4 and at least 4".into());
+fn parse_resign_threshold(text: &str) -> Result<f64, ThresholdError> {
+    let threshold = text.parse::<f64>().map_err(ThresholdError::Parse)?;
+    if !threshold.is_finite() || !(0.0..=1.0).contains(&threshold) {
+        return Err(ThresholdError::Range(threshold));
     }
-    Ok(simulations)
+    Ok(threshold)
+}
+
+/// 投了閾値の構文または範囲の誤りを保持する。
+#[derive(Debug)]
+enum ThresholdError {
+    Parse(std::num::ParseFloatError),
+    Range(f64),
+}
+
+impl std::fmt::Display for ThresholdError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Parse(error) => write!(f, "invalid resignation threshold: {error}"),
+            Self::Range(value) => write!(
+                f,
+                "resignation threshold must be finite and within [0, 1]: {value}"
+            ),
+        }
+    }
+}
+impl std::error::Error for ThresholdError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::Parse(error) => Some(error),
+            Self::Range(_) => None,
+        }
+    }
 }

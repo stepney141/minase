@@ -358,7 +358,7 @@ fn read_positions(
             Outcome::Game(GameResult::Win { winner, .. })
             | Outcome::MateInThree { winner }
             | Outcome::EvaluationAdjudication { winner } => winner as u8,
-            Outcome::Game(GameResult::Draw { .. }) => 2,
+            Outcome::Game(GameResult::Draw { .. }) | Outcome::MaxPlyDraw => 2,
             Outcome::NotFromGame => return Err(Error::SyntheticOrigin { game: number }),
         };
         for (index, (entry, position)) in record.entries().iter().zip(game.positions()).enumerate()

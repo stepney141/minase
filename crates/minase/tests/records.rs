@@ -268,7 +268,7 @@ fn corrupt_fields_are_classified_by_their_specific_error() {
         (40, b'g', Error::InvalidGenerationCommit),
         (H + 4, 4, Error::InvalidOrigin(4)),
         (H + 5, 3, Error::InvalidOutcome(3)),
-        (H + 6, 14, Error::InvalidEndReason(14)),
+        (H + 6, 15, Error::InvalidEndReason(15)),
         (H + 6, 13, Error::OutcomeReasonMismatch),
         (H + 6, 1, Error::OutcomeReasonMismatch),
         (H + 6, 0, Error::OriginOutcomeMismatch),
@@ -1153,4 +1153,31 @@ fn board_decoder_checks_deferred_and_lion_flags() {
             ));
         }
     }
+}
+
+#[test]
+fn max_ply_draw_round_trips_as_reason_fourteen_only_with_draw_result() {
+    let record = GameRecord::new(
+        1,
+        Origin::RandomSelfplay,
+        Outcome::MaxPlyDraw,
+        0,
+        Position::initial(),
+        vec![entry(None, Policy::None)],
+    )
+    .unwrap();
+    let mut encoded = bytes(
+        header(TeacherKind::AlphaBeta),
+        std::slice::from_ref(&record),
+    );
+    assert_eq!(&encoded[4..8], &3_u32.to_le_bytes());
+    assert_eq!((encoded[H + 5], encoded[H + 6]), (2, 14));
+    assert_eq!(decode(&encoded).unwrap()[0].record(), &record);
+    for result in [0, 1] {
+        encoded[H + 5] = result;
+        assert_error(&encoded, Error::OutcomeReasonMismatch);
+    }
+    encoded[H + 5] = 2;
+    encoded[H + 4] = Origin::Synthetic as u8;
+    assert_error(&encoded, Error::OriginOutcomeMismatch);
 }

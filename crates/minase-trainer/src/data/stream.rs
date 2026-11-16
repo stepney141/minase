@@ -103,6 +103,7 @@ pub(crate) fn read_file(
                             Outcome::Loss
                         }
                     }
+                    GameOutcome::MaxPlyDraw => Outcome::Draw,
                     GameOutcome::NotFromGame => {
                         return Err(Error::SyntheticOrigin {
                             path: path.to_owned(),
