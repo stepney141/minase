@@ -1,11 +1,15 @@
-"""自己対局のシードの区間を登録し、直前のサイクルから投了を較正する。
+"""自己対局のシードの区間を登録し、過去の全サイクルから投了の閾値を較正する。
 
 台帳は既存のJSON Linesファイルとし、混合前の閉区間[seed + 1, seed + games]を
 重なりとuint64の折り返しがない場合だけ登録する。全行を検査してから同じディレクトリの
 一時ファイルへ書いて同期し、置き換え後に親ディレクトリも同期する。
 
-投了の較正では、生成器のsummary.jsonの件数を合算し、Clopper–Pearson法による
-片側95%上限を求める。標本が100対局以上あり、上限が0.05以下の場合だけ投了を有効にする。
+投了の較正はAobaZeroのコミット5eb9441のsrc/server/datakeep.cppのEMAKeepと
+server.cfgのResignEMADeno=5,000、ResignEMAInit=0.10、ResignMRate=0.05に従う。
+64候補の誤り率を初期値0.10から対局ごとに指数移動平均で更新する。
+集計はサイクルの順、各配列は対局番号の順に読み、勝者の最小値、引き分けでは両者の
+小さいほうを使う。状態は保存せず、同じ入力から毎回同じ閾値を計算する。
+方式の理由はdocs/adr/calibrate-the-zero-self-play-resignation-threshold-as-aobazero-does-and-record-the-gumbel-choice-value.mdにある。
 """
 
 from datetime import UTC, datetime
@@ -94,53 +98,45 @@ def register_seed_range(ledger: Path, name: str, seed: int, games: int) -> dict:
     return registration
 
 
-def _log_binomial_cdf(n: int, x: int, p: float) -> float:
-    """二項分布のP(X ≤ x)を、隣り合う確率の比と対数空間の加算で求める。"""
-    log_failure = math.log1p(-p)
-    log_odds = math.log(p) - log_failure
-    log_term = n * log_failure
-    log_total = log_term
-    for count in range(1, x + 1):
-        log_term += math.log(n - count + 1) - math.log(count) + log_odds
-        larger = max(log_total, log_term)
-        log_total = larger + math.log1p(math.exp(-abs(log_total - log_term)))
-    return log_total
-
-
-def _upper_bound(n: int, x: int) -> float | None:
-    if n == 0:
-        return None
-    if x == n:
-        return 1.0
-    low, high = 0.0, 1.0
-    target = math.log(0.05)
-    while high - low > high * 1e-12:
-        middle = (low + high) / 2
-        if _log_binomial_cdf(n, x, middle) > target:
-            low = middle
-        else:
-            high = middle
-    return high
+def _resign_threshold(estimates: list[float]) -> float:
+    """誤り率が0.05を超える最初の候補の直下を閾値にする。"""
+    for index, estimate in enumerate(estimates):
+        if estimate > 0.05:
+            return 0.005 * index
+    return 0.32
 
 
 def resign_calibration(summary: list[Path]) -> dict:
-    """生成器の集計を合算し、誤投了率の上限と次のサイクルの投了の可否を返す。"""
-    if not summary:
-        raise ValueError("at least one summary is required")
-    n, x = 0, 0
+    """過去の集計を指定順に適用し、閾値、64個の推定、取り込んだ対局数を返す。"""
+    estimates = [0.10] * 64
+    games = 0
+    decay = 4999 / 5000
+    fields = {"game", "result", "min_value_black", "min_value_white"}
     for path in summary:
         counts = json.loads(path.read_text(encoding="utf-8"))
-        fields = ("resign_triggered_playthrough_games", "false_resignations")
-        if not isinstance(counts, dict) or any(field not in counts for field in fields):
-            raise ValueError(f"{path}: missing resign_triggered_playthrough_games or false_resignations")
-        trials, errors = (counts[field] for field in fields)
-        if (type(trials) is not int or type(errors) is not int
-                or not 0 <= errors <= trials):
-            raise ValueError(f"{path}: counts must be integers with 0 <= false_resignations <= resign_triggered_playthrough_games")
-        n += trials
-        x += errors
-    upper = _upper_bound(n, x)
-    return {
-        "n": n, "false_resignations": x, "upper_bound": upper,
-        "enable_resignation": n >= 100 and upper is not None and upper <= 0.05,
-    }
+        if not isinstance(counts, dict) or "resign_calibration_games" not in counts:
+            raise ValueError(f"{path}: missing resign_calibration_games")
+        records = counts["resign_calibration_games"]
+        if not isinstance(records, list):
+            raise ValueError(f"{path}: resign_calibration_games must be a list")
+        previous = 0
+        for record in records:
+            if not isinstance(record, dict) or set(record) != fields:
+                raise ValueError(f"{path}: calibration game must have game, result, min_value_black and min_value_white")
+            number = record["game"]
+            if type(number) is not int or number <= previous:
+                raise ValueError(f"{path}: calibration game numbers must be positive integers in strictly increasing order")
+            previous = number
+            result = record["result"]
+            if result not in ("black", "white", "draw"):
+                raise ValueError(f"{path}: calibration result must be black, white or draw")
+            for field in ("min_value_black", "min_value_white"):
+                value = record[field]
+                if type(value) not in (int, float) or not 0 <= value <= 1 or not math.isfinite(value):
+                    raise ValueError(f"{path}: {field} must be finite and in [0, 1]")
+            minimum = (min(record["min_value_black"], record["min_value_white"]) if result == "draw"
+                       else record[f"min_value_{result}"])
+            for index in range(64):
+                estimates[index] = decay * estimates[index] + (1 - decay) * (minimum <= 0.005 * (index + 1))
+            games += 1
+    return {"threshold": _resign_threshold(estimates), "estimates": estimates, "games": games}

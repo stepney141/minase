@@ -16,12 +16,13 @@
 - fixture-eval：--checkpoint、--onnx、--fixture、--out。
 - external-eval：--checkpoint、--data（探索なしの検証用MNSD 1ファイル）、--device、--out。
 - seed-ledger：--ledger（既存の台帳）、--name、--seed、--games。
-- resign-calibration：--summary（直前のサイクルの生成器の集計の列）。
+- resign-calibration：--summary（過去の全サイクルの生成器の集計を古い順に並べた列）から、閾値、64個の推定、対局数をJSONで出す。
 - run-cycles：--machine colab|vastで指定した機械で生成、学習、照合を順に実行し、NASへ受け取る。
   colabでは--sessionと--cycle-cu、vastでは--vast-instanceを必須とし、ほかの種類の機械の引数は指定できない。
-  --threads-per-gpuでGPUあたりの生成スレッド数、--replay-buffer-positionsでリプレイバッファの局面数を指定する。
+  --threads-per-gpuでGPUあたりの生成スレッド数、--replay-buffer-gamesでリプレイバッファの対局数の上限を指定する。
   --generation-commitと--trainer-commitで生成と学習のコミットを指定する。
-  引数と再開の契約はrunner.pyにある。
+  過去の集計から投了の閾値を毎サイクル計算し、--start-positionはinitialかshuffled-setupを指定する。
+  基準の学習率は--lrで与え、サイクルの中では一定とする。引数と再開の契約はrunner.pyにある。
 
 引数の誤りと実行時の条件違反は、標準エラーの1行と終了コード1で報告する。
 出力先と学習の契約はtrain.pyのdocstringにある。

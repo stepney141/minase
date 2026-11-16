@@ -4,7 +4,7 @@
 一時ディレクトリを借りた機械に見立てたRemoteを使い、実ファイルで再開と転送を確かめる。
 照合のシェルは外部コマンドだけを小さな実行ファイルへ置き換えて実際に走らせる。
 台帳の欠落とチェックポイントの置き換え競合はbrief-rl-runner-fix.mdの契約に従う。
-局面数によるリプレイバッファ、生成と学習のコミットの分離、一括転送を検証する。
+docs/plans/zero-recipe-precedents.mdの局数によるリプレイバッファ、生成と学習のコミットの分離、一括転送を検証する。
 機械の種類と複数GPUの契約はphase3a.mdとdocs/plans/archived/alphazero-multi-gpu.mdに従う。
 """
 
@@ -182,10 +182,9 @@ class RunnerCase(unittest.TestCase):
             cycles_dir=Path("cycles"), base_cycles_dir=Path("cycles"), branch_from=0,
             trainer_commit=TRAINER_COMMIT, first_cycle=1, last_cycle=1,
             deadline=NOW + timedelta(hours=8), cycle_minutes=40, cycle_cu=2,
-            start_position="random-opening", generation_seed_offset=0,
+            start_position="initial", generation_seed_offset=0,
             target_positions=1000, chunks=2, simulations=32, threads_per_gpu=6, games_per_thread=4,
-            replay_buffer_first_cycle=1,
-            replay_buffer_positions=1000, batch_size=256, lr=0.01, momentum=0.9, weight_decay=0.0001,
+            replay_buffer_games=1000, batch_size=256, lr=0.01, momentum=0.9, weight_decay=0.0001,
             clip_grad_norm=10, value_lambda=0.333, precision="bf16", checkpoint_steps=200,
             train_seed_base=123, minase=self.directory / "minase", poll_seconds=60,
             cycle1_reference_summary=self.reference,
@@ -225,138 +224,102 @@ else:
 class CalculationTests(RunnerCase):
     def test_cycle_one_uses_trial_ratio_and_rounds_both_counts_up(self):
         write_json(self.reference, {"games": 3, "training_positions": 100})
-        self.assertEqual(game_counts([self.reference], 1001, 4), (31, 8))
+        self.assertEqual(game_counts(self.reference, 1001, 4), (31, 8))
 
-    def test_previous_cycle_ratio_includes_regenerated_games(self):
+    def test_previous_cycle_ratio_uses_its_summary(self):
         self.summary(2, "selfplay", {"games": 100, "training_positions": 12000})
         self.assertEqual(game_counts(summaries(self.options, 2), 1000000, 20), (8334, 417))
-        self.summary(2, "selfplay-regen", {"games": 20, "training_positions": 3000})
-        self.assertEqual(game_counts(summaries(self.options, 2), 1000000, 20), (8000, 400))
 
     def test_zero_or_negative_reference_is_rejected(self):
         for games, positions in ((0, 100), (10, 0), (-1, 100)):
             with self.subTest(games=games, positions=positions):
                 write_json(self.reference, {"games": games, "training_positions": positions})
                 with self.assertRaises(ValueError):
-                    game_counts([self.reference], 1000, 20)
+                    game_counts(self.reference, 1000, 20)
 
-    def test_resignation_starts_disabled_and_uses_previous_calibration(self):
-        self.assertEqual(resignation(self.options, 1), (100, {
-            "n": 0, "false_resignations": 0, "upper_bound": None, "enable_resignation": False,
-        }))
-        for n, errors, expected in ((100, 1, 20), (100, 2, 100), (99, 0, 100), (0, 0, 100)):
-            with self.subTest(n=n, errors=errors):
-                self.summary(1, "selfplay", {"resign_triggered_playthrough_games": n, "false_resignations": errors})
-                percent, calibration = resignation(self.options, 2)
-                self.assertEqual(percent, expected)
-                self.assertEqual(calibration["n"], n)
-                self.assertEqual(calibration["false_resignations"], errors)
+    def test_resignation_starts_at_zero_and_applies_all_past_cycles_in_order(self):
+        self.assertEqual(resignation(self.options, 1), {
+            "threshold": 0.0, "estimates": [0.10] * 64, "games": 0,
+        })
+        self.summary(1, "selfplay", {"resign_calibration_games": [
+            {"game": 1, "result": "white", "min_value_black": 1, "min_value_white": 0.04},
+        ]})
+        self.summary(2, "selfplay", {"resign_calibration_games": [
+            {"game": 1, "result": "black", "min_value_black": 1, "min_value_white": 0},
+        ]})
+        report = resignation(self.options, 3)
+        self.assertEqual(report["games"], 2)
+        self.assertEqual(report["threshold"], 0)
+        decay = 4999 / 5000
+        for index, estimate in enumerate(report["estimates"]):
+            expected = (0.10 * decay + (1 / 5000 if index >= 7 else 0)) * decay
+            self.assertAlmostEqual(estimate, expected, delta=1e-15)
 
-    def test_resignation_adds_regenerated_samples(self):
-        self.summary(2, "selfplay", {"resign_triggered_playthrough_games": 50, "false_resignations": 1})
-        self.summary(2, "selfplay-regen", {"resign_triggered_playthrough_games": 50, "false_resignations": 0})
-        percent, calibration = resignation(self.options, 3)
-        self.assertEqual(percent, 20)
-        self.assertEqual(calibration["n"], 100)
-        self.assertAlmostEqual(calibration["upper_bound"], 0.0466, places=4)
-
-    def test_replay_buffer_uses_position_boundary_and_keeps_summary_order(self):
-        # 3から数えると250、450、550局面。2の生成し直し50局面も含む。
-        for cycle, positions in ((1, 100), (2, 150), (3, 250)):
-            self.summary(cycle, "selfplay", {
-                "training_positions": positions,
-                "training_files": ["chunk-00001.mnsd", "chunk-00000.resigned.mnsd"],
-            })
-        self.summary(2, "selfplay-regen", {"training_positions": 50, "training_files": ["chunk-00000.mnsd"]})
-        first = ["cycles/cycle-0001/selfplay/chunk-00001.mnsd",
-                 "cycles/cycle-0001/selfplay/chunk-00000.resigned.mnsd"]
-        second = ["cycles/cycle-0002/selfplay/chunk-00001.mnsd",
-                  "cycles/cycle-0002/selfplay/chunk-00000.resigned.mnsd",
-                  "cycles/cycle-0002/selfplay-regen/chunk-00000.mnsd"]
-        third = ["cycles/cycle-0003/selfplay/chunk-00001.mnsd",
-                 "cycles/cycle-0003/selfplay/chunk-00000.resigned.mnsd"]
-        for positions, cycles, files in (
-            (1, [3], third), (250, [3], third), (251, [2, 3], second + third),
-            (450, [2, 3], second + third), (451, [1, 2, 3], first + second + third),
-            (550, [1, 2, 3], first + second + third), (1000, [1, 2, 3], first + second + third),
-        ):
-            with self.subTest(positions=positions):
-                self.assertEqual(replay_buffer(self.options, 3, positions), (cycles, files, third))
-        self.assertEqual(replay_buffer(self.options, 1, 1000), ([1], first, first))
-        self.assertEqual(replay_buffer(self.options, 2, 100), ([2], second, second))
-        self.assertEqual(replay_buffer(self.options, 2, 200), ([2], second, second))
+    def test_replay_buffer_respects_game_cap_and_keeps_summary_order(self):
+        # 新しい順の合計は250、400、500局。局面数は選択に使わない。
+        by_cycle = {}
+        for cycle, games in ((1, 100), (2, 150), (3, 250)):
+            names = ["chunk-00001.mnsd", "chunk-00000.mnsd"]
+            self.summary(cycle, "selfplay", {"games": games, "training_positions": 1,
+                                              "training_files": names})
+            by_cycle[cycle] = [f"cycles/cycle-{cycle:04d}/selfplay/{name}" for name in names]
+        for cap, cycles in ((250, [3]), (399, [3]), (400, [2, 3]), (499, [2, 3]),
+                            (500, [1, 2, 3]), (1000, [1, 2, 3])):
+            with self.subTest(cap=cap):
+                files = [name for cycle in cycles for name in by_cycle[cycle]]
+                self.assertEqual(replay_buffer(self.options, 3, cap), (cycles, files, by_cycle[3]))
+        self.assertEqual(replay_buffer(self.options, 1, 1000), ([1], by_cycle[1], by_cycle[1]))
+        with self.assertRaisesRegex(ValueError, "latest cycle"):
+            replay_buffer(self.options, 3, 249)
 
     def test_replay_buffer_rejects_paths_outside_generation_output(self):
-        self.summary(1, "selfplay", {"training_positions": 100, "training_files": ["../../outside.mnsd"]})
-        with self.assertRaises(ValueError):
+        self.summary(1, "selfplay", {"games": 1, "training_files": ["../../outside.mnsd"]})
+        with self.assertRaisesRegex(ValueError, "training file"):
             replay_buffer(self.options, 1, 1)
 
-    def test_replay_buffer_rejects_invalid_position_counts(self):
-        for positions in (-1, 1.5, True):
-            with self.subTest(positions=positions):
-                self.summary(1, "selfplay", {"training_positions": positions, "training_files": ["chunk-00000.mnsd"]})
+    def test_replay_buffer_rejects_invalid_game_counts(self):
+        for games in (0, -1, 1.5, True):
+            with self.subTest(games=games):
+                self.summary(1, "selfplay", {"games": games, "training_files": ["chunk-00000.mnsd"]})
                 with self.assertRaises(ValueError):
                     replay_buffer(self.options, 1, 100)
 
-    def test_replay_buffer_does_not_read_cycles_before_the_position_boundary(self):
-        self.summary(3, "selfplay", {"training_positions": 100, "training_files": ["chunk-00000.mnsd"]})
+    def test_replay_buffer_does_not_read_older_cycles_when_cap_is_reached(self):
+        self.summary(3, "selfplay", {"games": 100, "training_files": ["chunk-00000.mnsd"]})
         files = ["cycles/cycle-0003/selfplay/chunk-00000.mnsd"]
         self.assertEqual(replay_buffer(self.options, 3, 100), ([3], files, files))
-
-    def test_replay_buffer_does_not_read_cycles_before_replay_buffer_first_cycle(self):
-        options = replace(self.options, first_cycle=3, last_cycle=3, replay_buffer_first_cycle=3,
-                          cycle1_reference_summary=None)
-        self.summary(3, "selfplay", {"training_positions": 100, "training_files": ["chunk-00000.mnsd"]})
-        files = ["cycles/cycle-0003/selfplay/chunk-00000.mnsd"]
-        self.assertEqual(replay_buffer(options, 3, 1000), ([3], files, files))
-
-    def test_replay_buffer_starts_at_replay_buffer_first_cycle_when_positions_are_insufficient(self):
-        options = replace(self.options, first_cycle=4, last_cycle=4, replay_buffer_first_cycle=3,
-                          cycle1_reference_summary=None)
-        for cycle, positions in ((1, 1000), (2, 1000), (3, 100), (4, 200)):
-            self.summary(cycle, "selfplay", {
-                "training_positions": positions, "training_files": ["chunk-00000.mnsd"],
-            })
-        third = ["cycles/cycle-0003/selfplay/chunk-00000.mnsd"]
-        fourth = ["cycles/cycle-0004/selfplay/chunk-00000.mnsd"]
-        self.assertEqual(replay_buffer(options, 4, 1000), ([3, 4], third + fourth, fourth))
 
     def test_branch_replay_buffer_and_calibration_use_the_explicit_boundary(self):
         options = replace(self.options, cycles_dir=Path("cycles-branch"), base_cycles_dir=Path("baseline"),
                           branch_from=2, first_cycle=3, last_cycle=4, cycle1_reference_summary=None)
-        for directory, cycle, positions, samples in (("baseline", 1, 100, 0), ("baseline", 2, 150, 50),
-                                                     ("cycles-branch", 3, 250, 0)):
+        for directory, cycle, minimum in (("baseline", 1, 0), ("baseline", 2, 1),
+                                           ("cycles-branch", 3, 0)):
             write_json(self.root / f"{directory}/cycle-{cycle:04d}/selfplay/summary.json", {
-                "games": 10, "training_positions": positions, "training_files": ["chunk-00000.mnsd"],
-                "resign_triggered_playthrough_games": samples, "false_resignations": 0,
+                "games": 10, "training_positions": 150, "training_files": ["chunk-00000.mnsd"],
+                "resign_calibration_games": [{"game": 1, "result": "black",
+                                              "min_value_black": minimum, "min_value_white": 1}],
             })
-        write_json(self.root / "baseline/cycle-0002/selfplay-regen/summary.json", {
-            "games": 5, "training_positions": 50, "training_files": ["chunk-00001.mnsd"],
-            "resign_triggered_playthrough_games": 50, "false_resignations": 0,
-        })
-        # 反対側にも同じ番号を置き、存在する側を選ぶ処理では通らないようにする。
-        for directory, cycle in (("cycles-branch", 2), ("baseline", 3), ("cycles", 2)):
+        # 同番号の反対側の集計では代用できない。
+        for directory, cycle in (("cycles-branch", 1), ("cycles-branch", 2), ("baseline", 3), ("cycles", 2)):
             write_json(self.root / f"{directory}/cycle-{cycle:04d}/selfplay/summary.json", {"wrong": True})
-        second = ["baseline/cycle-0002/selfplay/chunk-00000.mnsd",
-                  "baseline/cycle-0002/selfplay-regen/chunk-00001.mnsd"]
+        first = ["baseline/cycle-0001/selfplay/chunk-00000.mnsd"]
+        second = ["baseline/cycle-0002/selfplay/chunk-00000.mnsd"]
         third = ["cycles-branch/cycle-0003/selfplay/chunk-00000.mnsd"]
-        self.assertEqual(replay_buffer(options, 3, 450), ([2, 3], second + third, third))
-        self.assertEqual(replay_buffer(options, 3, 451), (
-            [1, 2, 3], ["baseline/cycle-0001/selfplay/chunk-00000.mnsd", *second, *third], third,
-        ))
-        self.assertEqual(replay_buffer(replace(options, replay_buffer_first_cycle=2), 3, 1000),
-                         ([2, 3], second + third, third))
-        self.assertEqual(replay_buffer(replace(options, replay_buffer_first_cycle=3), 3, 1000),
-                         ([3], third, third))
-        self.assertEqual(game_counts(summaries(options, 2), 1000, 2), (75, 38))
-        self.assertEqual(resignation(options, 3)[0], 20)
-        self.assertEqual(resignation(options, 4)[0], 100)
+        self.assertEqual(replay_buffer(options, 3, 29), ([2, 3], second + third, third))
+        self.assertEqual(replay_buffer(options, 3, 30), ([1, 2, 3], first + second + third, third))
+        self.assertEqual(game_counts(summaries(options, 2), 1000, 2), (67, 34))
+        decay = 4999 / 5000
+        for cycle, expected in ((3, (0.10 * decay + 1 / 5000) * decay),
+                                (4, ((0.10 * decay + 1 / 5000) * decay) * decay + 1 / 5000)):
+            report = resignation(options, cycle)
+            self.assertEqual(report["games"], cycle - 1)
+            for estimate in report["estimates"]:
+                self.assertAlmostEqual(estimate, expected, delta=1e-15)
         (self.root / "baseline/cycle-0002/selfplay/summary.json").unlink()
         with self.assertRaises(FileNotFoundError):
-            replay_buffer(options, 3, 450)
-        (self.root / "cycles-branch/cycle-0003/selfplay/summary.json").unlink()
+            replay_buffer(options, 3, 30)
         with self.assertRaises(FileNotFoundError):
-            replay_buffer(options, 3, 1)
+            resignation(options, 3)
 
     def test_start_accepts_equal_time_and_balance(self):
         deadline = NOW + timedelta(minutes=40)
@@ -595,9 +558,9 @@ class StorageTests(RunnerCase):
         self.assertEqual(self.remote.uploads, [])
         self.assertEqual(len(self.remote.hash_batches), 3)
 
-    def test_generation_restore_sends_only_config_and_committed_triples(self):
+    def test_generation_restore_sends_only_config_and_committed_pairs(self):
         out = "cycles/cycle-0001/selfplay"
-        names = ["config.json", "chunk-00000.mnsd", "chunk-00000.resigned.mnsd", "chunk-00000.json"]
+        names = ["config.json", "chunk-00000.mnsd", "chunk-00000.json"]
         for name in [*names, "chunk-00001.mnsd", "chunk-00001.json.tmp", ".zero_selfplay.lock"]:
             write(self.root / out / name, name.encode())
         self.runner.restore_generation(out)
@@ -608,9 +571,9 @@ class StorageTests(RunnerCase):
         self.runner.restore_generation(out)
         self.assertEqual(self.remote.uploads, [])
 
-    def test_chunk_without_both_data_files_is_rejected(self):
+    def test_chunk_without_data_file_is_rejected(self):
         with self.assertRaises(ValueError):
-            chunk_files(["chunk-00000.json", "chunk-00000.mnsd"])
+            chunk_files(["chunk-00000.json"])
         self.assertEqual(chunk_files(["chunk-00000.mnsd", "chunk-00000.json.tmp"]), [])
 
     def test_publish_network_is_read_only_and_rejects_different_existing_bytes(self):
@@ -645,20 +608,20 @@ class GenerationTests(RunnerCase):
         write_json(self.root / self.out / "config.json", {
             "generation_commit": GENERATION_COMMIT,
             "network_sha256": digest(self.root / "cycles/cycle-0000/model.onnx"),
-            "start_position": "random-opening", "nn_backend": "tensorrt", "seed": 1000000000, "games": 11, "chunk_games": 5,
-            "simulations": 32, "playthrough_percent": 100,
+            "start_position": "initial", "nn_backend": "tensorrt", "seed": 1000000000, "games": 11, "chunk_games": 5,
+            "simulations": 32, "resign_threshold": 0.0,
         })
         self.saved_summary = {"target_positions": 1000, "chunks": 2, "games": 10}
         write_json(self.summary_path, self.saved_summary)
         for chunk in range(3):
-            for suffix in (".mnsd", ".resigned.mnsd", ".json"):
+            for suffix in (".mnsd", ".json"):
                 write(self.root / self.out / f"chunk-{chunk:05d}{suffix}", b"committed chunk")
         for suffix in (".out", ".err"):
             write(self.root / (self.out + suffix), b"generation log")
 
     def generation(self):
         return self.runner.generation(1, self.out, "cycles/cycle-0000/model.onnx",
-                                      1000000000, 11, 5, 100, 1000)
+                                      1000000000, 11, 5, 0.0, 1000)
 
     def test_generation_accepts_and_preserves_chunks_after_the_target_prefix(self):
         before = {path: path.read_bytes() for path in (self.root / self.out).iterdir()}
@@ -669,14 +632,14 @@ class GenerationTests(RunnerCase):
         self.assertEqual(self.remote.starts, [])
 
     def test_generation_does_not_require_chunks_after_the_target_prefix(self):
-        for suffix in (".mnsd", ".resigned.mnsd", ".json"):
+        for suffix in (".mnsd", ".json"):
             (self.root / self.out / f"chunk-00002{suffix}").unlink()
         summary, _ = self.generation()
         self.assertEqual(summary, self.saved_summary)
 
     def test_generation_rejects_target_mismatch_invalid_chunks_and_games_above_the_cap(self):
         # 上限より多い塊のファイルが揃っていても、集計の塊数は上限を超えられない。
-        for suffix in (".mnsd", ".resigned.mnsd", ".json"):
+        for suffix in (".mnsd", ".json"):
             write(self.root / self.out / f"chunk-00003{suffix}", b"extra chunk")
         for field, invalid in [
             ("target_positions", 999), ("target_positions", 1000.0), ("target_positions", True),
@@ -691,7 +654,7 @@ class GenerationTests(RunnerCase):
 
     def test_generation_requires_all_three_files_for_every_included_chunk(self):
         for chunk in range(2):
-            for suffix in (".mnsd", ".resigned.mnsd", ".json"):
+            for suffix in (".mnsd", ".json"):
                 with self.subTest(chunk=chunk, suffix=suffix):
                     path = self.root / self.out / f"chunk-{chunk:05d}{suffix}"
                     contents = path.read_bytes()
@@ -768,11 +731,11 @@ class ResumeTests(RunnerCase):
                 write_json(location / out / "config.json", {
                     "generation_commit": "c" * 40,
                     "network_sha256": digest(self.root / "cycles/cycle-0000/model.onnx"),
-                    "start_position": "random-opening", "nn_backend": "tensorrt", "seed": 1000000000, "games": 10, "chunk_games": 5,
-                    "simulations": 32, "playthrough_percent": 100,
+                    "start_position": "initial", "nn_backend": "tensorrt", "seed": 1000000000, "games": 10, "chunk_games": 5,
+                    "simulations": 32, "resign_threshold": 0.0,
                 })
                 with self.assertRaises(ValueError):
-                    self.runner.generation(1, out, "cycles/cycle-0000/model.onnx", 1000000000, 10, 5, 100, 1000)
+                    self.runner.generation(1, out, "cycles/cycle-0000/model.onnx", 1000000000, 10, 5, 0.0, 1000)
                 self.assertEqual(self.remote.starts, [])
                 self.assertEqual(self.remote.uploads, [])
                 self.assertFalse((self.root / out / "summary.json").exists())
@@ -820,7 +783,7 @@ class ResumeTests(RunnerCase):
 
     def test_new_training_passes_replay_buffer_and_every_explicit_setting(self):
         latest = ["cycles/cycle-0003/selfplay/chunk-00000.mnsd",
-                  "cycles/cycle-0003/selfplay-regen/chunk-00000.mnsd"]
+                  "cycles/cycle-0003/selfplay/chunk-00001.mnsd"]
         files = ["cycles/cycle-0002/selfplay/chunk-00000.mnsd", *latest]
         command = self.runner.training_command(3, files, latest)
         self.assertEqual(command, [
@@ -1344,9 +1307,81 @@ class MachineTests(unittest.TestCase):
 
 
 class CycleTests(RunnerCase):
+    def assert_calibration_survives_resume(self, stage):
+        # 3,466局の最小値0.04で、最初の7候補だけが0.05以下になり、閾値は0.035になる。
+        self.summary(1, "selfplay", {
+            "games": 34660, "training_positions": 3466000, "training_files": ["chunk-00000.mnsd"],
+            "resign_calibration_games": [{"game": 10 * index + 1, "result": "black",
+                                          "min_value_black": 0.04, "min_value_white": 0}
+                                         for index in range(3466)],
+        })
+        for name, content in (("selfplay/chunk-00000.mnsd", b"previous data"),
+                              ("train/model.onnx", b"previous network"),
+                              ("train/checkpoint.pt", b"previous checkpoint")):
+            write(self.root / "cycles/cycle-0001" / name, content)
+        options = replace(self.options, first_cycle=2, last_cycle=2, cycle1_reference_summary=None,
+                          replay_buffer_games=40000)
+        original_generation = Runner.generation
+        calibrations = []
+
+        def generation(instance, *args):
+            calibrations.append(args[6])
+            return original_generation(instance, *args)
+
+        with patch.object(Runner, "generation", new=generation):
+            if stage == "chunks":
+                def stop_after_chunks(stem, body):
+                    self.complete_job(stem, body)
+                    return 9
+                self.remote.on_start = stop_after_chunks
+                with self.assertRaises(RuntimeError):
+                    self.execute(options)
+                out = self.root / "cycles/cycle-0002/selfplay"
+                self.assertTrue((out / "chunk-00000.json").is_file())
+                self.assertFalse((out / "summary.json").exists())
+            else:
+                method = "training" if stage == "generation" else "checking"
+                with patch.object(Runner, method, side_effect=RuntimeError("interrupted")):
+                    with self.assertRaisesRegex(RuntimeError, "interrupted"):
+                        self.execute(options)
+            self.assertFalse((self.root / "cycles.jsonl").exists())
+            first_commands = [shlex.split(body) for stem, body, _, _ in self.remote.starts
+                              if stem.endswith("/selfplay")]
+            shutil.rmtree(self.remote_root)
+            self.remote_root.mkdir()
+            self.remote = FakeRemote(self.remote_root)
+            self.remote.on_start = self.complete_job
+            self.execute(options)
+            second_commands = [shlex.split(body) for stem, body, _, _ in self.remote.starts
+                               if stem.endswith("/selfplay")]
+            self.execute(options)
+        self.assertEqual(calibrations, [0.035, 0.035])
+        self.assertEqual(len(second_commands), 1 if stage == "chunks" else 0)
+        for command in first_commands + second_commands:
+            self.assertEqual(command[command.index("--resign-threshold") + 1], repr(0.035))
+            self.assertNotIn("--playthrough-percent", command)
+        rows = [json.loads(line) for line in (self.root / "cycles.jsonl").read_text().splitlines()]
+        self.assertEqual(len(rows), 1)
+        calibration = rows[0]["resign_calibration"]
+        self.assertEqual(calibration["threshold"], 0.035)
+        self.assertEqual(calibration["games"], 3466)
+        decay = 4999 / 5000
+        for index, estimate in enumerate(calibration["estimates"]):
+            expected = 0.10 * decay**3466 if index < 7 else 1 - 0.90 * decay**3466
+            self.assertAlmostEqual(estimate, expected, delta=1e-13)
+        self.assertEqual(rows[0]["generation"]["resign_threshold"], calibration["threshold"])
+
+    def test_calibration_survives_resume_after_committed_chunks(self):
+        self.assert_calibration_survives_resume("chunks")
+
+    def test_calibration_survives_resume_after_generation(self):
+        self.assert_calibration_survives_resume("generation")
+
+    def test_calibration_survives_resume_after_training(self):
+        self.assert_calibration_survives_resume("training")
+
     def test_vast_cycles_record_machine_and_devices_without_balance_queries(self):
         self.remote.hardware.update(gpu_count=4, cpus_available=18, nproc=32)
-        self.regenerate = True
         options = replace(self.options, machine="vast", vast_instance=12345, session=None, cycle_cu=None,
                           threads_per_gpu=4, batch_size=1024, last_cycle=2)
         common = load_vast_common()
@@ -1373,10 +1408,9 @@ class CycleTests(RunnerCase):
             self.assertEqual(interval["vast_instance"], 12345)
             for absent in ("session", "start_balance", "end_balance", "balance_difference", "balance_increased"):
                 self.assertNotIn(absent, interval)
-            for field in ("generation", "regeneration"):
-                self.assertEqual(row[field]["threads"], 16)
-                self.assertEqual(row[field]["threads_per_gpu"], 4)
-                self.assertEqual(row[field]["devices"], 4)
+            self.assertEqual(row["generation"]["threads"], 16)
+            self.assertEqual(row["generation"]["threads_per_gpu"], 4)
+            self.assertEqual(row["generation"]["devices"], 4)
         self.assertEqual(intervals[1]["started_at"], intervals[0]["ended_at"])
         for stem, body, _, _ in self.remote.starts:
             if stem.endswith("/check"):
@@ -1463,25 +1497,22 @@ class CycleTests(RunnerCase):
         self.assertEqual((self.root / "seed-ledger.jsonl").read_bytes(), ledger)
         self.assertEqual(json.loads((self.root / "cycles.jsonl").read_text())["machine"]["vast_instance"], 12345)
 
-    def test_start_position_reaches_generation_and_regeneration_and_cycle_record(self):
-        self.regenerate = True
+    def test_start_position_reaches_generation_and_cycle_record(self):
         self.execute(replace(self.options, start_position="shuffled-setup"))
         row = json.loads((self.root / "cycles.jsonl").read_text())
         self.assertEqual(row["generation_seed_offset"], 0)
         self.assertEqual(row["generation"]["seed"], 1_000_000_000)
-        self.assertEqual(row["regeneration"]["seed"], 1_500_000_000)
         commands = [shlex.split(body) for stem, body, _, _ in self.remote.starts if "/selfplay" in stem]
-        self.assertEqual(len(commands), 2)
+        self.assertEqual(len(commands), 1)
         self.assertEqual([command[command.index("--start-position") + 1] for command in commands],
-                         ["shuffled-setup", "shuffled-setup"])
-        for field in ("generation", "regeneration"):
-            self.assertEqual(row[field]["start_position"], "shuffled-setup")
+                         ["shuffled-setup"])
+        self.assertEqual(row["generation"]["start_position"], "shuffled-setup")
 
     def test_generation_seed_interval_overflow_leaves_ledger_unchanged(self):
         write_json(self.reference, {"games": 1, "training_positions": 1})
         ledger = self.root / "seed-ledger.jsonl"
         before = ledger.read_bytes()
-        options = replace(self.options, generation_seed_offset=300_000_000, target_positions=200_000_001)
+        options = replace(self.options, generation_seed_offset=300_000_000, target_positions=700_000_001)
         with self.assertRaisesRegex(ValueError, "generation seed range"):
             self.execute(options)
         self.assertEqual(ledger.read_bytes(), before)
@@ -1489,12 +1520,12 @@ class CycleTests(RunnerCase):
 
     def test_generation_seed_interval_accepts_exact_upper_boundary(self):
         write_json(self.reference, {"games": 1, "training_positions": 1})
-        options = replace(self.options, generation_seed_offset=300_000_000, target_positions=200_000_000)
+        options = replace(self.options, generation_seed_offset=300_000_000, target_positions=700_000_000)
         with patch.object(Runner, "generation", side_effect=RuntimeError("generation reached")):
             with self.assertRaisesRegex(RuntimeError, "generation reached"):
                 self.execute(options)
         row = json.loads((self.root / "seed-ledger.jsonl").read_text())
-        self.assertEqual((row["seed"], row["games"]), (1_300_000_000, 200_000_000))
+        self.assertEqual((row["seed"], row["games"]), (1_300_000_000, 700_000_000))
 
     def test_new_training_sends_manifest_with_replay_buffer(self):
         self.runner.run()
@@ -1513,7 +1544,6 @@ class CycleTests(RunnerCase):
         super().setUp()
         (self.root / "seed-ledger.jsonl").touch()
         self.compare_failure = False
-        self.regenerate = False
         self.remote.on_start = self.complete_job
         self.tool = self.directory / "fake-tool"
         write(self.tool, b'''#!/usr/bin/env python3
@@ -1618,24 +1648,20 @@ if engine:
                       "network_sha256": digest(self.remote_root / value("--nn-model")),
                       "start_position": value("--start-position"), "nn_backend": "tensorrt", "seed": int(value("--seed")), "games": count,
                       "chunk_games": chunk, "simulations": int(value("--simulations")),
-                      "playthrough_percent": int(value("--playthrough-percent"))}
+                      "resign_threshold": float(value("--resign-threshold"))}
             write_json(self.remote_root / stem / "config.json", config)
-            excluded = self.regenerate and stem.endswith("/selfplay")
             files = []
             for index in range((count + chunk - 1) // chunk):
                 name = f"chunk-{index:05d}"
                 write(self.remote_root / stem / (name + ".mnsd"), b"teacher data")
-                write(self.remote_root / stem / (name + ".resigned.mnsd"), b"resigned data")
                 write_json(self.remote_root / stem / (name + ".json"), {"chunk": index})
                 files.append(name + ".mnsd")
-                if not excluded:
-                    files.append(name + ".resigned.mnsd")
             summary = {"games": count, "training_positions": count * 100, "training_files": files,
                        "target_positions": int(value("--target-positions")), "chunks": (count + chunk - 1) // chunk,
-                       "resign_triggered_playthrough_games": 100, "false_resignations": 0,
-                       "resigned_games_excluded": excluded, "resigned_games": 3 if excluded else 0,
-                       "resigned_positions": 300 if excluded else 0,
-                       "win_reason_royal_capture": count, "discarded_max_ply": 0}
+                       "resign_calibration_games": [{"game": g, "result": "black",
+                                                     "min_value_black": 0.5, "min_value_white": 0.1}
+                                                    for g in range(1, count + 1, 10)],
+                       "win_reason_royal_capture": count, "draw_reason_max_ply": 0}
             write_json(self.remote_root / stem / "summary.json", summary)
         elif "train" in command:
             cycle = int(Path(stem).parent.name.removeprefix("cycle-"))
@@ -1687,16 +1713,16 @@ if engine:
                 self.assertFalse((self.root / "cycles" / cycle / "train/summary.json").exists())
 
         self.remote.on_download = before_download
-        self.execute(replace(self.options, last_cycle=2, replay_buffer_positions=2000))
+        self.execute(replace(self.options, last_cycle=2, replay_buffer_games=2000))
         rows = [json.loads(line) for line in (self.root / "cycles.jsonl").read_text().splitlines()]
         intervals = [json.loads(line) for line in (self.root / "sessions.jsonl").read_text().splitlines()]
         self.assertEqual([row["cycle"] for row in rows], [1, 2])
         self.assertEqual(self.remote.machine_calls, 1)
-        self.assertEqual([row["generation"]["playthrough_percent"] for row in rows], [100, 20])
+        self.assertEqual([row["generation"]["resign_threshold"] for row in rows], [0.0, 0.0])
         self.assertEqual([row["generation"]["seed"] for row in rows], [1000000000, 2000000000])
         self.assertEqual([row["generation"]["network"] for row in rows],
                          ["cycles/cycle-0000/model.onnx", "cycles/cycle-0001/train/model.onnx"])
-        self.assertEqual(rows[1]["resign_calibration"]["n"], 100)
+        self.assertEqual(rows[1]["resign_calibration"]["games"], 1)
         self.assertEqual(rows[0]["generation"]["games"], 10)
         self.assertEqual(rows[0]["generation"]["chunk_games"], 5)
         self.assertEqual([row["generation"]["target_positions"] for row in rows], [1000, 1000])
@@ -1704,19 +1730,20 @@ if engine:
         self.assertEqual([row["generation"]["threads_per_gpu"] for row in rows], [6, 6])
         self.assertEqual([row["generation"]["devices"] for row in rows], [1, 1])
         commands = [shlex.split(body) for stem, body, _, _ in self.remote.starts if stem.endswith("/selfplay")]
+        self.assertEqual([command[command.index("--resign-threshold") + 1] for command in commands], ["0.0", "0.0"])
+        self.assertTrue(all("--playthrough-percent" not in command for command in commands))
         self.assertEqual([command[command.index("--threads") + 1] for command in commands], ["6", "6"])
         self.assertEqual([command[command.index("--devices") + 1] for command in commands], ["1", "1"])
         self.assertEqual([command[command.index("--target-positions") + 1] for command in commands], ["1000", "1000"])
         self.assertEqual([command[command.index("--nn-model") + 1] for command in commands],
                          [row["generation"]["network"] for row in rows])
-        self.assertEqual(len(rows[1]["training_files"]), 8)
-        self.assertEqual(len(rows[1]["teacher_stats"]["files"]), 4)
+        self.assertEqual(len(rows[1]["training_files"]), 4)
+        self.assertEqual(len(rows[1]["teacher_stats"]["files"]), 2)
         self.assertEqual(rows[0]["teacher_stats"]["game_length_plies"], {"p50": 100, "p90": 120, "p99": 140})
         self.assertEqual([row["generation_commit"] for row in rows], [GENERATION_COMMIT, GENERATION_COMMIT])
         self.assertEqual([row["trainer_commit"] for row in rows], [TRAINER_COMMIT, TRAINER_COMMIT])
         self.assertEqual([row["replay_buffer_cycles"] for row in rows], [[1], [1, 2]])
-        self.assertEqual([row["replay_buffer_first_cycle"] for row in rows], [1, 1])
-        self.assertEqual([row["replay_buffer_positions"] for row in rows], [2000, 2000])
+        self.assertEqual([row["replay_buffer_games"] for row in rows], [2000, 2000])
         self.assertEqual(rows[0]["training_summary"]["provenance"]["trainer_commit"], TRAINER_COMMIT)
         self.assertEqual(rows[0]["selfplay_summary"]["win_reason_royal_capture"], 10)
         self.assertEqual(rows[0]["machine"], {
@@ -1773,15 +1800,6 @@ if engine:
         self.execute(replace(self.options, last_cycle=2))
         self.assertEqual(len(self.remote.starts), start_count)
 
-    def test_cycles_record_configured_replay_buffer_first_cycle(self):
-        self.execute(replace(self.options, last_cycle=2))
-        self.remote.balances = [96, 94]
-        self.execute(replace(self.options, first_cycle=3, last_cycle=3, replay_buffer_first_cycle=2,
-                             cycle1_reference_summary=None))
-        rows = [json.loads(line) for line in (self.root / "cycles.jsonl").read_text().splitlines()]
-        self.assertEqual([row["replay_buffer_first_cycle"] for row in rows], [1, 1, 2])
-        self.assertEqual([row["replay_buffer_cycles"] for row in rows], [[1], [2], [3]])
-
     def test_branch_cycles_keep_outputs_records_seeds_and_networks_separate(self):
         self.execute(replace(self.options, last_cycle=2))
         unchanged = {path: path.read_bytes() for path in self.root.rglob("*")
@@ -1790,7 +1808,7 @@ if engine:
         before = len(self.remote.starts)
         options = replace(self.options, cycles_dir=Path("cycles-branch"), generation_seed_offset=300_000_000, branch_from=1,
                           first_cycle=2, last_cycle=3, cycle1_reference_summary=None,
-                          replay_buffer_positions=2500)
+                          replay_buffer_games=2500)
         self.execute(options)
         rows = [json.loads(line) for line in (self.root / "cycles-branch.jsonl").read_text().splitlines()]
         intervals = [json.loads(line) for line in (self.root / "cycles-branch-sessions.jsonl").read_text().splitlines()]
@@ -1800,17 +1818,17 @@ if engine:
         ])
         self.assertEqual([row["generation"]["seed"] for row in rows], [2_300_000_000, 3_300_000_000])
         self.assertEqual([row["generation_seed_offset"] for row in rows], [300_000_000, 300_000_000])
-        self.assertEqual([row["generation"]["start_position"] for row in rows], ["random-opening", "random-opening"])
+        self.assertEqual([row["generation"]["start_position"] for row in rows], ["initial", "initial"])
         self.assertEqual([row["replay_buffer_cycles"] for row in rows], [[1, 2], [1, 2, 3]])
         for row in [*rows, *intervals]:
             self.assertEqual(row["cycles_dir"], "cycles-branch")
             self.assertEqual(row["base_cycles_dir"], "cycles")
             self.assertEqual(row["branch_from"], 1)
-        expected_files = [f"{directory}/cycle-{cycle:04d}/selfplay/chunk-{chunk:05d}{suffix}.mnsd"
+        expected_files = [f"{directory}/cycle-{cycle:04d}/selfplay/chunk-{chunk:05d}.mnsd"
                           for cycle, directory in ((1, "cycles"), (2, "cycles-branch"), (3, "cycles-branch"))
-                          for chunk in (0, 1) for suffix in ("", ".resigned")]
+                          for chunk in (0, 1)]
         self.assertEqual(rows[1]["training_files"], expected_files)
-        self.assertEqual(rows[1]["teacher_stats"]["files"], expected_files[-4:])
+        self.assertEqual(rows[1]["teacher_stats"]["files"], expected_files[-2:])
         starts = self.remote.starts[before:]
         self.assertEqual([stem for stem, _, _, _ in starts], [
             f"cycles-branch/cycle-{cycle:04d}/{stage}" for cycle in (2, 3)
@@ -1843,24 +1861,6 @@ if engine:
         with self.assertRaises(ValueError):
             self.execute(options)
         self.assertEqual(len(self.remote.starts), count)
-
-    def test_branch_regeneration_uses_a_distinct_seed_and_ledger_name(self):
-        self.regenerate = True
-        seed_registration(self.root / "seed-ledger.jsonl", "cycle-0001-gen", 1_000_000_000, 10)
-        seed_registration(self.root / "seed-ledger.jsonl", "cycle-0001-regen", 1_500_000_000, 3)
-        seed_registration(self.root / "seed-ledger.jsonl", "cycle-0002-gen", 2_000_000_000, 10)
-        self.execute(replace(self.options, cycles_dir=Path("cycles-branch"), generation_seed_offset=300_000_000))
-        row = json.loads((self.root / "cycles-branch.jsonl").read_text())
-        self.assertEqual(row["generation"]["network"], "cycles/cycle-0000/model.onnx")
-        self.assertEqual(row["generation"]["seed"], 1_300_000_000)
-        self.assertEqual(row["regeneration"]["seed"], 1_800_000_000)
-        self.assertEqual(row["generation_seed_offset"], 300_000_000)
-        self.assertTrue(all(name.startswith("cycles-branch/cycle-0001/") for name in row["training_files"]))
-        self.assertTrue(any("/selfplay-regen/" in name for name in row["training_files"]))
-        ledger = [json.loads(line) for line in (self.root / "seed-ledger.jsonl").read_text().splitlines()]
-        self.assertEqual([(item["name"], item["seed"]) for item in ledger[-2:]], [
-            ("cycles-branch-0001-gen", 1_300_000_000), ("cycles-branch-0001-regen", 1_800_000_000),
-        ])
 
     def test_nested_relative_directory_is_used_by_all_stages(self):
         directory = "experiments/branch's-run"
@@ -1923,51 +1923,6 @@ if engine:
         self.assertFalse((self.root / "cycles/cycle-0001/train/summary.json").exists())
         self.assertFalse((self.root / "cycles.jsonl").exists())
 
-    def test_false_resignations_generate_replacements_and_append_them_to_replay_buffer(self):
-        self.regenerate = True
-        self.runner.run()
-        row = json.loads((self.root / "cycles.jsonl").read_text())
-        self.assertEqual(row["regeneration"]["seed"], 1500000000)
-        self.assertEqual(row["regeneration"]["games"], 3)
-        self.assertEqual(row["regeneration"]["chunk_games"], 2)
-        self.assertEqual(row["regeneration"]["playthrough_percent"], 100)
-        self.assertEqual(row["regeneration"]["target_positions"], 300)
-        self.assertEqual(row["selfplay_regen_summary"]["target_positions"], 300)
-        self.assertEqual(row["selfplay_regen_summary"]["games"], 3)
-        generation_commands = [shlex.split(body) for stem, body, _, _ in self.remote.starts
-                               if Path(stem).name in ("selfplay", "selfplay-regen")]
-        self.assertEqual([command[command.index("--target-positions") + 1] for command in generation_commands],
-                         ["1000", "300"])
-        self.assertEqual([command[command.index("--games") + 1] for command in generation_commands], ["10", "3"])
-        self.assertEqual(row["training_files"], [
-            "cycles/cycle-0001/selfplay/chunk-00000.mnsd", "cycles/cycle-0001/selfplay/chunk-00001.mnsd",
-            "cycles/cycle-0001/selfplay-regen/chunk-00000.mnsd", "cycles/cycle-0001/selfplay-regen/chunk-00000.resigned.mnsd",
-            "cycles/cycle-0001/selfplay-regen/chunk-00001.mnsd", "cycles/cycle-0001/selfplay-regen/chunk-00001.resigned.mnsd",
-        ])
-        command = shlex.split(next(body for stem, body, _, _ in self.remote.starts if stem.endswith("/train")))
-        self.assertEqual(command[command.index("--latest-data") + 1:command.index("--out-dir")], row["training_files"])
-        ledger = [json.loads(line) for line in (self.root / "seed-ledger.jsonl").read_text().splitlines()]
-        self.assertEqual([entry["name"] for entry in ledger], ["cycle-0001-gen", "cycle-0001-regen"])
-
-    def test_regeneration_rejects_missing_or_nonpositive_integer_resigned_positions(self):
-        self.regenerate = True
-        out = "cycles/cycle-0001/selfplay"
-        summary, _ = self.runner.generation(1, out, "cycles/cycle-0000/model.onnx",
-                                            1000000000, 10, 5, 100, 1000)
-        missing = object()
-        invalid_values = (0, -1, 300.0, True, "300", None, missing)
-        self.remote.balances = [100.0] * len(invalid_values)
-        for invalid in invalid_values:
-            with self.subTest(invalid=invalid):
-                changed = {**summary, "resigned_positions": invalid}
-                if invalid is missing:
-                    del changed["resigned_positions"]
-                write_json(self.root / out / "summary.json", changed)
-                with self.assertRaises(ValueError):
-                    self.runner.run()
-                self.assertEqual([Path(stem).name for stem, _, _, _ in self.remote.starts], ["selfplay"])
-        ledger = [json.loads(line) for line in (self.root / "seed-ledger.jsonl").read_text().splitlines()]
-        self.assertEqual([entry["name"] for entry in ledger], ["cycle-0001-gen"])
 
     def test_comparison_failure_receives_all_outputs_and_blocks_next_cycle(self):
         self.compare_failure = True
@@ -2000,12 +1955,12 @@ if engine:
         self.remote.states[stem] = ["running", "running", 0]
         before = len(self.remote.starts)
         with patch("minase_zero.runner.time.sleep") as sleep:
-            result, _ = self.runner.generation(1, stem, "cycles/cycle-0000/model.onnx", 1000000000, 10, 5, 100, 1000)
+            result, _ = self.runner.generation(1, stem, "cycles/cycle-0000/model.onnx", 1000000000, 10, 5, 0.0, 1000)
         self.assertEqual(result["games"], 10)
         self.assertEqual(len(self.remote.starts), before)
         sleep.assert_called_once_with(60)
         downloaded = [name for name in self.remote.downloads if name.startswith(stem + "/")]
-        self.assertLess(downloaded.index(stem + "/chunk-00000.resigned.mnsd"), downloaded.index(stem + "/chunk-00000.json"))
+        self.assertLess(downloaded.index(stem + "/chunk-00000.mnsd"), downloaded.index(stem + "/chunk-00000.json"))
 
     def test_failed_generation_keeps_chunks_and_stops_before_training(self):
         complete = self.remote.on_start
@@ -2121,8 +2076,8 @@ if engine:
         out = "cycles/cycle-0001/selfplay"
         restored = [name for name in self.remote.uploads if name.startswith(out + "/")]
         self.assertEqual(restored, [f"{out}/{name}" for name in (
-            "config.json", "chunk-00000.mnsd", "chunk-00000.resigned.mnsd", "chunk-00000.json",
-            "chunk-00001.mnsd", "chunk-00001.resigned.mnsd", "chunk-00001.json",
+            "config.json", "chunk-00000.mnsd", "chunk-00000.json",
+            "chunk-00001.mnsd", "chunk-00001.json",
         )])
         self.assertEqual((self.root / "seed-ledger.jsonl").read_bytes(), ledger)
         self.assertTrue((self.root / "nets/cycle-0001.onnx").exists())
@@ -2225,15 +2180,15 @@ class ArgumentTests(RunnerCase):
                 common.assert_not_called()
 
     def test_start_position_and_seed_offset_reject_invalid_options_and_cli_values(self):
-        for offset in (-1, 500_000_000, 1_000_000_000, 1.5, True, "0"):
+        for offset in (-1, 1_000_000_000, 1.5, True, "0"):
             with self.subTest(offset=offset), self.assertRaises(ValueError):
                 replace(self.options, generation_seed_offset=offset)
-        for offset in (0, 300_000_000, 499_999_999):
+        for offset in (0, 500_000_000, 999_999_999):
             self.assertEqual(replace(self.options, generation_seed_offset=offset).generation_seed_offset, offset)
         with self.assertRaises(ValueError):
             replace(self.options, start_position="unknown")
         for option, value in (("--start-position", "unknown"), ("--generation-seed-offset", "-1"),
-                              ("--generation-seed-offset", "500000000"), ("--generation-seed-offset", "1.5")):
+                              ("--generation-seed-offset", "1000000000"), ("--generation-seed-offset", "1.5")):
             arguments = self.arguments()
             arguments[arguments.index(option) + 1] = value
             with self.subTest(option=option, value=value), self.assertRaises(ValueError):
@@ -2244,13 +2199,12 @@ class ArgumentTests(RunnerCase):
     def arguments(self):
         return ["run-cycles", "--root", str(self.root), "--machine", "colab", "--session", "l4-one",
                 "--cycles-dir", "cycles", "--base-cycles-dir", "cycles", "--branch-from", "0",
-                "--start-position", "random-opening", "--generation-seed-offset", "0",
+                "--start-position", "initial", "--generation-seed-offset", "0",
                 "--generation-commit", GENERATION_COMMIT, "--trainer-commit", TRAINER_COMMIT,
                 "--first-cycle", "1", "--last-cycle", "3", "--deadline", "2026-10-29T12:00:00+09:00",
                 "--cycle-minutes", "40", "--cycle-cu", "2", "--target-positions", "1000000",
                 "--chunks", "20", "--simulations", "32", "--threads-per-gpu", "6", "--games-per-thread", "4",
-                "--replay-buffer-first-cycle", "1",
-                "--replay-buffer-positions", "34625240", "--batch-size", "256", "--lr", "0.01",
+                "--replay-buffer-games", "1500000", "--batch-size", "256", "--lr", "0.01",
                 "--momentum", "0.9",
                 "--weight-decay", "0.0001", "--clip-grad-norm", "10", "--value-lambda", "0.333",
                 "--precision", "bf16", "--checkpoint-steps", "200", "--train-seed-base", "123",
@@ -2261,7 +2215,7 @@ class ArgumentTests(RunnerCase):
         args = self.arguments()
         parsed = vars(_parse(args))
         self.assertEqual(parsed.pop("command"), "run-cycles")
-        self.assertEqual(parsed["replay_buffer_first_cycle"], 1)
+        self.assertEqual(parsed["replay_buffer_games"], 1500000)
         self.assertEqual(Options(**parsed).deadline, datetime(2026, 10, 29, 3, 0, tzinfo=UTC))
         for index in range(1, len(args) - 2, 2):
             with self.subTest(missing=args[index]), self.assertRaises(ValueError):
@@ -2277,21 +2231,16 @@ class ArgumentTests(RunnerCase):
         result = replace(self.options, first_cycle=2, last_cycle=3, cycle1_reference_summary=None)
         self.assertIsNone(result.cycle1_reference_summary)
 
-    def test_replay_buffer_first_cycle_bounds_apply_to_mainline_and_branches(self):
-        for directory, branch_from in (("cycles", 0), ("cycles-branch", 2)):
-            options = replace(self.options, cycles_dir=Path(directory), branch_from=branch_from,
-                              first_cycle=4, last_cycle=4, cycle1_reference_summary=None)
-            for first in (1, 2, 3, 4):
-                with self.subTest(directory=directory, first=first):
-                    self.assertEqual(replace(options, replay_buffer_first_cycle=first).replay_buffer_first_cycle, first)
-            for first in (-1, 0, 5, True, 1.5):
-                with self.subTest(directory=directory, first=first), self.assertRaises(ValueError):
-                    replace(options, replay_buffer_first_cycle=first)
+    def test_replay_buffer_games_must_be_positive_integer(self):
+        for games in (-1, 0, True, 1.5):
+            with self.subTest(games=games), self.assertRaises(ValueError):
+                replace(self.options, replay_buffer_games=games)
+        self.assertEqual(replace(self.options, replay_buffer_games=1).replay_buffer_games, 1)
 
     def test_invalid_inputs_fail_before_remote_work(self):
         for changes in ({"deadline": NOW.replace(tzinfo=None)}, {"generation_commit": "abcd"},
                         {"trainer_commit": "abcd"}, {"session": "x; echo secret"},
-                        {"poll_seconds": 0}, {"replay_buffer_positions": 0}, {"cycle_cu": float("nan")}, {"cycle_minutes": -1},
+                        {"poll_seconds": 0}, {"replay_buffer_games": 0}, {"cycle_cu": float("nan")}, {"cycle_minutes": -1},
                         {"weight_decay": -1}, {"value_lambda": 2}, {"train_seed_base": 2**64 - 1},
                         {"cycles_dir": Path("/absolute")},
                         {"cycles_dir": Path("cycles branch")},

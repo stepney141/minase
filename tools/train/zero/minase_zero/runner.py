@@ -32,28 +32,39 @@ cycles-dirはシード台帳の名前にも使うため、空白文字を含め�
 first-cycleはbranch-fromより後とし、生成、学習、照合の出力はcycles-dirに置く。
 本線は--cycles-dir cycles --base-cycles-dir cycles --branch-from 0で実行する。
 cycles-dirがcycles以外なら、記録は<cycles-dir>.jsonlと<cycles-dir>-sessions.jsonl、確定したネットはnets/<cycles-dir>/cycle-NNNN.onnxに置く。
-通常生成のシードは、本線と別系列のどちらもサイクル番号×10⁹＋--generation-seed-offsetとする。
-加算値は0以上5×10⁸未満の整数とし、加算値＋5×10⁸＋対局数の上限は10⁹以下とする。
---start-positionはshuffled-setupかrandom-openingを必須とし、通常生成と再生成に同じ値を渡す。
-再生成は通常生成のシードに5×10⁸を加える。
-共有のシード台帳には、本線ではcycle-NNNN-gen、別系列では<cycles-dir>-NNNN-genの名前で登録し、再生成では末尾をregenにする。
+生成のシードは、本線と別系列のどちらもサイクル番号×10⁹＋--generation-seed-offsetとする。
+加算値は0以上10⁹未満の整数とし、加算値＋対局数の上限は10⁹以下とする。
+--start-positionはinitialかshuffled-setupを必須とする。
+共有のシード台帳には、本線ではcycle-NNNN-gen、別系列では<cycles-dir>-NNNN-genの名前で登録する。
+区間の根拠はdocs/adr/take-the-zero-series-seed-offset-as-a-required-runner-argument-within-one-cycle-interval.mdにある。
 
-通常生成は--target-positionsを生成器へ渡し、前のサイクルの1局あたりの訓練局面数から見積もった対局数を上限とする。
-塊の配置は対局数の上限と塊の対局数で固定し、塊0から連続する確定済み塊のpositions + resigned_positionsが初めて目標以上になる塊までをサイクルに含める。
+投了の閾値は、サイクル1から直前のサイクルまでのsummary.jsonのresign_calibration_gamesから毎回計算する。
+集計をサイクルの順、対局を配列の順にAobaZeroの式で適用し、--resign-thresholdで生成器へ渡す。
+最初のサイクルの閾値は0であり、各サイクルの記録には閾値、64個の推定、取り込んだ対局数を残す。
+較正の状態を別ファイルには保存しない。
+方式の理由はdocs/adr/calibrate-the-zero-self-play-resignation-threshold-as-aobazero-does-and-record-the-gumbel-choice-value.mdにある。
+
+生成は--target-positionsを生成器へ渡し、前のサイクルの1局あたりの訓練局面数から見積もった対局数を上限とする。
+塊の配置は対局数の上限と塊の対局数で固定し、塊0から連続する確定済み塊のpositionsが初めて目標以上になる塊までをサイクルに含める。
 全塊でも目標に届かない場合は全塊を含める。
-誤った投了による生成し直しでは、本体のresigned_positionsを目標、resigned_gamesを対局数の上限とし、投了を無効にする。
-目標は各対局の生成条件を変えないためconfig.jsonには保存せず、summary.jsonとサイクルのgenerationおよびregenerationに記録する。
-summary.jsonのchunksは含めた塊の数であり、その範囲の3種類のファイルをすべて検査する。
+目標は各対局の生成条件を変えないためconfig.jsonには保存せず、summary.jsonとサイクルのgenerationに記録する。
+summary.jsonのchunksは含めた塊の数であり、その範囲のchunk-NNNNN.mnsdとchunk-NNNNN.jsonを検査する。
 範囲より後の確定済み塊も転送するが、学習にはsummary.jsonのtraining_filesだけを使う。
 
-リプレイバッファは最新のサイクルからさかのぼり、生成し直しを含むtraining_positionsの合計が初めてreplay-buffer-positions以上になるまでとする。
---replay-buffer-first-cycleは1以上、first-cycle以下の整数を必須とし、別系列でも同じ通し番号を使う。
-合計が目標に届かない場合もreplay-buffer-first-cycleでさかのぼりを止め、それより前の集計は読まない。
-ファイルは古いサイクルから、各生成のtraining_filesの順に並べ、生成し直しを本体の後に加える。
+リプレイバッファは最新のサイクルからさかのぼり、検証用の対局を含むgamesの合計が--replay-buffer-gamesを超えないサイクルとする。
+上限は必須の正の整数とし、次のサイクルを加えると超える時点、またはサイクル1で止める。
+最新のサイクルだけで上限を超えればエラーにする。
+ファイルは古いサイクルから、各生成のtraining_filesの順に並べる。
 新しい学習では一覧を<cycle_path>/train-data.jsonのUTF-8のJSON配列に保存し、教師ファイルと一緒に送り、--data-listで学習器へ渡す。
 既存の一覧はバイト列が同じ場合だけ使う。
 最新のサイクルだけは--latest-dataの引数で渡し、再開ではチェックポイントの一覧を使う。
-リプレイバッファのサイクル番号、replay-buffer-first-cycle、replay-buffer-positions、生成と学習のコミットをサイクルの記録に残す。
+リプレイバッファのサイクル番号、replay-buffer-games、生成と学習のコミットをサイクルの記録に残す。
+方式の理由はdocs/adr/sample-as-many-positions-as-generated-from-a-zero-replay-buffer-of-the-latest-1-5-million-games.mdにある。
+
+基準の学習率はサイクルの中では一定で、実行器の起動の引数--lrで与える。
+停滞の判定の後に利用者が次のサイクルからの値を決めて起動し直し、サイクルの記録には渡した基準の学習率を残す。
+方式の理由はdocs/adr/keep-the-zero-learning-rate-constant-after-a-250-update-warmup-and-cut-it-tenfold-on-stalls.mdにある。
+
 NASにsummary.jsonがある生成はconfig.jsonのgeneration_commitを受け入れる。
 未完了の生成はgeneration-commitが一致する場合だけ再開する。
 
@@ -152,8 +163,7 @@ class Options:
     simulations: int
     threads_per_gpu: int
     games_per_thread: int
-    replay_buffer_first_cycle: int
-    replay_buffer_positions: int
+    replay_buffer_games: int
     batch_size: int
     lr: float
     momentum: float
@@ -194,18 +204,16 @@ class Options:
             if re.fullmatch(r"[0-9a-fA-F]{40}", getattr(self, name)) is None:
                 raise ValueError(f"{name} must be 40 hexadecimal digits")
         for name in ("first_cycle", "last_cycle", "target_positions", "chunks", "simulations",
-                     "threads_per_gpu", "games_per_thread", "replay_buffer_first_cycle", "replay_buffer_positions",
+                     "threads_per_gpu", "games_per_thread", "replay_buffer_games",
                      "batch_size", "checkpoint_steps"):
             if type(getattr(self, name)) is not int or getattr(self, name) < 1:
                 raise ValueError(f"{name} must be a positive integer")
-        if self.start_position not in ("shuffled-setup", "random-opening"):
-            raise ValueError("start_position must be shuffled-setup or random-opening")
-        if type(self.generation_seed_offset) is not int or not 0 <= self.generation_seed_offset < 5 * 10**8:
-            raise ValueError("generation_seed_offset must be an integer in [0, 500000000)")
+        if self.start_position not in ("shuffled-setup", "initial"):
+            raise ValueError("start_position must be shuffled-setup or initial")
+        if type(self.generation_seed_offset) is not int or not 0 <= self.generation_seed_offset < 10**9:
+            raise ValueError("generation_seed_offset must be an integer in [0, 1000000000)")
         if self.last_cycle < self.first_cycle:
             raise ValueError("last_cycle must be at least first_cycle")
-        if self.replay_buffer_first_cycle > self.first_cycle:
-            raise ValueError("replay_buffer_first_cycle must be at most first_cycle")
         if (self.first_cycle == 1) != (self.cycle1_reference_summary is not None):
             raise ValueError("cycle1-reference-summary is required exactly when first-cycle is 1")
         if self.deadline.utcoffset() is None:
@@ -247,13 +255,13 @@ def add_arguments(parser: argparse.ArgumentParser) -> None:
         parser.add_argument(f"--{name}", required=True)
     parser.add_argument("--deadline", type=datetime.fromisoformat, required=True)
     for name in ("first-cycle", "last-cycle", "target-positions", "chunks", "simulations", "threads-per-gpu",
-                 "games-per-thread", "replay-buffer-first-cycle", "replay-buffer-positions", "batch-size", "checkpoint-steps",
+                 "games-per-thread", "replay-buffer-games", "batch-size", "checkpoint-steps",
                  "train-seed-base", "branch-from", "generation-seed-offset"):
         parser.add_argument(f"--{name}", type=int, required=True)
     for name in ("cycle-minutes", "lr", "momentum", "weight-decay", "clip-grad-norm",
                  "value-lambda", "poll-seconds"):
         parser.add_argument(f"--{name}", type=float, required=True)
-    parser.add_argument("--start-position", choices=("shuffled-setup", "random-opening"), required=True)
+    parser.add_argument("--start-position", choices=("shuffled-setup", "initial"), required=True)
     parser.add_argument("--precision", choices=("bf16", "fp32"), required=True)
     parser.add_argument("--cycle1-reference-summary", type=Path)
 
@@ -265,60 +273,53 @@ def read_json(path: Path) -> dict:
     return value
 
 
-def summaries(options: Options, cycle: int) -> list[Path]:
-    paths = [options.root / options.cycle_path(cycle) / "selfplay/summary.json"]
-    regen = options.root / options.cycle_path(cycle) / "selfplay-regen/summary.json"
-    if regen.exists():
-        paths.append(regen)
-    return paths
+def summaries(options: Options, cycle: int) -> Path:
+    return options.root / options.cycle_path(cycle) / "selfplay/summary.json"
 
 
-def game_counts(paths: list[Path], target_positions: int, chunks: int) -> tuple[int, int]:
-    """上限到達で捨てた対局も分母に含め、必要な対局数と塊の対局数を切り上げる。"""
-    games, positions = 0, 0
-    for path in paths:
-        summary = read_json(path)
-        for field in ("games", "training_positions"):
-            if type(summary[field]) is not int or summary[field] < 0:
-                raise ValueError(f"{path}: invalid {field}")
-        games += summary["games"]
-        positions += summary["training_positions"]
-    if min(games, positions, target_positions, chunks) <= 0:
-        raise ValueError("games, training positions, target positions and chunks must be positive")
+def game_counts(path: Path, target_positions: int, chunks: int) -> tuple[int, int]:
+    """検証用の対局も含む局数から、必要な対局数と塊の対局数を切り上げる。"""
+    summary = read_json(path)
+    for field in ("games", "training_positions"):
+        if type(summary[field]) is not int or summary[field] <= 0:
+            raise ValueError(f"{path}: {field} must be a positive integer")
+    games, positions = summary["games"], summary["training_positions"]
+    if min(target_positions, chunks) <= 0:
+        raise ValueError("target positions and chunks must be positive")
     count = (target_positions * games + positions - 1) // positions
     return count, (count + chunks - 1) // chunks
 
 
-def resignation(options: Options, cycle: int) -> tuple[int, dict]:
-    if cycle == 1:
-        calibration = {"n": 0, "false_resignations": 0, "upper_bound": None,
-                       "enable_resignation": False}
-    else:
-        calibration = rl.resign_calibration(summaries(options, cycle - 1))
-    return (20 if calibration["enable_resignation"] else 100), calibration
+def resignation(options: Options, cycle: int) -> dict:
+    """分岐元も含めた過去の全サイクルから、そのサイクルの投了を較正する。"""
+    return rl.resign_calibration([summaries(options, previous) for previous in range(1, cycle)])
 
 
-def replay_buffer(options: Options, cycle: int, replay_buffer_positions: int) -> tuple[list[int], list[str], list[str]]:
-    """局面数からリプレイバッファを決め、サイクル番号、リプレイバッファのファイル、最新のファイルを返す。"""
+def replay_buffer(options: Options, cycle: int, replay_buffer_games: int) -> tuple[list[int], list[str], list[str]]:
+    """局数の上限内のサイクル番号、古い順のファイル、最新のファイルを返す。"""
     by_cycle = []
-    positions = 0
-    for previous in range(cycle, options.replay_buffer_first_cycle - 1, -1):
+    games = 0
+    for previous in range(cycle, 0, -1):
+        path = summaries(options, previous)
+        summary = read_json(path)
+        count = summary["games"]
+        if type(count) is not int or count <= 0:
+            raise ValueError(f"{path}: games must be a positive integer")
+        if games + count > replay_buffer_games:
+            if previous == cycle:
+                raise ValueError(f"{path}: latest cycle exceeds replay-buffer-games")
+            break
+        games += count
+        names = summary["training_files"]
+        if not isinstance(names, list) or not names:
+            raise ValueError(f"{path}: training_files must be a nonempty list")
         current = []
-        for path in summaries(options, previous):
-            summary = read_json(path)
-            count = summary["training_positions"]
-            if type(count) is not int or count < 0:
-                raise ValueError(f"{path}: invalid training_positions")
-            positions += count
-            names = summary["training_files"]
-            if not isinstance(names, list) or not names:
-                raise ValueError(f"{path}: training_files must be a nonempty list")
-            for name in names:
-                if not isinstance(name, str) or re.fullmatch(r"chunk-[0-9]+(?:\.resigned)?\.mnsd", name) is None:
-                    raise ValueError(f"{path}: invalid training file: {name!r}")
-                current.append((path.parent / name).relative_to(options.root).as_posix())
+        for name in names:
+            if not isinstance(name, str) or re.fullmatch(r"chunk-[0-9]+\.mnsd", name) is None:
+                raise ValueError(f"{path}: invalid training file: {name!r}")
+            current.append((path.parent / name).relative_to(options.root).as_posix())
         by_cycle.append(current)
-        if positions >= replay_buffer_positions:
+        if games == replay_buffer_games:
             break
     files = [name for current in reversed(by_cycle) for name in current]
     if not files or len(set(files)) != len(files):
@@ -666,7 +667,7 @@ def chunk_files(names: list[str]) -> list[str]:
     for name in sorted((n for n in names if re.fullmatch(r"chunk-[0-9]+\.json", n)),
                        key=lambda n: int(n[6:-5])):
         stem = name[:-5]
-        chunk = [stem + ".mnsd", stem + ".resigned.mnsd", name]
+        chunk = [stem + ".mnsd", name]
         if any(part not in names for part in chunk):
             raise ValueError(f"incomplete committed chunk: {stem}")
         files.extend(chunk)
@@ -749,7 +750,7 @@ class Runner:
             send(self.remote, self.root, [f"{out}/{name}" for name in names])
 
     def generation(self, cycle: int, out: str, network: str, seed: int, games: int,
-                   chunk_games: int, playthrough: int, target_positions: int) -> tuple[dict, float]:
+                   chunk_games: int, resign_threshold: float, target_positions: int) -> tuple[dict, float]:
         local_summary = self.root / out / "summary.json"
         config_path = local_summary.parent / "config.json"
         if not local_summary.exists():
@@ -770,7 +771,7 @@ class Runner:
                            "--seed", str(seed), "--games", str(games), "--chunk-games", str(chunk_games),
                            "--target-positions", str(target_positions),
                            "--start-position", self.options.start_position,
-                           "--simulations", str(self.options.simulations), "--playthrough-percent", str(playthrough),
+                           "--simulations", str(self.options.simulations), "--resign-threshold", repr(float(resign_threshold)),
                            "--threads", str(threads), "--devices", str(devices),
                            "--games-per-thread", str(self.options.games_per_thread)]
                 self._begin(out)
@@ -791,7 +792,7 @@ class Runner:
         config = read_json(config_path)
         expected = {"network_sha256": sha256(self.root / network),
                     "nn_backend": "tensorrt", "seed": seed, "games": games, "chunk_games": chunk_games,
-                    "simulations": self.options.simulations, "playthrough_percent": playthrough,
+                    "simulations": self.options.simulations, "resign_threshold": resign_threshold,
                     "start_position": self.options.start_position}
         if (any(config[key] != value for key, value in expected.items())
                 or type(summary["target_positions"]) is not int
@@ -802,7 +803,7 @@ class Runner:
         if type(chunks) is not int or not 1 <= chunks <= (games + chunk_games - 1) // chunk_games:
             raise ValueError(f"invalid generation chunks: {out}")
         if any(not (local_summary.parent / f"chunk-{chunk:05d}{suffix}").is_file()
-               for chunk in range(chunks) for suffix in (".mnsd", ".resigned.mnsd", ".json")):
+               for chunk in range(chunks) for suffix in (".mnsd", ".json")):
             raise ValueError(f"missing committed chunks: {out}")
         for relative in (out + ".out", out + ".err"):
             if not (self.root / relative).is_file():
@@ -1004,16 +1005,17 @@ class Runner:
                 if start_balance is None:
                     start_balance = balance
             machine = self.machine
-            playthrough, calibration = resignation(options, cycle)
-            reference = ([options.cycle1_reference_summary] if cycle == 1 else summaries(options, cycle - 1))
+            calibration = resignation(options, cycle)
+            resign_threshold = calibration["threshold"]
+            reference = options.cycle1_reference_summary if cycle == 1 else summaries(options, cycle - 1)
             games, chunk_games = game_counts(reference, options.target_positions, options.chunks)
-            if options.generation_seed_offset + 5 * 10**8 + games > 10**9:
+            if options.generation_seed_offset + games > 10**9:
                 raise ValueError("generation seed range exceeds the cycle's 1000000000 interval")
             seed = cycle * 10**9 + options.generation_seed_offset
             network = (self.options.cycle_path(0) + "/model.onnx" if cycle == 1 else
                        self.options.cycle_path(cycle - 1) + "/train/model.onnx")
             generation = {"network": network, "network_sha256": sha256(self.root / network), "seed": seed,
-                          "games": games, "chunk_games": chunk_games, "playthrough_percent": playthrough,
+                          "games": games, "chunk_games": chunk_games, "resign_threshold": resign_threshold,
                           "target_positions": options.target_positions,
                           "start_position": options.start_position,
                           "threads": options.threads_per_gpu * machine["gpu_count"],
@@ -1021,32 +1023,12 @@ class Runner:
                           "games_per_thread": options.games_per_thread,
                           "simulations": options.simulations}
             seed_registration(self.root / "seed-ledger.jsonl", f"{seed_name}-{cycle:04d}-gen", seed, games)
-            self.log(cycle, f"generation games={games} chunk_games={chunk_games} playthrough_percent={playthrough}")
+            self.log(cycle, f"generation games={games} chunk_games={chunk_games} resign_threshold={resign_threshold}")
             summary, generation_seconds = self.generation(cycle, self.options.cycle_path(cycle) + "/selfplay", network,
-                                                         seed, games, chunk_games, playthrough, options.target_positions)
+                                                         seed, games, chunk_games, resign_threshold, options.target_positions)
             config = read_json(self.root / self.options.cycle_path(cycle) / "selfplay/config.json")
             generation["generation_commit"] = config["generation_commit"]
-            regen_summary, regen_settings = None, None
-            if summary["resigned_games_excluded"]:
-                count = summary["resigned_games"]
-                if type(count) is not int or count < 0:
-                    raise ValueError("invalid resigned_games")
-                if count:
-                    regen_target = summary.get("resigned_positions")
-                    if type(regen_target) is not int or regen_target <= 0:
-                        raise ValueError("invalid resigned_positions")
-                    regen_seed = seed + 5 * 10**8
-                    regen_chunk = (count + options.chunks - 1) // options.chunks
-                    seed_registration(self.root / "seed-ledger.jsonl", f"{seed_name}-{cycle:04d}-regen", regen_seed, count)
-                    regen_summary, seconds = self.generation(cycle, self.options.cycle_path(cycle) + "/selfplay-regen", network,
-                                                            regen_seed, count, regen_chunk, 100, regen_target)
-                    generation_seconds += seconds
-                    regen_config = read_json(self.root / self.options.cycle_path(cycle) / "selfplay-regen/config.json")
-                    regen_settings = {**generation, "seed": regen_seed, "games": count,
-                                      "target_positions": regen_target,
-                                      "chunk_games": regen_chunk, "playthrough_percent": 100,
-                                      "generation_commit": regen_config["generation_commit"]}
-            replay_buffer_cycles, files, current_files = replay_buffer(options, cycle, options.replay_buffer_positions)
+            replay_buffer_cycles, files, current_files = replay_buffer(options, cycle, options.replay_buffer_games)
             train_summary, training_seconds = self.training(cycle, files, current_files)
             checks, checking_seconds = self.checking(cycle)
             result = subprocess.run([str(options.minase.resolve()), "data", "teacher-stats", *current_files], cwd=self.root,
@@ -1076,10 +1058,8 @@ class Runner:
                       "trainer_commit": options.trainer_commit, "generation": generation,
                       "generation_seed_offset": options.generation_seed_offset,
                       "resign_calibration": calibration, "selfplay_summary": summary,
-                      "regeneration": regen_settings, "selfplay_regen_summary": regen_summary,
                       "training_files": files, "replay_buffer_cycles": replay_buffer_cycles,
-                      "replay_buffer_first_cycle": options.replay_buffer_first_cycle,
-                      "replay_buffer_positions": options.replay_buffer_positions, "teacher_stats": stats,
+                      "replay_buffer_games": options.replay_buffer_games, "teacher_stats": stats,
                       "training_summary": train_summary, "network_sha256": network_digest, "checks": checks,
                       "elapsed_seconds": {"generation": generation_seconds, "training": training_seconds,
                                           "checking": checking_seconds}, "machine": machine, "interval": interval}

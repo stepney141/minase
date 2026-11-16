@@ -1,13 +1,7 @@
-"""シードの閉区間と投了の較正を、指示書と二項分布の定義から検証する。
-
-較正の小数4桁の期待値はdocs/plans/archived/alphazero-rl.mdの「投了の有効化の条件」に従う。
-精度は、誤投了0件の解析解と、二項係数を使った独立の累積確率で確かめる。
-"""
+"""シードの閉区間と、設計書zero-recipe-precedents.mdの投了の較正の式を検証する。"""
 
 from datetime import UTC, datetime
-from decimal import Decimal, localcontext
 import json
-import math
 import os
 from pathlib import Path
 import stat
@@ -15,7 +9,7 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
-from minase_zero.rl import register_seed_range
+from minase_zero.rl import register_seed_range, resign_calibration, _resign_threshold
 
 from tests.cli import require_success, run_cli
 
@@ -216,103 +210,90 @@ class ResignCalibrationTests(unittest.TestCase):
         self.addCleanup(directory.cleanup)
         self.root = Path(directory.name)
 
-    def write_summary(self, name: str, n: int, x: int) -> Path:
+    def write_summary(self, name, records):
         path = self.root / name
-        path.write_text(json.dumps({
-            "resign_triggered_playthrough_games": n, "false_resignations": x,
-            "games": n + 1000,
-        }), encoding="utf-8")
+        path.write_text(json.dumps({"resign_calibration_games": records}), encoding="utf-8")
         return path
 
-    def calibrate(self, paths: list[Path]) -> dict:
-        result = run_cli(["resign-calibration", "--summary", *map(str, paths)])
+    @staticmethod
+    def game(number=1, result="black", black=0.5, white=0.5):
+        return {"game": number, "result": result, "min_value_black": black, "min_value_white": white}
+
+    def test_initial_estimates_and_threshold(self):
+        self.assertEqual(resign_calibration([]), {"threshold": 0.0, "estimates": [0.10] * 64, "games": 0})
+        path = self.write_summary("empty.json", [])
+        self.assertEqual(resign_calibration([path]), resign_calibration([]))
+
+    def test_one_game_uses_winner_or_smaller_draw_value_and_includes_boundary(self):
+        # 指示書の式から、最小値が候補以下のときだけ1/5000を加える。
+        for result, black, white, first_hit in (
+            ("black", 0, 1, 0), ("black", 1, 0, 64),
+            ("white", 0, 1, 64), ("white", 1, 0.005, 0),
+            ("draw", 1, 0.005, 0), ("draw", 0.005, 1, 0),
+            ("black", 0.04, 0, 7), ("white", 1, 0.32, 63),
+        ):
+            with self.subTest(result=result, black=black, white=white):
+                path = self.write_summary("one.json", [self.game(result=result, black=black, white=white)])
+                report = resign_calibration([path])
+                self.assertEqual(report["games"], 1)
+                self.assertEqual(len(report["estimates"]), 64)
+                for index, estimate in enumerate(report["estimates"]):
+                    expected = 0.10 * 4999 / 5000 + (1 / 5000 if index >= first_hit else 0)
+                    self.assertAlmostEqual(estimate, expected, delta=1e-15)
+
+    def test_threshold_uses_first_estimate_strictly_above_five_percent(self):
+        for estimates, expected in (([0.10] * 64, 0.0),
+                                    ([0.05] * 7 + [0.10] * 57, 0.035),
+                                    ([0.05] * 64, 0.32)):
+            with self.subTest(expected=expected):
+                self.assertEqual(_resign_threshold(estimates), expected)
+
+    def test_cli_applies_summaries_and_games_in_given_order_without_writing_state(self):
+        first = self.write_summary("first.json", [self.game(1, black=0), self.game(11, black=1)])
+        second = self.write_summary("second.json", [self.game(1, "draw", black=1, white=0)])
+        result = run_cli(["resign-calibration", "--summary", str(first), str(second)])
         require_success(result)
         self.assertEqual(result.stderr, "")
         self.assertEqual(len(result.stdout.splitlines()), 1)
         report = json.loads(result.stdout)
-        self.assertEqual(set(report), {"n", "false_resignations", "upper_bound", "enable_resignation"})
-        return report
+        self.assertEqual(set(report), {"threshold", "estimates", "games"})
+        self.assertEqual(report["games"], 3)
+        decay = 4999 / 5000
+        expected = ((0.10 * decay + 1 / 5000) * decay) * decay + 1 / 5000
+        for estimate in report["estimates"]:
+            self.assertAlmostEqual(estimate, expected, delta=1e-15)
+        self.assertEqual(report, resign_calibration([first, second]))
+        self.assertNotEqual(report["estimates"], resign_calibration([second, first])["estimates"])
+        self.assertEqual(set(self.root.iterdir()), {first, second})
 
-    def test_design_examples_fix_upper_bounds_and_enablement(self) -> None:
-        for x, expected, enabled in ((0, 0.0295, True), (1, 0.0466, True), (2, 0.0616, False)):
-            with self.subTest(x=x):
-                report = self.calibrate([self.write_summary("summary.json", 100, x)])
-                self.assertEqual(report["n"], 100)
-                self.assertEqual(report["false_resignations"], x)
-                self.assertAlmostEqual(report["upper_bound"], expected, places=4)
-                self.assertIs(report["enable_resignation"], enabled)
-                # 定義の有限和を通常の確率空間で求め、丸めた設計値とは別に精度を確かめる。
-                p = report["upper_bound"]
-                cdf = sum(math.comb(100, k) * p**k * (1 - p)**(100 - k) for k in range(x + 1))
-                self.assertAlmostEqual(cdf, 0.05, delta=0.05e-9)
+    def test_many_games_cross_threshold_at_the_prescribed_boundary(self):
+        for count, expected in ((3465, 0.0), (3466, 0.035)):
+            path = self.write_summary("many.json", [self.game(10 * i + 1, black=0.04) for i in range(count)])
+            report = resign_calibration([path])
+            self.assertEqual(report["threshold"], expected)
+            self.assertAlmostEqual(report["estimates"][0], 0.10 * (4999 / 5000)**count, delta=1e-14)
 
-    def test_zero_errors_matches_analytic_bound_at_small_probabilities(self) -> None:
-        n = 10**12
-        report = self.calibrate([self.write_summary("summary.json", n, 0)])
-        # P(X = 0) = (1 - p)^n = 0.05を解いた解析解で、相対誤差を照合する。
-        expected = -math.expm1(math.log(0.05) / n)
-        self.assertAlmostEqual(report["upper_bound"] / expected, 1.0, delta=1e-9)
-        self.assertIs(report["enable_resignation"], True)
-
-    def test_large_sample_matches_binomial_definition_without_underflow(self) -> None:
-        n, x = 2048, 1024
-        report = self.calibrate([self.write_summary("summary.json", n, x)])
-        # 浮動小数点の最初の項がアンダーフローする場合も、十進多倍長の有限和で照合する。
-        with localcontext() as context:
-            context.prec = 50
-            p = Decimal(report["upper_bound"])
-            q = 1 - p
-            cdf = sum(Decimal(math.comb(n, k)) * p**k * q**(n - k) for k in range(x + 1))
-            self.assertLess(abs(cdf - Decimal("0.05")), Decimal("5e-11"))
-        self.assertIs(report["enable_resignation"], False)
-
-    def test_fewer_than_100_trials_never_enable_resignation(self) -> None:
-        report = self.calibrate([self.write_summary("summary.json", 99, 0)])
-        self.assertLess(report["upper_bound"], 0.05)
-        self.assertIs(report["enable_resignation"], False)
-
-    def test_no_trials_has_null_bound_and_disables_resignation(self) -> None:
-        report = self.calibrate([self.write_summary("summary.json", 0, 0)])
-        self.assertEqual(report, {
-            "n": 0, "false_resignations": 0, "upper_bound": None, "enable_resignation": False,
-        })
-
-    def test_all_trials_false_has_bound_one_and_disables_resignation(self) -> None:
-        report = self.calibrate([self.write_summary("summary.json", 100, 100)])
-        self.assertEqual(report, {
-            "n": 100, "false_resignations": 100, "upper_bound": 1.0, "enable_resignation": False,
-        })
-
-    def test_multiple_summaries_pool_counts_before_calibration(self) -> None:
-        paths = [self.write_summary("original.json", 40, 1), self.write_summary("rerun.json", 60, 0)]
-        report = self.calibrate(paths)
-        self.assertEqual(report["n"], 100)
-        self.assertEqual(report["false_resignations"], 1)
-        self.assertAlmostEqual(report["upper_bound"], 0.0466, places=4)
-        self.assertIs(report["enable_resignation"], True)
-
-    def test_each_summary_rejects_invalid_counts_even_if_totals_would_be_valid(self) -> None:
-        valid = self.write_summary("valid.json", 100, 0)
-        invalid = self.root / "invalid.json"
-        for counts in (
-            {}, {"resign_triggered_playthrough_games": 100}, {"false_resignations": 0},
-            {"resign_triggered_playthrough_games": 1, "false_resignations": 2},
-            {"resign_triggered_playthrough_games": -1, "false_resignations": 0},
-            {"resign_triggered_playthrough_games": 1, "false_resignations": -1},
-            {"resign_triggered_playthrough_games": 100.0, "false_resignations": 0},
-            {"resign_triggered_playthrough_games": 100, "false_resignations": 0.0},
-            {"resign_triggered_playthrough_games": True, "false_resignations": 0},
-            {"resign_triggered_playthrough_games": 100, "false_resignations": False},
-            {"resign_triggered_playthrough_games": "100", "false_resignations": 0},
-            [],
-        ):
-            with self.subTest(counts=counts):
-                invalid.write_text(json.dumps(counts), encoding="utf-8")
-                result = run_cli(["resign-calibration", "--summary", str(valid), str(invalid)])
-                self.assertEqual(result.returncode, 1, result.stderr)
-                self.assertEqual(result.stdout, "")
-                self.assertEqual(len(result.stderr.splitlines()), 1, result.stderr)
-                self.assertIn(str(invalid), result.stderr)
+    def test_calibration_rejects_invalid_fields_types_ranges_and_order(self):
+        game = self.game()
+        invalid = [[], {}, {"resign_calibration_games": None}, {"resign_calibration_games": {}}]
+        records = [None, [], {}, {**game, "extra": 1}]
+        records += [{key: value for key, value in game.items() if key != field} for field in game]
+        records += [{**game, "game": value} for value in (0, -1, True, 1.0, "1", None)]
+        records += [{**game, "result": value} for value in ("", "win", 0, True, [], None)]
+        records += [{**game, field: value} for field in ("min_value_black", "min_value_white")
+                    for value in (-0.01, 1.01, float("nan"), float("inf"), -float("inf"), True, "0.5", None)]
+        invalid += [{"resign_calibration_games": [record]} for record in records]
+        invalid += [{"resign_calibration_games": [self.game(11), self.game(number)]} for number in (11, 1)]
+        path = self.root / "invalid.json"
+        for value in invalid:
+            with self.subTest(value=value):
+                path.write_text(json.dumps(value), encoding="utf-8")
+                with self.assertRaisesRegex(ValueError, str(path)):
+                    resign_calibration([path])
+        result = run_cli(["resign-calibration", "--summary", str(path)])
+        self.assertEqual(result.returncode, 1, result.stderr)
+        self.assertEqual(result.stdout, "")
+        self.assertEqual(len(result.stderr.splitlines()), 1)
 
     def test_summary_argument_is_required_and_files_must_be_readable_json(self) -> None:
         broken = self.root / "broken.json"
