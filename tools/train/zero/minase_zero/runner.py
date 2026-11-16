@@ -906,7 +906,7 @@ class Runner:
                                  "--out", reference]))
         for batch in (1, 7, 256):
             for backend, label, policy, ptol, vtol in (("cpu", "cpu", "fp16-logits", "1e-4", "1e-4"),
-                                                      ("tensorrt", "trt", "probabilities", "1e-2", "5e-2")):
+                                                      ("tensorrt", "trt", "probabilities", "5e-2", "5e-2")):
                 name = f"{out}/{label}-b{batch}"
                 for path in (network, name + ".json", self.paths.cache):
                     if "\n" in path or "\r" in path:

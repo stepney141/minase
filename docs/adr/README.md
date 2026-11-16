@@ -334,7 +334,7 @@ PSTは駒の種類と升ごとの値の表による評価、FMはFactorization M
 - 2026年10月28日 [対局ハーネスは候補と基準のUSIオプションを`--candidate-option`と`--baseline-option`で受け取り、エンジンの宣言と照合して実行条件に記録する](pass-usi-options-to-match-engines-and-record-them-in-the-manifest.md)
 - 2026年10月28日 [審判層は獅子でない駒の捕獲可能性を利きの逆引きで判定し、合法手なしと詰みを駒ごとの生成で最初の逃れる手で打ち切る](judge-non-lion-captures-by-attacks-and-stop-mate-at-the-first-escape-in-the-referee.md)
 - 2026年10月28日 [AlphaZero型探索の自己対局は、選んだ手の勝率が1%を下回った側を投了させ、誤った投了の割合の片側95%上限が5%以下と確かめてから有効にする](archive/resign-zero-self-play-games-below-one-percent-after-bounding-false-resignations.md)（置き換え済み）
-- 2026年10月29日 [AlphaZero型探索のネットのTensorRTのFP16の出力は、合法手の確率を1×10⁻²、価値を5×10⁻²で照合する](compare-fp16-zero-network-values-within-five-hundredths.md)
+- 2026年10月29日 [AlphaZero型探索のネットのTensorRTのFP16の出力は、合法手の確率を1×10⁻²、価値を5×10⁻²で照合する](archive/compare-fp16-zero-network-values-within-five-hundredths.md)（置き換え済み）
 - 2026年10月29日 [AlphaZero型探索の学習は、パラメータ数の10倍の局面を持つ直近のサイクルをリプレイバッファとし、そのサイクルの生成量だけを一様に抽出して学ぶ](archive/sample-zero-training-positions-from-a-replay-buffer-of-ten-times-the-parameter-count.md)（置き換え済み）
 - 2026年10月29日 [AlphaZero型探索の学習は、方策の損失を局面ごとの合法手だけで正規化せず、常に不可能なラベルの定数マスクにとどめる](keep-the-constant-policy-label-mask-without-per-position-legal-masks.md)
 - 2026年10月30日 [AlphaZero型探索の自己対局には、重みの移動平均ではなく平均でない重みのネットを使う](archive/keep-generating-zero-self-play-with-the-raw-weights-instead-of-the-ema.md)（置き換え済み）
@@ -416,3 +416,4 @@ PSTは駒の種類と升ごとの値の表による評価、FMはFactorization M
 - 2026年11月15日 [AlphaZero型探索の自己対局は、対局数で決めた塊ごとに1つのファイルで確定させ、訓練局面数が目標に届いた最初の塊まででサイクルを締める](commit-zero-self-play-in-fixed-game-chunks-and-close-the-cycle-at-the-target-positions.md)
 - 2026年11月15日 [AlphaZero型探索の実行器は、系列の基本シードの加算値を必須の引数で受け取り、生成の区間をサイクルごとの幅10⁹に収める](take-the-zero-series-seed-offset-as-a-required-runner-argument-within-one-cycle-interval.md)
 - 2026年11月16日 [AlphaZero型探索の学習器は、規則セットlishogiのMNSDだけを訓練に受け付け、Rustの拡張モジュールで読み、利きの面を拡張モジュールで作り、駒の面と方策のラベルはPythonでバッチごとに作る](read-lishogi-mnsd-into-the-zero-trainer-and-build-control-planes-in-a-rust-extension.md)
+- 2026年11月16日 [AlphaZero型探索のネットのTensorRTのFP16の出力は、合法手の確率と価値をどちらも5×10⁻²で照合する](compare-fp16-zero-network-probabilities-and-values-within-five-hundredths.md)

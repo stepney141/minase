@@ -2,7 +2,7 @@
 
 ## ステータス
 
-置き換え済み。決定日は2026年10月28日。[合法手の確率を1×10⁻²、価値を5×10⁻²で照合するADR](../compare-fp16-zero-network-values-within-five-hundredths.md)によって置き換えられた。
+置き換え済み。決定日は2026年10月28日。[合法手の確率を1×10⁻²、価値を5×10⁻²で照合するADR](compare-fp16-zero-network-values-within-five-hundredths.md)によって置き換えられた。
 
 ## コンテキスト
 

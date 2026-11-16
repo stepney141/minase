@@ -410,7 +410,7 @@ vast.aiの値は、GPU1枚、CPU12スレッド以上、および直接のSSH接�
 手数の分位点は`summary.json`にないので、`minase data teacher-stats`で塊の対局のファイル（MNSD）から求める。
 上限到達で除いた対局はファイルに残らないので、分位点は保存した対局だけのものであり、除いた対局は件数で別に記録する。
 
-各サイクルの学習の直後、次の生成の前に、学習に使った機械で、PyTorch、ONNX RuntimeのCPU、およびTensorRTのFP16の出力を、[ネットの出力の照合の手引き](../../guides/alphazero-network-check.md)の確率と価値の基準（[FP16の照合のADR](../../adr/compare-fp16-zero-network-values-within-five-hundredths.md)）で照合する。
+各サイクルの学習の直後、次の生成の前に、学習に使った機械で、PyTorch、ONNX RuntimeのCPU、およびTensorRTのFP16の出力を、[ネットの出力の照合の手引き](../../guides/alphazero-network-check.md)の確率と価値の基準（[FP16の照合のADR](../../adr/archive/compare-fp16-zero-network-values-within-five-hundredths.md)）で照合する。
 不合格のONNXは次の生成へ渡さず、原因を調べる。
 照合では、チェックポイントとの対応、ONNXの検査和、推論プロバイダ、検査したバッチの大きさ、およびTensorRTのエンジンの作成を含む所要時間を記録する。
 各行には来歴として、学習のシードと設定、リプレイバッファに使った教師データのファイルの検査和、ならびに生成器、学習器、および環境定義のコミットも記録し、同じ内容をチェックポイントにも添付する。

@@ -403,7 +403,7 @@ kill -TERM $(pgrep -f "[.]venv/bin/python -m minase_zero run-cycles")
 照合は、PyTorchでの計算を基準に、同じネットをONNX RuntimeのCPUとTensorRTのFP16で計算した結果を、288局面で比べるものである。
 目的はONNXへの書き出しの誤りや、minaseが別の手の出力を読む誤りを見つけることであり、誤りがあれば差は桁違いに大きくなると見込まれる。
 CPUの照合が通っていてFP16の差だけが許容誤差をわずかに超えた場合は、FP16の丸めの累積とみられる。
-ただし許容誤差は[照合のADR](../adr/compare-fp16-zero-network-values-within-five-hundredths.md)の決定なので、実行者の判断では変えず、数値を添えて利用者に判断を仰ぐ。
+ただし許容誤差は[照合のADR](../adr/compare-fp16-zero-network-probabilities-and-values-within-five-hundredths.md)の決定なので、実行者の判断では変えず、数値を添えて利用者に判断を仰ぐ。
 学習をやり直すときは、不合格の出力を[止めて再開する](#止めて再開する)と同じく`rejected-<理由>/`へ移す。
 
 そのほかの止まり方の対応は次のとおりである。

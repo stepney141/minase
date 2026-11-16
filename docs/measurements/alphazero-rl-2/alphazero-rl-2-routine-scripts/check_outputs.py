@@ -58,7 +58,7 @@ def check_outputs(args):
     for batch in (1, 7, 256):
         for backend, label, policy, ptol, vtol in (
             ("cpu", "cpu", "fp16-logits", "1e-4", "1e-4"),
-            ("tensorrt", "trt", "probabilities", "1e-2", "5e-2"),
+            ("tensorrt", "trt", "probabilities", "5e-2", "5e-2"),
         ):
             name = f"{label}-b{batch}"
             log_path = out / f"{name}.usi.log"

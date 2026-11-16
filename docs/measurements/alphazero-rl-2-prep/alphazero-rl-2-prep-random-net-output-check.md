@@ -41,7 +41,7 @@ minaseと学習器は、どちらもコミット`cd156c0e`でビルドした。
 
 ## 結果
 
-許容誤差は[照合の手引き](../../guides/alphazero-network-check.md)のとおり、CPUがlogitと価値の差で1×10⁻⁴、TensorRTのFP16が合法手の確率の差で1×10⁻²、価値の差で5×10⁻²である（[FP16の照合のADR](../../adr/compare-fp16-zero-network-values-within-five-hundredths.md)）。
+許容誤差は[照合の手引き](../../guides/alphazero-network-check.md)のとおり、CPUがlogitと価値の差で1×10⁻⁴、TensorRTのFP16が合法手の確率の差で1×10⁻²、価値の差で5×10⁻²である（[FP16の照合のADR](../../adr/archive/compare-fp16-zero-network-values-within-five-hundredths.md)）。
 すべての照合がこの許容誤差に収まった。
 
 | 出力 | バッチ | logitの差の最大 | 合法手の確率の差の最大 | 価値の差の最大 | 最大のlogitの手の不一致（局面数） |

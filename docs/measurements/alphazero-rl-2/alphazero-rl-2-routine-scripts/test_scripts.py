@@ -198,11 +198,11 @@ class OutputTests(unittest.TestCase):
         # 手引き3・5節と指示書3の順序・許容誤差。実装の定数は参照しない。
         cases = [
             ("cpu", 1, "cpu-b1", "fp16-logits", "1e-4", "1e-4"),
-            ("tensorrt", 1, "trt-b1", "probabilities", "1e-2", "5e-2"),
+            ("tensorrt", 1, "trt-b1", "probabilities", "5e-2", "5e-2"),
             ("cpu", 7, "cpu-b7", "fp16-logits", "1e-4", "1e-4"),
-            ("tensorrt", 7, "trt-b7", "probabilities", "1e-2", "5e-2"),
+            ("tensorrt", 7, "trt-b7", "probabilities", "5e-2", "5e-2"),
             ("cpu", 256, "cpu-b256", "fp16-logits", "1e-4", "1e-4"),
-            ("tensorrt", 256, "trt-b256", "probabilities", "1e-2", "5e-2"),
+            ("tensorrt", 256, "trt-b256", "probabilities", "5e-2", "5e-2"),
         ]
         root = Path(__file__).resolve().parents[4]
         for failed in (False, True):

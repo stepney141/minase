@@ -1836,7 +1836,7 @@ if engine:
             if "--candidate" in command:
                 cpu = "/cpu-" in command[command.index("--candidate") + 1]
                 self.assertEqual(command[command.index("--policy") + 1], "fp16-logits" if cpu else "probabilities")
-                self.assertEqual(command[command.index("--policy-tolerance") + 1], "1e-4" if cpu else "1e-2")
+                self.assertEqual(command[command.index("--policy-tolerance") + 1], "1e-4" if cpu else "5e-2")
                 self.assertEqual(command[command.index("--value-tolerance") + 1], "1e-4" if cpu else "5e-2")
             else:
                 self.assertEqual(command, ["--protocol", "usi", "--search", "mcts"])
