@@ -14,16 +14,18 @@ AlphaZero型探索は、ネットでモンテカルロ木探索（以下、MCTS�
 
 ## 状態
 
-着手。2026年11月16日に起案し、同日に着手して、フェーズ1〜4を終えた。
+完了（採用）。2026年11月16日に起案し、同日に着手して、フェーズ1〜5を終えた。
 置き場の規則は4つの文書に入り、後に続く3本の設計書には本書が先送りした事項を書き足した。
 道具`tools/train/progress/series_progress.py`は試験を通り、マージ前のローカル検査とファイル形式の手引きに加わった。
 1回目の系列のページ、CSV、および進捗図は`docs/training/alphazero-rl-1/`にあり、「検証」の節の実データでの確認はすべて通った。
-[学習レシピを先行実装に揃える設計書](archived/zero-recipe-precedents.md)が実行器の書く系列の記録の欄を改めたので、`collect`に、その記録から`cycles.csv`を作る引数`--cycles-record`を加え、記録の欄とCSVの列の対応および設定の列の一覧をdocstringに定めた。
+[学習レシピを先行実装に揃える設計書](zero-recipe-precedents.md)が実行器の書く系列の記録の欄を改めたので、`collect`に、その記録から`cycles.csv`を作る引数`--cycles-record`を加え、記録の欄とCSVの列の対応および設定の列の一覧をdocstringに定めた。
 あわせて、深層強化学習を回す手引きの定例の測定の節に、系列のページを更新する手順を加えた。
-フェーズ4の実行器が書いた記録での確認は、機械を借りて別に試走せず、[2回目の実行の設計書](alphazero-rl-2.md)のフェーズ2で回した系列`cycles-rl2-az`のサイクル1〜3の記録で行った（2026年11月16日の利用者の決定）。
-3行25列の`cycles.csv`の全列が、記録の欄から別に計算した値と一致し（不一致0件）、`plot`は1回目の系列を参照として重ねた進捗図を描いた（[最初のセッションの記録](../measurements/alphazero-rl-2/alphazero-rl-2-first-session.md)の「系列の記録の道具」の節）。
-いま詰まっている点はない。
-次の一手はフェーズ5である。
+フェーズ4の実行器が書いた記録での確認は、機械を借りて別に試走せず、[2回目の実行の設計書](../alphazero-rl-2.md)のフェーズ2で回した系列`cycles-rl2-az`のサイクル1〜3の記録で行った（2026年11月16日の利用者の決定）。
+3行25列の`cycles.csv`の全列が、記録の欄から別に計算した値と一致し（不一致0件）、`plot`は1回目の系列を参照として重ねた進捗図を描いた（[最初のセッションの記録](../../measurements/alphazero-rl-2/alphazero-rl-2-first-session.md)の「系列の記録の道具」の節）。
+フェーズ5では、置き場の決定を[置き場のADR](../../adr/keep-overwritten-training-series-records-under-docs-training.md)に、図の元データをgitのCSVにする決定を[CSVのADR](../../adr/draw-training-series-progress-from-csvs-in-git-and-collect-them-separately.md)に書いた。
+ファイル形式の手引きの「学習の系列の記録」の節は、フェーズ2で系列の定義と3つのCSVを載せてあり、フェーズ5で改める点はなかった。
+採否の測定を持たない基盤の整備なので、完了（採用）とした。
+NNUEの世代反復の記録の形式は、後に続く設計書が決める（「NNUEの扱い」の節）。
 
 ## 目的
 
@@ -35,12 +37,12 @@ AlphaZero型探索は、ネットでモンテカルロ木探索（以下、MCTS�
 以下、このファイルを系列の記録と呼ぶ。
 系列の記録は、ネットワーク接続の記憶装置（以下、NAS）にあり、1回目の強化学習では`cycles.jsonl`である。
 
-1回目の強化学習では、10サイクルごとの進捗を測定記録に書いた（例は[20サイクル目の記録](../measurements/alphazero-rl/alphazero-rl-restart-progress-c0020.md)）。
+1回目の強化学習では、10サイクルごとの進捗を測定記録に書いた（例は[20サイクル目の記録](../../measurements/alphazero-rl/alphazero-rl-restart-progress-c0020.md)）。
 この測定記録は、サイクルごとの対局数、手数、引き分け、および損失を、系列の記録から10行の表へ手で写している。
 1回目は途中で設定を改めてサイクル1から学び直したので、その前後を合わせると進捗の測定記録は6本に分かれ、系列を通した推移は、6本を順に開いて表を見比べないと読めない。
-測定記録は、1回の測定を設計書ごとのディレクトリに置いて凍結する文書であり（[設計判断の記録](../adr/group-measurement-records-by-commissioning-plan.md)。以下、設計判断の記録をADRと書く）、系列が進むたびに書き換える記録の置き場ではない。
+測定記録は、1回の測定を設計書ごとのディレクトリに置いて凍結する文書であり（[設計判断の記録](../../adr/group-measurement-records-by-commissioning-plan.md)。以下、設計判断の記録をADRと書く）、系列が進むたびに書き換える記録の置き場ではない。
 
-[2回目の実行の設計書](alphazero-rl-2.md)は、10サイクルごとに、固定の相手に対するElo、固定の検証用データの診断、および費用を利用者へ示して、続けるかどうかの承認を得ると定めている。
+[2回目の実行の設計書](../alphazero-rl-2.md)は、10サイクルごとに、固定の相手に対するElo、固定の検証用データの診断、および費用を利用者へ示して、続けるかどうかの承認を得ると定めている。
 固定の相手は、学習の間ずっと変えない2つの相手であり、gitのコミットと1手のノード数を固定したminaseのαβ探索（minaseの既定の探索方式）と、思考の深さを固定した中将棋の外部エンジンHaChuである。
 固定の検証用データは、学習に使わない811局の人間同士の棋譜である。
 この判断の材料を毎回同じ形で出せるようにすることが、本書の直接の用途である。
@@ -52,20 +54,20 @@ AlphaZero型探索は、ネットでモンテカルロ木探索（以下、MCTS�
 - 学習の系列の記録の置き場`docs/training/`と、その規則を定める。
 - 固定の相手との対局の集計、固定の検証用データの診断、および系列の記録からCSVを作り、CSVから進捗図を描く道具を作る。
 - 1回目の強化学習の系列のページを作る。
-- [深層強化学習を回す手引き](../guides/alphazero-training.md)の定例の測定の手順に、収集、作図、および系列のページの更新を加える。
+- [深層強化学習を回す手引き](../../guides/alphazero-training.md)の定例の測定の手順に、収集、作図、および系列のページの更新を加える。
 
 次の項目は対象外とする。
 
-- NNUEの学習の作図と、NNUEの学習の記録の形式の変更は行わない。NNUEは、着手ごとに差分で更新できる小さなネットの評価関数である。NNUEの学習器は、将棋のNNUE学習器tataraに倣った枠組みへ載せ替える[設計書](nnue-tatara-framework-and-halfkp-vm.md)（以下、tatara化の設計書）で作り直すので、作図はその完了の後に、その時点の学習器の出力を読む形で別に計画する。記録の形式をtataraに揃えるかどうかは、本書では決めない（「NNUEの扱い」の節）。
-- 定例の測定そのものの条件と手順は変えない。固定の相手との対局は[強さを測る固定の相手の設計書](archived/mcts-fixed-opponents.md)が、10サイクルごとの測定の内容と続行の判断は2回目の実行の設計書が定める。
+- NNUEの学習の作図と、NNUEの学習の記録の形式の変更は行わない。NNUEは、着手ごとに差分で更新できる小さなネットの評価関数である。NNUEの学習器は、将棋のNNUE学習器tataraに倣った枠組みへ載せ替える[設計書](../nnue-tatara-framework-and-halfkp-vm.md)（以下、tatara化の設計書）で作り直すので、作図はその完了の後に、その時点の学習器の出力を読む形で別に計画する。記録の形式をtataraに揃えるかどうかは、本書では決めない（「NNUEの扱い」の節）。
+- 定例の測定そのものの条件と手順は変えない。固定の相手との対局は[強さを測る固定の相手の設計書](mcts-fixed-opponents.md)が、10サイクルごとの測定の内容と続行の判断は2回目の実行の設計書が定める。
 - 既存の測定記録は移動しない。`docs/measurements/`の記録は、ADRと凍結した設計書が参照しているからである。
 - 全部の対局からネットのレーティングを同時に推定する計算と、記録を表示するWebの画面は作らない。
 
 ## 依存関係
 
 フェーズ1〜3（「実装フェーズ」の節）は、完了した2本の設計書の成果物を使う。
-固定の相手との対局の集計は、強さを測る固定の相手の設計書が用意した集計スクリプト`summarize.py`の出力であり、1回目のサイクル10、20、および32の値がある（[αβ探索との基準の記録](../measurements/mcts-fixed-opponents/mcts-fixed-opponents-alphabeta-baseline.md)、[HaChuとの基準の記録](../measurements/mcts-fixed-opponents/mcts-fixed-opponents-hachu-baseline.md)）。
-固定の検証用データの診断は、診断の道具`minase_zero external-eval`の出力であり、1回目のサイクル0、10、20、および32の値がある（[基準の記録](../measurements/zero-validation-games/zero-validation-games-baseline.md)）。
+固定の相手との対局の集計は、強さを測る固定の相手の設計書が用意した集計スクリプト`summarize.py`の出力であり、1回目のサイクル10、20、および32の値がある（[αβ探索との基準の記録](../../measurements/mcts-fixed-opponents/mcts-fixed-opponents-alphabeta-baseline.md)、[HaChuとの基準の記録](../../measurements/mcts-fixed-opponents/mcts-fixed-opponents-hachu-baseline.md)）。
+固定の検証用データの診断は、診断の道具`minase_zero external-eval`の出力であり、1回目のサイクル0、10、20、および32の値がある（[基準の記録](../../measurements/zero-validation-games/zero-validation-games-baseline.md)）。
 
 系列の記録からの収集を行うフェーズ4は、学習レシピを先行実装に揃える設計書に依存する。
 同書は、系列の記録の欄を改める。
@@ -95,7 +97,7 @@ AlphaZero型探索は、ネットでモンテカルロ木探索（以下、MCTS�
 
 ### 先行実装
 
-先行例は[調査メモ](../research/training-progress-records-prior-art.md)にまとめた。
+先行例は[調査メモ](../../research/training-progress-records-prior-art.md)にまとめた。
 本書の方式のうち、先例があるものと、minaseが加えるものは次のとおりである。
 
 固定の相手との対局を主な線にする判断は、ELF OpenGoの論文とLeela Chess Zero（以下、lc0）の記述に基づく。
@@ -112,7 +114,7 @@ minaseが加えるものは3つある。
 第2は、設定の変更を、系列の記録から検出して縦線で示すことである。1回目のサイクル14でリプレイバッファの範囲を変えたときに損失が同時に動いたことを、表からは読み取りにくかったためである。
 第3は、自己対局の性質（1局の手数と、引き分けなどの割合）の推移を図にすることであり、この例は調べた範囲になかった。
 手引きは、勝敗のつかないまま手数だけが延びる対局（引き延ばし）を疑うために、これらの値の推移をサイクルごとに見るよう求めている。
-利用者は、同じ局面の繰り返しによる引き分け（千日手）を減らす意向も持っている（[提案](../proposals/repetition-draw-reduction.md)）。
+利用者は、同じ局面の繰り返しによる引き分け（千日手）を減らす意向も持っている（[提案](../../proposals/repetition-draw-reduction.md)）。
 
 ## 置き場と系列のページ
 
@@ -168,7 +170,7 @@ minaseが加えるものは3つある。
 - `plot`は、系列のディレクトリのCSVだけを読み、`progress.png`を書き直す。
 
 `plot`がCSVだけを読むので、NASのない場所でも図を作り直せる。
-CSVの列の名前、型、意味、および空欄にできる条件と、系列の定義の欄は、フェーズ2でスクリプトのdocstringに定め、[ファイル形式の手引き](../guides/file-formats.md)から場所を示す。
+CSVの列の名前、型、意味、および空欄にできる条件と、系列の定義の欄は、フェーズ2でスクリプトのdocstringに定め、[ファイル形式の手引き](../../guides/file-formats.md)から場所を示す。
 
 ### 系列の定義
 
@@ -294,7 +296,7 @@ ln 2（約0.693）は、どの局面でも勝率を5割と答えた場合の価�
 
 ## 1回目の系列
 
-1回目の強化学習は、サイクル32で中断して凍結した（[設計書](archived/alphazero-rl.md)）。
+1回目の強化学習は、サイクル32で中断して凍結した（[設計書](alphazero-rl.md)）。
 本書では、この系列のページを`docs/training/alphazero-rl-1/`に作り、道具の受け入れの確認と、2回目の参照に使う。
 
 `strength.csv`と`validation.csv`は、`collect`で作る。
@@ -332,7 +334,7 @@ minaseの学習器が書く3つのファイル（`training.jsonl`、`summary.jso
 利用者は、NNUEの学習器と抽象化をtataraの設計に揃えることを優先すると決めている（2026年11月15日）。
 記録の形式までtataraに揃えるかどうかは、tatara化の設計書に着手する前に、上の影響を示して利用者に諮る。
 
-NNUEの世代反復の系列のページは、[世代反復の設計書](nnue-generation-iteration.md)に着手するときに`docs/training/`に作る。
+NNUEの世代反復の系列のページは、[世代反復の設計書](../nnue-generation-iteration.md)に着手するときに`docs/training/`に作る。
 世代は最大5つで、点が5つ以下の推移は表で読めるので、世代をまたぐ強さは図にしない。
 同書が定める、それまでで最も強いと判定された世代との対局の結果を、表に書く。
 
@@ -343,8 +345,8 @@ NNUEの世代反復の系列のページは、[世代反復の設計書](nnue-ge
 
 ### フェーズ1　置き場と規則
 
-`docs/training/README.md`を作り、[docs/README.md](../README.md)の分類表と分類の判定の順に`training/`を加える。
-CONTRIBUTING.mdの開発ドキュメントの節と、[設計書の書き方](README.md)の測定記録の節に、置き場を決める1文の規則を書く。
+`docs/training/README.md`を作り、[docs/README.md](../../README.md)の分類表と分類の判定の順に`training/`を加える。
+CONTRIBUTING.mdの開発ドキュメントの節と、[設計書の書き方](../README.md)の測定記録の節に、置き場を決める1文の規則を書く。
 後に続く3本の設計書にも、本書が先送りした事項を書き足す。
 tatara化の設計書には、着手の前に記録の形式を利用者に諮ることを、世代反復の設計書には、系列のページを`docs/training/`に作ることを、2回目の実行の設計書の「記録」の節には、系列のページの場所を書く。
 完了条件は、定例の測定の記録、サイクルごとの値、および系列の状態の3つの例について、どこに書くかを、置き場の規則を書いた4つの文書（`docs/training/README.md`、docs/README.md、CONTRIBUTING.md、および設計書の書き方）だけで決められることである。
@@ -354,7 +356,7 @@ tatara化の設計書には、着手の前に記録の形式を利用者に諮�
 `tools/train/progress/`に、スクリプト、依存の定義とロックファイル、および試験を作る。
 CSVの列の名前、型、意味、および空欄にできる条件を、docstringに定める。
 `collect`は、この時点では`strength.csv`と`validation.csv`だけを書く。
-完了条件は、試験が通ることと、[テストの手引き](../guides/testing-minase-rules.md)のマージ前のローカル検査（マージの前に手元で実行する検査の一覧）に、試験のコマンドが加わっていることである。
+完了条件は、試験が通ることと、[テストの手引き](../../guides/testing-minase-rules.md)のマージ前のローカル検査（マージの前に手元で実行する検査の一覧）に、試験のコマンドが加わっていることである。
 
 ### フェーズ3　1回目の系列のページ
 
@@ -399,7 +401,7 @@ CSVの列の名前、型、意味、および空欄にできる条件を、docst
 
 フェーズ4では、改めた後の実行器が書いた系列の記録で、`cycles.csv`の各列が系列の記録の欄と一致することを確かめる。
 
-文書は、[設計書の書き方](README.md)のレビューの節に従って確かめる。
+文書は、[設計書の書き方](../README.md)のレビューの節に従って確かめる。
 
 ## 完了条件
 
@@ -414,8 +416,8 @@ CSVの列の名前、型、意味、および空欄にできる条件を、docst
 
 ## 参考資料
 
-- [学習の進み具合と強さの推移の記録と可視化に関する先行例の調査](../research/training-progress-records-prior-art.md)。調べた版と一次資料へのリンクは同書にある。
-- [測定記録の置き場のADR](../adr/group-measurement-records-by-commissioning-plan.md)
+- [学習の進み具合と強さの推移の記録と可視化に関する先行例の調査](../../research/training-progress-records-prior-art.md)。調べた版と一次資料へのリンクは同書にある。
+- [測定記録の置き場のADR](../../adr/group-measurement-records-by-commissioning-plan.md)
 - 固定の相手との対局の集計スクリプト `docs/measurements/mcts-fixed-opponents/mcts-fixed-opponents-scripts/summarize.py`
 - 固定の検証用データの診断 `tools/train/zero/minase_zero/external.py`
 - 系列の記録を書く実行器 `tools/train/zero/minase_zero/runner.py`、学習器の診断の欄 `tools/train/zero/minase_zero/train.py`、生成器の集計の欄 `crates/minase/src/bin/minase/zero_selfplay/output.rs`

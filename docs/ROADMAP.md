@@ -70,7 +70,7 @@
 | AlphaZero型探索のネットを診断する固定の検証用データ | [plans/archived/zero-validation-games.md](plans/archived/zero-validation-games.md) | 完了（採用） | 2026年11月15日 |
 | AlphaZero型探索の学習レシピを先行実装に揃える | [plans/archived/zero-recipe-precedents.md](plans/archived/zero-recipe-precedents.md) | 完了（採用） | 2026年11月16日 |
 | 対局用MCTSのPUCTの係数と方策の温度のSPSAによる調整 | [plans/mcts-puct-spsa.md](plans/mcts-puct-spsa.md) | 起案 | |
-| 学習の系列の記録と進捗図 | [plans/training-series-records.md](plans/training-series-records.md) | 待機中 | |
+| 学習の系列の記録と進捗図 | [plans/archived/training-series-records.md](plans/archived/training-series-records.md) | 完了（採用） | 2026年11月16日 |
 | AlphaZero型探索の学習と自己対局生成の複数GPU化 | [plans/archived/alphazero-multi-gpu.md](plans/archived/alphazero-multi-gpu.md) | 完了（採用） | 2026年11月11日 |
 | AlphaZero型探索の推論で、ホストとGPUの間の転送を減らす | [plans/archived/alphazero-inference-transfer.md](plans/archived/alphazero-inference-transfer.md) | 完了（採用） | 2026年11月11日 |
 | 開発環境とvast.aiの機械の実行環境を、1つのDockerイメージで用意する | [plans/archived/docker-environment.md](plans/archived/docker-environment.md) | 完了（一部不採用） | 2026年11月13日 |
@@ -204,9 +204,10 @@ HalfKP_vmの世代反復は、P型の世代反復で評価関数の癖をつか�
 前提の設計書はすべて完了しており、新しい初期ネットは、NASの系列`cycles-rl2-az`の`cycle-0000/`にある。
 フェーズ1の規則の`lishogi`への切り替えと定例の測定の用意は、2026年11月16日にmasterへマージした。
 同じ日の利用者の決定で、別の系列での試走をやめ、系列`cycles-rl2-az`の最初のセッションをサイクル3で区切って確かめることにした。
-次は、フェーズ2の機械の選定と、サイクル1〜3の費用の見込みの提示である。
-[学習の系列の記録と進捗図](plans/training-series-records.md)は、系列の記録の置き場[docs/training/](training/README.md)と進捗図の道具ができており、残るのは、実行器が書いた系列の記録での確認と、ADRの作成および設計書の凍結である。
-実行器が書いた記録はまだないので、確認には、2回目の実行のフェーズ2で回すサイクル1〜3の記録を使う（2026年11月16日の利用者の決定）。
+フェーズ2では、同じ日にvast.aiのRTX 4090を4枚積んだ機械でサイクル1〜3を回し、学習が健全に始まったことを確かめた（[最初のセッションの記録](measurements/alphazero-rl-2/alphazero-rl-2-first-session.md)）。
+利用者の承認を得て、フェーズ3のサイクル4〜10を回している。
+[学習の系列の記録と進捗図](plans/archived/training-series-records.md)は、2026年11月16日に完了した。
+系列の記録の置き場[docs/training/](training/README.md)と進捗図の道具ができており、2回目の実行のサイクル1〜3の記録から`cycles.csv`と進捗図が作れることを確かめた。
 
 2回目の実行と並行して進められる作業は、PUCTの係数の調整とNNUEの世代反復の2件である。
 [対局用MCTSのPUCTの係数と方策の温度のSPSAによる調整](plans/mcts-puct-spsa.md)は起案の段階で利用者の承認を待っており、本番の調整には、2回目の実行のネットのうち利用者が指定するものを使う。

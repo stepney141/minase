@@ -417,3 +417,5 @@ PSTは駒の種類と升ごとの値の表による評価、FMはFactorization M
 - 2026年11月15日 [AlphaZero型探索の実行器は、系列の基本シードの加算値を必須の引数で受け取り、生成の区間をサイクルごとの幅10⁹に収める](take-the-zero-series-seed-offset-as-a-required-runner-argument-within-one-cycle-interval.md)
 - 2026年11月16日 [AlphaZero型探索の学習器は、規則セットlishogiのMNSDだけを訓練に受け付け、Rustの拡張モジュールで読み、利きの面を拡張モジュールで作り、駒の面と方策のラベルはPythonでバッチごとに作る](read-lishogi-mnsd-into-the-zero-trainer-and-build-control-planes-in-a-rust-extension.md)
 - 2026年11月16日 [AlphaZero型探索のネットのTensorRTのFP16の出力は、合法手の確率と価値をどちらも許容誤差5×10⁻²で照合する](compare-fp16-zero-network-probabilities-and-values-within-five-hundredths.md)
+- 2026年11月16日 [学習の系列が進むたびに書き換える記録はdocs/training/の系列ごとのディレクトリに置き、1回の測定で凍結する測定記録はdocs/measurements/に残す](keep-overwritten-training-series-records-under-docs-training.md)
+- 2026年11月16日 [学習の系列の進捗図は、gitに置くCSVから描き、記録からCSVを作る収集と、CSVから図を描く作図を別の操作にする](draw-training-series-progress-from-csvs-in-git-and-collect-them-separately.md)
