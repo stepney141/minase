@@ -166,7 +166,10 @@ colab sessions
 ### 7.1 vast.ai
 
 vast.aiの機械は、起動スクリプト`docs/measurements/alphazero-multi-gpu/launch-vast.py`で借り、導入し、実行器を走らせ、受け取って削除する。
-2回目の学習では、このスクリプトを2回目の設計書の測定記録のディレクトリへ写して使う。
+2回目の学習では、このスクリプトを複製して生成前の照合を加えた`docs/measurements/alphazero-rl-2/alphazero-rl-2-sessions/launch-vast.py`を使い、後の「起動する」に示すコマンドのパスもこのスクリプトに読み替える。
+このスクリプトは、導入を終えてから実行器を起動するまでの間に、そのセッションの最初のサイクルで生成に使うネットについて、借りた機械のONNX RuntimeのCPUとTensorRTのFP16による出力を、NASにあるPyTorchの出力を基準として照合する（[出力の照合の手引き](alphazero-network-check.md)の1節）。
+照合の出力は、NASの`<系列>/cycle-NNNN/pre-generation-check-<インスタンスの番号>/`へ受け取る（NNNNはセッションの最初のサイクルの番号）。
+照合で不合格になった場合や、出力を受け取れなかった場合は、実行器を起動せずに機械を削除する。
 方式を選んだ理由は[vast.aiの実行器のADR](../adr/run-zero-cycles-on-vast-ai-until-the-deadline-and-delete-the-machine-after-a-verified-final-fetch.md)にあり、実測の値は[vast.aiの測定](../measurements/alphazero-multi-gpu/alphazero-multi-gpu-vast.md)にある。
 vast.aiのアカウント、CLI、2要素認証、およびコンテナのCPUの割当に関する運用上の注意は、[SPSAの手引き](spsa.md)の8節にある。
 

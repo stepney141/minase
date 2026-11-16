@@ -3,7 +3,7 @@
 本書は、AlphaZero型探索のネットを育てる深層強化学習（RL）について、標準レシピ、起動から定例の測定までの手順、止めて再開する操作、およびオプションを定める。
 費用、進捗の判定、および伸びが止まったときの学習率の引き下げといった進め方の規則と、学習の現在の状態は[強化学習の2回目の実行の設計書](../plans/alphazero-rl-2.md)（以下、設計書）にある。
 本書の標準レシピと手順は、20ブロック256チャネルのネットで始める2回目の学習のものである。
-2回目の学習に使う機械とその起動スクリプトは、設計書のフェーズ2で決めて用意するので、本書は実行器`minase_zero run-cycles`に渡す引数までを定める。
+2回目の学習で使う機械は、設計書のフェーズ2でvast.aiのRTX 4090を4枚積んだものに決め、その起動スクリプトによる起動手順を[セッションを起動する](#セッションを起動する)の節に書いた。
 学習器と実行器は[複数GPU化の設計書](../plans/archived/alphazero-multi-gpu.md)の作業で改め、標準レシピの方法と値は[学習レシピを先行実装に揃える設計書](../plans/archived/zero-recipe-precedents.md)の作業で先行するエンジンに揃えた。学習は、借りた機械のGPUの枚数によらず全体のバッチ1,024で行い、実行器はColabの機械とvast.aiの機械を引数で選ぶ。
 サイクル32で中断した1回目の学習（10ブロック128チャネル）の起動スクリプトと測定のスクリプトは、測定記録の`docs/measurements/alphazero-rl/`に残っている。
 本書には、実行者（人間およびエージェント）が手順どおりに実行する部分だけを書く。
@@ -86,7 +86,7 @@ uv run --frozen python -m minase_zero run-cycles --machine colab --session <セ�
 | 引数 | 値 |
 |---|---|
 | `--lr` | 基準の学習率。0.04で始める。伸びが止まったと判定されて利用者が承認したら、次のサイクルから0.004、0.0004、0.00004の順に下げる。値を変えるサイクルの前でセッションを区切る（設計書の「伸びが止まったとき」の節） |
-| `--cycle1-reference-summary` | 最初のサイクルが1のセッションだけに与える。サイクル1の対局数の上限を見積もるのに使う、生成器の集計`summary.json` |
+| `--cycle1-reference-summary` | サイクル1の対局数の上限を見積もるのに使う生成器の集計`summary.json`。最初のサイクルが1のセッションだけに与える。系列`cycles-rl2-az`のサイクル1には`$A/transfer-vast/cycle-0001/selfplay/summary.json`を与えた（設計書の「着手時に補った決定」の節） |
 | `--machine`と機械ごとの引数 | Colabの機械では`--machine colab`、セッション名の`--session`、および1サイクルの見込みのCUの`--cycle-cu`、vast.aiの機械では`--machine vast`とインスタンスの番号の`--vast-instance` |
 | `--deadline`、`--cycle-minutes` | 借りた機械の終了期限と、その機械での1サイクルの見込みの時間（設計書の「系列の置き場所と起動」の節）。vast.aiの機械では、終了期限は起動スクリプトが決める |
 
@@ -155,7 +155,34 @@ Colabの機械を使う場合は、`colab usage`で認証と残高も確かめ�
 ### セッションを起動する
 
 起動スクリプトで、セッションを1つ起動する。
-起動スクリプトは、設計書のフェーズ2で機械を選んだ後に`docs/measurements/alphazero-rl-2/alphazero-rl-2-sessions/`に置き、使い方はそのスクリプトの冒頭に書く。
+2回目の学習の起動スクリプトは、vast.aiの機械を借りる`docs/measurements/alphazero-rl-2/alphazero-rl-2-sessions/launch-vast.py`である。
+このスクリプトは、機械を借りて環境を導入し、セッションの最初のサイクルの生成に使うネットをその機械で照合してから実行器を走らせ、最後にNASにないファイルを受け取って機械を削除する。
+出品の選び方、照合の出力の置き場所、および終了時の処理は、[借りる機械の操作の手引き](alphazero-machines.md)の7.1節にある。
+借りる前に、出品の料金と、回すサイクルの範囲の見込みを利用者へ示して承認を得る。
+作業機では、実行器を走らせる作業ツリーの根（`$W`）へ移り、bashで次のように起動する。
+
+```bash
+A=/mnt/synology_nas/minase/alphazero
+W=<実行器を走らせる作業ツリー>
+C=$(git -C $W rev-parse HEAD)
+L=<ラベル。例：rl2-c0001-0003>
+cd $W
+nohup setsid python3 docs/measurements/alphazero-rl-2/alphazero-rl-2-sessions/launch-vast.py \
+  --offer <出品のID> --label minase-$L --image nvidia/cuda:13.0.3-base-ubuntu24.04 \
+  --hours <自己停止までの時間> --commit $C --root $A --salvage-dir $A/salvage \
+  -- --cycles-dir cycles-rl2-az --base-cycles-dir cycles-rl2-az --branch-from 0 \
+  --generation-commit $C --trainer-commit $C \
+  --first-cycle <最初のサイクル> --last-cycle <最後のサイクル> --cycle-minutes <1サイクルの見込みの分> \
+  --start-position initial --generation-seed-offset 300000000 \
+  --target-positions 1000000 --chunks 20 --simulations 32 --threads-per-gpu 4 --games-per-thread 128 \
+  --replay-buffer-games 1500000 \
+  --batch-size 1024 --lr 0.04 --momentum 0.9 --weight-decay 0.0001 --clip-grad-norm 10 \
+  --value-lambda 0.333 --precision bf16 --checkpoint-steps 50 \
+  --train-seed-base 20261100 --minase $W/target/release/minase --poll-seconds 60 \
+  > $A/logs/runner-$L.log 2>&1 < /dev/null &
+```
+
+最初のサイクルが1のセッションでは、`--`より後の引数に`--cycle1-reference-summary <生成器の集計summary.json>`も加える。
 最初のサイクルには、`cycles-rl2-az.jsonl`の最後のサイクル番号（`tail -1 $A/cycles-rl2-az.jsonl | jq .cycle`で確かめる）に1を加えた番号を指定する。
 最後のサイクルには、次の測定を行うサイクルなど、止めたい番号を指定する。
 セッションは、次の3つの時点で必ず区切る。
@@ -164,7 +191,7 @@ Colabの機械を使う場合は、`colab usage`で認証と残高も確かめ�
 - 10サイクルごとの定例の測定を行うサイクルの後で区切る。測定の結果で次の設定が決まるので、結果を待つ間は借りた機械を止める。
 - 基準の学習率を下げるサイクルの前で区切る。`--lr`の値が変わる。
 
-セッション名は、`rentals.jsonl`の過去の名前と重ならないものにする。
+セッション名（vast.aiの機械ではラベルとログの名前に使う`$L`）は、`rentals.jsonl`と`logs/`にある過去のものと重ならないようにする。
 実行器は、終了期限までの残り時間が`--cycle-minutes`の分数に満たないとき、またはColabの機械で残高が`--cycle-cu`を下回るときに次のサイクルを始めず、正常に終了する。
 vast.aiの機械では残高を照会しない。
 実行器が走っている作業ツリーは、セッションが終わるまで消さない。
