@@ -1,7 +1,7 @@
 """リプレイバッファから訓練局面を抽出し、各ランクが使う局面を入力順に保持する。
 
 訓練局面は価値と方策の候補の両方を持ち、除外されていない項目とする。
-指した手を確率1とする方策も候補に含め、方策のない速い探索は採用しない。
+指した手を確率1とする方策も候補に含める。
 """
 
 from collections.abc import Sequence
@@ -196,27 +196,28 @@ def _dataset(raw: dict, info: FileInfo) -> Dataset:
 
 
 def sample_training_indices(total: int, count: int, seed: int) -> NDArray[np.int64]:
-    """[0,T)の順列を繰り返し、残りを重複なく選んだcount個の更新列を返す。
+    """[0,total)から重複なく選んだcount個の更新列を返す。countはtotal以下とする。
 
-    T=totalとし、専用のGenerator(PCG64(seed))を全順列と最後の抽出で使い続ける。
-    各回A[j]=jから始め、k=0,...,min(T,残数)-1でj=integers(k,T,dtype=int64)を引き、
+    専用のGenerator(PCG64(seed))を使い、A[j]=jから始める。
+    k=0,...,count-1でj=integers(k,total,dtype=int64)を引き、
     A[k]とA[j]を交換してA[k]を出力する部分的なFisher–Yates法である。
     未使用のAのうち動かした要素だけを辞書に保持する。
     """
     if not (1 <= count <= np.iinfo(np.int64).max and 1 <= total <= np.iinfo(np.int64).max):
         raise ValueError("sample count and total must be positive and fit in int64")
+    if count > total:
+        raise ValueError("sample count must not exceed total")
     if not 0 <= seed <= 0xFFFF_FFFF_FFFF_FFFF:
         raise ValueError("seed must fit in uint64")
     rng = np.random.Generator(np.random.PCG64(seed))
     selected = np.empty(count, dtype=np.int64)
-    for start in range(0, count, total):
-        moved: dict[int, int] = {}
-        for index in range(min(total, count - start)):
-            other = int(rng.integers(index, total, dtype=np.int64))
-            selected[start + index] = moved[other] if other in moved else other
-            replacement = moved.pop(index) if index in moved else index
-            if other != index:
-                moved[other] = replacement
+    moved: dict[int, int] = {}
+    for index in range(count):
+        other = int(rng.integers(index, total, dtype=np.int64))
+        selected[index] = moved[other] if other in moved else other
+        replacement = moved.pop(index) if index in moved else index
+        if other != index:
+            moved[other] = replacement
     return selected
 
 

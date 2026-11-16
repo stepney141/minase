@@ -51,8 +51,9 @@ class DataTests(unittest.TestCase):
         self.addCleanup(directory.cleanup)
         self.directory = Path(directory.name)
 
-    def test_generator_fixture_metadata_and_selected_positions(self) -> None:
-        # 生成器の集計は32局・完全探索741局面・速い探索2218局面・先手11勝・後手21勝、基本シード20261038である。
+    def test_fixture_metadata_and_selection_require_value_and_policy(self) -> None:
+        # 固定データは32局・先手11勝・後手21勝、基本シード20261038である。
+        # 価値と方策を持つ741局面を採用し、方策のない価値だけの2218項目は数えない。
         data, info = self.dataset, self.info
         self.assertEqual(info.header.teacher_kind, 1)
         self.assertEqual(info.header.origin, 0)
@@ -71,7 +72,7 @@ class DataTests(unittest.TestCase):
         self.assertEqual(info.validation_count, np.count_nonzero(data.validation))
         self.assertEqual(len(np.unique(data.games[data.validation])), 4)
         outcomes = np.frombuffer(self.raw["outcomes"], dtype=np.uint8)
-        # 対局6は後手勝ちで、序盤の乱択と速い探索だけで打ち切られ、採用局面を持たない。
+        # 対局6は後手勝ちだが、価値と方策の両方を持つ項目がないため採用局面を持たない。
         self.assertEqual(set(info.game_numbers) - set(data.games), {6})
         game_outcomes = []
         for game in np.unique(data.games):

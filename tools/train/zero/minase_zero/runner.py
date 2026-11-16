@@ -887,6 +887,10 @@ class Runner:
         summary = read_json(local_summary)
         if summary["cycle"] != cycle or summary["network_sha256"] != sha256(self.root / out / "model.onnx"):
             raise ValueError(f"training summary does not match cycle or network: {out}")
+        if summary["lr"] != self.options.lr:
+            raise ValueError(
+                f"training summary learning rate {summary['lr']} does not match --lr {self.options.lr}: {out}"
+            )
         return summary, self._finish(out)
 
     def check_script(self, cycle: int) -> str:

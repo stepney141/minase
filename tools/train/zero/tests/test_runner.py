@@ -1307,6 +1307,56 @@ class MachineTests(unittest.TestCase):
 
 
 class CycleTests(RunnerCase):
+    def assert_completed_training_rejects_changed_lr(self, location):
+        options = replace(self.options, lr=0.04)
+        with patch.object(Runner, "checking", side_effect=RuntimeError("interrupted")):
+            with self.assertRaisesRegex(RuntimeError, "interrupted"):
+                self.execute(options)
+        out = "cycles/cycle-0001/train"
+        summary = self.root / out / "summary.json"
+        self.assertEqual(json.loads(summary.read_text())["lr"], 0.04)
+        self.assertFalse((self.root / "cycles.jsonl").exists())
+        if location != "nas":
+            summary.unlink()
+            if location == "remote_without_job":
+                (self.remote_root / (out + ".exit")).unlink()
+        started = len(self.remote.starts)
+        with self.assertRaisesRegex(ValueError, "learning rate.*0.04.*0.004"):
+            self.execute(replace(options, lr=0.004))
+        self.assertFalse((self.root / "cycles.jsonl").exists())
+        self.assertFalse((self.root / "nets/cycle-0001.onnx").exists())
+        self.assertEqual(len(self.remote.starts), started)
+        # 同じ学習率なら完了済みの結果を受け入れ、学習を繰り返さずに記録する。
+        self.execute(options)
+        row = json.loads((self.root / "cycles.jsonl").read_text())
+        self.assertEqual(row["training_summary"]["lr"], 0.04)
+        self.assertEqual([Path(item[0]).name for item in self.remote.starts[started:]], ["check"])
+
+    def test_completed_training_on_nas_rejects_changed_lr_before_cycle_record(self):
+        self.assert_completed_training_rejects_changed_lr("nas")
+
+    def test_completed_training_on_remote_rejects_changed_lr_before_cycle_record(self):
+        self.assert_completed_training_rejects_changed_lr("remote")
+
+    def test_completed_training_without_remote_job_rejects_changed_lr_before_cycle_record(self):
+        self.assert_completed_training_rejects_changed_lr("remote_without_job")
+
+    def test_new_training_rejects_mismatched_lr_before_cycle_record(self):
+        def complete(stem, body):
+            code = self.complete_job(stem, body)
+            if stem.endswith("/train"):
+                path = self.remote_root / stem / "summary.json"
+                summary = json.loads(path.read_text())
+                summary["lr"] = 0.04
+                write_json(path, summary)
+            return code
+
+        self.remote.on_start = complete
+        with self.assertRaisesRegex(ValueError, "learning rate.*0.04.*0.004"):
+            self.execute(replace(self.options, lr=0.004))
+        self.assertFalse((self.root / "cycles.jsonl").exists())
+        self.assertEqual([Path(item[0]).name for item in self.remote.starts], ["selfplay", "train"])
+
     def assert_calibration_survives_resume(self, stage):
         # 3,466局の最小値0.04で、最初の7候補だけが0.05以下になり、閾値は0.035になる。
         self.summary(1, "selfplay", {
@@ -1669,6 +1719,7 @@ if engine:
             write(self.remote_root / stem / "model.onnx", f"network {cycle}".encode())
             summary = {
                 "cycle": cycle, "network_sha256": digest(self.remote_root / stem / "model.onnx"),
+                "lr": float(command[command.index("--lr") + 1]),
                 "provenance": {"trainer_commit": TRAINER_COMMIT, "environment_commit": TRAINER_COMMIT},
                 "diagnostics": {"validation": {"value_result": 0.7},
                                 "latest_training_sample": {"value_result": 0.6}},

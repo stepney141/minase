@@ -31,20 +31,18 @@ VALIDATION_GAMES = {11: {4, 15, 22, 41, 48, 59, 70}, 22: {6, 8, 35, 44, 58, 63, 
 def reference_sample(total: int, count: int, seed: int) -> list[int]:
     """docstringの交換式を、全長Tの通常の配列で独立に評価する。"""
     rng = np.random.Generator(np.random.PCG64(seed))
-    result = []
-    while len(result) < count:
-        permutation = list(range(total))
-        length = min(total, count - len(result))
-        for index in range(length):
-            other = int(rng.integers(index, total, dtype=np.int64))
-            permutation[index], permutation[other] = permutation[other], permutation[index]
-        result.extend(permutation[:length])
-    return result
+    if count > total:
+        raise ValueError("sample count must not exceed total")
+    permutation = list(range(total))
+    for index in range(count):
+        other = int(rng.integers(index, total, dtype=np.int64))
+        permutation[index], permutation[other] = permutation[other], permutation[index]
+    return permutation[:count]
 
 
 def cycle_files(directory: Path) -> list[Path]:
-    """過去1ファイルと、最新サイクルの通常生成と再生成に相当する2ファイルを作る。"""
-    paths = [directory / name for name in ("older.mnsd", "latest.mnsd", "regenerated.mnsd")]
+    """過去サイクルの1ファイルと、最新サイクルの2つの塊を作る。"""
+    paths = [directory / name for name in ("older.mnsd", "latest-chunk-00000.mnsd", "latest-chunk-00001.mnsd")]
     for path, seed, games in zip(paths, (11, 22, 22), (range(80), range(40), range(40, 80)), strict=True):
         write_small(path, [single_game(game, game % 2, game % 3, 200 * game, (65_535,)) for game in games],
                     "JCSA")
@@ -70,18 +68,35 @@ class ReplayBufferTests(unittest.TestCase):
     def test_sparse_sampling_matches_the_exchange_contract_and_preserves_random_state(self) -> None:
         state = np.random.get_state()
         for total in (1, 2, 7, 31):
-            for count in (1, total // 2 + 1, total, 2 * total, 4 * total + 1):
+            for count in (1, total // 2 + 1, total):
                 for seed in (0, 42, (1 << 64) - 1):
                     with self.subTest(total=total, count=count, seed=seed):
                         selected = sample_training_indices(total, count, seed)
                         self.assertEqual(selected.dtype, np.int64)
                         self.assertEqual(selected.tolist(), reference_sample(total, count, seed))
-                        self.assertEqual(len(np.unique(selected)), min(total, count))
+                        self.assertEqual(len(np.unique(selected)), count)
                         self.assertTrue(np.all((0 <= selected) & (selected < total)))
         after = np.random.get_state()
         self.assertEqual(state[0], after[0])
         np.testing.assert_array_equal(state[1], after[1])
         self.assertEqual(state[2:], after[2:])
+
+    def test_sampling_rejects_count_above_total(self) -> None:
+        for total in (1, 2, 7, 31):
+            for count in (total + 1, 2 * total, 4 * total + 1):
+                with self.subTest(total=total, count=count):
+                    with self.assertRaisesRegex(ValueError, "sample count must not exceed total"):
+                        sample_training_indices(total, count, 42)
+
+    def test_sampling_preserves_fixed_sequences(self) -> None:
+        # count <= totalの列は変更しない契約に従い、修正前に取得した小さな例を固定する。
+        cases = ((1, 1, 0, [0]),
+                 (7, 4, 0, [5, 4, 1, 2]),
+                 (7, 7, 42, [0, 5, 1, 4, 2, 6, 3]),
+                 (7, 4, (1 << 64) - 1, [3, 5, 6, 2]))
+        for total, count, seed, expected in cases:
+            with self.subTest(total=total, count=count, seed=seed):
+                self.assertEqual(sample_training_indices(total, count, seed).tolist(), expected)
 
     def test_same_seed_reproduces_selection_and_other_seed_changes_it(self) -> None:
         data, infos, first, _ = read_replay_buffer(self.paths, self.paths[1:], 42,
