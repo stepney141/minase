@@ -1,5 +1,5 @@
 //! Gumbel AlphaZeroによる自己対局を生成し、教師データ形式MNSDの版3で保存する。
-//! 規則は`JCSA`を使い、規則上の終局、王手限定の3手以内の勝ち、3,000手上限の順に判定する。
+//! 規則は`lishogi`を使い、規則上の終局、王手限定の3手以内の勝ち、3,000手上限の順に判定する。
 //! 上限に達した対局は引き分けとして、投了した対局も含めて学習に残す。
 //! `docs/adr/draw-zero-self-play-games-at-3000-plies-and-keep-them-for-training.md`を参照。
 //!
@@ -41,6 +41,10 @@ use minase::nn::{Network, OnnxEvaluator};
 use minase_core::Rules;
 use std::num::NonZeroUsize;
 
+/// 自己対局には規則セット`lishogi`を使う。
+/// `docs/adr/play-self-play-and-judge-trained-networks-under-the-lishogi-rule-set.md`を参照。
+const RULES: Rules = Rules::LISHOGI;
+
 /// 手数の上限3,000手。到達しても未終局なら引き分けとして記録する。
 const MAX_PLY: u32 = 3_000;
 
@@ -67,9 +71,8 @@ fn run(arguments: Arguments) -> Result<(), Error> {
     }
     let network = Network::read(&arguments.nn_model)?;
     let provider = arguments.nn_backend.provider(0)?;
-    let rules = Rules::JCSA;
     let config = output::Config {
-        rules: rules.to_string(),
+        rules: RULES.to_string(),
         generation_commit: arguments.generation_commit,
         network_sha256: minase::datagen::hex(network.sha256()),
         nn_backend: provider.name().to_owned(),

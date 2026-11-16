@@ -49,7 +49,7 @@ const CHECKSUM: [u8; 32] = [23; 32];
 
 pub(super) fn config() -> Config {
     Config {
-        rules: Rules::JCSA.to_string(),
+        rules: RULES.to_string(),
         generation_commit: "0123456789abcdef0123456789abcdef01234567".into(),
         network_sha256: minase::datagen::hex(&CHECKSUM),
         nn_backend: "cpu".into(),
@@ -117,6 +117,22 @@ fn all_records(path: &Path, config: &Config) -> Vec<DecodedGame> {
     (0..config.games.div_ceil(config.chunk_games))
         .flat_map(|chunk| read_games(&path.join(format!("chunk-{chunk:05}.mnsd"))).1)
         .collect()
+}
+
+#[test]
+fn article_33_6_lishogi_rules_are_saved_in_mnsd_headers_and_config() {
+    let directory = TemporaryDirectory::new();
+    let config = config();
+    generate(&directory.0, &config, 1, 2);
+
+    // docs/rules/chu-shogi.md第33条第6項のlishogiの規則コード。
+    for chunk in 0..config.games.div_ceil(config.chunk_games) {
+        let (header, _) = read_games(&directory.0.join(format!("chunk-{chunk:05}.mnsd")));
+        assert_eq!(header.rule_set(), "L1,L2,P0,P3,R1,E1,E3");
+    }
+    let saved: serde_json::Value =
+        serde_json::from_slice(&fs::read(directory.0.join("config.json")).unwrap()).unwrap();
+    assert_eq!(saved["rules"], "L1,L2,P0,P3,R1,E1,E3");
 }
 
 #[test]
