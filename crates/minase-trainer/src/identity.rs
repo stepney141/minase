@@ -1,18 +1,19 @@
 //! 入力は正規化したパスと、形式に応じたヘッダまたはバイト長で識別する。
 //! MNSDは`byte_length`と`header`（規則、生成コミット、重みの検査和、教師の種類と規模、シード、対局数、項目数）を持つ。
-//! MNPTとMNUEはヘッダに記録済みの`checksum`、NPZ（学習器のチェックポイントを含む）は`byte_length`を持つ。
+//! MNPTはヘッダ内、tatara形式はファイル全体のSHA-256を`checksum`とし、NPZ（学習器のチェックポイントを含む）は`byte_length`を持つ。
 
 use crate::nn::hex;
 use minase::training::records::Reader;
 use serde::Serialize;
 use serde_json::{Value, json};
+use sha2::{Digest, Sha256};
 use std::{
     fs::File,
     io::{self, Read, Seek},
     path::{Path, PathBuf},
 };
 
-/// ファイル全体の検査和を計算せずに記録する入力の識別情報。
+/// 形式ごとの検査和またはヘッダで記録する入力の識別情報。
 #[derive(Debug, Serialize)]
 pub struct FileIdentity {
     path: PathBuf,
@@ -20,7 +21,7 @@ pub struct FileIdentity {
     metadata: Value,
 }
 
-/// ヘッダだけを読み、入力を識別する。
+/// tatara形式は全バイトをハッシュし、他の形式はヘッダと長さで識別する。
 pub fn file_identity(path: &Path) -> io::Result<FileIdentity> {
     let path = path.canonicalize()?;
     let mut file = File::open(&path)?;
@@ -39,11 +40,17 @@ pub fn file_identity(path: &Path) -> io::Result<FileIdentity> {
                 "seed": header.seed(), "game_count": header.game_count(), "entry_count": header.entry_count()
             }})
         }
-        b"MNPT" | b"MNUE" => {
-            let end = if &magic == b"MNPT" { 80 } else { 176 };
+        b"MNPT" => {
+            let end = 80;
             let mut bytes = vec![0; end];
             file.read_exact(&mut bytes[4..])?;
             json!({"checksum": hex(&bytes[end-32..])})
+        }
+        _ if matches!(u32::from_le_bytes(magic), 0x7AF32F21 | 0x7AF32F16) => {
+            file.rewind()?;
+            let mut hash = Sha256::new();
+            io::copy(&mut file, &mut hash)?;
+            json!({"checksum": hex(&hash.finalize())})
         }
         b"PK\x03\x04" => json!({"byte_length": length}),
         _ => {

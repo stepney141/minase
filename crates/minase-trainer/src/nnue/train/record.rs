@@ -175,7 +175,7 @@ pub(super) fn validate_statistics(v: &Validation) -> Result<()> {
 }
 
 fn file_record(path: &Path) -> Result<Value> {
-    Ok(serde_json::to_value(crate::identity::file_identity(path)?)?)
+    Ok(crate::nnue::export::network::file_identity(path)?)
 }
 
 fn hash_u64(values: &[u64]) -> String {

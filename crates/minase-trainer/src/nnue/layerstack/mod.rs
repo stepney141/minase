@@ -2,6 +2,7 @@
 //! パラメータ、AdamWの状態、局面ごとの演算はf32、局面方向の縮約はf64とする。
 
 mod checkpoint;
+pub(crate) mod diagnostics;
 mod export;
 // 学習ループへの接続はフェーズ3cで行う。
 #[allow(dead_code)]

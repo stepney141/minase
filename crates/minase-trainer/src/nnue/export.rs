@@ -2,13 +2,14 @@
 
 use std::{fmt, fs, path::Path};
 
-use crate::diagnostics::network::IntegerNetwork;
+pub(super) mod network;
 use crate::diagnostics::statistics::{Reversals, reversal_statistics};
 use minase::eval::{
     features::{PIECE_STATE_COUNT, piece_state},
     nnue,
 };
 use minase_core::Square;
+use network::IntegerNetwork;
 use serde::Serialize;
 
 use crate::{

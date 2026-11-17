@@ -1,10 +1,17 @@
+use super::Result;
+use minase::eval::{
+    nnue::network::{FormatError, Network},
+    pst::Pst,
+};
+use minase_core::{Color, Position};
 use std::path::{Path, PathBuf};
 
 #[derive(Debug)]
 pub(super) enum Error {
     MissingFmWeights(PathBuf),
+    HalfKpVmDeferred,
+    Format(FormatError),
 }
-
 impl std::fmt::Display for Error {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
@@ -13,92 +20,46 @@ impl std::fmt::Display for Error {
                 "{}: baseline must contain FM weights (rank 32)",
                 path.display()
             ),
+            Self::HalfKpVmDeferred => f.write_str(
+                "HalfKP_vm Simple diagnostics are deferred to phase 4; LayerStack is required",
+            ),
+            Self::Format(e) => e.fmt(f),
+        }
+    }
+}
+impl std::error::Error for Error {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::Format(e) => Some(e),
+            _ => None,
         }
     }
 }
 
-impl std::error::Error for Error {}
-
-use minase::eval::{
-    nnue::{
-        self, Network,
-        feature_set::{FeatureSet, HalfKpHmB8, P},
-        head::PairwiseL16L32,
-    },
-    pst::Pst,
-};
-use minase_core::{Color, Position};
-
-use super::Result;
-use crate::nnue::data::InputFeatureSet;
-
-/// MNUE版5の2つの入力特徴集合とpairwise-l16-l32出力部を扱う診断用整数ネット。
+/// tatara形式を復号し、診断で対応しているLayerStackだけを受理する。
 pub(crate) struct IntegerNetwork {
-    network: Box<dyn DiagnosticNetwork>,
-    feature_set: InputFeatureSet,
+    network: Network,
 }
-
-trait DiagnosticNetwork {
-    fn width(&self) -> usize;
-    fn cp_per_logit(&self) -> f64;
-    fn evaluate(&self, position: &Position, side: Color) -> i32;
-}
-
-impl<F: FeatureSet> DiagnosticNetwork for Network<F, PairwiseL16L32> {
-    fn width(&self) -> usize {
-        self.width()
-    }
-    fn cp_per_logit(&self) -> f64 {
-        f64::from(self.cp_per_logit())
-    }
-    fn evaluate(&self, position: &Position, side: Color) -> i32 {
-        nnue::evaluate_for_diagnostics(self, position, side)
-    }
-}
-
 impl IntegerNetwork {
-    /// 入力特徴集合を選び、構造記述全体と本体を`Network::decode`で検査する。
     pub(super) fn read(path: &Path) -> Result<Self> {
-        let bytes = std::fs::read(path)?;
-        Ok(Self::decode(&bytes)?)
+        Ok(Self::decode(&std::fs::read(path)?)?)
     }
-    pub(crate) fn decode(bytes: &[u8]) -> std::result::Result<Self, nnue::Error> {
-        let architecture = nnue::architecture(bytes)?;
-        let feature = architecture.split(';').next();
-        let feature_set = match feature {
-            Some("features=P") => InputFeatureSet::P,
-            Some("features=HalfKP-hm-b8") => InputFeatureSet::HalfKpHmB8,
-            _ => {
-                return Err(nnue::Error::UnexpectedArchitecture {
-                    actual: architecture.into(),
-                });
-            }
-        };
-        let network: Box<dyn DiagnosticNetwork> = match feature_set {
-            InputFeatureSet::P => Box::new(Network::<P, PairwiseL16L32>::decode(bytes)?),
-            InputFeatureSet::HalfKpHmB8 => {
-                Box::new(Network::<HalfKpHmB8, PairwiseL16L32>::decode(bytes)?)
-            }
-        };
-        Ok(Self {
-            network,
-            feature_set,
-        })
+    pub(super) fn decode(bytes: &[u8]) -> std::result::Result<Self, Error> {
+        let network = Network::decode(bytes).map_err(Error::Format)?;
+        match network {
+            Network::LayerStack(_) => Ok(Self { network }),
+            Network::Simple(_) => Err(Error::HalfKpVmDeferred),
+        }
     }
-
-    pub(crate) fn feature_set(&self) -> InputFeatureSet {
-        self.feature_set
-    }
-    pub(crate) fn width(&self) -> usize {
+    pub(super) fn width(&self) -> usize {
         self.network.width()
     }
-    /// 重みファイルの勝率尺度（1ロジットあたりのcp）をf64へ広げて返す。
-    pub(crate) fn cp_per_logit(&self) -> f64 {
-        self.network.cp_per_logit()
+    pub(super) fn fv_scale(&self) -> i32 {
+        self.network.fv_scale()
     }
-    /// 累算器を局面から作り直し、指定した視点の評価をセンチポーンで返す。
-    pub(crate) fn evaluate(&self, position: &Position, side: Color) -> i32 {
-        self.network.evaluate(position, side)
+    /// 両視点のPSQTと後段を局面から再計算し、センチポーンで返す。
+    pub(super) fn evaluate(&self, position: &Position, side: Color) -> Result<i32> {
+        Ok(self.network.evaluate_for(position, side)?)
     }
 }
 
@@ -116,118 +77,47 @@ pub(super) fn read_baseline(path: &Path) -> Result<Pst> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use minase::eval::nnue::head::Head;
-
-    /// 実ファイルを読み、両入力特徴集合の型選択と診断APIを検査する。
     #[test]
-    fn integer_network_reads_all_feature_and_head_combinations() {
-        fn check<F: FeatureSet, H: Head>(head: H, expected_feature: InputFeatureSet) {
-            use minase::eval::features::{FEATURE_COUNT, PIECE_STATE_COUNT};
-            use sha2::{Digest, Sha256};
-            let source = include_bytes!("../../../minase/nets/nnue-epoch0.bin");
-            let width = u32::from_le_bytes(source[104..108].try_into().unwrap()) as usize;
-            let start = 192 + FEATURE_COUNT * 4 + PIECE_STATE_COUNT * 4;
-            let end = start + FEATURE_COUNT * width * 2;
-            let mut bytes = source[..start].to_vec();
-            for _ in 0..F::DIMENSIONS / FEATURE_COUNT {
-                bytes.extend_from_slice(&source[start..end]);
-            }
-            bytes.extend_from_slice(&source[end..end + width * 4]);
-            bytes.extend(head.to_bytes());
-            let text = format!(
-                "features={};ft={width};linear=tapered2;head={}",
-                F::NAME,
-                H::NAME
-            );
-            bytes[8..104].fill(0);
-            bytes[8..8 + text.len()].copy_from_slice(text.as_bytes());
-            let checksum = Sha256::digest(&bytes[192..]);
-            bytes[144..176].copy_from_slice(&checksum);
-            let reference = Network::<F, H>::decode(&bytes).unwrap();
-            let path = std::env::temp_dir().join(format!(
-                "minase-diag-head-{}-{}-{}.bin",
-                std::process::id(),
-                F::NAME,
-                H::NAME
-            ));
-            struct File(PathBuf);
-            impl Drop for File {
-                fn drop(&mut self) {
-                    std::fs::remove_file(&self.0).unwrap();
-                }
-            }
-            std::fs::write(&path, &bytes).unwrap();
-            let file = File(path);
-            let actual = IntegerNetwork::read(&file.0).unwrap();
-            assert_eq!(actual.feature_set(), expected_feature);
-            assert_eq!(actual.width(), width);
-            assert_eq!(actual.cp_per_logit(), f64::from(reference.cp_per_logit()));
-            let mut sparse = minase_core::PositionBuilder::new(Color::Black);
-            for (file, rank, side) in [(0, 0, Color::Black), (11, 11, Color::White)] {
-                sparse
-                    .put(
-                        minase_core::Square::new(file, rank).unwrap(),
-                        minase_core::PieceCode::new(side, minase_core::PieceKind::King).unwrap(),
-                    )
-                    .unwrap();
-            }
-            let sparse = sparse.finish().unwrap();
-            for position in [Position::initial(), sparse] {
-                for side in Color::ALL {
-                    assert_eq!(
-                        actual.evaluate(&position, side),
-                        nnue::evaluate_for_diagnostics(&reference, &position, side)
-                    );
-                }
-            }
-            for text in [
-                format!(
-                    "features=unknown;ft={width};linear=tapered2;head={}",
-                    H::NAME
-                ),
-                format!(
-                    "features={};ft={width};linear=tapered2;head=unknown",
-                    F::NAME
-                ),
-                format!(
-                    "features={};ft={width};linear=unknown;head={}",
-                    F::NAME,
-                    H::NAME
-                ),
-            ] {
-                bytes[8..104].fill(0);
-                bytes[8..8 + text.len()].copy_from_slice(text.as_bytes());
-                std::fs::write(&file.0, &bytes).unwrap();
-                let error = match IntegerNetwork::read(&file.0) {
-                    Ok(_) => panic!("unsupported architecture accepted"),
-                    Err(error) => error,
-                };
-                assert!(matches!(
-                    error.downcast_ref::<nnue::Error>(),
-                    Some(nnue::Error::UnexpectedArchitecture { .. })
-                ));
-            }
-        }
-        fn heads<F: FeatureSet>(feature: InputFeatureSet) {
-            let width = 64;
-            check::<F, _>(
-                PairwiseL16L32::new(
-                    width,
-                    &[128; 64],
-                    -65_536,
-                    &[4; 15 * 64],
-                    [256; 15],
-                    &[4; 32 * 30],
-                    [256; 32],
-                    [4096; 32],
-                    true,
-                )
-                .unwrap(),
-                feature,
+    fn reads_layerstack_and_rejects_simple_and_malformed_inputs() {
+        use crate::nnue::layerstack::{Parameters, Scale, export};
+        let scale = Scale::new(679.03).unwrap();
+        let bytes = export(&Parameters::initialize(7, scale), scale).unwrap();
+        let net = IntegerNetwork::decode(&bytes).unwrap();
+        let reference = Network::decode(&bytes).unwrap();
+        assert_eq!(net.width(), 256);
+        assert_eq!(net.fv_scale(), 12);
+        for side in Color::ALL {
+            let position = Position::initial();
+            assert_eq!(
+                net.evaluate(&position, side).unwrap(),
+                reference.evaluate_for(&position, side).unwrap()
             );
         }
-        heads::<P>(InputFeatureSet::P);
-        heads::<HalfKpHmB8>(InputFeatureSet::HalfKpHmB8);
+        use minase::eval::nnue::{
+            input::FeatureSet,
+            network::{SimpleNetwork, SimpleParameters},
+        };
+        let simple = SimpleNetwork::new(SimpleParameters {
+            width: 2,
+            fv_scale: 8,
+            ft_biases: vec![0; 2],
+            ft_weights: vec![0; FeatureSet::HalfKpVm.spec().dimensions() * 2],
+            l1_biases: vec![0; 32],
+            l1_weights: vec![0; 32 * 4],
+            l2_biases: vec![0; 32],
+            l2_weights: vec![0; 32 * 32],
+            output_bias: 0,
+            output_weights: vec![0; 32],
+        })
+        .unwrap()
+        .encode();
+        assert!(matches!(
+            IntegerNetwork::decode(&simple),
+            Err(Error::HalfKpVmDeferred)
+        ));
+        for bad in [&bytes[..3], &bytes[..bytes.len() - 1], b"MNUE".as_slice()] {
+            assert!(matches!(IntegerNetwork::decode(bad), Err(Error::Format(_))));
+        }
     }
 
     /// 版3でもFMの次元0なら、FMを要する診断の基準には使えない。

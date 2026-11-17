@@ -51,9 +51,9 @@ use serde_json::json;
 
 use crate::{
     data::{Outcome, Sample, hash64, is_validation, stream::read_file},
-    diagnostics::network::IntegerNetwork,
     identity::file_identity,
     nn::{atomic_write, hex, workers::workers},
+    nnue::export::network::IntegerNetwork,
 };
 pub use error::{Error, Result};
 use solver::{Row, bce, newton};
@@ -582,7 +582,7 @@ pub fn run(args: Args) -> Result<()> {
     let threads = workers(args.threads).map_err(Error::Workers)?;
     let base = fs::read(&args.base)?;
     IntegerNetwork::decode(&base)?;
-    let base_identity = serde_json::to_value(file_identity(&args.base)?)?;
+    let base_identity = super::export::network::file_identity(&args.base)?;
     let dataset = load(&args, &base, threads)?;
     let calibration = calibrate(&dataset.training)?;
     let mut tau_losses = Vec::new();
