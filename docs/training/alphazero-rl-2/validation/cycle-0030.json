@@ -1,0 +1,58 @@
+{
+  "checkpoint_sha256": "f988e70cd4a3cc2ba74b560ad79b2a7ea0c8c4ac94dd9365790983347d7fc3cf",
+  "blocks": 20,
+  "channels": 256,
+  "data": {
+    "path": "/mnt/synology_nas/minase/alphazero/validation/zero-validation-games.mnsd",
+    "size": 1287928,
+    "sha256": "670b2bceee2d73eb5ddc86e87919600f2fce247181486189d7050a2543fc4033",
+    "rule_set": "L1,L2,P0,P3,R1,E1,E3",
+    "generation_commit": "b59eb37c80e675390d45a5077275ba093af8acdf",
+    "seed": 20261113,
+    "game_count": 811
+  },
+  "device": "cuda",
+  "precision": "fp32",
+  "batch_size": 128,
+  "diagnostics": {
+    "game_count": 811,
+    "position_count": 164504,
+    "value_result": 0.7134993606369516,
+    "policy_agreement": 0.05378390189426679
+  },
+  "bands": [
+    {
+      "first_move": 1,
+      "last_move": 40,
+      "game_count": 811,
+      "position_count": 32440,
+      "value_result": 0.705102523538926,
+      "policy_agreement": 0.05527127003699137
+    },
+    {
+      "first_move": 41,
+      "last_move": 100,
+      "game_count": 808,
+      "position_count": 44978,
+      "value_result": 0.7368263313995266,
+      "policy_agreement": 0.03548616754795777
+    },
+    {
+      "first_move": 101,
+      "last_move": 200,
+      "game_count": 677,
+      "position_count": 54073,
+      "value_result": 0.7334698485107931,
+      "policy_agreement": 0.04967453926906876
+    },
+    {
+      "first_move": 201,
+      "last_move": null,
+      "game_count": 390,
+      "position_count": 33013,
+      "value_result": 0.6389496336670517,
+      "policy_agreement": 0.09846231727743276
+    }
+  ],
+  "elapsed_seconds": 105.50569113204256
+}
