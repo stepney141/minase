@@ -63,7 +63,7 @@ NNUEの世代反復（[標準レシピv1と世代反復のやり直し](nnue-sta
 集計JSONは塊のMNSDを確定させた後に書かれ、その存在が塊の確定を表す。以下では、同じ番号のMNSDと集計JSONを塊の組と呼ぶ。
 確定済みの塊の組と`config.json`を別の機械の出力先へ写せば、同じコマンドで続きを生成できる。
 再開のときに集計JSONがあるのにMNSDが欠けた塊があると、生成器は探索を始める前に止まる。
-異なる機械の間で同じ対局になることは再開の条件ではなく、異なる機械で生成した塊が1つの教師ファイルに混ざってよい。この判断は[設計判断の記録（ADR）](../../adr/commit-nnue-teacher-files-in-fixed-game-chunks-and-reassemble-them-into-one-file.md)にある。
+異なる機械の間で同じ対局になることは再開の条件ではなく、異なる機械で生成した塊が1つの教師ファイルに混ざってよい。この判断は[設計判断の記録（ADR）](../../adr/archive/commit-nnue-teacher-files-in-fixed-game-chunks-and-reassemble-them-into-one-file.md)にある。
 2026年11月14日の[GCPでの予備測定](../../measurements/adhoc/gcp-spot-teacher-generation-speed.md)では、GCPの2台がそれぞれビルドしたバイナリで、最初の塊を同じバイト列で作り、作業機の塊とはMNSDヘッダの生成コミットの欄だけが異なった。
 
 生成機の側では、既存の[生成機の作業プロセス](../../../scripts/vast/generation_worker.py)を変えずに使う。

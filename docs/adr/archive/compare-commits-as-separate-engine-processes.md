@@ -2,16 +2,16 @@
 
 ## ステータス
 
-承認済み。決定日は2026年8月11日。
+置き換え済み。決定日は2026年8月11日。[棋力測定はコミットからビルドした別プロセスのエンジン同士で行い、ネットは追加のオプションで渡してチェックサムで固定する](../compare-commits-as-separate-engine-processes-and-pin-networks-by-checksum.md)によって置き換えられた。
 
 ## コンテキスト
 
-探索部のフェーズ2までの自己対局ハーネスは、深さや機能フラグを持つ探索の設定をハーネスの中で組み立て、同じプロセスの中で対戦させていた（[探索部](../plans/archived/search.md)）。
+探索部のフェーズ2までの自己対局ハーネスは、深さや機能フラグを持つ探索の設定をハーネスの中で組み立て、同じプロセスの中で対戦させていた（[探索部](../../plans/archived/search.md)）。
 この方式では、新しい機能を比べるたびに、その機能を表す設定項目をハーネスへ足す必要があった。
 測定の道具が、測定する差分の内容に依存していたことになる。
-Stockfishの測定基盤fishtestは、テストを2つのgitリビジョンで定義し、ワーカーが両方をビルドし、対局ランナーは差分の内容を知らない（[対局ハーネスのバイナリ対戦化](../plans/archived/match-harness.md#fishtestとの構造対応)）。
-[対局ハーネスのバイナリ対戦化](../plans/archived/match-harness.md)は、この構造をminaseへ移したマイルストーンである。
-移行の際には、旧方式で得た2件の測定を新方式で再現した（[凍結ベースライン対random](../measurements/match-harness/frozen-baseline-vs-random-depth1.md)、[深さ2対深さ1](../measurements/match-harness/depth2-vs-depth1-migration-gsprt.md)）。
+Stockfishの測定基盤fishtestは、テストを2つのgitリビジョンで定義し、ワーカーが両方をビルドし、対局ランナーは差分の内容を知らない（[対局ハーネスのバイナリ対戦化](../../plans/archived/match-harness.md#fishtestとの構造対応)）。
+[対局ハーネスのバイナリ対戦化](../../plans/archived/match-harness.md)は、この構造をminaseへ移したマイルストーンである。
+移行の際には、旧方式で得た2件の測定を新方式で再現した（[凍結ベースライン対random](../../measurements/match-harness/frozen-baseline-vs-random-depth1.md)、[深さ2対深さ1](../../measurements/match-harness/depth2-vs-depth1-migration-gsprt.md)）。
 
 ## 決定
 
@@ -27,9 +27,9 @@ Stockfishの測定基盤fishtestは、テストを2つのgitリビジョンで�
 ## 結果
 
 探索、評価、および時間管理の変更は、コミットとして確定してから測る必要がある。
-測定の標準手順と、比較スイッチを足さないという規則は[棋力測定の手引き](../guides/sprt.md)にある。
+測定の標準手順と、比較スイッチを足さないという規則は[棋力測定の手引き](../../guides/sprt.md)にある。
 置換表容量のように両エンジンへ同じく与える資源は、比較スイッチではなく対局条件として扱い、`manifest.json`に記録する。
-投了の無効化も、候補と基準の両方へ無条件に与える対局条件である（[投了の無効化のADR](disable-resignation-in-strength-measurements.md)）。
+投了の無効化も、候補と基準の両方へ無条件に与える対局条件である（[投了の無効化のADR](../disable-resignation-in-strength-measurements.md)）。
 探索部の進歩を測る凍結ベースラインもコミットハッシュで固定でき、完了基準ゲートは基準にコミット0045833と深さ1を指定して実行する。
 HaChuのようにUSIを話さないエンジンも、`cecp:`の指定で同じ審判層の下で対局できる。
-各局でエンジンを起動し直す時間がかかるが、[棋力測定の所要時間削減](../plans/archived/match-cost-reduction.md)の再集計では、プロセスの起動、審判層、および保存に費やす時間は全体の数%以下だった。
+各局でエンジンを起動し直す時間がかかるが、[棋力測定の所要時間削減](../../plans/archived/match-cost-reduction.md)の再集計では、プロセスの起動、審判層、および保存に費やす時間は全体の数%以下だった。

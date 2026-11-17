@@ -4,7 +4,7 @@
 評価関数とは、局面を受け取り、手番側から見た有利さを1つの整数で返す関数である。
 PSTとFMの評価関数は2026年10月12日まで探索の既定の評価関数であり、同日にNNUE（差分更新できる小型のニューラルネットワーク）へ置き換わった。
 現在の探索はNNUEだけを使い、その式と学習は[NNUEによる評価関数と学習の目的関数](evaluation-nnue.md)が説明する。
-PSTとFMのコードは、学習した評価関数を比べる基準としてテストとともにソースに残っており、探索からは呼ばれない（[探索が使う評価関数をNNUEの1つにし、PSTとFMのコードは比較用に残す](../adr/use-nnue-as-the-only-search-evaluation.md)）。
+PSTとFMのコードは、学習した評価関数を比べる基準としてテストとともにソースに残っており、探索からは呼ばれない（[探索が使う評価関数をNNUEの1つにし、PSTとFMのコードは比較用に残す](../adr/use-an-nnue-read-from-evalfile-as-the-only-search-evaluation.md)）。
 NNUEの評価値のうち駒と升ごとの点数を足すだけの部分を線形の経路と呼び、この部分はPSTの式をそのまま使い、PSTの重みを初期値として学習するので、本書の入力特徴、補間、および教師値の説明はNNUEを読む前提にもなる。
 
 値の単位はセンチポーン（以下cp）であり、成っていない歩兵1枚をおよそ100とする目盛りである。
@@ -558,7 +558,7 @@ FMの学習器 `minase-trainer fm train`（`crates/minase-trainer/src/fm/`）は
 ## 参考資料
 
 - [NNUEによる評価関数と学習の目的関数](evaluation-nnue.md)
-- [探索が使う評価関数をNNUEの1つにし、PSTとFMのコードは比較用に残す](../adr/use-nnue-as-the-only-search-evaluation.md)
+- [探索が使う評価関数をNNUEの1つにし、PSTとFMのコードは比較用に残す](../adr/use-an-nnue-read-from-evalfile-as-the-only-search-evaluation.md)
 - [評価関数の設計書](../plans/archived/evaluation.md)
 - [PSTの序中盤と終盤の補間](../plans/archived/tapered-pst.md)
 - [FMの設計書](../plans/archived/factorization-machine.md)

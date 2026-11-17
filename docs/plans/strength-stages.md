@@ -55,7 +55,7 @@
 段階6のaspiration windowsは、段階1と段階4で到達深さが増えるほど発動しやすくなる。
 段階10のNNUEは、段階1の評価の差分更新に加え、[評価関数の後続計画の順序](#評価関数の後続計画の順序)で確認した教師の能力と残存誤りを着手判断の根拠とする。
 
-[ネットの外部ファイル化](nnue-external-network-file.md)の後は、αβ探索の`bench`の前に`RuleSet`、`EvalFile`、および`isready`を送り、対局の実行器にはネットのファイルを`--candidate-option EvalFile=<パス>`と`--baseline-option EvalFile=<パス>`で渡す。
+[ネットの外部ファイル化](archived/nnue-external-network-file.md)の後は、αβ探索の`bench`の前に`RuleSet`、`EvalFile`、および`isready`を送り、対局の実行器にはネットのファイルを`--candidate-option EvalFile=<パス>`と`--baseline-option EvalFile=<パス>`で渡す。
 
 ## 設計判断
 

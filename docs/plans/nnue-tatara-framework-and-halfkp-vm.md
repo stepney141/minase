@@ -16,8 +16,8 @@ P型は、第1層の出力どうしの積と2段の隠れ層を持つtataraのLa
 ## 状態
 
 状態は起案である。2026年11月15日に起案し、まだ着手していない。
-着手は、[ネットの外部ファイル化の設計書](nnue-external-network-file.md)の完了を待つ。
-次の一手は、利用者の承認を得て、外部ファイル化の完了後にmasterから切ったブランチでフェーズ1を始めることである。
+前提の[ネットの外部ファイル化の設計書](archived/nnue-external-network-file.md)は2026年11月17日に完了した。
+次の一手は、利用者の承認を得て、masterから切ったブランチでフェーズ1を始めることである。
 着手の前に、学習器が書く記録の形式をtataraに揃えるかどうかを利用者に諮る（「依存関係」の節）。
 
 ## 目的
@@ -65,7 +65,7 @@ tataraは、将棋のNNUEで約80億局面以上の教師を学んだ記録を�
 
 ## 依存関係
 
-本書は、[ネットの外部ファイル化](nnue-external-network-file.md)の完了を前提とする。
+本書は、[ネットの外部ファイル化](archived/nnue-external-network-file.md)の完了を前提とする。
 同書は、ネットをUSI（将棋のエンジンとGUIの通信規約）のオプション`EvalFile`で外部のファイルから読み、ネットの識別子を読み込んだファイル全体のSHA-256とし、連続生成スクリプトから世代ごとのネットをgitにコミットする手順をなくす。
 本書はその上で、重みの形式と構造の選び方を変える。
 
@@ -112,7 +112,7 @@ HalfKP_vmの世代反復の設計書は、P型の世代反復の後に起案す�
 | 初期化 | tataraに倣う。LayerStackは第1層を半値幅√(1÷入力の行数)の一様分布、後段を±0.01の一様分布、バイアスを0とする。Simpleは第1層も含めて±0.01の一様分布とする。PSQTはtataraの`Material`と同じく、v0の駒割をK_oで割った値で初期化し、王駒と先獅子は0とする。王駒を0にするのは、どちらの陣営にもあって評価値の差に効かない大きな値を初期値に入れないためであり、いまの線形の経路の初期化と同じである。v0の書き出しでは、v0を正確に再現するために王駒の値も入れる。 | いまの第1層の正規分布の初期化（[教訓](../lessons/nnue-first-layer-init-saturation.md)）は、飽和を避けるという同じ目的をtataraの初期化も満たすので、tataraに揃える。 |
 | 学習のレシピ | 両方の構造に標準レシピv2（バッチ16,384、学習の長さの単位superbatchを1回あたり6,104更新（約1億局面）として、`cosine:<長さ>:0.027`、重み減衰0、最後のネットを書き出す）を使う。PSQTは、tataraと同じく第1層と同じ最適化器の群に入れ、第1層の学習率を使う。 | tataraの既定値（学習率0.000875、superbatchごとに0.992倍、更新の初期を補正する最適化器Ranger）は採らない。世代反復の間は標準レシピv2を変えないと決めている（[世代反復の設計書](nnue-generation-iteration.md)）。いまの線形の経路の学習率0.03はセンチポーンの単位の値であり、ネットの出力の単位のPSQTにそのまま移せない。 |
 | 書き出しの検査 | 量子化の範囲を超える値は、いまと同じくエラーで止め、切り詰めない。量子化誤差の平均、符号つきの平均、最大値、および層ごとの飽和の割合を記録する。いまの「平均の絶対誤差が勝率尺度の1/40を超えたら止める」条件は外し、棋力は対局で判断する。 | tataraは範囲外を切り詰めて警告するが、プロジェクトの規則（CLAUDE.md）は、異常時に黙って処理を続けることを禁じている。1/40の条件はminase独自の閾値であり、尺度64の後段で既存のネットを書き出したときの平均の誤差29.80 cpは、そのネットの勝率尺度1072.65の1/40の26.8 cpを超えていた。 |
-| 線形の経路の補正`nnue fit-linear` | 削除する。 | 補正は序中盤の列だけを書き換えるので、補間のないPSQTには同じ意味で移せない。標準レシピは補正を使わない（[ADR](../adr/do-not-correct-the-nnue-linear-path-after-training.md)）。 |
+| 線形の経路の補正`nnue fit-linear` | 削除する。 | 補正は序中盤の列だけを書き換えるので、補間のないPSQTには同じ意味で移せない。標準レシピは補正を使わない（[ADR](../adr/use-each-trained-nnue-uncorrected-and-outside-git-for-the-next-generation.md)）。 |
 | 学習器の診断 | 駒除去差分の診断はPSQTと後段の構造ごとの式へ、合法手の評価差の診断は、終局する着手を静的評価に渡さず終局として記録する形へ改める。どちらも、ネットの実数の出力をK_oでセンチポーンへ換算する。連続生成スクリプトが学習の後に行う駒除去差分の診断は残し、新しい診断を呼ぶ。 | 診断を消す案は、世代反復が学習の後に行う評価の形の確認（[世代反復の設計書](nnue-generation-iteration.md)）を失う。HalfKP_vmは王駒のない視点の静的評価を拒否するので、終局する着手を静的評価に渡すいまの診断はそのまま使えない。 |
 | HalfKP-hm-b8 | 削除する。 | HalfKP_vmがその再比較の役を引き継ぐ。使わないコードを残さない方針（YAGNI）に従う。 |
 | 載せ替えの確認 | 載せ替える前のP型と後のP型を、同じ教師と同じ条件で1本ずつ学び、前のP型を候補、後のP型を基準にした標準のGSPRT（先後を入れ替えた2局の組の勝敗を逐次に見て、候補が0 Elo強いか10 Elo強いかを判定する検定）をSTC（持ち時間10秒、1手0.1秒加算）とLTC（60秒、0.2秒加算）で1回ずつ行い、両方が`H0`（前のP型が10 Elo強いとは言えない）なら載せ替えを採る。 | 測定の範囲と所要時間の見込み（学習2本で約3時間、STCで約1〜8時間、LTCで約3〜20時間）は、2026年11月15日に利用者が了承した。2026年10月25日に利用者が線形の経路の初期化の変更で決めた非劣性の判定と同じ方式である。非劣性用の独自の仮説（−5 Eloと0 Elo）を作る案は、既存の手順にない。 |
@@ -328,12 +328,12 @@ HalfKP_vmの第1世代の教師に、P型の世代反復の第1世代の教師�
 - エンジンと学習器が、P型とHalfKP_vmの両方をtataraの形式で読み書きし、MNUE、`Head`、型の別名、HalfKP-hm-b8、`--base`、および`nnue fit-linear`がコードから消えている。
 - 入力特徴集合、構造、重みの形式、駒価値の表、勝率尺度、および学習器のサブコマンドの仕様を、それぞれのdocコメントと4つの手引き（[NNUEの評価関数の手引き](../guides/evaluation-nnue.md)、[NNUEの学習の手引き](../guides/nnue-training.md)、[ファイル形式の手引き](../guides/file-formats.md)、および[USIの拡張の手引き](../guides/usi-extensions.md)）へ移している。
 - 設計判断を新しいADRへ移している。次の8本は、置き換えるADRを書き、旧版を`docs/adr/archive/`へ移している。
-  - [NNUEを入力特徴集合と出力部の型で表すADR](../adr/parameterize-the-nnue-by-feature-set-and-head-types.md)について、探索が型の別名の1組だけを使い、全ての入力の基底を13,680個に揃える決定を置き換える。
+  - [NNUEを入力特徴集合と出力部の型で表すADR](../adr/parameterize-the-nnue-by-types-and-reject-mismatched-network-files-on-load.md)について、探索が型の別名の1組だけを使い、全ての入力の基底を13,680個に揃える決定を置き換える。
   - [線形の経路と要素積と2段の隠れ層でNNUEを組むADR](../adr/compose-the-nnue-of-a-piece-value-initialized-linear-path-and-pairwise-products-with-two-hidden-layers.md)について、補間つきの線形の経路、minase独自の要素積、および後段の量子化の決定を置き換える。
-  - [探索が使う評価関数をNNUEの1つにするADR](../adr/use-nnue-as-the-only-search-evaluation.md)について、コミットごとに評価関数を1つに保つ記述を改め、探索はNNUEだけを使いつつ構造を読み込みのときに選ぶ形にする。v0、PST、FMを探索の中で切り替えることはしない。
+  - [探索が使う評価関数をNNUEの1つにするADR](../adr/use-an-nnue-read-from-evalfile-as-the-only-search-evaluation.md)について、コミットごとに評価関数を1つに保つ記述を改め、探索はNNUEだけを使いつつ構造を読み込みのときに選ぶ形にする。v0、PST、FMを探索の中で切り替えることはしない。
   - [P型の入力特徴集合を使うADR](../adr/use-p-type-input-features-for-the-nnue.md)について、HalfKP-hm-b8を再比較のために残す記述を置き換える。
   - [探索用駒価値を学習PSTから導くADR](../adr/derive-search-piece-values-from-the-learned-pst.md)について、固定値を学習したPSTから導く決定を、v0の駒割から作る決定に置き換える。
-  - [学習の後に線形の経路を補正しないADR](../adr/do-not-correct-the-nnue-linear-path-after-training.md)について、補正の処理を残す記述を置き換える。
+  - [学習の後に線形の経路を補正しないADR](../adr/use-each-trained-nnue-uncorrected-and-outside-git-for-the-next-generation.md)について、補正の処理を残す記述を置き換える。
   - [P型の鏡映の対で重みを共有するADR](../adr/share-p-type-mirror-weights-by-half-width-rotation.md)について、隠れ層にも半幅の共有を課す記述を改める。tataraの要素積の下では後段の共有は要らない。
   - [教師値をネットの勝率尺度で換算するADR](../adr/convert-nnue-teacher-values-with-the-network-win-rate-scale-by-default.md)について、勝率尺度をネットのヘッダに持ち`--base`から引き継ぐ記述を改め、教師の勝率尺度K_tと出力の換算の尺度K_oを分けてK_tを引数で渡す形にする。
 - 「HalfKP_vmをいつでも使える状態」の節の項目をすべて満たしている。

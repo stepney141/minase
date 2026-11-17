@@ -11,7 +11,7 @@ AlphaZero型探索のMCTSは、αβ探索の置き換えではなく、同じエ
 αβ探索は置換表、ワーカー別のhistory表、およびワーカー数を持ち、MCTSは推論のセッション、再利用する探索木、および推論の設定を持つ。
 USIのオプションも、`USI_Hash`の意味と`Threads`の範囲が方式で異なり、推論の設定（`NnBackend`、`NnCacheDir`、`NnBatchSize`）はMCTSにだけある。
 lc0は2025年に探索の実装を方式ごとのディレクトリへ分け、起動時に1つの探索を選んで、その探索のオプションだけを公開する構造にした。
-対局ハーネスで`commit:<コミット>`と指定したエンジンは、ハーネスがそのコミットを`cargo build --release --bin minase`でビルドする（[コミットを別プロセスで比べるADR](compare-commits-as-separate-engine-processes.md)）。
+対局ハーネスで`commit:<コミット>`と指定したエンジンは、ハーネスがそのコミットを`cargo build --release --bin minase`でビルドする（[コミットを別プロセスで比べるADR](archive/compare-commits-as-separate-engine-processes.md)）。
 エンジンの開発者は、[探索方式の共存とMCTSの設計書](../plans/archived/alphazero-mcts.md)でこの構造を決めた。
 
 ## 決定

@@ -12,7 +12,7 @@
 コミットは`git archive`で`target/bench-cache/<完全ハッシュ>/src`へ展開し、
 通常のrelease設定でビルドする。参照の局面別出力は1回実行の結果を同じ
 ディレクトリへ保存して再利用する。候補は作業ツリーをビルドする。
-benchをUSIの独自コマンドへ移したコミット以後だけを対象とする（docs/adr/run-engine-diagnostics-as-usi-commands-and-keep-experiment-tools-as-subcommands.md）。
+benchをUSIの独自コマンドへ移したコミット以後だけを対象とする（docs/adr/run-engine-diagnostics-as-usi-commands-on-the-prepared-session.md）。
 標準入力へRuleSet、EvalFile、isready、bench、quitの順に送り、終了コード0と終端行を確認してから解析する。
 
 使い方:

@@ -66,7 +66,7 @@ PV-MCTSで使える道具は、ネットの出力を表示する`eval`、ネッ�
 ## 依存関係
 
 本書は、PV-MCTSの探索木（`crates/minase/src/search/mcts/tree.rs`）、駆動部（`driver.rs`）、対局用の探索のループ（`engine.rs`の`run`）、自己対局の各手の決定（`crates/minase/src/bin/minase/zero_selfplay/game.rs`の`decision`）、および`bench`の受け付け（`crates/minase/src/protocol/usi/diagnostics.rs`の`handle_bench`）の現行の実装に依存する。
-探索の方式は[MCTSの対局の探索のADR](../../adr/search-mcts-games-by-puct-with-virtual-loss-batches.md)に、整合検査の置き場所は[整合検査をフィーチャ`invariants`に置くADR](../../adr/enable-invariant-checks-in-tests-by-feature.md)に、診断をUSIの独自コマンドにする方針は[診断のコマンドのADR](../../adr/run-engine-diagnostics-as-usi-commands-and-keep-experiment-tools-as-subcommands.md)に従う。
+探索の方式は[MCTSの対局の探索のADR](../../adr/search-mcts-games-by-puct-with-virtual-loss-batches.md)に、整合検査の置き場所は[整合検査をフィーチャ`invariants`に置くADR](../../adr/enable-invariant-checks-in-tests-by-feature.md)に、診断をUSIの独自コマンドにする方針は[診断のコマンドのADR](../../adr/archive/run-engine-diagnostics-as-usi-commands-and-keep-experiment-tools-as-subcommands.md)に従う。
 
 本書は、探索木について次の用語を使う。
 探索木の節点は局面に当たり、節点から子へ伸びる辺は着手に当たる。
@@ -94,7 +94,7 @@ USIの層は探索を別のスレッドで実行し、探索が終わると、�
 どの組でも、後からmasterへ入れる側が、先に入った変更に合わせる。
 
 - [MultiPV](multipv.md)は、探索の終わりにPV-MCTSの根の候補手を、最善手を選ぶ`best_edge`と同じ比較規則で並べ、USIの層で探索の終わりに出力する経路（`usi.rs`の`handle_search_event`と`finish_search`）を変える。本書の表も同じ比較規則で並べる。候補手を並べる関数は、先に入った側が作り、後の側はそれを使う。
-- [NNUEのネットの外部ファイル化](../nnue-external-network-file.md)は、PV-MCTSの勝率尺度（勝率を評価値のcp、すなわちセンチポーンへ換算する係数）をUSIのオプション`NnCpPerLogit`で受け取る形に改め、αβ探索の`bench`に`isready`でのネットの準備を求め、`--search mcts`で起動したminaseの`bench`を拒否する。本書は、その`bench`をPV-MCTSの探索にするので、拒否と重なる。本書が先に入れば、外部ファイル化の側はPV-MCTSの`bench`を拒否せずに残す。外部ファイル化が先に入れば、本書がその拒否をPV-MCTSの探索に置き換える。本書の`VerboseMoveStats`とPV-MCTSの`bench`は、勝率尺度もNNUEのネットも使わず、勝率だけを出すので、勝率尺度の受け取り方の変更の影響は受けない。
+- [NNUEのネットの外部ファイル化](nnue-external-network-file.md)は、PV-MCTSの勝率尺度（勝率を評価値のcp、すなわちセンチポーンへ換算する係数）をUSIのオプション`NnCpPerLogit`で受け取る形に改め、αβ探索の`bench`に`isready`でのネットの準備を求め、`--search mcts`で起動したminaseの`bench`を拒否する。本書は、その`bench`をPV-MCTSの探索にするので、拒否と重なる。本書が先に入れば、外部ファイル化の側はPV-MCTSの`bench`を拒否せずに残す。外部ファイル化が先に入れば、本書がその拒否をPV-MCTSの探索に置き換える。本書の`VerboseMoveStats`とPV-MCTSの`bench`は、勝率尺度もNNUEのネットも使わず、勝率だけを出すので、勝率尺度の受け取り方の変更の影響は受けない。
 - [PUCTの係数の調整](../mcts-puct-spsa.md)は、PUCTの係数と方策の温度の既定値を1つの表へ移し、調整用のビルドでは係数を`Tune_`で始まるUSIオプションで受ける。PV-MCTSの`bench`は、新しく作ったMCTSと同じく係数の表の値を使うので、通常のビルドでは表の既定値で探索する。αβ探索の`bench`は、調整用のビルドで`Tune_`を変えてから実行すると変えた後の係数で測り（[起動引数と診断ツールをUSIへ移す計画](cli-to-usi.md)の`bench`の節）、引数を受け付けて実行した時点から`Tune_`の変更を拒否する（[USIの独自拡張の手引き](../../guides/usi-extensions.md)の`bench`の節）。PV-MCTSの`bench`も、この2つの規則に揃える。使った係数の値は出力の最初の行に出るので、`Tune_`を変えた後の実行は、その行で区別できる。
 
 AlphaZero型探索の[2回目の強化学習の実行](../alphazero-rl-2.md)は、作業の開始時のコミットで作ったバイナリを使うので、本書の変更の影響を受けない。
@@ -361,7 +361,7 @@ minaseにも、起動した探索の方式でコマンドの働きが変わる�
 `bench`を呼ぶスクリプトは、どれもαβ探索で起動したminaseに送るので、PV-MCTSの`bench`への変更で壊れる呼び出し側はない。
 いまの手引きは、MCTSで起動したminaseの`bench`もαβ探索を測ると書いているので、その記述は改める。
 この変更は、[開発の規約](../../../CONTRIBUTING.md)が互換性の対象に挙げるUSIのオプション、起動引数、規則コード、およびライブラリの公開APIのどれにも当たらないので、互換性を壊す変更の印は付けない。
-[NNUEのネットの外部ファイル化](../nnue-external-network-file.md)は、MCTSで起動したminaseの`bench`を拒否すると定めるが、PV-MCTSの`bench`があれば拒否する状態は要らなくなる。
+[NNUEのネットの外部ファイル化](nnue-external-network-file.md)は、MCTSで起動したminaseの`bench`を拒否すると定めるが、PV-MCTSの`bench`があれば拒否する状態は要らなくなる。
 
 別の名前の独自コマンド（たとえば`mcts-bench`）を加えて、`bench`をαβ探索だけに残す案は採らない。
 同じ役割の診断に2つの名前ができ、先行エンジンにその形の先例がないからである。
@@ -417,7 +417,7 @@ info string end
 主変化の行を表とは別に出すのは、主変化を取り出す`principal_variation`の誤りが、根の統計を変えずに主変化と深さだけを変え得るからである。
 
 PV-MCTSの`bench`は評価値（cp）を出さない。
-勝率をcpへ換算する勝率尺度は、[NNUEのネットの外部ファイル化](../nnue-external-network-file.md)の後にはUSIのオプションから受け取る値になる。
+勝率をcpへ換算する勝率尺度は、[NNUEのネットの外部ファイル化](nnue-external-network-file.md)の後にはUSIのオプションから受け取る値になる。
 cpを出すとPV-MCTSの`bench`がセッションの設定に依存するので、出さずに勝率だけを根の表の`q`で示す。
 外部ファイル化の後のαβ探索の`bench`は`isready`でネットを準備してから実行するが、PV-MCTSの`bench`はハッシュの評価器を使うので、その後も`isready`は要らない。
 

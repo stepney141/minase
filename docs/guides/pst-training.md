@@ -2,7 +2,7 @@
 
 本書は、駒の種類と位置に応じた評価表であるPSTと、PSTに加える2駒関係の補正FM（Factorization Machine）を学習する手順を定める。
 学習には、学習器のクレート`crates/minase-trainer`の実行ファイル`minase-trainer`のサブコマンドを使う。
-エンジンが探索に使う既定の評価関数は、2026年10月12日からNNUEである（[探索が使う評価関数をNNUEの1つにし、PSTとFMのコードは比較用に残す](../adr/use-nnue-as-the-only-search-evaluation.md)）。
+エンジンが探索に使う既定の評価関数は、2026年10月12日からNNUEである（[探索が使う評価関数をNNUEの1つにし、PSTとFMのコードは比較用に残す](../adr/use-an-nnue-read-from-evalfile-as-the-only-search-evaluation.md)）。
 PSTとFMの学習器は、NNUEの線形経路の初期値を作る場合や、PSTを土台にした研究の計画で使う。
 
 本書は、実行者が従う手順、判断規則、および標準コマンドだけを記す。
@@ -78,28 +78,30 @@ MNSDの形式と由来は`crates/minase/src/training/records.rs`、教師の分�
 ```bash
 cd data/<実験名>/generator
 target/release/minase data selfplay generate --output-dir ../generated-<シード> --chunk-games 250 --seed <シード> \
-  --games 7500 --nodes 100000 --random-moves 0 --concurrency 16 --max-ply 4000 --hash-mb 16 \
+  --eval-file <教師生成に使うネット> --games 7500 --nodes 100000 --random-moves 0 --concurrency 16 --max-ply 4000 --hash-mb 16 \
   2>&1 | tee -a ../generate-<シード>.log
 target/release/minase data selfplay inspect ../generated-<シード>/teacher.mnsd | tee ../inspect-<シード>.log
 cd -
 ```
 
 生成器は、規則セット`lishogi`（L1,L2,P0,P3,R1,E1,E3）で対局する。
+教師の探索に使うNNUEのネットは、必須の引数`--eval-file`で渡すファイルから1回だけ読む。
+ネットは実行ファイルに埋め込まれていないので、生成コミットとは別に、NASに置いたネットのファイルを指定する。
 `--openings`を与えない生成では、ランダムな手で作った開始局面を教師と同じノード数で探索し、探索値の絶対値が1,700 cpを超えた開始局面を捨てて作り直す。
 また、探索値の絶対値が4,250 cp以上で同じ側の優勢を示す局面が5手続いた対局を、優勢な側の勝ち（終局理由13、評価値による裁定）として打ち切る。
 どちらの閾値も引数では変えられず、理由は[ADR](../adr/exclude-checks-screen-openings-and-adjudicate-decided-games-in-teacher-generation.md)にある。
 生成器は、出力先のディレクトリ`generated-<シード>/`に、対局番号を`--chunk-games`局ごとに区切った塊を1つずつ確定させ、全塊がそろうと1つの教師ファイル`teacher.mnsd`へ組み直す。
 学習と診断に渡すのは`teacher.mnsd`であり、塊のファイルは渡さない。
-`inspect`の出力で、ヘッダの生成コミット、重みの検査和、規則、シード、探索ノード上限、および対局の由来が意図どおりであることを確かめる。
+`inspect`の出力で、ヘッダの生成コミット、ネットの識別子`network_checksum`（`--eval-file`のファイル全体のSHA-256）、規則、シード、探索ノード上限、および対局の由来が意図どおりであることを確かめる。
 生成終了後は、保存局面数と手数上限による破棄数をログで確認し、理由別の除外率、捨てた開始局面の数、評価値による裁定で終えた対局の数、勝敗数、探索値の分布、および重複率も確かめる。
 
 生成が途中で止まった場合は、同じコマンドを同じ出力先でもう一度実行する。
 生成器は確定済みの塊を飛ばして残りの対局だけを指し、同じ機械で同じバイナリを使う限り、止まらなかった場合と同じ`teacher.mnsd`を作る。
 ログは追記になるので、要約が2回以上書かれたログでは最後の要約を読む。
-生成条件（規則セット、生成コミット、埋め込みの重み、シード、局数、塊の局数、ノード数、ランダム着手の上限、手数上限、置換表の容量、開始局面一覧）を変えて同じ出力先を指定して起動すると、生成器は相違する欄の名前を示して止まる。
+生成条件（規則セット、生成コミット、ネットのファイル全体のSHA-256、シード、局数、塊の局数、ノード数、ランダム着手の上限、手数上限、置換表の容量、開始局面一覧）を変えて同じ出力先を指定して起動すると、生成器は相違する欄の名前を示して止まる。
 同時対局数は、再開のときに変えてよい。
 `--allow-dirty`を付けて未コミットの変更があるまま始めた生成は、確定済みの塊が1つでもあると再開できないので、出力先を消して最初から生成し直す。
-出力先の構成と各ファイルの欄は`crates/minase/src/bin/minase/selfplay_gen/output.rs`のdocコメント、この方式を採った理由は[ADR](../adr/commit-nnue-teacher-files-in-fixed-game-chunks-and-reassemble-them-into-one-file.md)にある。
+出力先の構成と各ファイルの欄は`crates/minase/src/bin/minase/selfplay_gen/output.rs`のdocコメント、この方式を採った理由は[ADR](../adr/commit-nnue-teacher-files-in-fixed-game-chunks-and-check-the-network-file-on-resume.md)にある。
 目標の局面数に足りず生成条件を追加する場合は、別の実験として入力とシードを決め直す。
 
 ## 4. PSTを学習する

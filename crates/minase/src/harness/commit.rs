@@ -62,7 +62,7 @@ fn normalize_commit(repository: &Path, revision: &str) -> io::Result<String> {
 /// 作業ツリーの未コミットの変更は含まない。指定されたfeatureはビルド時に有効にする。
 /// 同じキーのビルドは`.build.lock`の排他ロックで直列化する。
 /// 成果物と検査和を一時ファイルへ書いて同期し、改名した後にディレクトリも同期する。
-/// 理由は`docs/adr/compare-commits-as-separate-engine-processes.md`にある。
+/// 理由は`docs/adr/compare-commits-as-separate-engine-processes-and-pin-networks-by-checksum.md`にある。
 pub fn resolve_commit(
     revision: &str,
     feature: Option<&str>,

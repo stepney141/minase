@@ -189,7 +189,8 @@ SPRTの再現性の契約は[棋力測定の手引き](sprt.md)の「ペア対�
 
 - 具体的な値ではなく、満たすべき契約を検証する。最善手が合法手に含まれること、読み筋の先頭が最善手と一致すること、同じ入力で同じ結果が返ること、指定した深さやノード数で止まること、停止理由が正しいことがその例である。
 - 規則で値が決まるものだけを厳密に比較する。詰みの値、引き分けの値`DRAW_SCORE`、および裁定の結果がこれに当たる。
-- 探索のテストは、学習で変わる埋め込みの重みを読まず、[固定ネットの教訓](../lessons/search-tests-use-a-fixed-net.md)のとおり学習前の重み`crates/minase/nets/nnue-epoch0.bin`から作る`test_nnue()`の固定ネットで書く。探索の分岐を作りたいときは、このネットのまま置換表に値を仕込む。
+- 探索のテストは、学習で変わる本番のネットを読まず、[固定ネットの教訓](../lessons/search-tests-use-a-fixed-net.md)のとおり学習前の重み`crates/minase/nets/nnue-epoch0.bin`から作る`test_nnue()`の固定ネットで書く。探索の分岐を作りたいときは、このネットのまま置換表に値を仕込む。
+- 本番のネットはリポジトリにないので、エンジンを子プロセスとして起動するテストや、USIのセッションで`isready`や`go`を使うテストは、固定ネットのパス`concat!(env!("CARGO_MANIFEST_DIR"), "/nets/nnue-epoch0.bin")`を`EvalFile`で渡す。
 - 最善手を期待値として検証したいときは、一方的な捕獲や詰みのように評価関数によらず結論が決まる局面を選び、特定の重みに依存する局面は避ける。
 - 探索以外のテストで実際の重み`eval::weights()`を読むときは契約の検証にとどめ、具体的な評価値や最善手を期待値として固定しない。
 - ノード数と速度は、テストで固定せずbenchで比較する。
@@ -231,8 +232,12 @@ Lishogiの棋譜を取得する`scripts/fetch_lishogi_games.py`、およびvast.
 ```console
 PYTHONPATH=. python3 scripts/test_fetch_lishogi_games.py
 python3 scripts/vast/test_common.py
+python3 scripts/vast/test_teacher_generation.py
+python3 scripts/vast/test_generation_chain.py
 python3 scripts/vast-spsa/test_spsa.py
 ```
+
+`scripts/bench_compare.py`を変更したときは、`python3 scripts/test_bench_compare.py`も実行する。
 
 学習の系列の進捗図の道具`tools/train/progress/series_progress.py`を変更したときも、マージの前に試験を実行する。
 道具は独立のPythonの環境を持つので、作業ツリーに環境がなければ、先に`uv sync --frozen --project tools/train/progress`で導入する。

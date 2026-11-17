@@ -48,7 +48,7 @@ minase-trainer diag nnue-removal \
 - 学習の長さ`<S>`は、第1世代から第4世代では64、第5世代では80とする。
 - `--teacher-cp-per-logit`は指定しない。教師の探索値は、`--base`のネットの勝率尺度で勝率へ換算される。
 - `--threads`の実績は、作業機（RTX 3060 Ti）で4、生成機（RTX 5090）で32である。
-- 学習で出力された`nnue.bin`をエンジンに埋め込む。
+- 学習で出力された`nnue.bin`については、ファイル全体のSHA-256を求め、NASの`/mnt/synology_nas/minase/nnue/nets/`に`<SHA-256の16進数>.bin`の名前で置く。エンジンには、オプション`EvalFile`でこのファイルを渡す。gitにはコミットしない。
 - 診断は駒除去差分だけを示した。採否の測定の前に、[残りの2つの診断](#学習した重みを診断する)も行う。
 
 **止める条件**
@@ -57,7 +57,7 @@ minase-trainer diag nnue-removal \
 |---|---|
 | 学習 | `summary.json`の`status`が`candidate`でない。 |
 | 診断 | 終了コードが0以外である。 |
-| 埋め込みの後 | 深さ5の`bench`（USIの独自コマンド）が完走しない。 |
+| NASへ置いた後 | `setoption name RuleSet value lishogi`、`setoption name EvalFile value <NASのネット>`、`isready`を順に送った後の、深さ5の`bench`（USIの独自コマンド）が完走しない。 |
 
 ## 手順
 
@@ -82,7 +82,7 @@ minase-trainer diag nnue-removal \
 
 - `--base`のMNUEファイルから、勝率尺度（1ロジットあたりのcp）、探索用駒価値、規則セット名を引き継ぐ。
 - `--base`の規則セットは、学習データと一致していなければならない。
-- 手書きの評価関数v0から始めるときは、`nnue export-handcrafted`で書き出したネットを`--base`に与える。このネットを埋め込むと、探索はv0の評価で動く。書き出したネットの規則セットは、教師の生成器と同じ`lishogi`である。
+- 手書きの評価関数v0から始めるときは、`nnue export-handcrafted`で書き出したネットを`--base`に与える。このネットを`EvalFile`で渡すと、探索はv0の評価で動く。書き出したネットの規則セットは、教師の生成器と同じ`lishogi`である。
 - `--base`の線形の経路、第1層、出力部の重みは使わない。線形の経路の初期値は、探索用駒価値から次のように作る。
   - 自駒の行に駒価値を、相手駒の行に符号を反転した値を置く。144升すべてと序中盤用・終盤用の2列に同じ値を置く。
   - 王駒と先獅子の対象升の行は0とする。
@@ -117,7 +117,7 @@ minase-trainer data calibrate --data <教師...> --output <新規の較正.json>
 for FEATURE_SET in P HalfKP-hm-b8; do
   minase-trainer nnue train \
     --feature-set "$FEATURE_SET" --width 256 \
-    --data <1ファイル> --base crates/minase/nets/nnue.bin \
+    --data <1ファイル> --base <NASのいまの標準のネット> \
     --lambda 1.0 \
     --batch 16384 --superbatches 1 --batches-per-superbatch 100 \
     --lr-schedule cosine:1:0.027 --validation-superbatches 1 --seed 1 \
@@ -226,11 +226,11 @@ minase-trainer diag nnue-moves \
 
 ### 採否を測定して記録する
 
-- 基準コミットから候補ブランチを作り、`nnue.bin`を候補の`crates/minase/nets/nnue.bin`へコピーする。
-- 候補で`cargo test --locked`を実行してから、[段階ゲート](sprt.md#機能採否の段階ゲートstcとltc)で採否を決める。
+- 候補のネットをNASに`<SHA-256の16進数>.bin`の名前で置く。
+- 候補と基準の両方に同じコミットを指定し、候補に`--candidate-option EvalFile=<候補のネット>`、基準に`--baseline-option EvalFile=<基準のネット>`を渡して、[段階ゲート](sprt.md#機能採否の段階ゲートstcとltc)で採否を決める。コミットを作る必要はない。
 - 検証損失、符号一致率、診断の値の改善だけを、棋力が向上した根拠にしない。
 - 結果は`docs/measurements/<設計書名>/<実験名>-training.md`にまとめる。どの設計書も計画していなければ`adhoc/`に置く。
-- 記録には、学習器のコミット、コマンドライン全体、入力のパスと記録数、重みのSHA-256、停止理由、診断の要点を書く。
+- 記録には、学習器のコミット、コマンドライン全体、入力のパスと記録数、重みのファイル全体のSHA-256（NASのファイル名と同じ値）、停止理由、診断の要点を書く。
 
 ## 必要なときの操作
 
@@ -248,6 +248,7 @@ minase-trainer diag nnue-moves \
 systemd-run --user --unit=<サービス名> --setenv=PATH="$PATH" -p WorkingDirectory=<worktree> \
   /bin/bash -c "exec python3 scripts/vast/teacher_generation.py run --run-dir <実行ディレクトリ> \
     --repo <リポジトリ> --ref <生成コミットを含む参照> --commit <生成コミット> --minase-bin <検査に使うminase> \
+    --eval-file <教師生成に使うネット> \
     --generation <N> --first-book 0 --last-book <最後の番号> --seed-base <番号0のシード> --seed-book-step 100000 \
     --games 7500 --nodes 20000 --random-moves 0 --max-ply 4000 --hash-mb 16 --chunk-games 250 \
     --rental interruptible --max-price <時間単価の上限> --deadline <UTCの絶対期限> \
@@ -255,7 +256,7 @@ systemd-run --user --unit=<サービス名> --setenv=PATH="$PATH" -p WorkingDire
 ```
 
 - 受け入れの検査に通った教師ファイルと生成ログは、実行ディレクトリの`gen-<N>/teacher/`と`gen-<N>/logs/`に置かれる。連続生成スクリプト`scripts/vast/generation_chain.py`で学習するときは、これらを連続生成スクリプトの実行ディレクトリの同じ位置へハードリンクで置き、`--train-place local`で再開する。
-- 連続生成スクリプトは、第N世代の番号iの教師ファイルのシードを`seed_base + seed_generation_step × N + seed_book_step × i`として照合する。制御スクリプトの`--seed-base`には、この式でiを0とした値（`seed_base + seed_generation_step × N`）を、`--seed-book-step`には連続生成スクリプトと同じ`seed_book_step`を渡す。生成コミットは第N−1世代のコミットとする。
+- 連続生成スクリプトは、第N世代の番号iの教師ファイルのシードを`seed_base + seed_generation_step × N + seed_book_step × i`として照合する。制御スクリプトの`--seed-base`には、この式でiを0とした値（`seed_base + seed_generation_step × N`）を、`--seed-book-step`には連続生成スクリプトと同じ`seed_book_step`を渡す。生成コミットは連続生成スクリプトと同じ反復のコミットとし、`--eval-file`にはNASにある第N−1世代のネット（第1世代ではv0のネット）のファイルを渡す。
 - 途中で止めるときは、`systemctl --user kill --kill-whom=main --signal=SIGTERM <サービス名>`で主プロセスに終了シグナルを送る。制御スクリプトは最後の回収と生成機の削除の確認を行ってから終わる。`systemctl --user stop`は90秒で強制終了するので使わない。
 - 同じ引数で起動し直すと、受け入れ済みの教師ファイルを飛ばして続きを生成する。累計費用、絶対期限、および借りる回数の上限は実行ディレクトリに保存され、起動し直しても初期化されない。
 - 費用を残高の差で記録するときは、削除した機械の課金が数分遅れて反映されるので、残高が変わらなくなるまで待ってから読む。
@@ -309,7 +310,7 @@ minase-trainer nnue fit-linear --base <出力ディレクトリ>/nnue.bin \
 - Dの95%区間は、`decision.games`から対局単位のブートストラップで求める（例は[`fit_report.py`](../measurements/nnue-outcome-regression/nnue-outcome-regression-fit/fit_report.py)）。上限が0未満なら予測の改善を確認できる。
 - 補正は`--base`のネットに対して求めるので、ネットを学び直したら求め直す。
 - Dと補正の大きさは、教師や`--lambda`を変えたときに残る偏りの目安になる。
-- 式と局面の選び方は`crates/minase-trainer/src/nnue/fit_linear/mod.rs`に、標準レシピで補正しない理由は[ADR](../adr/do-not-correct-the-nnue-linear-path-after-training.md)にある。
+- 式と局面の選び方は`crates/minase-trainer/src/nnue/fit_linear/mod.rs`に、標準レシピで補正しない理由は[ADR](../adr/use-each-trained-nnue-uncorrected-and-outside-git-for-the-next-generation.md)にある。
 
 ## 学習器を変更したとき
 

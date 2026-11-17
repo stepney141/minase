@@ -76,7 +76,8 @@ uv run --frozen python -m minase_zero run-cycles --machine colab --session <セ�
   --replay-buffer-games 1500000 \
   --batch-size 1024 --lr 0.04 --momentum 0.9 --weight-decay 0.0001 --clip-grad-norm 10 \
   --value-lambda 0.333 --precision bf16 --checkpoint-steps 50 \
-  --train-seed-base 20261100 --minase <作業ツリー>/target/release/minase --poll-seconds 60
+  --train-seed-base 20261100 --minase <作業ツリー>/target/release/minase --poll-seconds 60 \
+  --nn-cp-per-logit 1072.6529541015625
 # 最初のサイクルが1のセッションでは --cycle1-reference-summary <生成器の集計summary.json> を加える
 # vast.aiの機械では、--machine colab --session ... --cycle-cu ... の代わりに --machine vast --vast-instance <インスタンスの番号> を渡す
 ```
@@ -480,6 +481,7 @@ NASの記録はコミットのハッシュを参照するので、記録に現�
 | `--session <NAME>` | Colabの機械だけ、起動スクリプトが渡す | セッション名。英数字、`_`、`-`だけ。vast.aiでは指定できない。 |
 | `--minase <FILE>` | 作業ツリーの`target/release/minase` | 作業機で集計に使う実行ファイル。借りた機械で使うものとは別である。 |
 | `--poll-seconds <S>` | 60 | 状態を確かめる間隔。正の有限値。 |
+| `--nn-cp-per-logit <VALUE>` | 1072.6529541015625 | 出力の照合で、minaseのPV-MCTSに`NnCpPerLogit`として送る勝率尺度（1ロジットあたりのcp）。正の有限値。照合の出力には影響しないが、`NnCpPerLogit`を宣言する版のminaseは`isready`でこの値を要求する。値は、αβ探索でいま標準としているネットのヘッダにある勝率尺度である。`NnCpPerLogit`を宣言しない版のminaseは、この`setoption`を無視する。 |
 
 **コミット、サイクル、および期限**
 

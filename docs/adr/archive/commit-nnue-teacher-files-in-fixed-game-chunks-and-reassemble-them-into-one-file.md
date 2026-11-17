@@ -2,7 +2,7 @@
 
 ## ステータス
 
-承認済み。決定日は2026年11月14日。
+置き換え済み。決定日は2026年11月14日。[NNUEの教師ファイルは、対局数で決めた塊ごとに確定させ、全塊がそろったら1つのファイルへ組み直し、再開ではネットのファイル全体のSHA-256も照合する](../commit-nnue-teacher-files-in-fixed-game-chunks-and-check-the-network-file-on-resume.md)によって置き換えられた。
 
 ## コンテキスト
 
@@ -10,7 +10,7 @@ NNUEの教師は、生成器`minase data selfplay generate`が自己対局から
 1回の学習に使う教師（1世代の教師）は37個の教師ファイルからなり、教師ファイル1つは、基本シードと対局番号1〜7,500で決まる対局のうち、手数の上限までに終局したものを収めたMNSDファイルである。
 これまでの生成器は、全局を書き終えてからMNSDヘッダの対局数と項目数を確定させていたので、生成の途中で計算機が止まると、生成中の教師ファイルを最初から作り直す必要があった。
 
-教師生成の計算料金は、いつ止められてもよい代わりに安い計算機を使えば下げられる見込みがある（[GCPでのNNUE教師生成の費用の調査](../research/nnue-teacher-gcp-cost.md)）。
+教師生成の計算料金は、いつ止められてもよい代わりに安い計算機を使えば下げられる見込みがある（[GCPでのNNUE教師生成の費用の調査](../../research/nnue-teacher-gcp-cost.md)）。
 同じ調査が例にした30 vCPUの機械では、教師ファイル1つに約135分かかると見込まれ、止まる間隔がこれより短いと教師ファイルは完成しない。
 そうした計算機での料金は、止まる頻度と止まるたびに失う量で決まるので、中断に強い生成器がなければ測ることもできない。
 
@@ -18,11 +18,11 @@ NNUEの教師は、生成器`minase data selfplay generate`が自己対局から
 学習器は、乱数の序盤から始めた自己対局のファイルどうしでシードが重なると入力を拒み、学習器の`--train-subsample`は局面の抽出にファイルの番号を使う。
 対局を訓練用と検証用に分ける割り振りも、シードと対局番号で決まる。
 
-AlphaZero型探索の自己対局の生成器`minase data zero-selfplay`は、対局数で決めた塊を一時ファイルに書いてから確定させ、同じ出力先で起動し直すと欠けた塊だけを生成する（[ADR](archive/commit-zero-self-play-in-fixed-game-chunks-up-to-the-first-prefix-reaching-the-target-positions.md)）。
+AlphaZero型探索の自己対局の生成器`minase data zero-selfplay`は、対局数で決めた塊を一時ファイルに書いてから確定させ、同じ出力先で起動し直すと欠けた塊だけを生成する（[ADR](commit-zero-self-play-in-fixed-game-chunks-up-to-the-first-prefix-reaching-the-target-positions.md)）。
 先行実装では、囲碁のKataGoが自己対局の学習データを決まった行数ごとに一時ファイルへ書いてから改名し、Stockfishのtoolsブランチが教師生成で決まった局面数ごとに書き先のファイルを切り替える。
 この2つはいずれも、強制終了で止まるとまだ書き出していないデータを失い、起動し直すと新しいファイルを足すだけで、同じ位置からは再開しない。
 
-この決定は、[NNUEの教師生成を中断の後に再開できるようにする設計書](../plans/archived/resumable-nnue-teacher-generation.md)で下した。
+この決定は、[NNUEの教師生成を中断の後に再開できるようにする設計書](../../plans/archived/resumable-nnue-teacher-generation.md)で下した。
 
 ## 決定
 
@@ -78,7 +78,7 @@ MNSDの書き込み器は、ヘッダの後に各局のバイト列を順に追�
 
 1回の停止で失うのは、確定していない塊ですでに終えた対局と、実行中の対局だけになる。
 学習器と生成チェーンは、教師ファイルを単位とする扱いのまま使える。
-作業機での確認の結果は、[出力の一致と組み直しの時間の測定記録](../measurements/resumable-nnue-teacher-generation/resumable-nnue-teacher-generation-equivalence.md)にある。
+作業機での確認の結果は、[出力の一致と組み直しの時間の測定記録](../../measurements/resumable-nnue-teacher-generation/resumable-nnue-teacher-generation-equivalence.md)にある。
 
 出力先の`config.json`、確定済みの塊の集計JSON、およびそのMNSDファイルを別の機械の出力先へ写せば、同じコマンドでそこから続きを生成できる。
 写した先の機械が異なる場合は、異なる機械で生成した塊が1つの教師ファイルに混ざる。
@@ -86,7 +86,7 @@ MNSDの書き込み器は、ヘッダの後に各局のバイト列を順に追�
 
 生成コミットと未コミットの変更の有無は、生成器が起動のたびに作業ツリーから`git`で調べた値であり、バイナリをビルドした時点の値ではない。
 このため、ソースを変えてビルドし直した後にソースだけを元へ戻して再開すると、照合を通り抜けて異なるコードの塊が混ざる。
-MNSDヘッダの生成コミットも同じ方法で記録してきたので、この制約は教師ファイルの来歴にもともとあるものであり、生成は対象のコミットを固定したworktreeのバイナリで行う規則（[教訓](../lessons/pin-generation-binary-to-worktree.md)）で防ぐ。
+MNSDヘッダの生成コミットも同じ方法で記録してきたので、この制約は教師ファイルの来歴にもともとあるものであり、生成は対象のコミットを固定したworktreeのバイナリで行う規則（[教訓](../../lessons/pin-generation-binary-to-worktree.md)）で防ぐ。
 
 塊の局数は生成の引数であり、変えても教師の内容は変わらない。
 ただし、塊の局数は照合する条件なので、生成の途中では変えられない。

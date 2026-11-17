@@ -58,7 +58,7 @@ pub enum PlayedGame {
 /// 対局を進める場合は両エンジンを局ごとに起動し直し、置換表などの状態を局間で持ち越さない。
 /// 起動や通信の失敗はその側の反則負けとし、停止要求を検出した場合は`None`を返す。
 /// ネットの報告形式の誤りと不一致は、反則負けにせず原因と側を保持して返す。
-/// 理由は`docs/adr/compare-commits-as-separate-engine-processes.md`にある。
+/// 理由は`docs/adr/compare-commits-as-separate-engine-processes-and-pin-networks-by-checksum.md`にある。
 #[allow(clippy::too_many_arguments)]
 pub fn play_game(
     mut game: Game,

@@ -7,7 +7,7 @@
 //! 同じ機械で同じバイナリと生成条件を使う限り、組み直した教師ファイルは中断の有無に
 //! よらず同じバイト列になる。
 //! この方式を採った理由は
-//! `docs/adr/commit-nnue-teacher-files-in-fixed-game-chunks-and-reassemble-them-into-one-file.md`
+//! `docs/adr/commit-nnue-teacher-files-in-fixed-game-chunks-and-check-the-network-file-on-resume.md`
 //! にある。
 //!
 //! # 出力先のファイル

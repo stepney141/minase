@@ -62,7 +62,7 @@ RLでは、ネットどうしの対局（自己対局）で教師データを作
 2回目の実行の設計書のフェーズ1の規則の切り替えとは、同じファイル（生成器の`mod.rs`、学習器の`data.py`、実行器の`runner.py`）に触れるので、後からmasterへマージする側が先に入った変更に合わせる。
 2回目の実行の設計書のサイクル1は、本書の完了を前提とする。
 
-[ネットの外部ファイル化](../nnue-external-network-file.md)は、`runner.py`にPV-MCTSの勝率尺度`NnCpPerLogit`を送る変更を入れるので、本書と同じファイルに触れる。後からmasterへマージする側が、先に入った変更に合わせる。
+[ネットの外部ファイル化](nnue-external-network-file.md)は、`runner.py`にPV-MCTSの勝率尺度`NnCpPerLogit`を送る変更を入れるので、本書と同じファイルに触れる。後からmasterへマージする側が、先に入った変更に合わせる。
 外部ファイル化の後は、マージの前のαβ探索の`bench`の一致の確認で、`RuleSet`、`EvalFile`、および`isready`の後に`bench`を送る。
 
 ## 設計判断

@@ -2,7 +2,7 @@
 
 ## ステータス
 
-承認済み。決定日は2026年11月12日。
+置き換え済み。決定日は2026年11月12日。[対局ハーネスと係数調整は、エンジンがisreadyで返すネットのチェックサムを実行条件に記録し、対局の開始時と再開時に照合する](../record-and-verify-the-network-checksum-reported-by-match-and-spsa-engines.md)によって置き換えられた。
 
 ## コンテキスト
 
@@ -12,8 +12,8 @@
 同じパスのファイルを測定の途中や再開の前に書き換えると、記録と実際に対局したネットの対応が失われる。
 これまでは、ネットをサイクル番号つきのファイル名で保持して上書きしない運用で防いでいた。
 
-ネットの指定が起動引数からUSIのオプション`NnModel`へ移り（[ネットをオプションで指定する決定](select-zero-networks-by-the-usi-option-nnmodel.md)）、エンジンは`isready`で読み込んだネットのチェックサムを`info string network_sha256 <64桁の16進数>`の行で返すようになった。
-この判断は[起動引数と診断ツールをUSIへ移す計画](../plans/archived/cli-to-usi.md)で下した。
+ネットの指定が起動引数からUSIのオプション`NnModel`へ移り（[ネットをオプションで指定する決定](../select-zero-networks-by-the-usi-option-nnmodel.md)）、エンジンは`isready`で読み込んだネットのチェックサムを`info string network_sha256 <64桁の16進数>`の行で返すようになった。
+この判断は[起動引数と診断ツールをUSIへ移す計画](../../plans/archived/cli-to-usi.md)で下した。
 
 ## 決定
 

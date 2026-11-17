@@ -3,7 +3,7 @@
 //! 局ごとにエンジンを別プロセスとして起動し、返答を着手の提案として扱う。
 //! 合法性と終局の判定は審判層の[`minase_core::Game`]が担う。
 //! 比較対象の機能の内容は知らず、機能比較のスイッチを持たない。
-//! 理由は`docs/adr/compare-commits-as-separate-engine-processes.md`と
+//! 理由は`docs/adr/compare-commits-as-separate-engine-processes-and-pin-networks-by-checksum.md`と
 //! `docs/adr/run-spsa-as-a-separate-command.md`にある。
 //!
 //! 実行ファイル向けの内部層として`#[doc(hidden)]`で公開し、安定した公開APIとは扱わない。

@@ -1,7 +1,7 @@
 # minase
 
 `minase` is a chu shogi engine that speaks USI (including the lishogi extensions) and CECP (XBoard).
-It searches with alpha-beta, quiescence search, iterative deepening, a transposition table, and Lazy SMP, and evaluates positions with a piece-square table interpolated by game phase.
+It searches with alpha-beta, quiescence search, iterative deepening, a transposition table, and Lazy SMP, and evaluates positions with an NNUE network (a small neural network that is updated incrementally move by move) read from an external file.
 The rules come from the [`minase-core`](https://crates.io/crates/minase-core) library.
 
 ## Running the engine
@@ -16,6 +16,13 @@ minase --protocol cecp
 The rule set is given after startup, and the engine has no default rule set.
 A USI client sets the option `RuleSet` before `isready` (`setoption name RuleSet value JCSA`), and a CECP client sends `option RuleSet=JCSA` before `new`.
 If `isready` or `new` arrives before a rule set, the engine reports the error and exits with status 1.
+
+The engine also has no built-in network.
+Download the network file attached to the GitHub release of the same version, check its SHA-256 against the one in the release notes, and give its path with the option `EvalFile`.
+A USI client sets `EvalFile` before `isready` (`setoption name EvalFile value /path/to/network.bin`), and a CECP client sends `option EvalFile=/path/to/network.bin` before `new`.
+The engine reads the file at `isready` (in CECP, at `new` or when a search starts) and reports `info string network_sha256 <64 hex digits>` just before `readyok`.
+If `EvalFile` is not set, or the file cannot be read or is not a valid network, the engine reports the error and exits with status 1.
+A relative path is resolved from the working directory of the engine.
 
 `RuleSet` accepts `JCSA` (the rules of the Japan Chu Shogi Association with its repetition rule replaced by R1, L0,P0,R1,E0), `lishogi` (L1,L2,P0,P3,R1,E1,E3), or a comma-separated list with exactly one code from each of the groups L, P, R, and E.
 The rule codes are defined in [chu-shogi.md](https://github.com/stepney141/minase/blob/master/docs/rules/chu-shogi.md) (Japanese).

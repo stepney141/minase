@@ -1,6 +1,6 @@
 //! 駒割と最小限のPSTからなる手書きの評価関数v0。
 //! 探索からは呼ばれず、学習した評価関数の比較用に残す。
-//! 理由は`docs/adr/use-nnue-as-the-only-search-evaluation.md`にある。
+//! 理由は`docs/adr/use-an-nnue-read-from-evalfile-as-the-only-search-evaluation.md`にある。
 
 use minase_core::board::{BOARD_FILES, BOARD_RANKS, BOARD_SQUARE_COUNT, Square};
 use minase_core::piece::{Color, PIECE_KIND_COUNT, PieceKind};

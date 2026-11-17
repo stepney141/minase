@@ -13,7 +13,7 @@ NNUEの教師の生成器`minase data selfplay generate`は、初期局面から
 Zevra 2、Sapling、Viridithas、Akimbo、およびFairy-Stockfishは、王手のかかった局面を教師から除く。
 Astra、Viridithas、PlentyChess、およびIntegralは、探索した評価値で開始局面を選別し、閾値は300〜1,000 cpである。
 Sapling（2,500 cpが5手）、Viridithas（2,500 cpが4手）、Integral（2,500 cpが5手）、およびFairy-Stockfish（3,000 cpが4手）は、大差が続いた対局を優勢な側の勝ちとして打ち切る。
-以前は、学習後の線形の経路の補正に対局結果を使っていたので、評価値で決めた裁定の結果を評価関数の補正へ戻すと循環が生じることを理由に裁定を見送っていたが、[補正を行わない決定](do-not-correct-the-nnue-linear-path-after-training.md)でこの理由はなくなった。
+以前は、学習後の線形の経路の補正に対局結果を使っていたので、評価値で決めた裁定の結果を評価関数の補正へ戻すと循環が生じることを理由に裁定を見送っていたが、[補正を行わない決定](archive/do-not-correct-the-nnue-linear-path-after-training.md)でこの理由はなくなった。
 2026年11月14日にエンジンの開発者は、3つの処理を採ると決めた。
 
 先行例の閾値は歩兵を100 cpとするチェスのエンジンの値なので、評価値を勝率へ換算する尺度の比で直した。

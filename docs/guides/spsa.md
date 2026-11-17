@@ -52,6 +52,7 @@ target/release/minase spsa params \
 target/release/minase spsa \
   --run-dir data/spsa/<セッション名> --seed <シード> \
   --engine commit:<調整対象コミット> --params <パラメーターファイル> \
+  --option EvalFile=<ネット> \
   --rules JCSA --each time=10000+100 --concurrency 16 \
   --iterations 3750 --pairs-per-iteration 8
 ```
@@ -62,6 +63,12 @@ vast.aiで借りる物理コアの多い計算機（以下、調整機）で実�
 `--engine` の `commit:` 形式は、当該コミットを `git archive` で展開して `--features tuning` つきでビルドし、通常ビルドとは別のキーで `target/match-cache/` へキャッシュする。
 起動コマンド（パスと空白区切りの引数）も指定でき、作業ツリーの調整用ビルドのスモークテストに使う。
 θ+とθ−は同じバイナリを同じ思考制限で動かし、`Threads` と `USI_Hash` はエンジンの既定値を使う。
+`--option <名前>=<値>`は、全対局で両側に固定して送るUSIオプションであり、繰り返し指定できる。
+αβ探索の調整では、NNUEのネットを`--option EvalFile=<ネット>`で渡す。`<ネット>`はNASに置いたネットのファイルの絶対パスであり、特に理由がなければ[NNUEの評価関数の手引き](evaluation-nnue.md#採用したネットの学習)にある、いまの標準のネットを使う。
+PV-MCTSの係数を調整するときは、`--option NnModel=<ONNXのネット>`と`--option NnCpPerLogit=<勝率尺度>`を渡す。
+固定のオプションは、各対局で調整する係数の`Tune_<名前>`の列より前に送られる。
+`Tune_`で始まる名前の指定と、大文字と小文字を区別せずに比べて同じ名前を重ねた指定は、引数のエラーになる。
+開始時には、固定のオプションを付けたエンジンを1回起動して`isready`まで進め、オプションの名前と値をエンジンの宣言と照合し、エンジンが返したネットのファイル全体のSHA-256を`manifest.json`の`network_sha256`に記録する（[チェックサムの記録のADR](../adr/record-and-verify-the-network-checksum-reported-by-match-and-spsa-engines.md)）。
 総ペア数は `--iterations` と `--pairs-per-iteration` の積であり、開始時に固定する。
 総反復数は摂動幅と学習率の計算式に使われるので、セッションの途中で変更できない。
 標準の規模は上のコマンドの3,750反復×8ペア（30,000ペア）であり、この規模を選んだ理由は[利得のADR](../adr/decay-spsa-gains-over-30000-pair-sessions.md)にある。
@@ -90,7 +97,10 @@ target/release/minase spsa --resume data/spsa/<セッション名>
 再開時の検査と、未完了の反復を発行し直す規則は、`spsa_runner`の`storage`モジュールの`validate_chain`と、`runner`モジュールの`run`のdocコメントにある。
 再開と監査には実行ディレクトリ全体が必要なので、個別のJSONを編集しない。
 
-再開時に照合するのは調整対象のエンジンであり、runnerのSHA-256は照合しない。
+再開時に照合するのは調整対象のエンジンとネットであり、runnerのSHA-256は照合しない。
+ネットについては、記録した固定のオプションでエンジンを1回起動し、返されたSHA-256を`manifest.json`の`network_sha256`と照合する。
+同じパスのネットのファイルを書き換えていれば、再開の時点、または次の対局の開始時にエラーで止まるので、ファイルを元に戻して再開する。
+固定のオプションと`network_sha256`の欄を持たない以前の形式の`manifest.json`からは、これらの欄を要求する版の`minase`で再開できない。
 起動コマンドで指定したエンジンは、作業ディレクトリが記録と異なると再開できない。
 runnerの版とSHA-256、および測定機は起動ごとに `invocations.json` へ記録され、前回の起動と異なる場合は標準エラーへ1行の通知が出る（理由は[再開のADR](../adr/resume-from-the-manifest-and-accept-rebuilt-tuning-commits.md)にある）。
 このため、セッションの途中で作業ツリーの `minase` を再ビルドしても再開できる。
@@ -184,12 +194,13 @@ game_rss_bytes = 630000000
 `runner_commit`には、調整機で別の機械へ移って再開できる版の`minase`を含むコミット（2026年10月18日以降のmaster）を指定する。
 調整対象のコミットがそれより古い場合も、runnerだけを新しくすれば再開できる。
 
-`local_nps`は、測定機でほかの測定、SPSA、教師生成、および学習を止めた状態で、調整対象のコミットの調整用ビルドを16本同時に起動し、それぞれへUSIの独自コマンド`bench depth 9 repetitions 3`を送って走らせた平均NPSである。
+`local_nps`は、測定機でほかの測定、SPSA、教師生成、および学習を止めた状態で、調整対象のコミットの調整用ビルドを16本同時に起動し、それぞれへ`RuleSet`と`EvalFile`を設定して`isready`を送った後に、USIの独自コマンド`bench depth 9 repetitions 3`を送って走らせた平均NPSである。
+ネットは、調整機へ渡すものと同じファイルを使う。
 lishogiのBotは止めない。測定機でのSPSAも、Botと共用した状態で行ってきたからである。
-`scripts/vast-spsa/bench.py`で測れる。調整機の`remote.py`も、同じ関数で調整機の負荷時の速度を測る。
+`local_nps`は`scripts/vast-spsa/bench.py`で測れる。`bench.py`は規則に`JCSA`を送る。調整機の`remote.py`も同じ関数を使い、`session.toml`の`rules`を送って負荷時の速度を測る。
 
 ```console
-python3 scripts/vast-spsa/bench.py target/match-cache/<コミット>-tuning/minase 16 <ログのディレクトリ>
+python3 scripts/vast-spsa/bench.py target/match-cache/<コミット>-tuning/minase 16 <ログのディレクトリ> <ネット>
 ```
 
 `game_rss_bytes`は、測定機で調整用ビルド同士の1ペア（2局）をSTCで指し、`pairs/`の記録の`candidate_peak_rss_bytes`と`baseline_peak_rss_bytes`の和を局ごとに求めて、2局のうち大きい方の値とする。
@@ -218,13 +229,13 @@ vast.aiの検証（`verified`）は条件にしない。`vastai search offers`�
 出品のIDを決めて起動する場合は、次のとおりにする。
 
 ```console
-python3 scripts/vast-spsa/launch.py <セッション名> <期限までの分数> --offer <出品のID>
+python3 scripts/vast-spsa/launch.py <セッション名> <期限までの分数> --eval-file <ネット> --offer <出品のID>
 ```
 
 条件で選んで起動する場合は、次のとおりにする。
 
 ```console
-python3 scripts/vast-spsa/launch.py <セッション名> <期限までの分数> \
+python3 scripts/vast-spsa/launch.py <セッション名> <期限までの分数> --eval-file <ネット> \
   --max-price <1時間あたりの米ドル> --min-cpu-cores <スレッド数> \
   --min-cpu-ram <MB> --cpu <CPU名の一部> [--cpu <CPU名の一部> ...] --wait <分>
 ```
@@ -239,6 +250,9 @@ python3 scripts/vast-spsa/launch.py <セッション名> <期限までの分数>
 
 期限までの分数は、所要時間の見込みの上限に1.3を掛け、ビルド、速度の測定、および事前確認の45分を足した値とする。
 調整機は、起動時スクリプトが予約した処理により、この期限に自動で停止する。
+`--eval-file`のネットは、ほかのジョブのファイルと同じく調整機の`/workspace/job/network.bin`へ転送される。
+`remote.py`は、調整の前の速度の測定、および事前確認と新規の本番の`minase spsa`に、このファイルを`EvalFile`として渡す（`--option EvalFile=/workspace/job/network.bin`）。
+再開では`manifest.json`に記録した固定のオプションが使われ、`minase spsa`がネットのSHA-256を照合するので、別の機械で再開するときも同じネットのファイルを`--eval-file`に渡す。
 `launch.py`は、出品が条件を満たすこと、同じラベル（`minase-spsa-<セッション名>`）の調整機がないこと、および`session.toml`の必須のキーがそろっていることを確かめてから調整機を作る。
 調整機が10分以内に稼働しない場合や、SSHが5分以内に使えるようにならない場合は、その調整機を削除して止まる。
 

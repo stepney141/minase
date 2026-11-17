@@ -78,7 +78,7 @@ AlphaZero型の自己対局を王手限定の3手以内の勝ちで打ち切る�
 王手の定義と、受け方の王駒が2枚になる局面の扱いは、本書のソルバとその判定でそろえる。
 従う教訓は、[外部入力でパニックしない](../lessons/no-panic-on-external-input.md)、[不正状態を作れる公開型を避ける](../lessons/checked-constructors-for-public-types.md)、[エラーを文字列へ失わない](../lessons/typed-errors-over-strings.md)、[スレッドを所有するハンドルはDropで回収する](../lessons/join-threads-on-drop.md)、[回帰テストは修正を外して失敗を確認する](../lessons/confirm-regression-test-fails-without-fix.md)、および[採否測定の条件で改良が発動することを実装前に確認する](../lessons/measure-feature-activation-before-sprt.md)である。
 
-[ネットの外部ファイル化](nnue-external-network-file.md)の後は、αβ探索の`bench`の前に`RuleSet`、`EvalFile`、および`isready`を送り、対局の実行器にはネットのファイルを`--candidate-option EvalFile=<パス>`と`--baseline-option EvalFile=<パス>`で渡す。
+[ネットの外部ファイル化](archived/nnue-external-network-file.md)の後は、αβ探索の`bench`の前に`RuleSet`、`EvalFile`、および`isready`を送り、対局の実行器にはネットのファイルを`--candidate-option EvalFile=<パス>`と`--baseline-option EvalFile=<パス>`で渡す。
 
 ## 設計判断
 

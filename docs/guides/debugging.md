@@ -25,11 +25,11 @@ PV-MCTSの道具の理由は、[根の候補手ごとの統計](../adr/print-pv-
 | 道具 | 使い方 | 用途 |
 |---|---|---|
 | `d` | USIで`position`の後に送る | 駒を漢字で書いた盤面、拡張SFEN、手番、手数、対局の状態、先獅子と成り権の保留、2つのZobristキーを表示する。表示の前に局面の不変条件を検査する。 |
-| `eval` | USIで`position`の後に送る | 手番側から見た静的評価と、升ごとの寄与を12行12列の表で表示する。 |
+| `eval` | USIで`isready`と`position`の後に送る | 手番側から見た静的評価と、升ごとの寄与を12行12列の表で表示する。 |
 | `tt` | USIで`go`の後に送る | 置換表に残る現局面と全子局面の項目（深さ、境界の種類、評価値、最善手）を表示する。 |
 | `perft <深さ> [divide]` | USIで`position`の後に送る | 現局面から指定した深さまでの合法手の経路数を、深さごとに数える。`divide`を付けると、根の合法手ごとの内訳を出す。 |
 | `random-play [games <N>] [seed <S>] [game <K>] [max-ply <N>] [verify-all] [verbose]` | USIで`RuleSet`の設定の後に送る | ランダムな合法手で対局を進め、毎手、局面の不変条件と合法手の適用を検査する。 |
-| `bench [depth <N>] [threads <N>] [repetitions <N>]` | αβ探索で起動したminaseにUSIで送る。規則の設定も`isready`も要らない | 固定の局面集をαβ探索で探索し、局面ごとの深さ、ノード数、最善手、評価値と、全体の毎秒ノード数を出す。 |
+| `bench [depth <N>] [threads <N>] [repetitions <N>]` | αβ探索で起動したminaseに、`RuleSet`と`EvalFile`を設定して`isready`を送った後にUSIで送る | 固定の局面集をαβ探索で探索し、局面ごとの深さ、ノード数、最善手、評価値と、全体の毎秒ノード数を出す。 |
 | `bench [nodes <N>] [batch <N>]` | `--search mcts`で起動したminaseにUSIで送る。規則の設定も`isready`も要らない | 同じ局面集を、ネットの代わりに文字列のハッシュで方策と価値を決める評価器を使って、PV-MCTSで固定の回数だけ探索し、局面ごとの最善手、停止理由、主変化、および根の候補手ごとの統計を出す。 |
 | `VerboseMoveStats` | `--search mcts`で起動したminaseに`setoption`で`true`を送る | 探索が終わるたびに、根の要約と根の候補手ごとの訪問回数、勝率の和、平均の勝率Q、事前確率、ネットの勝率、および確定した勝敗を`info string movestats`の行で出す。 |
 | `--io-log <パス>` | `minase`の起動引数 | 受け取った行と送った行を、起動からの経過ミリ秒付きでファイルへ記録する。 |
@@ -46,7 +46,7 @@ PV-MCTSの道具の理由は、[根の候補手ごとの統計](../adr/print-pv-
 `perft`、`random-play`、および`bench`をスクリプトから実行するときは、`minase --protocol usi`を起動して標準入力へコマンドと`quit`を渡し、終了コードが0であることと、出力に終端の行`info string end`があることの両方で成功を判定する。
 引数の誤りはエラーの行を出すだけでエンジンを終了しないので、終了コードだけでは検出できない。
 不変条件の違反のような実行時の失敗では、エラーの行を出して終了コード1で終わる。
-これらを独自コマンドにした理由は[ADR](../adr/run-engine-diagnostics-as-usi-commands-and-keep-experiment-tools-as-subcommands.md)にある。
+これらを独自コマンドにした理由は[ADR](../adr/run-engine-diagnostics-as-usi-commands-on-the-prepared-session.md)にある。
 
 ## 再現の手段
 
@@ -129,6 +129,7 @@ perftの数値は、テストの正しさの基準にしない（[ADR](../adr/ve
 perftはdivideによる絞り込みと速度の計測に使う。
 
 HaChuの規則との食い違いは、`scripts/hachu_replay.py`でHaChuの自己対局の棋譜をminaseへ再生して照合する。
+このスクリプトはminaseをCECPで起動する。minaseはCECPでも`option EvalFile=`でネットを受け取らないと対局を始めないので、`hachu_replay.py`の`--eval-file`にネットのファイルを渡す。
 
 ### 探索
 
@@ -137,16 +138,22 @@ HaChuの規則との食い違いは、`scripts/hachu_replay.py`でHaChuの自己
 **αβ探索の挙動の変化の検出**：αβ探索で探索木を変えないはずの変更（高速化、リファクタリング）は、USIの独自コマンド`bench`の局面ごとのノード数、最善手、評価値が変更前と完全に一致することで確かめる。
 `bench`は、省略時には1スレッドの固定深さの探索であり、同じバイナリでは実行のたびに同じノード数を返す。
 規則は規則セット`JCSA`に固定で、局面、置換表、およびhistory表はbench専用のものを使うので、セッションの対局と設定には影響しない。
+評価には`isready`で準備したネットを使うので、`bench`の前に`RuleSet`と`EvalFile`を設定して`isready`を送る。
+`RuleSet`の値は`bench`の結果に影響しないが、`isready`が要求する。
+比べる2つの版には同じネットのファイルを渡し、特に理由がなければ[NNUEの評価関数の手引き](evaluation-nnue.md#採用したネットの学習)にある、いまの標準のネットを使う。
+`<ネット>`はネットのファイルの絶対パスである。
 
 ```console
-printf 'bench depth 5\nquit\n' | target/release/minase --protocol usi
+printf 'setoption name RuleSet value JCSA\nsetoption name EvalFile value %s\nisready\nbench depth 5\nquit\n' <ネット> | target/release/minase --protocol usi
 ```
 
 `scripts/bench_compare.py`は、作業ツリーのbenchを参照コミット（`--reference`）のbenchと全行で照合し、不一致があれば終了コード1で報告する。
 `--baseline`と`--parent`は速度の比を求める比較先であり、挙動の一致だけを確かめるときは3つとも同じ比較先のコミットを与える。
+このスクリプトは、`--eval-file`で指定したネットを、作業ツリーと比較先のすべての版に`EvalFile`として送る。
+ネットを埋め込んでいた版は、宣言していない`EvalFile`を無視して埋め込みのネットで探索する。
 
 ```console
-scripts/bench_compare.py --reference master --baseline master --parent master --depth 5
+scripts/bench_compare.py --reference master --baseline master --parent master --depth 5 --eval-file <ネット>
 ```
 
 ノード数が変わった場合は、変更に探索木を変える箇所が含まれている。
@@ -204,7 +211,7 @@ diff before.txt after.txt
 
 ```console
 CARGO_TARGET_DIR=target/stats cargo build --release --features search-stats --bin minase
-printf 'bench depth 5\nquit\n' | target/stats/release/minase --protocol usi
+printf 'setoption name RuleSet value JCSA\nsetoption name EvalFile value %s\nisready\nbench depth 5\nquit\n' <ネット> | target/stats/release/minase --protocol usi
 ```
 
 変更の前後で統計を比べるときは、同じ深さと1スレッドで両方の`bench`を実行し、回数の比だけを読む。

@@ -40,7 +40,7 @@ AlphaZero型探索のMCTS（モンテカルロ木探索）が局面の評価に�
 
 推論の設定の入口は、USIのオプションに1本化された。
 対局ハーネスでは、MCTSを`--candidate-args '--search mcts'`と`--candidate-option 'NnModel=<パス>'`の組で指定する。
-パスは実行条件の記録`manifest.json`に残り、ネットの内容は、エンジンが返すチェックサムをハーネスが記録して照合する（[チェックサムを照合する決定](record-and-verify-the-network-checksum-reported-by-match-engines.md)）。
+パスは実行条件の記録`manifest.json`に残り、ネットの内容は、エンジンが返すチェックサムをハーネスが記録して照合する（[チェックサムを照合する決定](archive/record-and-verify-the-network-checksum-reported-by-match-engines.md)）。
 USIの文字列のオプションは、`value`の後の語を1つの空白でつないで値にするので、連続する空白やタブを含むパスは指定できない。この制約は`NnCacheDir`と同じである。
 
 本決定が置き換えた決定のうち、次の2点は変えていない。

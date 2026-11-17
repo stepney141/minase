@@ -40,7 +40,7 @@ SFENは千日手の判定に使う局面の履歴を含まない。
 | コマンド | minaseでの扱い |
 |---|---|
 | `usi` | 標準どおり。宣言するオプションは「オプション」の節にある。 |
-| `isready` | 規則セットが未設定なら、エラーを1行出してエンジンを終了する（「規則セットの指定」の節）。MCTSではニューラルネット（以下ネット）をここで読み込んで推論器を作り、失敗した場合も同じくエラーを1行出して終了する（「isready」の節）。 |
+| `isready` | 規則セットが未設定なら、エラーを1行出してエンジンを終了する（「規則セットの指定」の節）。αβ探索では評価関数NNUEのニューラルネット（以下ネット）を、MCTSではONNXのネットをここで読み込み、失敗した場合も同じくエラーを1行出して終了する（「isready」の節）。 |
 | `setoption` | minase独自のオプションを持つ。 |
 | `usinewgame` | 省略してよい。 |
 | `position` | 中将棋の表記を使い、終局した対局では受け付けない。 |
@@ -82,12 +82,21 @@ minaseは規則セットの既定値を持たないので、GUIや対局用の�
 
 ### isready
 
+αβ探索で起動したminaseは、`isready`でオプション`EvalFile`のファイルから評価関数NNUEのネットを読み込み、形式を検証する。
+minaseはネットを実行ファイルに埋め込まず、既定のネットも持たない（[ADR](../adr/use-an-nnue-read-from-evalfile-as-the-only-search-evaluation.md)）。
+`EvalFile`が未設定なら`info string error: required option EvalFile is not set`を出し、`readyok`を返さずに終了コード1で終わる。
+ファイルを読めない場合は`info string error: failed to read NNUE network file '<パス>': <原因>`、形式の検証に通らない場合は`info string error: invalid NNUE network file '<パス>': <原因>`を出して、同じく終了する。
+読み込みや検証に失敗したときに、前に読み込んだネットや別のネットへは切り替えない。
+`isready`で準備するまで、`go`、`bench`、および`eval`はエラーを返して実行しない。
+
 MCTSで起動したminaseは、`isready`でオプション`NnModel`のファイルからネットを読み込み、推論器（ネットを読み込んで局面を評価する部品）を作る。
 `NnModel`が未設定なら`info string error: required option NnModel is not set`を出し、`readyok`を返さずに終了コード1で終わる。
+勝率尺度（1ロジットあたりのcp）のオプション`NnCpPerLogit`が未設定なら`info string error: required option NnCpPerLogit is not set`を、正の有限の実数として読めなければ`info string error: NnCpPerLogit must be a positive finite number: '<値>'`を出して、同じく終了する。
+検査は、`NnModel`の設定、`NnCpPerLogit`の値、ネットの読み込みと推論器の作成の順に行う。
 ファイルを読めない場合と推論器を作れない場合も、エラーを1行出して終了し、別のネットや実行プロバイダへは切り替えない。
-`isready`でネットの読み込みに成功すると、minaseは`readyok`の直前に`info string network_sha256 <64桁の16進数>`を1行出す。
-この値は、推論に渡すバイト列のチェックサム（SHA-256）であり、対局ハーネスがネットの同一性の照合に使う（[SPRTの手引き](sprt.md)の「エンジンの指定方法」の節）。
-αβ探索で起動したminaseは、この行を出さない。
+どちらの探索でも、`isready`でネットの読み込みに成功すると、minaseは`readyok`の直前に`info string network_sha256 <64桁の16進数>`を1行出す。
+この値は、読み込んだファイル全体のバイト列のSHA-256であり、ネットの識別子として、対局ハーネスと係数調整がネットの同一性の照合に使う（[識別子のADR](../adr/identify-nnue-networks-by-the-sha256-of-the-whole-file.md)、[SPRTの手引き](sprt.md)の「エンジンの指定方法」の節）。
+NNUEのネットのファイルのヘッダにあるチェックサムは本体だけを対象にするので、この値とは異なる。
 
 ### position
 
@@ -153,8 +162,10 @@ minaseは`usi`への応答で次のオプションを宣言する。
 | `ByoyomiMargin` | spin、0〜60,000 | 30 | 秒読みの締切の前に残す余裕で、単位はmsである（[ADR](../adr/give-the-byoyomi-margin-as-a-millisecond-usi-option.md)）。 |
 | `DrawValueBlack` | spin、−28,999〜28,999 | 0 | 探索を始める局面（根）が先手番のときに引き分けへ与える評価値。単位は根の手番側から見たcpである。 |
 | `DrawValueWhite` | spin、−28,999〜28,999 | 0 | 探索を始める局面（根）が後手番のときに引き分けへ与える評価値。単位は根の手番側から見たcpである。 |
+| `EvalFile` | string | `<empty>`（未設定） | αβ探索だけが宣言する。評価関数NNUEのネットのファイルのパス。指定は必須であり、`isready`で読む。相対パスはエンジンの作業ディレクトリから解決する。 |
 | `MultiPV` | spin、1〜35,856 | 1 | 探索を始める局面（根）の上位何手の読み筋を出すか。2以上なら、`info`の行に順位を付けて複数の読み筋を出す（「複数の読み筋」の節）。 |
 | `NnModel` | string | `<empty>`（未設定） | MCTSだけが宣言する。ネットのONNX形式のファイルのパス。指定は必須であり、相対パスはエンジンの作業ディレクトリから解決する。 |
+| `NnCpPerLogit` | string | `<empty>`（未設定） | MCTSだけが宣言する。探索値をセンチポーンで出すときと、引き分けの評価値を勝率へ換算するときに使う勝率尺度（1ロジットあたりのcp）。正の有限の実数で指定する。指定は必須であり、`isready`で検査する。 |
 | `NnBackend` | combo、`tensorrt`、`cuda`、`cpu` | `tensorrt` | MCTSだけが宣言する。推論の実行プロバイダ。 |
 | `NnCacheDir` | string | `$XDG_CACHE_HOME/minase/tensorrt`（環境変数が空なら空） | MCTSだけが宣言する。TensorRTのキャッシュを置くディレクトリ。空の文字列は`<empty>`と書く。 |
 | `NnBatchSize` | spin、1〜1,024 | 256 | MCTSだけが宣言する。1回の推論に送る葉の数の上限。 |
@@ -165,6 +176,9 @@ minaseは`usi`への応答で次のオプションを宣言する。
 引き分けの評価値は、規則R1の千日手のように探索が引き分けと判定する局面で使う（[ADR](../adr/set-the-draw-value-by-usi-option-signed-from-the-root-side.md)）。
 `NnBackend`、`NnCacheDir`、または`NnBatchSize`を変えると、次の`isready`で推論器を作り直す。
 `NnModel`を別の値へ変えると、読み込み済みのネット、推論器、およびMCTSが対局の間に持ち越す探索木を捨て、次の`isready`でネットを読み直すまで`go`、`eval`、および`nn-eval`を拒否する。
+`NnCpPerLogit`を変えると、探索木を捨てる。
+`EvalFile`を設定すると、同じ値であっても、読み込み済みのネット、置換表、およびhistory表を捨て、次の`isready`でネットを読み直すまで`go`、`bench`、および`eval`を拒否する。
+同じパスのファイルを差し替えた場合に、古いネットのまま進まないようにするためである。
 文字列のオプションの値は、`value`の後の語を1つの空白でつないだものなので、連続する空白やタブを含むパスは指定できない。
 各オプションの受理で置換表や探索木を消すかどうかと、拒否の文言は、`UsiProtocol::handle_setoption`のdocコメントにある。
 
@@ -275,7 +289,8 @@ d
 eval
 ```
 
-αβ探索で起動したminaseでは、現局面のNNUE（評価関数のニューラルネット）による手番側の評価値と、升ごとの線形の寄与を12行12列の表で表示する。
+αβ探索で起動したminaseでは、`isready`で読み込んだNNUE（評価関数のニューラルネット）による現局面の手番側の評価値と、升ごとの線形の寄与を12行12列の表で表示する。
+ネットが準備されていなければ`info string error: eval requires isready`を返す。
 各行に`info string`を付け、最後の行を`info string end`とする。
 
 MCTSで起動したminaseでは、現局面を、`isready`で準備した推論器で推論し、ネットの出力を次の形で表示する。
@@ -311,7 +326,7 @@ MCTSで起動したminaseでは`info string error: tt requires --search alphabet
 minaseは、エンジンの実装を検証する診断を、USIの独自コマンドとして持つ。
 以下では、エンジンの起動から終了までの1回のやり取りをセッションと呼ぶ。
 対局中に送るものではなく、開発者が手で、またはスクリプトから実行する。
-これらをサブコマンドではなくUSIのコマンドにした理由は[ADR](../adr/run-engine-diagnostics-as-usi-commands-and-keep-experiment-tools-as-subcommands.md)にある。
+これらをサブコマンドではなくUSIのコマンドにした理由は[ADR](../adr/run-engine-diagnostics-as-usi-commands-on-the-prepared-session.md)にある。
 
 ### 共通の契約
 
@@ -327,7 +342,7 @@ minaseは、エンジンの実装を検証する診断を、USIの独自コマ�
 引数の誤りではエンジンが終了しないので、終了コードだけでは検出できない。
 
 ```console
-printf 'bench depth 5\nquit\n' | target/release/minase --protocol usi
+printf 'setoption name RuleSet value JCSA\nsetoption name EvalFile value %s\nisready\nbench depth 5\nquit\n' <ネット> | target/release/minase --protocol usi
 ```
 
 ### perft
@@ -348,8 +363,11 @@ perftの件数は合法手生成の正しさの基準にせず（[ADR](../adr/ve
 
 `bench`は、固定の15局面を、起動した探索の方式で探索する（[ADR](../adr/run-bench-with-the-launched-search-and-detect-pv-mcts-regressions-with-a-hash-evaluator.md)）。
 αβ探索で起動したminaseではαβ探索の`bench`、`--search mcts`で起動したminaseではPV-MCTSの`bench`になり、受け付ける引数も異なる。
-どちらも規則は規則セット`JCSA`に固定であり、局面と探索の状態はbench専用のものを使う。
-そのため、規則の設定も`isready`も要らず、セッションの対局、探索木、およびオプションには影響しない。
+どちらも規則は規則セット`JCSA`に固定であり、局面と探索の状態はbench専用のものを使うので、セッションの対局、探索木、およびオプションには影響しない。
+αβ探索の`bench`は`isready`で読み込んだネットを使うので、`bench`の前に`RuleSet`と`EvalFile`を設定して`isready`を送る。
+`RuleSet`の値は`bench`の結果に影響しないが、`isready`が要求する。
+ネットが準備されていなければ`info string error: bench requires isready`を返す。
+PV-MCTSの`bench`はネットを使わないので、規則の設定も`isready`も要らない。
 `--features tuning`でビルドしたminaseでは、`bench`も探索を実行するので、`go`と同じく、引数を受け付けて実行した時点から`Tune_<名前>`の変更を拒否する。
 探索の結果を変えない変更の確認と速度の比較での使い方は、[デバッグの手引き](debugging.md)にある。
 
