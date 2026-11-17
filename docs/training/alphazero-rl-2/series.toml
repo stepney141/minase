@@ -1,0 +1,425 @@
+# 2回目の強化学習の系列の定義。欄の意味は tools/train/progress/series_progress.py のdocstringにある。
+
+[[strength]]
+cycle = 10
+summary = "docs/measurements/alphazero-rl-2/alphazero-rl-2-short-matches-c0010-c0100/summary.json"
+run_name = "alphazero-rl-2-progress-c0010-timing-ab500"
+condition = "rl2-short-8e419486"
+
+[[strength]]
+cycle = 10
+summary = "docs/measurements/alphazero-rl-2/alphazero-rl-2-short-matches-c0010-c0100/summary.json"
+run_name = "alphazero-rl-2-progress-c0010-timing-hachu3"
+condition = "rl2-short-8e419486"
+
+[[strength]]
+cycle = 100
+summary = "docs/measurements/alphazero-rl-2/alphazero-rl-2-short-matches-c0010-c0100/summary.json"
+run_name = "alphazero-rl-2-progress-c0100-timing-ab500"
+condition = "rl2-short-8e419486"
+
+[[strength]]
+cycle = 100
+summary = "docs/measurements/alphazero-rl-2/alphazero-rl-2-short-matches-c0010-c0100/summary.json"
+run_name = "alphazero-rl-2-progress-c0100-timing-hachu3"
+condition = "rl2-short-8e419486"
+
+[[validation]]
+cycle = 1
+path = "docs/training/alphazero-rl-2/validation/cycle-0001.json"
+
+[[validation]]
+cycle = 2
+path = "docs/training/alphazero-rl-2/validation/cycle-0002.json"
+
+[[validation]]
+cycle = 3
+path = "docs/training/alphazero-rl-2/validation/cycle-0003.json"
+
+[[validation]]
+cycle = 4
+path = "docs/training/alphazero-rl-2/validation/cycle-0004.json"
+
+[[validation]]
+cycle = 5
+path = "docs/training/alphazero-rl-2/validation/cycle-0005.json"
+
+[[validation]]
+cycle = 6
+path = "docs/training/alphazero-rl-2/validation/cycle-0006.json"
+
+[[validation]]
+cycle = 7
+path = "docs/training/alphazero-rl-2/validation/cycle-0007.json"
+
+[[validation]]
+cycle = 8
+path = "docs/training/alphazero-rl-2/validation/cycle-0008.json"
+
+[[validation]]
+cycle = 9
+path = "docs/training/alphazero-rl-2/validation/cycle-0009.json"
+
+[[validation]]
+cycle = 10
+path = "docs/training/alphazero-rl-2/validation/cycle-0010.json"
+
+[[validation]]
+cycle = 11
+path = "docs/training/alphazero-rl-2/validation/cycle-0011.json"
+
+[[validation]]
+cycle = 12
+path = "docs/training/alphazero-rl-2/validation/cycle-0012.json"
+
+[[validation]]
+cycle = 13
+path = "docs/training/alphazero-rl-2/validation/cycle-0013.json"
+
+[[validation]]
+cycle = 14
+path = "docs/training/alphazero-rl-2/validation/cycle-0014.json"
+
+[[validation]]
+cycle = 15
+path = "docs/training/alphazero-rl-2/validation/cycle-0015.json"
+
+[[validation]]
+cycle = 16
+path = "docs/training/alphazero-rl-2/validation/cycle-0016.json"
+
+[[validation]]
+cycle = 17
+path = "docs/training/alphazero-rl-2/validation/cycle-0017.json"
+
+[[validation]]
+cycle = 18
+path = "docs/training/alphazero-rl-2/validation/cycle-0018.json"
+
+[[validation]]
+cycle = 19
+path = "docs/training/alphazero-rl-2/validation/cycle-0019.json"
+
+[[validation]]
+cycle = 20
+path = "docs/training/alphazero-rl-2/validation/cycle-0020.json"
+
+[[validation]]
+cycle = 21
+path = "docs/training/alphazero-rl-2/validation/cycle-0021.json"
+
+[[validation]]
+cycle = 22
+path = "docs/training/alphazero-rl-2/validation/cycle-0022.json"
+
+[[validation]]
+cycle = 23
+path = "docs/training/alphazero-rl-2/validation/cycle-0023.json"
+
+[[validation]]
+cycle = 24
+path = "docs/training/alphazero-rl-2/validation/cycle-0024.json"
+
+[[validation]]
+cycle = 25
+path = "docs/training/alphazero-rl-2/validation/cycle-0025.json"
+
+[[validation]]
+cycle = 26
+path = "docs/training/alphazero-rl-2/validation/cycle-0026.json"
+
+[[validation]]
+cycle = 27
+path = "docs/training/alphazero-rl-2/validation/cycle-0027.json"
+
+[[validation]]
+cycle = 28
+path = "docs/training/alphazero-rl-2/validation/cycle-0028.json"
+
+[[validation]]
+cycle = 29
+path = "docs/training/alphazero-rl-2/validation/cycle-0029.json"
+
+[[validation]]
+cycle = 30
+path = "docs/training/alphazero-rl-2/validation/cycle-0030.json"
+
+[[validation]]
+cycle = 31
+path = "docs/training/alphazero-rl-2/validation/cycle-0031.json"
+
+[[validation]]
+cycle = 32
+path = "docs/training/alphazero-rl-2/validation/cycle-0032.json"
+
+[[validation]]
+cycle = 33
+path = "docs/training/alphazero-rl-2/validation/cycle-0033.json"
+
+[[validation]]
+cycle = 34
+path = "docs/training/alphazero-rl-2/validation/cycle-0034.json"
+
+[[validation]]
+cycle = 35
+path = "docs/training/alphazero-rl-2/validation/cycle-0035.json"
+
+[[validation]]
+cycle = 36
+path = "docs/training/alphazero-rl-2/validation/cycle-0036.json"
+
+[[validation]]
+cycle = 37
+path = "docs/training/alphazero-rl-2/validation/cycle-0037.json"
+
+[[validation]]
+cycle = 38
+path = "docs/training/alphazero-rl-2/validation/cycle-0038.json"
+
+[[validation]]
+cycle = 39
+path = "docs/training/alphazero-rl-2/validation/cycle-0039.json"
+
+[[validation]]
+cycle = 40
+path = "docs/training/alphazero-rl-2/validation/cycle-0040.json"
+
+[[validation]]
+cycle = 41
+path = "docs/training/alphazero-rl-2/validation/cycle-0041.json"
+
+[[validation]]
+cycle = 42
+path = "docs/training/alphazero-rl-2/validation/cycle-0042.json"
+
+[[validation]]
+cycle = 43
+path = "docs/training/alphazero-rl-2/validation/cycle-0043.json"
+
+[[validation]]
+cycle = 44
+path = "docs/training/alphazero-rl-2/validation/cycle-0044.json"
+
+[[validation]]
+cycle = 45
+path = "docs/training/alphazero-rl-2/validation/cycle-0045.json"
+
+[[validation]]
+cycle = 46
+path = "docs/training/alphazero-rl-2/validation/cycle-0046.json"
+
+[[validation]]
+cycle = 47
+path = "docs/training/alphazero-rl-2/validation/cycle-0047.json"
+
+[[validation]]
+cycle = 48
+path = "docs/training/alphazero-rl-2/validation/cycle-0048.json"
+
+[[validation]]
+cycle = 49
+path = "docs/training/alphazero-rl-2/validation/cycle-0049.json"
+
+[[validation]]
+cycle = 50
+path = "docs/training/alphazero-rl-2/validation/cycle-0050.json"
+
+[[validation]]
+cycle = 51
+path = "docs/training/alphazero-rl-2/validation/cycle-0051.json"
+
+[[validation]]
+cycle = 52
+path = "docs/training/alphazero-rl-2/validation/cycle-0052.json"
+
+[[validation]]
+cycle = 53
+path = "docs/training/alphazero-rl-2/validation/cycle-0053.json"
+
+[[validation]]
+cycle = 54
+path = "docs/training/alphazero-rl-2/validation/cycle-0054.json"
+
+[[validation]]
+cycle = 55
+path = "docs/training/alphazero-rl-2/validation/cycle-0055.json"
+
+[[validation]]
+cycle = 56
+path = "docs/training/alphazero-rl-2/validation/cycle-0056.json"
+
+[[validation]]
+cycle = 57
+path = "docs/training/alphazero-rl-2/validation/cycle-0057.json"
+
+[[validation]]
+cycle = 58
+path = "docs/training/alphazero-rl-2/validation/cycle-0058.json"
+
+[[validation]]
+cycle = 59
+path = "docs/training/alphazero-rl-2/validation/cycle-0059.json"
+
+[[validation]]
+cycle = 60
+path = "docs/training/alphazero-rl-2/validation/cycle-0060.json"
+
+[[validation]]
+cycle = 61
+path = "docs/training/alphazero-rl-2/validation/cycle-0061.json"
+
+[[validation]]
+cycle = 62
+path = "docs/training/alphazero-rl-2/validation/cycle-0062.json"
+
+[[validation]]
+cycle = 63
+path = "docs/training/alphazero-rl-2/validation/cycle-0063.json"
+
+[[validation]]
+cycle = 64
+path = "docs/training/alphazero-rl-2/validation/cycle-0064.json"
+
+[[validation]]
+cycle = 65
+path = "docs/training/alphazero-rl-2/validation/cycle-0065.json"
+
+[[validation]]
+cycle = 66
+path = "docs/training/alphazero-rl-2/validation/cycle-0066.json"
+
+[[validation]]
+cycle = 67
+path = "docs/training/alphazero-rl-2/validation/cycle-0067.json"
+
+[[validation]]
+cycle = 68
+path = "docs/training/alphazero-rl-2/validation/cycle-0068.json"
+
+[[validation]]
+cycle = 69
+path = "docs/training/alphazero-rl-2/validation/cycle-0069.json"
+
+[[validation]]
+cycle = 70
+path = "docs/training/alphazero-rl-2/validation/cycle-0070.json"
+
+[[validation]]
+cycle = 71
+path = "docs/training/alphazero-rl-2/validation/cycle-0071.json"
+
+[[validation]]
+cycle = 72
+path = "docs/training/alphazero-rl-2/validation/cycle-0072.json"
+
+[[validation]]
+cycle = 73
+path = "docs/training/alphazero-rl-2/validation/cycle-0073.json"
+
+[[validation]]
+cycle = 74
+path = "docs/training/alphazero-rl-2/validation/cycle-0074.json"
+
+[[validation]]
+cycle = 75
+path = "docs/training/alphazero-rl-2/validation/cycle-0075.json"
+
+[[validation]]
+cycle = 76
+path = "docs/training/alphazero-rl-2/validation/cycle-0076.json"
+
+[[validation]]
+cycle = 77
+path = "docs/training/alphazero-rl-2/validation/cycle-0077.json"
+
+[[validation]]
+cycle = 78
+path = "docs/training/alphazero-rl-2/validation/cycle-0078.json"
+
+[[validation]]
+cycle = 79
+path = "docs/training/alphazero-rl-2/validation/cycle-0079.json"
+
+[[validation]]
+cycle = 80
+path = "docs/training/alphazero-rl-2/validation/cycle-0080.json"
+
+[[validation]]
+cycle = 81
+path = "docs/training/alphazero-rl-2/validation/cycle-0081.json"
+
+[[validation]]
+cycle = 82
+path = "docs/training/alphazero-rl-2/validation/cycle-0082.json"
+
+[[validation]]
+cycle = 83
+path = "docs/training/alphazero-rl-2/validation/cycle-0083.json"
+
+[[validation]]
+cycle = 84
+path = "docs/training/alphazero-rl-2/validation/cycle-0084.json"
+
+[[validation]]
+cycle = 85
+path = "docs/training/alphazero-rl-2/validation/cycle-0085.json"
+
+[[validation]]
+cycle = 86
+path = "docs/training/alphazero-rl-2/validation/cycle-0086.json"
+
+[[validation]]
+cycle = 87
+path = "docs/training/alphazero-rl-2/validation/cycle-0087.json"
+
+[[validation]]
+cycle = 88
+path = "docs/training/alphazero-rl-2/validation/cycle-0088.json"
+
+[[validation]]
+cycle = 89
+path = "docs/training/alphazero-rl-2/validation/cycle-0089.json"
+
+[[validation]]
+cycle = 90
+path = "docs/training/alphazero-rl-2/validation/cycle-0090.json"
+
+[[validation]]
+cycle = 91
+path = "docs/training/alphazero-rl-2/validation/cycle-0091.json"
+
+[[validation]]
+cycle = 92
+path = "docs/training/alphazero-rl-2/validation/cycle-0092.json"
+
+[[validation]]
+cycle = 93
+path = "docs/training/alphazero-rl-2/validation/cycle-0093.json"
+
+[[validation]]
+cycle = 94
+path = "docs/training/alphazero-rl-2/validation/cycle-0094.json"
+
+[[validation]]
+cycle = 95
+path = "docs/training/alphazero-rl-2/validation/cycle-0095.json"
+
+[[validation]]
+cycle = 96
+path = "docs/training/alphazero-rl-2/validation/cycle-0096.json"
+
+[[validation]]
+cycle = 97
+path = "docs/training/alphazero-rl-2/validation/cycle-0097.json"
+
+[[validation]]
+cycle = 98
+path = "docs/training/alphazero-rl-2/validation/cycle-0098.json"
+
+[[validation]]
+cycle = 99
+path = "docs/training/alphazero-rl-2/validation/cycle-0099.json"
+
+[[validation]]
+cycle = 100
+path = "docs/training/alphazero-rl-2/validation/cycle-0100.json"

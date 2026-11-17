@@ -1,0 +1,492 @@
+[
+  {
+    "run_name": "alphazero-rl-2-progress-c0010-timing-ab500",
+    "baseline": {
+      "kind": "alphabeta",
+      "limit": {
+        "nodes": 500
+      }
+    },
+    "rules_source": "lishogi",
+    "seed": 2026111621,
+    "max_ply": 4096,
+    "nn_model": "/mnt/synology_nas/minase/alphazero/nets/cycles-rl2-az/cycle-0010.onnx",
+    "network_sha256": "ba89c56cab8515a26ebcaed4cedf3b651bb263f28558016e25c957d72f6c0c4d",
+    "attempted_pairs": 8,
+    "valid_pairs": 8,
+    "discarded_pairs": 0,
+    "discarded_pair_numbers": [],
+    "valid": {
+      "pentanomial": [
+        8,
+        0,
+        0,
+        0,
+        0
+      ],
+      "elo": {
+        "elo": "-inf",
+        "lower": "-inf",
+        "upper": "-inf"
+      },
+      "score_rate": 0.0
+    },
+    "terminations": [
+      {
+        "kind": "adjudicated_win",
+        "reason": "BareKing",
+        "winner": "baseline",
+        "count": 1
+      },
+      {
+        "kind": "adjudicated_win",
+        "reason": "RoyalCapture",
+        "winner": "baseline",
+        "count": 15
+      }
+    ],
+    "forfeits": {
+      "illegal_move": {
+        "candidate": 0,
+        "baseline": 0
+      },
+      "crash": {
+        "candidate": 0,
+        "baseline": 0
+      },
+      "timeout": {
+        "candidate": 0,
+        "baseline": 0
+      },
+      "time_forfeit": {
+        "candidate": 0,
+        "baseline": 0
+      },
+      "rejected_move": {
+        "candidate": 0,
+        "baseline": 0
+      }
+    },
+    "move_forfeit_pair_numbers": [],
+    "without_move_forfeits": {
+      "pentanomial": [
+        8,
+        0,
+        0,
+        0,
+        0
+      ],
+      "elo": {
+        "elo": "-inf",
+        "lower": "-inf",
+        "upper": "-inf"
+      },
+      "score_rate": 0.0
+    },
+    "discarded_as_losses": {
+      "pentanomial": [
+        8,
+        0,
+        0,
+        0,
+        0
+      ],
+      "elo": {
+        "elo": "-inf",
+        "lower": "-inf",
+        "upper": "-inf"
+      },
+      "score_rate": 0.0
+    },
+    "discarded_as_wins": {
+      "pentanomial": [
+        8,
+        0,
+        0,
+        0,
+        0
+      ],
+      "elo": {
+        "elo": "-inf",
+        "lower": "-inf",
+        "upper": "-inf"
+      },
+      "score_rate": 0.0
+    },
+    "affected_pairs": 0,
+    "affected_pair_fraction": 0.0,
+    "affected_pair_fraction_exceeds_5_percent": false,
+    "plies": {
+      "min": 87,
+      "median": 143.5,
+      "max": 197
+    },
+    "active_wall_time_seconds": 125.33270565
+  },
+  {
+    "run_name": "alphazero-rl-2-progress-c0010-timing-hachu3",
+    "baseline": {
+      "kind": "hachu",
+      "limit": {
+        "depth": 3
+      }
+    },
+    "rules_source": "L1,L3,P0,P5,P6,R2,E1,E2",
+    "seed": 2026111622,
+    "max_ply": 1900,
+    "nn_model": "/mnt/synology_nas/minase/alphazero/nets/cycles-rl2-az/cycle-0010.onnx",
+    "network_sha256": "ba89c56cab8515a26ebcaed4cedf3b651bb263f28558016e25c957d72f6c0c4d",
+    "attempted_pairs": 8,
+    "valid_pairs": 8,
+    "discarded_pairs": 0,
+    "discarded_pair_numbers": [],
+    "valid": {
+      "pentanomial": [
+        8,
+        0,
+        0,
+        0,
+        0
+      ],
+      "elo": {
+        "elo": "-inf",
+        "lower": "-inf",
+        "upper": "-inf"
+      },
+      "score_rate": 0.0
+    },
+    "terminations": [
+      {
+        "kind": "adjudicated_win",
+        "reason": "RoyalCapture",
+        "winner": "baseline",
+        "count": 16
+      }
+    ],
+    "forfeits": {
+      "illegal_move": {
+        "candidate": 0,
+        "baseline": 0
+      },
+      "crash": {
+        "candidate": 0,
+        "baseline": 0
+      },
+      "timeout": {
+        "candidate": 0,
+        "baseline": 0
+      },
+      "time_forfeit": {
+        "candidate": 0,
+        "baseline": 0
+      },
+      "rejected_move": {
+        "candidate": 0,
+        "baseline": 0
+      }
+    },
+    "move_forfeit_pair_numbers": [],
+    "without_move_forfeits": {
+      "pentanomial": [
+        8,
+        0,
+        0,
+        0,
+        0
+      ],
+      "elo": {
+        "elo": "-inf",
+        "lower": "-inf",
+        "upper": "-inf"
+      },
+      "score_rate": 0.0
+    },
+    "discarded_as_losses": {
+      "pentanomial": [
+        8,
+        0,
+        0,
+        0,
+        0
+      ],
+      "elo": {
+        "elo": "-inf",
+        "lower": "-inf",
+        "upper": "-inf"
+      },
+      "score_rate": 0.0
+    },
+    "discarded_as_wins": {
+      "pentanomial": [
+        8,
+        0,
+        0,
+        0,
+        0
+      ],
+      "elo": {
+        "elo": "-inf",
+        "lower": "-inf",
+        "upper": "-inf"
+      },
+      "score_rate": 0.0
+    },
+    "affected_pairs": 0,
+    "affected_pair_fraction": 0.0,
+    "affected_pair_fraction_exceeds_5_percent": false,
+    "plies": {
+      "min": 55,
+      "median": 122.0,
+      "max": 172
+    },
+    "active_wall_time_seconds": 103.51654139
+  },
+  {
+    "run_name": "alphazero-rl-2-progress-c0100-timing-ab500",
+    "baseline": {
+      "kind": "alphabeta",
+      "limit": {
+        "nodes": 500
+      }
+    },
+    "rules_source": "lishogi",
+    "seed": 2026111731,
+    "max_ply": 4096,
+    "nn_model": "/mnt/synology_nas/minase/alphazero/nets/cycles-rl2-az/cycle-0100.onnx",
+    "network_sha256": "8ab8574a527ee297272900b69e7b222958944cc324c8fe81492ae376ea9f886c",
+    "attempted_pairs": 8,
+    "valid_pairs": 8,
+    "discarded_pairs": 0,
+    "discarded_pair_numbers": [],
+    "valid": {
+      "pentanomial": [
+        7,
+        0,
+        1,
+        0,
+        0
+      ],
+      "elo": {
+        "elo": -470.43650362227254,
+        "lower": "-inf",
+        "upper": -266.8653979917666
+      },
+      "score_rate": 0.0625
+    },
+    "terminations": [
+      {
+        "kind": "adjudicated_win",
+        "reason": "BareKing",
+        "winner": "baseline",
+        "count": 1
+      },
+      {
+        "kind": "adjudicated_win",
+        "reason": "RoyalCapture",
+        "winner": "baseline",
+        "count": 14
+      },
+      {
+        "kind": "adjudicated_win",
+        "reason": "RoyalCapture",
+        "winner": "candidate",
+        "count": 1
+      }
+    ],
+    "forfeits": {
+      "illegal_move": {
+        "candidate": 0,
+        "baseline": 0
+      },
+      "crash": {
+        "candidate": 0,
+        "baseline": 0
+      },
+      "timeout": {
+        "candidate": 0,
+        "baseline": 0
+      },
+      "time_forfeit": {
+        "candidate": 0,
+        "baseline": 0
+      },
+      "rejected_move": {
+        "candidate": 0,
+        "baseline": 0
+      }
+    },
+    "move_forfeit_pair_numbers": [],
+    "without_move_forfeits": {
+      "pentanomial": [
+        7,
+        0,
+        1,
+        0,
+        0
+      ],
+      "elo": {
+        "elo": -470.43650362227254,
+        "lower": "-inf",
+        "upper": -266.8653979917666
+      },
+      "score_rate": 0.0625
+    },
+    "discarded_as_losses": {
+      "pentanomial": [
+        7,
+        0,
+        1,
+        0,
+        0
+      ],
+      "elo": {
+        "elo": -470.43650362227254,
+        "lower": "-inf",
+        "upper": -266.8653979917666
+      },
+      "score_rate": 0.0625
+    },
+    "discarded_as_wins": {
+      "pentanomial": [
+        7,
+        0,
+        1,
+        0,
+        0
+      ],
+      "elo": {
+        "elo": -470.43650362227254,
+        "lower": "-inf",
+        "upper": -266.8653979917666
+      },
+      "score_rate": 0.0625
+    },
+    "affected_pairs": 0,
+    "affected_pair_fraction": 0.0,
+    "affected_pair_fraction_exceeds_5_percent": false,
+    "plies": {
+      "min": 104,
+      "median": 265.5,
+      "max": 799
+    },
+    "active_wall_time_seconds": 284.260046226
+  },
+  {
+    "run_name": "alphazero-rl-2-progress-c0100-timing-hachu3",
+    "baseline": {
+      "kind": "hachu",
+      "limit": {
+        "depth": 3
+      }
+    },
+    "rules_source": "L1,L3,P0,P5,P6,R2,E1,E2",
+    "seed": 2026111732,
+    "max_ply": 1900,
+    "nn_model": "/mnt/synology_nas/minase/alphazero/nets/cycles-rl2-az/cycle-0100.onnx",
+    "network_sha256": "8ab8574a527ee297272900b69e7b222958944cc324c8fe81492ae376ea9f886c",
+    "attempted_pairs": 8,
+    "valid_pairs": 8,
+    "discarded_pairs": 0,
+    "discarded_pair_numbers": [],
+    "valid": {
+      "pentanomial": [
+        8,
+        0,
+        0,
+        0,
+        0
+      ],
+      "elo": {
+        "elo": "-inf",
+        "lower": "-inf",
+        "upper": "-inf"
+      },
+      "score_rate": 0.0
+    },
+    "terminations": [
+      {
+        "kind": "adjudicated_win",
+        "reason": "RoyalCapture",
+        "winner": "baseline",
+        "count": 16
+      }
+    ],
+    "forfeits": {
+      "illegal_move": {
+        "candidate": 0,
+        "baseline": 0
+      },
+      "crash": {
+        "candidate": 0,
+        "baseline": 0
+      },
+      "timeout": {
+        "candidate": 0,
+        "baseline": 0
+      },
+      "time_forfeit": {
+        "candidate": 0,
+        "baseline": 0
+      },
+      "rejected_move": {
+        "candidate": 0,
+        "baseline": 0
+      }
+    },
+    "move_forfeit_pair_numbers": [],
+    "without_move_forfeits": {
+      "pentanomial": [
+        8,
+        0,
+        0,
+        0,
+        0
+      ],
+      "elo": {
+        "elo": "-inf",
+        "lower": "-inf",
+        "upper": "-inf"
+      },
+      "score_rate": 0.0
+    },
+    "discarded_as_losses": {
+      "pentanomial": [
+        8,
+        0,
+        0,
+        0,
+        0
+      ],
+      "elo": {
+        "elo": "-inf",
+        "lower": "-inf",
+        "upper": "-inf"
+      },
+      "score_rate": 0.0
+    },
+    "discarded_as_wins": {
+      "pentanomial": [
+        8,
+        0,
+        0,
+        0,
+        0
+      ],
+      "elo": {
+        "elo": "-inf",
+        "lower": "-inf",
+        "upper": "-inf"
+      },
+      "score_rate": 0.0
+    },
+    "affected_pairs": 0,
+    "affected_pair_fraction": 0.0,
+    "affected_pair_fraction_exceeds_5_percent": false,
+    "plies": {
+      "min": 153,
+      "median": 276.5,
+      "max": 741
+    },
+    "active_wall_time_seconds": 280.302581161
+  }
+]
