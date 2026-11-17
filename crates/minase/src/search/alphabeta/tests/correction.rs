@@ -673,7 +673,7 @@ fn correction_root_updates_only_after_completed_search() {
             .read(Color::Black, key, CorrectionTableKind::Material);
         assert_eq!(initial, -1024);
 
-        let result = searcher.search_root(&board, &moves, 2, 2, -INFINITY, INFINITY);
+        let result = searcher.search_root(&board, &moves, 2, 2, -INFINITY, INFINITY, None);
         if interrupted {
             assert_eq!(result, None);
             assert_eq!(
@@ -895,6 +895,7 @@ fn correction_histories_survive_the_next_search_team_start() {
         snapshot.repetition(),
         DRAW_SCORE,
         &snapshot.root_moves,
+        NonZeroUsize::MIN,
         &snapshot.history_keys,
         &depth_limits(3),
         &AtomicBool::new(false),
@@ -931,6 +932,7 @@ fn correction_histories_survive_the_next_search_team_start() {
         snapshot.repetition(),
         DRAW_SCORE,
         &snapshot.root_moves,
+        NonZeroUsize::MIN,
         &snapshot.history_keys,
         &depth_limits(3),
         &AtomicBool::new(true),

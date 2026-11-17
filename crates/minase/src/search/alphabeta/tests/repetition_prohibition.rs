@@ -365,6 +365,7 @@ fn articles_31_r2_r3_and_23_all_forbidden_moves_lose_in_the_repetition_band() {
                     2,
                     -INFINITY,
                     INFINITY,
+                    None,
                 )
                 .unwrap();
             assert_eq!(best_move, cycle[2]);
@@ -561,6 +562,7 @@ pub(super) fn articles_31_r2_and_23_forbidden_tt_killer_and_quiet_moves_do_not_c
                                 depth,
                                 alpha,
                                 beta,
+                                None,
                             )
                             .unwrap()
                     } else {

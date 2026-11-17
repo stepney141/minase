@@ -134,7 +134,7 @@ fn partial_root_order_moves_only_previous_best_ahead_of_existing_order() {
                 results.previous_best = Some(roots[1]);
             }
             let mut actual = roots.clone();
-            searcher.order_root_moves(&position, &mut actual);
+            searcher.order_root_moves(&position, &mut actual, None);
             if eligible {
                 expected.retain(|&mv| mv != roots[1]);
                 expected.insert(0, roots[1]);
@@ -160,7 +160,14 @@ fn hard_partial_preserves_completed_values_and_root_tt_only_for_eligible_searche
             with_root_searcher(&position, &history, |searcher| {
                 searcher.root_results = uses_partial_results(&limits).then(RootResults::default);
                 let (best_move, score) = searcher
-                    .search_iteration(&position, &roots, 1, None)
+                    .search_iteration(
+                        &position,
+                        &roots,
+                        1,
+                        &previous_lines(None, &searcher.pv[0]),
+                        1,
+                    )
+                    .map(|lines| (lines[0].mv, lines[0].score))
                     .unwrap();
                 let completed = SearchResult {
                     #[cfg(feature = "search-stats")]
@@ -177,10 +184,22 @@ fn hard_partial_preserves_completed_values_and_root_tt_only_for_eligible_searche
                 searcher.interrupt_at = Some((searcher.nodes + 1, reason));
                 assert!(
                     searcher
-                        .search_iteration(&position, &roots, 2, Some((best_move, score)))
+                        .search_iteration(
+                            &position,
+                            &roots,
+                            2,
+                            &previous_lines(Some((best_move, score)), &searcher.pv[0]),
+                            1
+                        )
+                        .map(|lines| (lines[0].mv, lines[0].score))
                         .is_none()
                 );
-                let outcome = main_worker_outcome(searcher, completed, completed_pv.clone(), 1000);
+                let outcome = main_worker_outcome(
+                    searcher,
+                    completed,
+                    previous_lines(Some((completed.best_move, completed.score)), &completed_pv),
+                    1000,
+                );
                 assert_eq!((outcome.result.depth, outcome.result.score), (1, score));
                 assert_eq!(
                     outcome.partial_score.is_some(),
@@ -188,7 +207,7 @@ fn hard_partial_preserves_completed_values_and_root_tt_only_for_eligible_searche
                     "{limits:?}, reason={reason:?}"
                 );
                 assert_eq!(outcome.result.best_move, best_move);
-                assert_eq!(outcome.pv, completed_pv);
+                assert_eq!(outcome.lines[0].pv, completed_pv);
                 let after = searcher.tt.probe(key, 0).unwrap();
                 assert_eq!(
                     (
@@ -220,7 +239,14 @@ fn hard_interruption_before_previous_best_and_in_research_has_no_partial() {
                 searcher.root_results = uses_partial_results(&limits).then(RootResults::default);
                 let previous = complete_first.then(|| {
                     searcher
-                        .search_iteration(&position, &roots, 1, None)
+                        .search_iteration(
+                            &position,
+                            &roots,
+                            1,
+                            &previous_lines(None, &searcher.pv[0]),
+                            1,
+                        )
+                        .map(|lines| (lines[0].mv, lines[0].score))
                         .unwrap()
                 });
                 // 初回なら1手だけ完了。読み直しなら最初のfail-high窓の1手だけ完了。
@@ -238,7 +264,14 @@ fn hard_interruption_before_previous_best_and_in_research_has_no_partial() {
                 }
                 assert!(
                     searcher
-                        .search_iteration(&position, &roots, if retry { 5 } else { 2 }, previous)
+                        .search_iteration(
+                            &position,
+                            &roots,
+                            if retry { 5 } else { 2 },
+                            &previous_lines(previous, &searcher.pv[0]),
+                            1
+                        )
+                        .map(|lines| (lines[0].mv, lines[0].score))
                         .is_none()
                 );
                 assert!(
@@ -298,9 +331,14 @@ fn partial_preserves_public_score_and_depth_but_carries_partial_score_and_averag
                     averages: Some((-750, -562_500)),
                 },
             ));
-            let outcome = main_worker_outcome(searcher, completed, vec![roots[0]], 1000);
+            let outcome = main_worker_outcome(
+                searcher,
+                completed,
+                previous_lines(Some((completed.best_move, completed.score)), &[roots[0]]),
+                1000,
+            );
             assert_eq!(outcome.result.best_move, roots[1]);
-            assert_eq!(outcome.pv, [roots[1], roots[2]]);
+            assert_eq!(outcome.lines[0].pv, [roots[1], roots[2]]);
             assert_eq!(outcome.partial_score, Some(-1000));
             assert_eq!((outcome.result.score, outcome.result.depth), (100, 3));
 

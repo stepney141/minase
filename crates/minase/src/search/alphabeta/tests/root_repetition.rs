@@ -141,6 +141,7 @@ fn article_31_r1_root_candidates_keep_only_the_repetition_winning_move() {
     assert_eq!(game.repetition_root_moves().winning(), &[winning]);
     let snapshot = SearchSnapshot::from_game(&game).unwrap();
     assert_eq!(snapshot.root_moves(), &[winning]);
+    super::multipv::assert_ranked_search(snapshot, 3);
 }
 
 #[test]
@@ -191,6 +192,7 @@ fn article_31_r1_root_candidates_keep_all_moves_when_every_move_loses() {
     assert_eq!(classified.losing(), legal);
     let snapshot = SearchSnapshot::from_game(&game).unwrap();
     assert_eq!(snapshot.root_moves(), legal);
+    super::multipv::assert_ranked_search(snapshot, 3);
 }
 
 #[test]

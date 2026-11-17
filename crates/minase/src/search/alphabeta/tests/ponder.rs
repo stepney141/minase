@@ -101,6 +101,7 @@ fn run_fixed_scaled_ponder(
         },
         DRAW_SCORE,
         &root_moves,
+        1,
         &RepetitionHistory::new(&[search_key(&position)]),
         depth_limit,
         Some(budget),
@@ -234,11 +235,13 @@ fn completed_ponder_iteration_clears_mate_stop_before_hit() {
         &mut mate_early_stop_on_hit,
         true,
         MATE - 1,
+        MATE - 1
     ));
     assert!(!update_ponder_mate_early_stop(
         &mut mate_early_stop_on_hit,
         true,
         DRAW_SCORE,
+        DRAW_SCORE
     ));
 
     let hit = Duration::from_secs(1);
@@ -394,6 +397,7 @@ fn ponder_ignores_time_until_hit_but_obeys_depth_and_nodes() {
         snapshot.repetition(),
         DRAW_SCORE,
         &snapshot.root_moves,
+        NonZeroUsize::MIN,
         &snapshot.history_keys,
         &SearchLimits::new(Some(3), None, None, Some(clock)).unwrap(),
         &stop,
@@ -439,6 +443,7 @@ fn ponder_sets_mark_after_worker_count_rebuild() {
         },
         DRAW_SCORE,
         &root_moves,
+        NonZeroUsize::MIN,
         &[search_key(&position)],
         &SearchLimits::new(Some(1), None, Some(1_000), None).unwrap(),
         &AtomicBool::new(false),
@@ -631,6 +636,7 @@ fn ponder_mate_stop_waits_for_hit_and_stops_before_the_next_iteration() {
             },
             DRAW_SCORE,
             &root_moves,
+            NonZeroUsize::MIN,
             &history_keys,
             &limits,
             &AtomicBool::new(false),
@@ -696,7 +702,14 @@ fn ponder_aspiration_research_preserves_iteration_start_and_stability() {
         ));
         let before = searcher.nodes;
         let (_, score) = searcher
-            .search_iteration(&position, &roots, 5, Some((previous_best, DRAW_SCORE)))
+            .search_iteration(
+                &position,
+                &roots,
+                5,
+                &previous_lines(Some((previous_best, DRAW_SCORE)), &searcher.pv[0]),
+                1,
+            )
+            .map(|lines| (lines[0].mv, lines[0].score))
             .unwrap();
         assert_eq!(score, DRAW_SCORE);
         assert!(searcher.nodes - before > roots.len() as u64);
@@ -750,6 +763,7 @@ fn ponder_long_iteration_stops_on_hit_without_spending_hard_budget() {
                 },
                 DRAW_SCORE,
                 &roots,
+                1,
                 &RepetitionHistory::new(&[]),
                 1,
                 worker_index.max(1),
@@ -827,7 +841,7 @@ fn ponder_long_iteration_stops_on_hit_without_spending_hard_budget() {
             crate::search::alphabeta::deepening::main_worker_outcome(
                 &searcher,
                 completed.result,
-                completed.pv,
+                completed.lines,
                 1000,
             )
         });
@@ -883,6 +897,7 @@ fn ponder_team_adopts_completed_auxiliary_result_after_main_recheck() {
                     },
                     DRAW_SCORE,
                     &roots,
+                    1,
                     &RepetitionHistory::new(&[]),
                     2,
                     1,
@@ -941,7 +956,14 @@ fn ponder_team_adopts_completed_auxiliary_result_after_main_recheck() {
             hit_ns.store(1_000_000_000, AtomicOrdering::Relaxed);
             assert!(
                 searcher
-                    .search_iteration(&position, &roots, 1, None)
+                    .search_iteration(
+                        &position,
+                        &roots,
+                        1,
+                        &previous_lines(None, &searcher.pv[0]),
+                        1
+                    )
+                    .map(|lines| (lines[0].mv, lines[0].score))
                     .is_none()
             );
             assert_eq!(searcher.stop_reason, Some(StopReason::SoftLimit));
@@ -959,7 +981,11 @@ fn ponder_team_adopts_completed_auxiliary_result_after_main_recheck() {
                     depth: 0,
                     nodes: 0,
                 },
-                pv: vec![roots[0]],
+                lines: vec![RootLine {
+                    mv: roots[0],
+                    score: 0,
+                    pv: vec![roots[0]],
+                }],
                 nodes: searcher.nodes,
             }
         });
@@ -999,6 +1025,7 @@ fn ponder_hit_before_worker_start_obeys_the_iteration_start_budget() {
         snapshot.repetition(),
         DRAW_SCORE,
         &snapshot.root_moves,
+        NonZeroUsize::MIN,
         &snapshot.history_keys,
         &SearchLimits::new(None, None, Some(70), None).unwrap(),
         &stop,

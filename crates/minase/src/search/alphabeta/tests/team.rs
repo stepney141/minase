@@ -86,7 +86,11 @@ fn panicking_worker_stops_and_joins_the_remaining_team_before_propagation() {
                             depth: 0,
                             nodes: 0,
                         },
-                        pv: vec![fallback],
+                        lines: vec![RootLine {
+                            mv: fallback,
+                            score: 0,
+                            pv: vec![fallback],
+                        }],
                         nodes: 0,
                     }
                 },
@@ -205,6 +209,7 @@ fn external_stop_takes_priority_over_the_node_limit() {
         snapshot.repetition(),
         DRAW_SCORE,
         &snapshot.root_moves,
+        NonZeroUsize::MIN,
         &snapshot.history_keys,
         &limits,
         &external_stop,
@@ -265,7 +270,11 @@ fn worker_outcome_selection_uses_depth_partial_then_index_and_excludes_zero() {
                 depth,
                 nodes: 0,
             },
-            pv: vec![moves[move_index]],
+            lines: vec![RootLine {
+                mv: moves[move_index],
+                score: worker_index as i32 * 10,
+                pv: vec![moves[move_index]],
+            }],
             nodes: worker_index as u64,
         };
 

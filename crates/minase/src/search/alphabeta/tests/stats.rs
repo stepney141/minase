@@ -361,6 +361,7 @@ fn two_worker_search_stats_equal_the_sum_of_worker_counts() {
         snapshot.repetition(),
         DRAW_SCORE,
         &snapshot.root_moves,
+        NonZeroUsize::MIN,
         &snapshot.history_keys,
         &depth_limits(5),
         &AtomicBool::new(false),

@@ -181,6 +181,7 @@ pub(in crate::search) fn start_search_with_clock(
                 snapshot.repetition(),
                 snapshot.draw_value(),
                 &snapshot.root_moves,
+                snapshot.multi_pv(),
                 &snapshot.history_keys,
                 &limits,
                 &thread_stop,
@@ -204,11 +205,15 @@ pub(in crate::search) fn start_search_with_clock(
                 depth: result.depth,
                 nodes: result.nodes,
                 elapsed: outcome.elapsed,
-                lines: vec![PvLine {
-                    depth: result.depth,
-                    score: Some(result.score),
-                    moves: outcome.pv,
-                }],
+                lines: outcome
+                    .lines
+                    .into_iter()
+                    .map(|line| PvLine {
+                        depth: result.depth,
+                        score: Some(line.score),
+                        moves: line.pv,
+                    })
+                    .collect(),
                 stop_reason: outcome.stop_reason,
             });
             Ok(Searcher::AlphaBeta(engine))

@@ -192,6 +192,7 @@ fn root_stores_pv_flag() {
                 1,
                 -INFINITY,
                 INFINITY,
+                None,
             )
             .unwrap();
         assert!(searcher.tt_pv[0]);

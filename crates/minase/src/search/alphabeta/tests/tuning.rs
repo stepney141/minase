@@ -463,6 +463,7 @@ fn tuning_parameters_in_isolated_process() {
             snapshot.repetition(),
             DRAW_SCORE,
             &snapshot.root_moves,
+            NonZeroUsize::MIN,
             &snapshot.history_keys,
             &depth_limits(1),
             &AtomicBool::new(true),

@@ -143,6 +143,7 @@ pub fn search(
         snapshot.repetition(),
         snapshot.draw_value(),
         &snapshot.root_moves,
+        snapshot.multi_pv(),
         &snapshot.history_keys,
         limits,
         &stop,

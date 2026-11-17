@@ -18,6 +18,14 @@ use super::searcher::Searcher;
 use super::tt::{Bound, Hit};
 use crate::search::params;
 
+/// 同じ反復で完了した根の手、値、および根からの読み筋。
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub(in crate::search) struct RootLine {
+    pub(in crate::search) mv: Move,
+    pub(in crate::search) score: i32,
+    pub(in crate::search) pv: Vec<Move>,
+}
+
 /// 根の手の平均を更新する尺度（Stockfish `src/search.cpp:1480`）。
 const ROOT_MOVE_AVERAGE_SCALE: u32 = 32;
 /// 根の手の重みで、更新前の累計ノード数に掛ける比3/2の分子
@@ -313,12 +321,18 @@ impl RootResults {
 impl Searcher<'_> {
     /// 先頭手を保ち、残りを前回完了反復の部分木ノード数の降順に安定整列する。
     ///
-    /// 先頭手は通常の整列で優先した置換表の手であり、`root_results`に直前の最善手があればそちらを優先する。
+    /// `reference`があればその手を置換表の手の役割に使う。なければ照会した置換表の手を使い、
+    /// N＝1で`root_results`に直前の最善手があればそちらを優先する。
     /// どちらもなければ[`Self::order_moves`]の先頭を保ち、前回ノード数がなければその整列順のままとする。
     /// 評価値で整列しない理由は`docs/adr/order-root-moves-by-previous-subtree-nodes.md`にある。
-    pub(super) fn order_root_moves(&self, position: &Position, moves: &mut [Move]) -> Option<Hit> {
+    pub(super) fn order_root_moves(
+        &self,
+        position: &Position,
+        moves: &mut [Move],
+        reference: Option<Move>,
+    ) -> Option<Hit> {
         let tt_hit = self.tt.probe(search_key(position), 0);
-        let tt_move = tt_hit.and_then(|hit| hit.best_move);
+        let tt_move = reference.or_else(|| tt_hit.and_then(|hit| hit.best_move));
         self.order_moves(position, moves, tt_move, 0);
         if let Some(previous) = self.root_results.as_ref().and_then(|r| r.previous_best) {
             let index = moves
@@ -343,7 +357,7 @@ impl Searcher<'_> {
     /// 窓を移しながら読み直し、窓内で完了した反復だけを返す。
     ///
     /// 主ワーカーと補助ワーカーが共有し、直前の完了反復の最善手と、その手について各ワーカーが持つ
-    /// 評価値の平均と符号つき2乗の平均を使う。深さ1は直前の完了反復がないため全窓で読む。
+    /// 評価値の平均と符号つき2乗の平均を使う。1本目の深さ1は直前の完了反復がないため全窓で読む。
     /// 深さ2以上は平均があれば窓を置く。
     /// 直前の完了値は詰みを探す印の判定だけに使う。
     /// 反復の開始時にfail highの持ち越しを減らし、各窓はfail highの回数、持ち越し、
@@ -359,6 +373,26 @@ impl Searcher<'_> {
     /// 根の置換表へは窓の深さで保存を要求するため、既存の置換規則により、浅い完了窓が
     /// 先に読んだ深い窓の記録を上書きしないことがある。
     /// 読み直し中の中断も`None`を返す。
+    ///
+    /// MultiPVでは全N本が窓内で完了した反復だけを返し、途中で止まった反復は丸ごと捨てる。
+    /// 完了のたびに読み筋を値の降順に安定整列し、根のノード数は全N本と読み直しの分を合算する。
+    /// k≥2の基準の手は、前の反復で上位だった未選択の手とし、該当しなければ残りを通常順で並べた先頭とする。
+    /// 次の7つの処理はk≥2だけに適用する。行番号はStockfish 5c4cef0bの`src/search.cpp`を指す。
+    ///
+    /// 1. 同じ反復で選んだ根の手を候補から除く（1164行）。
+    /// 2. 基準の手のその時点の平均と符号つき2乗の平均から窓を置き、平均がなければ全窓で読む（389〜392行）。
+    /// 3. 基準の手を根の置換表の手として最初に読み、残りを前回の部分木ノード数で安定整列する（840行）。
+    /// 4. 基準の手の前回の読み筋を追い、前回のN本になければ追う読み筋を空にする（383、793〜794行）。
+    /// 5. 根の探索値と最善手を置換表へ保存せず、根のcorrection historyも更新しない（1656行）。
+    ///    根の補正前の静的評価の保存、子孫の更新、および根のhistoryの更新は続ける。
+    /// 6. 根の最善手の変化を時間管理の回数に加算しない（1531行）。
+    /// 7. fail highの持ち越しを減らしも更新もせず、その時点の持ち越しと0から数える回数で窓の深さを決める（404〜405、461〜462行）。
+    ///
+    /// 詰みを探す印は基準の手の前回の値で決め、前回のN本になければ立てない。
+    /// k＝1は前回の1本目を使い、持ち越しの減衰と更新も行う。
+    /// 時間管理は整列後の1本目で判断し、詰みの早期停止はN本目の勝ちと1本目の負けで決める。
+    /// 設計判断の理由は`docs/plans/multipv.md`にある。
+    ///
     /// 窓の置き方と移し方の判断の理由は`docs/adr/center-aspiration-windows-on-the-best-move-average-and-move-both-edges-on-failure.md`に、
     /// fail highの減深と反復の深さの扱いの判断の理由は`docs/adr/reduce-aspiration-depth-after-fail-highs-and-late-iterations.md`にある。
     pub(super) fn search_iteration(
@@ -366,63 +400,119 @@ impl Searcher<'_> {
         position: &Position,
         root_moves: &[Move],
         iteration_depth: u32,
-        prev: Option<(Move, i32)>,
-    ) -> Option<(Move, i32)> {
-        self.seek_mate = is_seek_mate(
-            prev.map(|(_, score)| score),
-            iteration_depth,
-            self.nnue.pawn_value(),
-        );
-        self.previous_pv.clone_from(&self.pv[0]);
-        let mut reduction = FailHighReduction::begin(self.fail_high_recovery);
-        self.fail_high_recovery = reduction.recovery;
-        let averages = prev.and_then(|(best_move, _)| {
-            self.root_move_stats
-                .iter()
-                .find(|(mv, _)| *mv == best_move)
-                .and_then(|(_, stats)| stats.averages)
-        });
-        let mut window =
-            AspirationWindow::initial(averages.map(|(average, signed_square_average)| {
-                (
-                    average,
-                    initial_aspiration_delta(
-                        self.nnue.pawn_value(),
-                        params::aspiration_delta(),
-                        params::aspiration_score_width(),
-                        signed_square_average,
-                        self.worker_index,
-                    ),
-                )
-            }));
-        loop {
-            let window_depth = reduction.window_depth(iteration_depth, self.search_again_counter);
-            let Some((best_move, score)) = self.search_root(
-                position,
-                root_moves,
-                iteration_depth,
-                window_depth,
-                window.alpha,
-                window.beta,
-            ) else {
-                self.current_root_nodes.clear();
-                return None;
-            };
-            if score <= window.alpha {
-                reduction = reduction.after_fail_low();
-                window.widen_low(score);
-            } else if score >= window.beta {
-                reduction = reduction.after_fail_high();
-                window.widen_high(score);
+        previous: &[RootLine],
+        multi_pv: usize,
+    ) -> Option<Vec<RootLine>> {
+        let mut lines: Vec<RootLine> = Vec::with_capacity(multi_pv);
+        for rank in 0..multi_pv {
+            let remaining;
+            let (candidates, reference) = if rank == 0 {
+                (root_moves, None)
             } else {
-                self.fail_high_recovery = reduction.recovery_after_completion();
-                self.completed_root_nodes = std::mem::take(&mut self.current_root_nodes);
-                if let Some(results) = &mut self.root_results {
-                    results.previous_best = Some(best_move);
+                remaining = root_moves
+                    .iter()
+                    .copied()
+                    .filter(|mv| !lines.iter().any(|line| line.mv == *mv))
+                    .collect::<Vec<_>>();
+                let reference =
+                    if let Some(line) = previous.iter().find(|line| remaining.contains(&line.mv)) {
+                        line.mv
+                    } else {
+                        let mut ordered = remaining.clone();
+                        self.order_root_moves(position, &mut ordered, None);
+                        ordered[0]
+                    };
+                (remaining.as_slice(), Some(reference))
+            };
+            let prev = if let Some(reference) = reference {
+                previous.iter().find(|line| line.mv == reference)
+            } else {
+                previous.first()
+            };
+            self.seek_mate = is_seek_mate(
+                prev.map(|line| line.score),
+                iteration_depth,
+                self.nnue.pawn_value(),
+            );
+            if let Some(prev) = prev {
+                self.previous_pv.clone_from(&prev.pv);
+            } else {
+                self.previous_pv.clear();
+            }
+            let mut reduction = if rank == 0 {
+                let reduction = FailHighReduction::begin(self.fail_high_recovery);
+                self.fail_high_recovery = reduction.recovery;
+                reduction
+            } else {
+                FailHighReduction {
+                    failed_high_count: 0,
+                    recovery: self.fail_high_recovery,
                 }
-                return Some((best_move, score));
+            };
+            let reference_move = reference.or_else(|| prev.map(|line| line.mv));
+            let averages = reference_move.and_then(|best_move| {
+                self.root_move_stats
+                    .iter()
+                    .find(|(mv, _)| *mv == best_move)
+                    .and_then(|(_, stats)| stats.averages)
+            });
+            let mut window =
+                AspirationWindow::initial(averages.map(|(average, signed_square_average)| {
+                    (
+                        average,
+                        initial_aspiration_delta(
+                            self.nnue.pawn_value(),
+                            params::aspiration_delta(),
+                            params::aspiration_score_width(),
+                            signed_square_average,
+                            self.worker_index,
+                        ),
+                    )
+                }));
+            loop {
+                let window_depth =
+                    reduction.window_depth(iteration_depth, self.search_again_counter);
+                let Some((best_move, score)) = self.search_root(
+                    position,
+                    candidates,
+                    iteration_depth,
+                    window_depth,
+                    window.alpha,
+                    window.beta,
+                    reference,
+                ) else {
+                    self.current_root_nodes.clear();
+                    return None;
+                };
+                if score <= window.alpha {
+                    reduction = reduction.after_fail_low();
+                    window.widen_low(score);
+                } else if score >= window.beta {
+                    reduction = reduction.after_fail_high();
+                    window.widen_high(score);
+                } else {
+                    if rank == 0 {
+                        self.fail_high_recovery = reduction.recovery_after_completion();
+                    }
+                    lines.push(RootLine {
+                        mv: best_move,
+                        score,
+                        pv: self.pv[0].clone(),
+                    });
+                    if multi_pv > 1 {
+                        lines.sort_by_key(|line| std::cmp::Reverse(line.score));
+                    }
+                    break;
+                }
             }
         }
+        self.completed_root_nodes = std::mem::take(&mut self.current_root_nodes);
+        if multi_pv == 1
+            && let Some(results) = &mut self.root_results
+        {
+            results.previous_best = Some(lines[0].mv);
+        }
+        Some(lines)
     }
 
     /// ルート局面を反復の深さと窓の深さを分けて探索し、最善手と評価値を返す。
@@ -439,7 +529,13 @@ impl Searcher<'_> {
     /// （Stockfish src/search.cpp:870-874）。照合した記録に静的評価がない場合は保存しない。
     /// 根の先頭以外の手は残り深さ2以上でLMRを適用し、子ノードの枝刈りも通常どおり行う。
     /// 完了した探索で最善値が開始時のαを上回れば、根でもhistoryを1回更新する。
-    /// 中断された場合は`None`を返し、停止条件を記録する。
+    /// `reference`が`None`ならk＝1、`Some`ならk≥2であり、その手を根の置換表の手として扱う。
+    /// k≥2では最善手変更回数、末尾の置換表保存、および根のcorrection更新を抑止する。
+    /// 根の静的評価の保存とhistoryの更新、および子孫の更新は続ける。
+    /// 候補の除外、窓、前回の読み筋、詰みを探す印、およびfail highの規則は[`Self::search_iteration`]に従う。
+    /// 中断された場合は`None`を返し、呼び出し側がその反復の全N本を捨てる。
+    /// 根の限定探索の値を保存しない理由は`docs/plans/multipv.md`にある。
+    #[allow(clippy::too_many_arguments)]
     pub(super) fn search_root(
         &mut self,
         position: &Position,
@@ -448,6 +544,7 @@ impl Searcher<'_> {
         window_depth: u32,
         mut alpha: i32,
         beta: i32,
+        reference: Option<Move>,
     ) -> Option<(Move, i32)> {
         #[cfg(feature = "invariants")]
         assert!(
@@ -470,7 +567,7 @@ impl Searcher<'_> {
         let mut position = position.clone();
         let mut moves = root_moves.to_vec();
         let key = search_key(&position);
-        let tt_hit = self.order_root_moves(&position, &mut moves);
+        let tt_hit = self.order_root_moves(&position, &mut moves, reference);
         self.tt_hits[0] = tt_hit.is_some();
         // 根の静的評価も子孫のimprovingの比較に保持する（Stockfish src/search.cpp:846-884）。
         #[cfg(feature = "invariants")]
@@ -574,7 +671,7 @@ impl Searcher<'_> {
                 self.current_root_nodes.push((mv, nodes));
             }
             let score = score?;
-            if index > 0 && score > alpha_before {
+            if reference.is_none() && index > 0 && score > alpha_before {
                 self.shared.record_best_move_change();
             }
             if let Some((_, stats)) = self.root_move_stats.iter_mut().find(|(m, _)| *m == mv) {
@@ -630,26 +727,28 @@ impl Searcher<'_> {
         } else {
             Bound::Exact
         };
-        self.update_correction(
-            &position,
-            window_depth,
-            0,
-            best_score,
-            bound,
-            best_capture,
-            static_eval,
-            None,
-        );
-        self.tt.store(
-            key,
-            window_depth,
-            best_score,
-            Some(raw),
-            bound,
-            Some(best_move),
-            0,
-            true,
-        );
+        if reference.is_none() {
+            self.update_correction(
+                &position,
+                window_depth,
+                0,
+                best_score,
+                bound,
+                best_capture,
+                static_eval,
+                None,
+            );
+            self.tt.store(
+                key,
+                window_depth,
+                best_score,
+                Some(raw),
+                bound,
+                Some(best_move),
+                0,
+                true,
+            );
+        }
         Some((best_move, best_score))
     }
 }

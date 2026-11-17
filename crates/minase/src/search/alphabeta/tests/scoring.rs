@@ -187,7 +187,7 @@ fn article_23_2_opponent_with_no_legal_moves_scores_mate_minus_one_ply() {
 
     with_root_searcher(&position, &[], |searcher| {
         let (_, score) = searcher
-            .search_root(&position, &moves, 2, 2, -INFINITY, INFINITY)
+            .search_root(&position, &moves, 2, 2, -INFINITY, INFINITY, None)
             .unwrap();
 
         // 全候補が同値のため最善手の一意性は主張しない。

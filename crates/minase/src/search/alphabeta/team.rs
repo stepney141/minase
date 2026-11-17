@@ -21,6 +21,7 @@ use minase_core::rules::MoveRules;
 
 use super::deepening::{run_auxiliary_worker, run_main_worker};
 use super::history::HistoryTables;
+use super::root::RootLine;
 use super::searcher::RepetitionHistory;
 use super::time::{InstabilityScaling, ponder_bonus_time_budget, uses_partial_results};
 use crate::search::budget::{TimeBudget, time_budget};
@@ -41,8 +42,8 @@ pub(in crate::search) struct SearchOutcome {
     pub(in crate::search) result: SearchResult,
     /// 探索開始からの経過時間。
     pub(in crate::search) elapsed: Duration,
-    /// 採用した着手の主変化。途中結果があればその手のもの。
-    pub(in crate::search) pv: Vec<Move>,
+    /// 採用した反復の読み筋を順位順に持つ。N＝1の途中結果は先頭の手と読み筋へ反映する。
+    pub(in crate::search) lines: Vec<RootLine>,
     /// 探索を停止した条件。
     pub(in crate::search) stop_reason: StopReason,
 }
@@ -63,8 +64,8 @@ pub(super) struct WorkerOutcome {
     pub(super) worker_index: usize,
     /// 最後まで完了した反復の結果。
     pub(super) result: SearchResult,
-    /// 採用した着手の主変化。途中結果があればその手のもの。
-    pub(super) pv: Vec<Move>,
+    /// 採用した反復の読み筋を順位順に持つ。N＝1の途中結果は先頭の手と読み筋へ反映する。
+    pub(super) lines: Vec<RootLine>,
     /// このワーカーが実際の着手を盤面へ適用した回数。
     pub(super) nodes: u64,
 }
@@ -210,6 +211,7 @@ pub(in crate::search) fn run_search_team(
     repetition: SearchRepetition,
     draw_value: i32,
     root_moves: &[Move],
+    multi_pv: NonZeroUsize,
     history_keys: &[u64],
     limits: &SearchLimits,
     external_stop: &AtomicBool,
@@ -221,6 +223,7 @@ pub(in crate::search) fn run_search_team(
     hit_ns: &AtomicU64,
     ponder: bool,
 ) -> SearchOutcome {
+    let multi_pv = multi_pv.get().min(root_moves.len());
     let finite_limits = limits.finite();
     let depth_limit = finite_limits
         .and_then(|limits| limits.depth)
@@ -295,6 +298,7 @@ pub(in crate::search) fn run_search_team(
                     repetition,
                     draw_value,
                     root_moves,
+                    multi_pv,
                     &repetition_history,
                     depth_limit,
                     time_budget,
@@ -309,7 +313,7 @@ pub(in crate::search) fn run_search_team(
                     pawn_history,
                     events,
                     ponder,
-                    uses_partial_results(limits),
+                    multi_pv == 1 && uses_partial_results(limits),
                 )
             } else {
                 run_auxiliary_worker(
@@ -319,6 +323,7 @@ pub(in crate::search) fn run_search_team(
                     repetition,
                     draw_value,
                     root_moves,
+                    multi_pv,
                     &repetition_history,
                     depth_limit,
                     worker_index,
@@ -371,7 +376,7 @@ pub(in crate::search) fn run_search_team(
             .collect(),
         result,
         elapsed: clock.elapsed(),
-        pv: adopted.pv.clone(),
+        lines: adopted.lines.clone(),
         stop_reason: shared.reason(),
     }
 }

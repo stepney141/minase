@@ -14,7 +14,7 @@ use minase_core::rules::MoveRules;
 use super::capture_history::CaptureHistory;
 use super::correction::{ContinuationCorrectionHistory, CorrectionValues};
 use super::history::{ContinuationHistory, HistoryTable, PawnHistory};
-use super::root::RootResults;
+use super::root::{RootLine, RootResults};
 use super::searcher::{PonderIteration, RepetitionHistory, Searcher, new_searcher};
 use super::team::{SharedSearch, WorkerOutcome};
 use super::time::{
@@ -109,8 +109,13 @@ impl IterationBudgets {
 }
 
 /// 先読み中の最新の完了反復が詰みによる早期停止の条件を満たすかを記録する。
-pub(super) fn update_ponder_mate_early_stop(record: &mut bool, enabled: bool, score: i32) -> bool {
-    let current = enabled && mate_early_stop(score);
+pub(super) fn update_ponder_mate_early_stop(
+    record: &mut bool,
+    enabled: bool,
+    first: i32,
+    last: i32,
+) -> bool {
+    let current = enabled && mate_early_stop(first, last);
     *record = current;
     current
 }
@@ -129,7 +134,7 @@ pub(super) fn auxiliary_depths(worker_index: usize, depth_limit: u32) -> impl It
 }
 
 /// 主ワーカーの反復深化を実行し、窓内で深さを完了するごとに進捗イベントを送る。
-/// 深さ1は全窓で読む。
+/// 1本目の深さ1は全窓で読む。
 /// 深さ2以上は、直前の完了反復の最善手について記録した評価値の平均を窓の中心に使い、
 /// 符号つき2乗の平均を初期半幅に使う。
 /// aspiration windowの窓外れは[`Searcher::search_iteration`]内で読み直し、進捗として通知しない。
@@ -138,7 +143,7 @@ pub(super) fn auxiliary_depths(worker_index: usize, depth_limit: u32) -> impl It
 /// 詰みによる早期停止後も、より深い補助ワーカーの結果が選ばれ得るため、返す手が詰みである
 /// ことは保証しない。
 /// 秒読みつき時計の探索と固定時間だけを指定した探索では、[`super::time::uses_partial_results`]に従い、
-/// `adopt_partial`で根の順序と途中結果の採用を有効にする。
+/// N＝1の場合だけ`adopt_partial`で根の順序と途中結果の採用を有効にする。
 #[allow(clippy::too_many_arguments)]
 pub(super) fn run_main_worker(
     nnue: &Nnue,
@@ -147,6 +152,7 @@ pub(super) fn run_main_worker(
     repetition: SearchRepetition,
     draw_value: i32,
     root_moves: &[Move],
+    multi_pv: usize,
     repetition_history: &RepetitionHistory,
     depth_limit: u32,
     time_budget: Option<TimeBudget>,
@@ -170,6 +176,7 @@ pub(super) fn run_main_worker(
         repetition,
         draw_value,
         root_moves,
+        multi_pv,
         repetition_history,
         depth_limit,
         time_budget,
@@ -192,6 +199,14 @@ pub(super) fn run_main_worker(
 
 /// 指定した時間係数を使い、反復開始直後の検査フックを伴って主ワーカーを実行する。
 /// 通常経路は何もしないフックを渡し、テストは先読み的中を決定的な位置へ注入する。
+/// 反復の開始、先読みの予算、フック、および時間伸縮の開始は、全N本につき1回だけ実行する。
+/// 全N本が完了したときだけ進捗を送り、途中で止まった反復は丸ごと捨てる。
+/// k≥2の7つの処理と、基準の手の前回の値から詰みを探す印を決める規則は[`Searcher::search_iteration`]に従う。
+/// 時間管理の最善手、評価値の低下、反復間の安定、および探索量の割合は整列後の1本目で判断する。
+/// 最善手変更回数は各ワーカーのk＝1だけで数え、探索量の分母には全N本のノード数を使う。
+/// 詰みの早期停止はN本目が3手以内の勝ち、または1本目がちょうど2手の負けのときに限る
+/// （Stockfish 5c4cef0b `src/search.cpp:592-624`）。途中結果はN＝1だけで採用する。
+/// 設計判断の理由は`docs/plans/multipv.md`にある。
 #[allow(clippy::too_many_arguments)]
 pub(super) fn run_main_worker_with_iteration_hook(
     nnue: &Nnue,
@@ -200,6 +215,7 @@ pub(super) fn run_main_worker_with_iteration_hook(
     repetition: SearchRepetition,
     draw_value: i32,
     root_moves: &[Move],
+    multi_pv: usize,
     repetition_history: &RepetitionHistory,
     depth_limit: u32,
     time_budget: Option<TimeBudget>,
@@ -246,14 +262,22 @@ pub(super) fn run_main_worker_with_iteration_hook(
         depth: 0,
         nodes: 0,
     };
-    let mut completed_pv = vec![root_moves[0]];
+    let mut completed_lines = vec![RootLine {
+        mv: result.best_move,
+        score: result.score,
+        pv: vec![root_moves[0]],
+    }];
     let mut completed_bests = Vec::new();
     let mut iteration_budgets = IterationBudgets::new(time_budget);
     // 先読み中は最新の完了反復の判定で毎回上書きし、次の反復の開始時に保存する。
     let mut mate_early_stop_on_hit = false;
 
     for depth in 1..=depth_limit {
-        let prev = (result.depth > 0).then_some((result.best_move, result.score));
+        let prev = if result.depth > 0 {
+            completed_lines.as_slice()
+        } else {
+            &[]
+        };
         if ponder && iteration_budgets.has_budget() {
             let iteration_started = shared.clock.elapsed();
             let stable = stable_signal(&completed_bests, coefficients.stable_iterations);
@@ -292,11 +316,13 @@ pub(super) fn run_main_worker_with_iteration_hook(
         if let Some(scaling) = &mut instability_scaling {
             scaling.begin_iteration();
         }
-        let Some((best_move, score)) = searcher.search_iteration(position, root_moves, depth, prev)
+        let Some(lines) = searcher.search_iteration(position, root_moves, depth, prev, multi_pv)
         else {
             debug_assert!(searcher.stop_reason.is_some());
             break;
         };
+        let best_move = lines[0].mv;
+        let score = lines[0].score;
         completed_bests.push(best_move);
         let stable = stable_signal(&completed_bests, coefficients.stable_iterations);
         let mut scaled_time_ms = None;
@@ -335,22 +361,26 @@ pub(super) fn run_main_worker_with_iteration_hook(
             &mut mate_early_stop_on_hit,
             instability_scaling.is_some(),
             score,
+            lines.last().expect("a completed iteration has lines").score,
         );
-        result.best_move = best_move;
-        result.score = score;
+        result.best_move = lines[0].mv;
+        result.score = lines[0].score;
         result.depth = depth;
-        completed_pv.clone_from(&searcher.pv[0]);
+        completed_lines = lines;
         let elapsed = shared.clock.elapsed();
         if let Some((sender, search_id)) = events {
             let _ = sender.send(SearchEvent::Progress {
                 search_id,
                 nodes: shared.nodes(),
                 elapsed,
-                lines: vec![PvLine {
-                    depth,
-                    score: Some(score),
-                    moves: completed_pv.clone(),
-                }],
+                lines: completed_lines
+                    .iter()
+                    .map(|line| PvLine {
+                        depth,
+                        score: Some(line.score),
+                        moves: line.pv.clone(),
+                    })
+                    .collect(),
             });
         }
         if shared
@@ -400,7 +430,7 @@ pub(super) fn run_main_worker_with_iteration_hook(
         }
     }
     let time_reduction = instability_scaling.map_or(1000, |scaling| scaling.time_reduction);
-    main_worker_outcome(&searcher, result, completed_pv, time_reduction)
+    main_worker_outcome(&searcher, result, completed_lines, time_reduction)
 }
 
 /// 秒読みつき時計の探索と固定時間だけを指定した探索では、
@@ -409,7 +439,7 @@ pub(super) fn run_main_worker_with_iteration_hook(
 pub(super) fn main_worker_outcome(
     searcher: &Searcher<'_>,
     mut result: SearchResult,
-    mut completed_pv: Vec<Move>,
+    mut completed_lines: Vec<RootLine>,
     time_reduction: i32,
 ) -> WorkerOutcome {
     #[cfg(feature = "search-stats")]
@@ -423,7 +453,8 @@ pub(super) fn main_worker_outcome(
     let partial_score = partial.map(|partial| partial.score);
     if let Some(partial) = partial {
         result.best_move = partial.pv[0];
-        completed_pv.clone_from(&partial.pv);
+        completed_lines[0].mv = result.best_move;
+        completed_lines[0].pv.clone_from(&partial.pv);
     }
     let returned_move_average = returned_move_average(searcher, result);
     let nodes = searcher.nodes;
@@ -435,7 +466,7 @@ pub(super) fn main_worker_outcome(
         search_again_counter: searcher.search_again_counter,
         worker_index: 0,
         result,
-        pv: completed_pv,
+        lines: completed_lines,
         nodes,
     }
 }
@@ -456,6 +487,7 @@ pub(super) fn run_auxiliary_worker(
     repetition: SearchRepetition,
     draw_value: i32,
     root_moves: &[Move],
+    multi_pv: usize,
     repetition_history: &RepetitionHistory,
     depth_limit: u32,
     worker_index: usize,
@@ -495,18 +527,26 @@ pub(super) fn run_auxiliary_worker(
         depth: 0,
         nodes: 0,
     };
-    let mut completed_pv = vec![root_moves[0]];
+    let mut completed_lines = vec![RootLine {
+        mv: result.best_move,
+        score: result.score,
+        pv: vec![root_moves[0]],
+    }];
     for depth in auxiliary_depths(worker_index, depth_limit) {
-        let prev = (result.depth > 0).then_some((result.best_move, result.score));
+        let prev = if result.depth > 0 {
+            completed_lines.as_slice()
+        } else {
+            &[]
+        };
         searcher.begin_iteration();
-        let Some((best_move, score)) = searcher.search_iteration(position, root_moves, depth, prev)
+        let Some(lines) = searcher.search_iteration(position, root_moves, depth, prev, multi_pv)
         else {
             break;
         };
-        result.best_move = best_move;
-        result.score = score;
+        result.best_move = lines[0].mv;
+        result.score = lines[0].score;
         result.depth = depth;
-        completed_pv.clone_from(&searcher.pv[0]);
+        completed_lines = lines;
         if depth == depth_limit {
             break;
         }
@@ -525,7 +565,7 @@ pub(super) fn run_auxiliary_worker(
         search_again_counter: searcher.search_again_counter,
         worker_index,
         result,
-        pv: completed_pv,
+        lines: completed_lines,
         nodes,
     }
 }

@@ -52,7 +52,7 @@ fn counted_root_improvements(scores: &[i32], alpha: i32, beta: i32) -> u64 {
         results.previous_best = Some(moves[0]);
         searcher.root_results = Some(results);
         let mut ordered = moves.clone();
-        searcher.order_root_moves(&position, &mut ordered);
+        searcher.order_root_moves(&position, &mut ordered, None);
         assert_eq!(ordered[0], moves[0]);
         for (&mv, &score) in ordered.iter().zip(scores) {
             let mut child = position.clone();
@@ -69,7 +69,7 @@ fn counted_root_improvements(scores: &[i32], alpha: i32, beta: i32) -> u64 {
             );
         }
         searcher
-            .search_root(&position, &moves, 8, 8, alpha, beta)
+            .search_root(&position, &moves, 8, 8, alpha, beta, None)
             .unwrap();
         changes = searcher.shared.take_best_move_changes();
     });
@@ -167,7 +167,7 @@ fn best_move_change_count_includes_each_aspiration_retry_and_is_taken_once() {
         results.previous_best = Some(first);
         searcher.root_results = Some(results);
         let mut ordered = moves.clone();
-        searcher.order_root_moves(&position, &mut ordered);
+        searcher.order_root_moves(&position, &mut ordered, None);
         assert_eq!(ordered[0], first);
         let delta = current_initial_delta(searcher.nnue.pawn_value(), 0, searcher.worker_index);
         let scores = [0, 2 * delta, 4 * delta];
@@ -188,7 +188,14 @@ fn best_move_change_count_includes_each_aspiration_retry_and_is_taken_once() {
         set_root_move_averages(searcher, first, Some((0, 0)));
         assert_eq!(
             searcher
-                .search_iteration(&position, &moves, 8, Some((first, 0)))
+                .search_iteration(
+                    &position,
+                    &moves,
+                    8,
+                    &previous_lines(Some((first, 0)), &searcher.pv[0]),
+                    1
+                )
+                .map(|lines| (lines[0].mv, lines[0].score))
                 .unwrap()
                 .1,
             scores[2]
@@ -221,7 +228,14 @@ fn iteration_sets_seek_mate_from_previous_score_before_window_research() {
                 (moves[0], score)
             });
             let (_, score) = searcher
-                .search_iteration(&position, &moves, depth, previous)
+                .search_iteration(
+                    &position,
+                    &moves,
+                    depth,
+                    &previous_lines(previous, &searcher.pv[0]),
+                    1,
+                )
+                .map(|lines| (lines[0].mv, lines[0].score))
                 .unwrap();
             assert!(score.abs() < 4590);
             assert_eq!(
@@ -245,7 +259,14 @@ fn completed_root_subtrees_order_the_next_iteration() {
         for depth in 1..=2 {
             let before = searcher.nodes;
             let (best, score) = searcher
-                .search_iteration(&position, &moves, depth, prev)
+                .search_iteration(
+                    &position,
+                    &moves,
+                    depth,
+                    &previous_lines(prev, &searcher.pv[0]),
+                    1,
+                )
+                .map(|lines| (lines[0].mv, lines[0].score))
                 .unwrap();
             prev = Some((best, score));
             assert!(searcher.current_root_nodes.is_empty());
@@ -262,7 +283,7 @@ fn completed_root_subtrees_order_the_next_iteration() {
             let mut baseline = moves.clone();
             searcher.order_moves(&position, &mut baseline, Some(best), 0);
             let mut ordered = moves.clone();
-            searcher.order_root_moves(&position, &mut ordered);
+            searcher.order_root_moves(&position, &mut ordered, None);
             assert_eq!(ordered[0], best);
             assert_eq!(ordered.len(), baseline.len());
             for pair in ordered[1..].windows(2) {
@@ -306,7 +327,7 @@ fn root_node_order_preserves_ties_missing_moves_and_the_preferred_first_move() {
                 searcher.root_results = Some(results);
             }
             let mut baseline = moves.clone();
-            searcher.order_root_moves(&position, &mut baseline);
+            searcher.order_root_moves(&position, &mut baseline, None);
             assert_eq!(baseline[0], previous_best.unwrap_or(tt_move));
             searcher.completed_root_nodes = vec![
                 (baseline[0], 1),
@@ -319,7 +340,7 @@ fn root_node_order_preserves_ties_missing_moves_and_the_preferred_first_move() {
             expected.extend([baseline[1], baseline[2]]);
             expected.extend_from_slice(&baseline[6..]);
             let mut actual = moves.clone();
-            searcher.order_root_moves(&position, &mut actual);
+            searcher.order_root_moves(&position, &mut actual, None);
             assert_eq!(actual, expected);
         });
     }
@@ -346,7 +367,7 @@ pub(super) fn root_uses_tt_static_evaluation_before_current_correction() {
         );
 
         searcher
-            .search_root(&position, &moves, 1, 1, -INFINITY, INFINITY)
+            .search_root(&position, &moves, 1, 1, -INFINITY, INFINITY, None)
             .unwrap();
 
         assert_eq!(searcher.static_evals[0], tt_static_eval + correction);
@@ -371,7 +392,7 @@ fn root_stores_static_eval_only_on_a_tt_miss() {
             .store(true, AtomicOrdering::Relaxed);
 
         assert_eq!(
-            searcher.search_root(&position, &moves, 1, 1, -INFINITY, INFINITY),
+            searcher.search_root(&position, &moves, 1, 1, -INFINITY, INFINITY, None),
             None
         );
         let hit = searcher.tt.probe(search_key(&position), 0).unwrap();
@@ -392,7 +413,7 @@ fn root_research_keeps_completed_counts_and_accumulates_each_move() {
     let history = repeated_root_children(&position, &moves);
     with_root_searcher(&position, &history, |searcher| {
         let mut baseline = moves.clone();
-        searcher.order_root_moves(&position, &mut baseline);
+        searcher.order_root_moves(&position, &mut baseline, None);
         let promoted = *baseline.last().unwrap();
         let completed = vec![(promoted, 100)];
         searcher.completed_root_nodes.clone_from(&completed);
@@ -400,7 +421,7 @@ fn root_research_keeps_completed_counts_and_accumulates_each_move() {
         for expected_count in 1..=2 {
             assert_eq!(
                 searcher
-                    .search_root(&position, &moves, 5, 5, 0, 1)
+                    .search_root(&position, &moves, 5, 5, 0, 1, None)
                     .unwrap()
                     .1,
                 DRAW_SCORE
@@ -414,7 +435,7 @@ fn root_research_keeps_completed_counts_and_accumulates_each_move() {
                     .all(|(_, nodes)| *nodes == expected_count)
             );
             let mut ordered = moves.clone();
-            searcher.order_root_moves(&position, &mut ordered);
+            searcher.order_root_moves(&position, &mut ordered, None);
             assert_eq!(ordered[0], baseline[0]);
             assert_eq!(ordered[1], promoted);
         }
@@ -433,7 +454,7 @@ fn root_move_stats_accumulate_by_move_across_window_research() {
         for expected_effort in 1..=2 {
             assert_eq!(
                 searcher
-                    .search_root(&position, &moves, 5, 5, 0, 1)
+                    .search_root(&position, &moves, 5, 5, 0, 1, None)
                     .unwrap()
                     .1,
                 DRAW_SCORE
@@ -460,7 +481,14 @@ fn interrupted_root_iteration_discards_only_current_counts() {
     let history = repeated_root_children(&position, &moves);
     with_root_searcher(&position, &history, |searcher| {
         let (best_move, score) = searcher
-            .search_iteration(&position, &moves, 2, None)
+            .search_iteration(
+                &position,
+                &moves,
+                2,
+                &previous_lines(None, &searcher.pv[0]),
+                1,
+            )
+            .map(|lines| (lines[0].mv, lines[0].score))
             .unwrap();
         let completed = searcher.completed_root_nodes.clone();
         // 最初のfail-high窓を完了し、読み直しの途中で止める。
@@ -469,7 +497,14 @@ fn interrupted_root_iteration_discards_only_current_counts() {
         set_root_move_averages(searcher, best_move, Some((-delta, 0)));
         assert!(
             searcher
-                .search_iteration(&position, &moves, 5, Some((best_move, score)))
+                .search_iteration(
+                    &position,
+                    &moves,
+                    5,
+                    &previous_lines(Some((best_move, score)), &searcher.pv[0]),
+                    1
+                )
+                .map(|lines| (lines[0].mv, lines[0].score))
                 .is_none()
         );
         assert_eq!(searcher.completed_root_nodes, completed);
@@ -663,7 +698,14 @@ fn iteration_uses_full_window_without_a_previous_best_average() {
             });
             let depth = if previous.is_some() { 2 } else { 1 };
             let (_, score) = searcher
-                .search_iteration(&position, &moves, depth, previous)
+                .search_iteration(
+                    &position,
+                    &moves,
+                    depth,
+                    &previous_lines(previous, &searcher.pv[0]),
+                    1,
+                )
+                .map(|lines| (lines[0].mv, lines[0].score))
                 .unwrap();
             assert_eq!(score, DRAW_SCORE);
             assert_eq!(searcher.nodes, moves.len() as u64);
@@ -681,7 +723,14 @@ fn iteration_centers_the_window_on_the_previous_best_average() {
         let best_move = moves[0];
         set_root_move_averages(searcher, best_move, Some((delta, 0)));
         let (_, score) = searcher
-            .search_iteration(&position, &moves, 2, Some((best_move, 10_000)))
+            .search_iteration(
+                &position,
+                &moves,
+                2,
+                &previous_lines(Some((best_move, 10_000)), &searcher.pv[0]),
+                1,
+            )
+            .map(|lines| (lines[0].mv, lines[0].score))
             .unwrap();
         assert_eq!(score, DRAW_SCORE);
         assert_eq!(searcher.nodes, 2 * moves.len() as u64 + 1);
@@ -712,7 +761,14 @@ fn iteration_uses_signed_square_average_to_set_initial_window_width() {
                 Some((narrow_delta, signed_square_average)),
             );
             let (_, score) = searcher
-                .search_iteration(&position, &moves, 2, Some((best_move, DRAW_SCORE)))
+                .search_iteration(
+                    &position,
+                    &moves,
+                    2,
+                    &previous_lines(Some((best_move, DRAW_SCORE)), &searcher.pv[0]),
+                    1,
+                )
+                .map(|lines| (lines[0].mv, lines[0].score))
                 .unwrap();
             assert_eq!(score, DRAW_SCORE);
             assert_eq!(searcher.nodes, expected_nodes);
@@ -818,7 +874,7 @@ fn root_window_classifies_bounds_and_cuts_off_remaining_moves() {
     ] {
         with_root_searcher(&position, &history, |searcher| {
             let (best_move, score) = searcher
-                .search_root(&position, &moves, 1, 1, alpha, beta)
+                .search_root(&position, &moves, 1, 1, alpha, beta, None)
                 .unwrap();
             assert_eq!(score, DRAW_SCORE);
             assert_eq!(searcher.nodes, expected_nodes);
@@ -839,7 +895,7 @@ fn root_keeps_iteration_depth_and_stores_window_depth() {
     with_root_searcher(&position, &history, |searcher| {
         assert_eq!(searcher.fail_high_recovery, 0);
         searcher
-            .search_root(&position, &moves, 5, 3, -INFINITY, INFINITY)
+            .search_root(&position, &moves, 5, 3, -INFINITY, INFINITY, None)
             .unwrap();
 
         assert_eq!(searcher.root_depth, 5);
@@ -862,7 +918,14 @@ fn iteration_applies_decayed_recovery_to_the_first_window_depth() {
     with_root_searcher(&position, &history, |searcher| {
         searcher.fail_high_recovery = 3;
         let (_, score) = searcher
-            .search_iteration(&position, &moves, 5, None)
+            .search_iteration(
+                &position,
+                &moves,
+                5,
+                &previous_lines(None, &searcher.pv[0]),
+                1,
+            )
+            .map(|lines| (lines[0].mv, lines[0].score))
             .unwrap();
 
         assert_eq!(score, DRAW_SCORE);
@@ -889,7 +952,14 @@ fn completed_fail_high_keeps_iteration_depth_and_sets_recovery() {
         let best_move = moves[0];
         set_root_move_averages(searcher, best_move, Some((-delta - 1, 0)));
         let (_, score) = searcher
-            .search_iteration(&position, &moves, 5, Some((best_move, DRAW_SCORE)))
+            .search_iteration(
+                &position,
+                &moves,
+                5,
+                &previous_lines(Some((best_move, DRAW_SCORE)), &searcher.pv[0]),
+                1,
+            )
+            .map(|lines| (lines[0].mv, lines[0].score))
             .unwrap();
 
         assert_eq!(score, DRAW_SCORE);
@@ -916,7 +986,14 @@ fn fail_low_only_keeps_the_decayed_recovery() {
         let best_move = moves[0];
         set_root_move_averages(searcher, best_move, Some((delta + 1, 0)));
         let (_, score) = searcher
-            .search_iteration(&position, &moves, 5, Some((best_move, DRAW_SCORE)))
+            .search_iteration(
+                &position,
+                &moves,
+                5,
+                &previous_lines(Some((best_move, DRAW_SCORE)), &searcher.pv[0]),
+                1,
+            )
+            .map(|lines| (lines[0].mv, lines[0].score))
             .unwrap();
 
         assert_eq!(score, DRAW_SCORE);
@@ -949,7 +1026,14 @@ fn aspiration_researches_scores_equal_to_either_edge() {
             let best_move = moves[0];
             set_root_move_averages(searcher, best_move, Some((average, 0)));
             let (_, score) = searcher
-                .search_iteration(&position, &moves, 5, Some((best_move, 10_000)))
+                .search_iteration(
+                    &position,
+                    &moves,
+                    5,
+                    &previous_lines(Some((best_move, 10_000)), &searcher.pv[0]),
+                    1,
+                )
+                .map(|lines| (lines[0].mv, lines[0].score))
                 .unwrap();
             assert_eq!(score, DRAW_SCORE);
             assert_eq!(searcher.nodes, expected_nodes);
@@ -1011,7 +1095,7 @@ fn root_fail_low_keeps_the_best_bound_move_for_research() {
             false,
         );
         let (best_move, score) = searcher
-            .search_root(&position, &moves, 1, 1, MATE, INFINITY)
+            .search_root(&position, &moves, 1, 1, MATE, INFINITY, None)
             .unwrap();
         assert_eq!(score, MATE - 1);
         assert!(captures_last_royal(&position, best_move));
@@ -1020,7 +1104,7 @@ fn root_fail_low_keeps_the_best_bound_move_for_research() {
         assert_eq!(hit.best_move, Some(best_move));
         let before = searcher.nodes;
         assert_eq!(
-            searcher.search_root(&position, &moves, 1, 1, -1, 0),
+            searcher.search_root(&position, &moves, 1, 1, -1, 0, None),
             Some((best_move, MATE - 1))
         );
         assert_eq!(searcher.nodes - before, 0);
@@ -1081,7 +1165,14 @@ fn iteration_snapshots_previous_pv_before_window_research() {
     let moves = legal_moves(&position);
     with_root_searcher(&position, &[], |searcher| {
         let (best_move, score) = searcher
-            .search_iteration(&position, &moves, 1, None)
+            .search_iteration(
+                &position,
+                &moves,
+                1,
+                &previous_lines(None, &searcher.pv[0]),
+                1,
+            )
+            .map(|lines| (lines[0].mv, lines[0].score))
             .unwrap();
         assert!(searcher.previous_pv.is_empty());
         assert!(searcher.follow_pv[0]);
@@ -1090,7 +1181,14 @@ fn iteration_snapshots_previous_pv_before_window_research() {
         // 王将だけの局面では到達しない平均を与え、窓の読み直しを起こす。
         set_root_move_averages(searcher, best_move, Some((10_000, 0)));
         searcher
-            .search_iteration(&position, &moves, 5, Some((best_move, score)))
+            .search_iteration(
+                &position,
+                &moves,
+                5,
+                &previous_lines(Some((best_move, score)), &searcher.pv[0]),
+                1,
+            )
+            .map(|lines| (lines[0].mv, lines[0].score))
             .unwrap();
         assert_eq!(searcher.previous_pv, previous);
         assert!(searcher.follow_pv[0]);
@@ -1110,7 +1208,14 @@ fn aspiration_retry_interruption_keeps_fail_high_bound() {
         searcher.interrupt_at = Some((1, StopReason::NodeLimit));
         assert!(
             searcher
-                .search_iteration(&board, &moves, 5, Some((best_move, DRAW_SCORE)))
+                .search_iteration(
+                    &board,
+                    &moves,
+                    5,
+                    &previous_lines(Some((best_move, DRAW_SCORE)), &searcher.pv[0]),
+                    1
+                )
+                .map(|lines| (lines[0].mv, lines[0].score))
                 .is_none()
         );
         assert_eq!(searcher.nodes, 1);
@@ -1140,7 +1245,7 @@ pub(super) fn root_history_updates_best_and_only_searched_non_improving_quiets()
         searcher.root_results = Some(root_results);
 
         let mut ordered = moves.clone();
-        searcher.order_root_moves(&board, &mut ordered);
+        searcher.order_root_moves(&board, &mut ordered, None);
         assert_eq!(ordered[0], first);
         let scores = [0, 10, 20, -5];
         for (&mv, score) in ordered.iter().zip(scores) {
@@ -1165,7 +1270,7 @@ pub(super) fn root_history_updates_best_and_only_searched_non_improving_quiets()
         }
 
         assert_eq!(
-            searcher.search_root(&board, &moves, 8, 8, -10, 100),
+            searcher.search_root(&board, &moves, 8, 8, -10, 100, None),
             Some((ordered[2], scores[2]))
         );
         let history = |mv: Move| {
@@ -1192,7 +1297,11 @@ fn interrupted_root_search_does_not_record_the_interrupted_move_or_update_histor
     let history = repeated_root_children(&board, &moves);
     with_root_searcher(&board, &history, |searcher| {
         searcher.interrupt_at = Some((1, StopReason::NodeLimit));
-        assert!(searcher.search_root(&board, &moves, 1, 1, -1, 1).is_none());
+        assert!(
+            searcher
+                .search_root(&board, &moves, 1, 1, -1, 1, None)
+                .is_none()
+        );
         assert_eq!(searcher.nodes, 1);
         assert_eq!(searcher.shared.take_best_move_changes(), 0);
         let interrupted = searcher
@@ -1239,7 +1348,7 @@ pub(super) fn root_lmr_research_records_only_the_final_score() {
         root_results.previous_best = Some(first);
         searcher.root_results = Some(root_results);
         ordered.clone_from(&moves);
-        searcher.order_root_moves(&board, &mut ordered);
+        searcher.order_root_moves(&board, &mut ordered, None);
     });
     assert_eq!(ordered[0], first);
     let target = ordered[10];
@@ -1286,7 +1395,7 @@ pub(super) fn root_lmr_research_records_only_the_final_score() {
         );
 
         assert_eq!(
-            searcher.search_root(&board, &moves, 8, 8, -1, 200),
+            searcher.search_root(&board, &moves, 8, 8, -1, 200, None),
             Some((first, 0))
         );
         let target_nodes = searcher

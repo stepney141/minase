@@ -385,12 +385,12 @@ pub(super) fn ponder_bonus_time_budget(base: TimeBudget) -> TimeBudget {
     )
 }
 
-/// 完了反復の値が3手以内の勝ち、またはちょうど2手の負けを表すかを返す。
+/// 完了反復のN本目が3手以内の勝ち、または1本目がちょうど2手の負けを表すかを返す。
 ///
 /// 双方の着手をそれぞれ1手と数える。反復による勝敗の専用の帯は詰み帯より低いため、
 /// この条件には入らない。Stockfish `src/search.cpp:621-624`に当たる。
-pub(super) fn mate_early_stop(value: i32) -> bool {
-    value >= MATE - EARLY_STOP_MATE_IN || value == -(MATE - EARLY_STOP_MATED_IN)
+pub(super) fn mate_early_stop(first: i32, last: i32) -> bool {
+    last >= MATE - EARLY_STOP_MATE_IN || first == -(MATE - EARLY_STOP_MATED_IN)
 }
 
 /// 的中後の経過時間がhardで抑える前の時間の50%以下なら、深さを増やしてよいと判定する。

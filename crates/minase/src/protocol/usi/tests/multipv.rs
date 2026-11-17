@@ -1,4 +1,4 @@
-//! MultiPVフェーズ1の契約に従い、設定と1本の読み筋の出力を検査する。
+//! MultiPVの設定、順位つき出力、および探索終了の各経路を検査する。
 
 use super::*;
 
@@ -22,7 +22,7 @@ fn assert_info_format(output: &str, multipv: bool) {
 
 #[test]
 fn multipv_handshake_declares_the_shared_option_after_draw_value_white() {
-    let output = lishogi_session("usi\n");
+    let output = single_root_session("usi\n");
     let lines: Vec<_> = output.lines().collect();
     let white = lines
         .iter()
@@ -36,15 +36,18 @@ fn multipv_handshake_declares_the_shared_option_after_draw_value_white() {
 
 #[test]
 fn multipv_accepts_bounds_and_restores_single_pv_output() {
-    assert_info_format(&lishogi_session("position startpos\ngo depth 2\n"), false);
+    assert_info_format(
+        &single_root_session("position startpos\ngo depth 2\n"),
+        false,
+    );
     for value in [1, 2, 35856] {
-        let output = lishogi_session(&format!(
+        let output = single_root_session(&format!(
             "setoption name mUlTiPv value {value}\nposition startpos\ngo depth 2\n"
         ));
         assert!(error_lines(&output).is_empty(), "{output}");
         assert_info_format(&output, value >= 2);
     }
-    let output = lishogi_session(
+    let output = single_root_session(
         "setoption name MultiPV value 2\nsetoption name MultiPV value 1\nposition startpos\ngo depth 2\n",
     );
     assert!(error_lines(&output).is_empty(), "{output}");
@@ -62,7 +65,7 @@ fn multipv_rejects_bad_values_and_preserves_the_previous_setting() {
         "２",
         "9999999999999999999999999999999999999999",
     ] {
-        let output = lishogi_session(&format!(
+        let output = single_root_session(&format!(
             "setoption name MultiPV value 2\nsetoption name MultiPV value {value}\nposition startpos\ngo depth 2\n"
         ));
         assert_eq!(
@@ -71,7 +74,7 @@ fn multipv_rejects_bad_values_and_preserves_the_previous_setting() {
         );
         assert_info_format(&output, true);
     }
-    let output = lishogi_session(
+    let output = single_root_session(
         "setoption name MultiPV value 2\nsetoption name MultiPV\nposition startpos\ngo depth 2\n",
     );
     assert_eq!(
@@ -125,7 +128,10 @@ fn multipv_changes_preserve_tables_and_take_effect_after_the_current_search() {
     let mut protocol = UsiProtocol::new();
     run(
         &mut protocol,
-        "setoption name RuleSet value lishogi\nsetoption name USI_Hash value 1\nposition startpos\n",
+        &format!(
+            "setoption name RuleSet value lishogi\nsetoption name USI_Hash value 1\n{}\n",
+            single_root_position()
+        ),
     );
     let output = run(
         &mut protocol,
@@ -155,4 +161,206 @@ fn multipv_changes_preserve_tables_and_take_effect_after_the_current_search() {
         123
     );
     assert_info_format(&run(&mut protocol, "go depth 2\n"), true);
+}
+
+/// 本数オプションの境界値を、探索候補が1手の局面で検査する。
+fn single_root_position() -> String {
+    use minase_core::PieceKind;
+    use minase_core::test_util::{position, sq};
+    let board = position(
+        Color::Black,
+        &[
+            (sq(10, 11), Color::Black, PieceKind::King),
+            (sq(9, 11), Color::Black, PieceKind::Pawn),
+            (sq(11, 11), Color::Black, PieceKind::Pawn),
+            (sq(9, 10), Color::Black, PieceKind::Pawn),
+            (sq(10, 10), Color::Black, PieceKind::Pawn),
+            (sq(11, 10), Color::Black, PieceKind::Pawn),
+            (sq(0, 10), Color::Black, PieceKind::Pawn),
+            (sq(0, 11), Color::Black, PieceKind::GoldGeneral),
+            (sq(11, 0), Color::White, PieceKind::King),
+            (sq(6, 3), Color::White, PieceKind::GoldGeneral),
+        ],
+    );
+    assert_eq!(
+        Game::from_position(Rules::LISHOGI, board.clone())
+            .legal_moves()
+            .len(),
+        1
+    );
+    format!("position sfen {} - 1", to_sfen(&board))
+}
+
+fn single_root_session(input: &str) -> String {
+    lishogi_session(&input.replace("position startpos", &single_root_position()))
+}
+
+/// USIのまとめ送信と、根からの合法な読み筋を検査する。
+fn assert_ranked_output(output: &str, count: usize) {
+    let info: Vec<_> = output
+        .lines()
+        .filter(|line| line.starts_with("info depth "))
+        .collect();
+    assert!(!info.is_empty(), "{output}");
+    assert_eq!(info.len() % count, 0, "{output}");
+    let mut best = None;
+    for group in info.chunks(count) {
+        let depth = group[0].split_whitespace().nth(2).unwrap();
+        let mut first_moves = Vec::new();
+        for (rank, line) in group.iter().enumerate() {
+            let expected = if count == 1 {
+                format!("info depth {depth} score ")
+            } else {
+                format!("info depth {depth} multipv {} score ", rank + 1)
+            };
+            assert!(line.starts_with(&expected), "{output}");
+            assert_eq!(line.contains(" multipv "), count > 1);
+            let (_, pv) = line.split_once(" pv ").unwrap();
+            let moves: Vec<_> = pv.split_whitespace().collect();
+            assert!(!first_moves.contains(&moves[0]));
+            first_moves.push(moves[0]);
+            let mut game = Game::new(Rules::LISHOGI);
+            for text in &moves {
+                let mv = usi::parse(game.position(), text).unwrap();
+                assert!(game.legal_moves().contains(&mv));
+                game.play(mv).unwrap();
+            }
+            if rank == 0 {
+                best = Some(moves[0]);
+            }
+        }
+    }
+    let returned = bestmoves(output);
+    assert_eq!(returned.len(), 1, "{output}");
+    assert_eq!(returned[0].split_whitespace().nth(1), best);
+}
+
+#[test]
+fn multipv_natural_stop_and_ponderhit_emit_complete_legal_groups() {
+    for count in [1, 3] {
+        let output = lishogi_session(&format!(
+            "setoption name MultiPV value {count}\nposition startpos\ngo depth 3\n"
+        ));
+        assert_ranked_output(&output, count);
+        for ponder in [false, true] {
+            ponder_dialogue(|commands, lines| {
+                for command in [
+                    format!("setoption name MultiPV value {count}"),
+                    "position startpos".to_owned(),
+                    if ponder {
+                        "go ponder depth 3"
+                    } else {
+                        "go infinite"
+                    }
+                    .to_owned(),
+                ] {
+                    commands.send(Ok(command)).unwrap();
+                }
+                let mut output = String::new();
+                loop {
+                    let line = receive_line(lines);
+                    assert!(!line.starts_with("bestmove "));
+                    let reached = line.starts_with("info depth 3 ")
+                        && (count == 1 || line.contains(&format!(" multipv {count} ")));
+                    output.push_str(&line);
+                    if reached {
+                        break;
+                    }
+                }
+                commands
+                    .send(Ok(if ponder { "ponderhit" } else { "stop" }.to_owned()))
+                    .unwrap();
+                loop {
+                    let line = receive_line(lines);
+                    let done = line.starts_with("bestmove ");
+                    output.push_str(&line);
+                    if done {
+                        break;
+                    }
+                }
+                assert_ranked_output(&output, count);
+            });
+        }
+    }
+}
+
+#[test]
+fn multipv_finished_prints_all_lines_only_when_the_selected_worker_is_deeper() {
+    for final_depth in [2, 3] {
+        let mut protocol = UsiProtocol::new();
+        run(
+            &mut protocol,
+            "setoption name RuleSet value lishogi\nsetoption name USI_Hash value 1\nsetoption name MultiPV value 3\nposition startpos\n",
+        );
+        let mut output = Vec::new();
+        let mut active = protocol.start_go(&["depth", "1"], &mut output).unwrap();
+        // 実ワーカーを完了させ、通知内容だけを契約の固定入力へ置き換える。
+        let search_id = loop {
+            let Some(ActiveSearch::Running { handle, .. }) = &active else {
+                panic!()
+            };
+            let event = handle
+                .events()
+                .recv_timeout(Duration::from_secs(5))
+                .unwrap();
+            if matches!(event, SearchEvent::Finished { .. }) {
+                break event.search_id();
+            }
+        };
+        let roots = Game::new(Rules::LISHOGI).legal_moves();
+        let lines = |depth| {
+            roots[..3]
+                .iter()
+                .map(|&mv| PvLine {
+                    depth,
+                    score: Some(0),
+                    moves: vec![mv],
+                })
+                .collect::<Vec<_>>()
+        };
+        protocol
+            .handle_search_event(
+                &mut active,
+                SearchEvent::Progress {
+                    search_id,
+                    nodes: 10,
+                    elapsed: Duration::ZERO,
+                    lines: lines(2),
+                },
+                &mut output,
+            )
+            .unwrap();
+        protocol
+            .handle_search_event(
+                &mut active,
+                SearchEvent::Finished {
+                    partial_score: None,
+                    search_id,
+                    best_move: roots[0],
+                    score: 0,
+                    depth: final_depth,
+                    nodes: 20,
+                    elapsed: Duration::ZERO,
+                    lines: lines(final_depth),
+                    stop_reason: StopReason::DepthCompleted,
+                },
+                &mut output,
+            )
+            .unwrap();
+        let text = String::from_utf8(output).unwrap();
+        let expected_groups = if final_depth == 2 { 1 } else { 2 };
+        assert_eq!(
+            text.lines()
+                .filter(|line| line.starts_with("info depth "))
+                .count(),
+            3 * expected_groups
+        );
+        assert_eq!(
+            text.lines()
+                .filter(|line| line.starts_with("info depth 3 "))
+                .count(),
+            if final_depth == 3 { 3 } else { 0 }
+        );
+        assert_ranked_output(&text, 3);
+    }
 }

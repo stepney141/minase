@@ -19,6 +19,7 @@ mod improving;
 mod late_move;
 mod lazy_accumulators;
 mod limits;
+mod multipv;
 mod negamax;
 mod null_move;
 mod ordering;
@@ -76,7 +77,7 @@ use crate::search::alphabeta::ordering::{
 use crate::search::alphabeta::pruning::allows_null_move;
 use crate::search::alphabeta::pruning::{lmr_reduction, lmr_table, null_move_reduction};
 use crate::search::alphabeta::quiesce::{CaptureRanks, QsearchBuffers};
-use crate::search::alphabeta::root::AspirationWindow;
+use crate::search::alphabeta::root::{AspirationWindow, RootLine};
 use crate::search::alphabeta::royal::{captures_last_royal, royal_under_attack};
 use crate::search::alphabeta::searcher::{
     KILLER_COUNT, MoveRecord, PathMove, PathStateSnapshot, PonderIteration, RepetitionHistory,
@@ -1053,4 +1054,16 @@ fn run_move_pruning(
         s.seek_mate = true;
         s.null_move_ply = Some(ply);
     })
+}
+
+/// 既存の単一読み筋の試験入力を、直前の完了反復として構築する。
+fn previous_lines(previous: Option<(Move, i32)>, pv: &[Move]) -> Vec<RootLine> {
+    previous
+        .into_iter()
+        .map(|(mv, score)| RootLine {
+            mv,
+            score,
+            pv: pv.to_vec(),
+        })
+        .collect()
 }

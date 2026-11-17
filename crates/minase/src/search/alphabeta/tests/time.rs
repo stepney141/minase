@@ -68,6 +68,7 @@ fn iteration_boundary_rereads_the_clock_after_progress() {
         },
         DRAW_SCORE,
         &root_moves,
+        1,
         &RepetitionHistory::new(&[search_key(&position)]),
         2,
         Some(budget),
@@ -136,6 +137,7 @@ fn increase_depth_uses_the_refreshed_iteration_boundary_time() {
         },
         DRAW_SCORE,
         &root_moves,
+        1,
         &RepetitionHistory::new(&[search_key(&position)]),
         2,
         Some(budget),
@@ -164,11 +166,11 @@ fn increase_depth_uses_the_refreshed_iteration_boundary_time() {
 /// 詰みによる早期停止は3手以内の勝ちとちょうど2手の負けだけを対象にする。
 #[test]
 fn mate_early_stop_accepts_only_the_configured_mate_distances() {
-    assert!(mate_early_stop(MATE - 3));
-    assert!(!mate_early_stop(MATE - 4));
-    assert!(mate_early_stop(-(MATE - 2)));
-    assert!(!mate_early_stop(-(MATE - 1)));
-    assert!(!mate_early_stop(-(MATE - 3)));
+    assert!(mate_early_stop(MATE - 3, MATE - 3));
+    assert!(!mate_early_stop(MATE - 4, MATE - 4));
+    assert!(mate_early_stop(-(MATE - 2), -(MATE - 2)));
+    assert!(!mate_early_stop(-(MATE - 1), -(MATE - 1)));
+    assert!(!mate_early_stop(-(MATE - 3), -(MATE - 3)));
 
     for value in [
         REPETITION_BAND_START,
@@ -178,7 +180,7 @@ fn mate_early_stop_accepts_only_the_configured_mate_distances() {
         0,
         123,
     ] {
-        assert!(!mate_early_stop(value), "value={value}");
+        assert!(!mate_early_stop(value, value), "value={value}");
     }
 }
 
@@ -211,6 +213,7 @@ fn mate_early_stop_stops_a_timed_search_inside_the_budget() {
         },
         DRAW_SCORE,
         &[root_move],
+        NonZeroUsize::MIN,
         &[search_key(&position)],
         &limits,
         &AtomicBool::new(false),
@@ -610,6 +613,7 @@ pub(super) fn instability_scaling_starts_an_iteration_that_the_base_soft_rejects
             },
             DRAW_SCORE,
             &root_moves,
+            NonZeroUsize::MIN,
             &history_keys,
             limits,
             &AtomicBool::new(false),
@@ -680,6 +684,7 @@ pub(super) fn initial_previous_time_reduction_controls_the_first_scaled_budget()
             },
             DRAW_SCORE,
             &root_moves,
+            NonZeroUsize::MIN,
             &history_keys,
             &limits,
             &AtomicBool::new(false),
@@ -724,6 +729,7 @@ fn run_ponder_bonus_test_search(
         },
         DRAW_SCORE,
         root_moves,
+        NonZeroUsize::MIN,
         &[search_key(position)],
         limits,
         &AtomicBool::new(false),
@@ -924,6 +930,7 @@ pub(super) fn best_move_effort_scaling_ignores_shared_auxiliary_nodes() {
         },
         DRAW_SCORE,
         &root_moves,
+        1,
         &RepetitionHistory::new(&history_keys),
         2,
         Some(budget),
@@ -979,6 +986,7 @@ pub(super) fn single_root_move_scaling_stops_at_500_millis_boundary() {
         },
         DRAW_SCORE,
         &root_moves,
+        NonZeroUsize::MIN,
         &history_keys,
         &limits,
         &AtomicBool::new(false),
@@ -1018,6 +1026,7 @@ fn increase_depth_state_resets_and_preserves_main_progress_depths() {
             },
             DRAW_SCORE,
             &root_moves,
+            NonZeroUsize::MIN,
             &history_keys,
             &limits,
             &AtomicBool::new(false),
@@ -1083,6 +1092,7 @@ fn auxiliary_worker_counts_only_the_iterations_it_starts() {
         },
         DRAW_SCORE,
         &root_moves,
+        1,
         &RepetitionHistory::new(&[search_key(&position)]),
         6,
         1,
@@ -1170,6 +1180,7 @@ fn next_iteration_gate_stops_main_worker_with_a_legal_best_move() {
         },
         DRAW_SCORE,
         &root_moves,
+        1,
         &RepetitionHistory::new(&history_keys),
         2,
         Some(budget),
@@ -1315,6 +1326,7 @@ fn assert_starts_iterations_before_deadline(limits: SearchLimits, adopt_partial:
             },
             DRAW_SCORE,
             &root_moves,
+            1,
             &RepetitionHistory::new(&[]),
             2,
             Some(budget),

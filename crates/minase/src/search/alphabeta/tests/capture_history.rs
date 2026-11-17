@@ -684,6 +684,7 @@ fn stopped_search(histories: &mut crate::search::HistoryTables, threads: NonZero
         snapshot.repetition(),
         DRAW_SCORE,
         &snapshot.root_moves,
+        NonZeroUsize::MIN,
         &snapshot.history_keys,
         &depth_limits(3),
         &AtomicBool::new(true),
