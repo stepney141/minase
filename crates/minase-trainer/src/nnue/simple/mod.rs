@@ -1,9 +1,11 @@
-//! HalfKP_vm SimpleのCPU学習、再開、およびtatara形式への書き出し。
+//! HalfKP_vm SimpleのCPU/CUDA学習、再開、およびtatara形式への書き出し。
 //! パラメータ、AdamWの状態、局面ごとの演算はf32、局面方向の縮約はf64とする。
 
+mod bench;
 mod checkpoint;
 pub(crate) mod diagnostics;
 mod export;
+pub(crate) mod gpu;
 mod model;
 mod optimizer;
 mod reference;
@@ -17,8 +19,6 @@ pub use reference::{Features, Forward, backward, forward, loss, train_batch};
 /// 引数、数値演算、保存または書き出しの失敗。
 #[derive(Debug)]
 pub enum Error {
-    /// CUDAのSimple学習は未実装。
-    CudaUnavailable,
     /// 基準王駒が一意でない。
     Anchor(minase::eval::nnue::input::AnchorError),
     /// 教師尺度が正の有限数でない。
@@ -52,9 +52,6 @@ pub enum Error {
 impl std::fmt::Display for Error {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::CudaUnavailable => {
-                f.write_str("Simple CUDA backend is not implemented (phase 4b)")
-            }
             Self::Anchor(e) => e.fmt(f),
             Self::TeacherScale(v) => write!(f, "invalid teacher scale: {v}"),
             Self::OutputScale(v) => write!(f, "invalid output divisor: {v}"),

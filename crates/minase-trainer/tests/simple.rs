@@ -101,7 +101,7 @@ fn valued_teacher_with_ambiguous_anchor_reports_file_game_and_ply() {
     }
 }
 #[test]
-fn simple_cli_exposes_arguments_and_explicit_cuda_errors() {
+fn simple_cli_exposes_arguments_and_rejects_invalid_scale_before_loading() {
     let bin = env!("CARGO_BIN_EXE_minase-trainer");
     for command in ["train", "check-equivalence", "bench-step"] {
         let help = std::process::Command::new(bin)
@@ -119,7 +119,7 @@ fn simple_cli_exposes_arguments_and_explicit_cuda_errors() {
             command,
             "simple",
             "--teacher-cp-per-logit",
-            "1072.65",
+            "0",
             "--lambda",
             "0.75",
         ];
@@ -148,10 +148,7 @@ fn simple_cli_exposes_arguments_and_explicit_cuda_errors() {
         }
         let result = std::process::Command::new(bin).args(args).output().unwrap();
         assert!(!result.status.success());
-        assert!(
-            String::from_utf8_lossy(&result.stderr)
-                .contains("Simple CUDA backend is not implemented")
-        );
+        assert!(String::from_utf8_lossy(&result.stderr).contains("invalid teacher scale"));
     }
 }
 

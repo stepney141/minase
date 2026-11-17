@@ -1,4 +1,4 @@
-//! SimpleのCPU学習状態を共通ループへ接続する。
+//! SimpleのCPU/CUDA学習状態を共通ループへ接続する。
 use super::*;
 use crate::nnue::{
     data::BatchSlot,
@@ -13,8 +13,19 @@ use minase_core::{Color, Position};
 use serde_json::{Value, json};
 use std::{path::Path, time::Instant};
 
+enum Execution {
+    Cpu {
+        weights: Box<Parameters>,
+        optimizer: Box<AdamW>,
+    },
+    Cuda(Box<gpu::step::Step>),
+}
 pub(crate) struct Trainer {
-    checkpoint: Checkpoint,
+    execution: Execution,
+    settings: Settings,
+    pending: Option<(gpu::step::StepResult, usize)>,
+    validation_ring: Option<crate::nnue::gpu::HostRing>,
+    capacity: usize,
 }
 impl Trainer {
     pub(crate) fn create(
@@ -22,9 +33,6 @@ impl Trainer {
         progress: Progress,
         width: usize,
     ) -> train::Result<(Self, Progress)> {
-        if args.device == DeviceKind::Cuda {
-            return Err(Error::CudaUnavailable.into());
-        }
         let settings = settings(args, width)?;
         let checkpoint = if let Some(path) = &args.resume {
             let checkpoint = Checkpoint::read(path.join("latest.npz"))?;
@@ -40,9 +48,38 @@ impl Trainer {
             }
         };
         let progress = checkpoint.progress.clone();
-        Ok((Self { checkpoint }, progress))
+        let execution = match args.device {
+            DeviceKind::Cpu => Execution::Cpu {
+                weights: Box::new(checkpoint.parameters),
+                optimizer: Box::new(checkpoint.optimizer),
+            },
+            DeviceKind::Cuda => Execution::Cuda(Box::new(gpu::step::Step::new(
+                crate::nnue::gpu::Device::new(0)?,
+                &checkpoint.parameters,
+                &checkpoint.optimizer,
+                checkpoint.settings.scale,
+                args.batch,
+            )?)),
+        };
+        Ok((
+            Self {
+                execution,
+                settings: checkpoint.settings,
+                pending: None,
+                validation_ring: None,
+                capacity: args.batch,
+            },
+            progress,
+        ))
+    }
+    fn snapshot(&self) -> train::Result<(Parameters, AdamW)> {
+        Ok(match &self.execution {
+            Execution::Cpu { weights, optimizer } => ((**weights).clone(), (**optimizer).clone()),
+            Execution::Cuda(step) => step.snapshot()?,
+        })
     }
 }
+
 fn settings(args: &Args, width: usize) -> train::Result<Settings> {
     let groups = args.training.optimizer();
     Ok(Settings {
@@ -62,9 +99,6 @@ pub fn run(args: Args) -> train::Result<train::Summary> {
     run_width(args, H)
 }
 pub(crate) fn run_width(args: Args, width: usize) -> train::Result<train::Summary> {
-    if args.device == DeviceKind::Cuda {
-        return Err(Error::CudaUnavailable.into());
-    }
     let s = settings(&args, width)?;
     let architecture = json!({"kind":"Simple","feature_set":SPEC.arch_name(),"H":width,"K_t":s.scale.teacher(),"m":s.scale.divisor(),"K_o":s.scale.output(),"rules":s.rules.to_string(),"optimizer":s.optimizer,"factorized":SPEC.factorized(),"initialization":{"distribution":"uniform","half_width":0.01,"virtual":"zero"}});
     train::run_with(args, architecture, |args, progress| {
@@ -73,19 +107,39 @@ pub(crate) fn run_width(args: Args, width: usize) -> train::Result<train::Summar
 }
 impl TrainerBackend for Trainer {
     fn name(&self) -> &str {
-        "CPU"
+        match &self.execution {
+            Execution::Cpu { .. } => "CPU",
+            Execution::Cuda(step) => step.device().name(),
+        }
     }
     fn feature_set(&self) -> FeatureSet {
-        SPEC.feature_set()
+        FeatureSet::HalfKpVm
     }
     fn step(&self) -> u64 {
-        self.checkpoint.optimizer.step
+        match &self.execution {
+            Execution::Cpu { optimizer, .. } => optimizer.step,
+            Execution::Cuda(step) => step.step(),
+        }
     }
     fn memory(&self) -> train::Result<Option<(usize, usize)>> {
-        Ok(None)
+        match &self.execution {
+            Execution::Cpu { .. } => Ok(None),
+            Execution::Cuda(step) => {
+                let (free, total) = step.device().memory_info()?;
+                Ok(Some((total - free, total)))
+            }
+        }
     }
-    fn queue(&self, _capacity: usize) -> train::Result<(Queue, [Buffer; 3])> {
-        Ok((Queue::Cpu, std::array::from_fn(|_| Buffer::Cpu(None))))
+    fn queue(&self, capacity: usize) -> train::Result<(Queue, [Buffer; 3])> {
+        match &self.execution {
+            Execution::Cpu { .. } => Ok((Queue::Cpu, std::array::from_fn(|_| Buffer::Cpu(None)))),
+            Execution::Cuda(step) => {
+                let mut ring =
+                    crate::nnue::gpu::HostRing::new(step.device(), FeatureSet::HalfKpVm, capacity)?;
+                let buffers = ring.take_host_buffers()?.map(Buffer::Cuda);
+                Ok((Queue::Cuda(Box::new(ring)), buffers))
+            }
+        }
     }
     fn train_step(
         &mut self,
@@ -94,67 +148,72 @@ impl TrainerBackend for Trainer {
         targets: &[f32],
         multiplier: f64,
     ) -> train::Result<Option<StepMetrics>> {
-        let (Queue::Cpu, Buffer::Cpu(slot)) = (queue, buffer) else {
-            return Err(train::Error::Invalid("Simple CPU batch buffers required").into());
-        };
-        let batch = slot
-            .take()
-            .ok_or(train::Error::Invalid("missing CPU batch"))?;
-        let started = Instant::now();
-        let cp = &mut self.checkpoint;
-        let (loss, gradients) = backward(
-            &cp.parameters,
-            cp.settings.scale,
-            &Features::from_batch(&batch)?,
-            targets,
-        )?;
-        cp.optimizer
-            .update(&mut cp.parameters, &gradients, multiplier)?;
-        Ok(Some(StepMetrics {
-            loss_sum: loss * batch.len() as f64,
-            positions: batch.len(),
-            compute_seconds: started.elapsed().as_secs_f64(),
-        }))
+        self.validation_ring = None;
+        match (&mut self.execution, queue, buffer) {
+            (Execution::Cpu { weights, optimizer }, Queue::Cpu, Buffer::Cpu(slot)) => {
+                let batch = slot
+                    .take()
+                    .ok_or(train::Error::Invalid("missing CPU batch"))?;
+                let started = Instant::now();
+                let (loss, gradients) = backward(
+                    weights,
+                    self.settings.scale,
+                    &Features::from_batch(&batch)?,
+                    targets,
+                )?;
+                optimizer.update(weights, &gradients, multiplier)?;
+                Ok(Some(StepMetrics {
+                    loss_sum: loss * batch.len() as f64,
+                    positions: batch.len(),
+                    compute_seconds: started.elapsed().as_secs_f64(),
+                }))
+            }
+            (Execution::Cuda(step), Queue::Cuda(ring), Buffer::Cuda(host)) => {
+                let ticket = ring.upload_prepared(host)?;
+                let result = step.enqueue(ring, &ticket, targets, multiplier)?;
+                self.pending
+                    .replace((result, targets.len()))
+                    .map(collect)
+                    .transpose()
+            }
+            _ => Err(train::Error::Invalid("batch buffers differ from selected device").into()),
+        }
     }
     fn flush_pending_loss(&mut self) -> train::Result<Option<StepMetrics>> {
-        Ok(None)
+        self.pending.take().map(collect).transpose()
     }
+
     fn validate_step(&mut self, batch: &BatchSlot, targets: &[f32]) -> train::Result<Validation> {
-        let w = &self.checkpoint.parameters;
-        let scale = self.checkpoint.settings.scale;
-        let features = Features::from_batch(batch)?;
-        let loss = loss(w, scale, &features, targets)?;
-        let mut v = Validation {
-            loss_sum: loss * batch.len() as f64,
-            positions: batch.len(),
-            ..Validation::default()
-        };
-        for features in &features {
-            let f = reference::forward_validated(w, features);
-            for (key, values) in [
-                ("ft", f.a.iter().flatten().copied().collect::<Vec<_>>()),
-                ("l1", f.y.to_vec()),
-                ("l2", f.u.to_vec()),
-            ] {
-                for (suffix, count) in [
-                    ("lower", values.iter().filter(|&&x| x <= 0.0).count()),
-                    ("upper", values.iter().filter(|&&x| x >= 1.0).count()),
-                ] {
-                    *v.sums.entry(format!("{key}_{suffix}")).or_insert(0.0) += count as f64;
+        self.flush_pending_loss()?;
+        match &mut self.execution {
+            Execution::Cpu { weights, .. } => {
+                validation(weights, self.settings.scale, batch, targets)
+            }
+            Execution::Cuda(step) => {
+                if self.validation_ring.is_none() {
+                    self.validation_ring = Some(crate::nnue::gpu::HostRing::new(
+                        step.device(),
+                        FeatureSet::HalfKpVm,
+                        self.capacity,
+                    )?);
                 }
+                Ok(step.validate(
+                    self.validation_ring
+                        .as_mut()
+                        .expect("created validation ring"),
+                    batch,
+                    targets,
+                )?)
             }
         }
-        Ok(v)
     }
     fn statistics(&mut self, validation: Option<&Validation>) -> train::Result<Value> {
+        // Validation has ended; release its input ring before the next training queue.
+        self.validation_ring = None;
         let mut result = json!({});
         if let Some(v) = validation {
             result["samples"] = json!(v.positions);
-            for (key, width) in [
-                ("ft", 2 * self.checkpoint.parameters.width()),
-                ("l1", 32),
-                ("l2", 32),
-            ] {
+            for (key, width) in [("ft", 2 * self.settings.width), ("l1", 32), ("l2", 32)] {
                 let get = |suffix| -> train::Result<f64> {
                     Ok(*v
                         .sums
@@ -169,24 +228,73 @@ impl TrainerBackend for Trainer {
         Ok(result)
     }
     fn save_checkpoint(&mut self, path: &Path, progress: &Progress) -> train::Result<()> {
-        if progress.completed_steps == self.step() {
-            self.checkpoint.progress = progress.clone();
-            self.checkpoint.write(path)?;
+        self.flush_pending_loss()?;
+        let checkpoint = if progress.completed_steps == self.step() {
+            let (parameters, optimizer) = self.snapshot()?;
+            Checkpoint {
+                parameters,
+                optimizer,
+                settings: self.settings.clone(),
+                progress: progress.clone(),
+            }
         } else {
+            // 時間切れの未確定更新は保存せず、確定済みの状態へ累積時間だけを記録する。
             let mut saved = Checkpoint::read(path)?;
             if saved.optimizer.step != progress.completed_steps {
                 return Err(train::Error::Invalid("committed checkpoint step mismatch").into());
             }
             saved.progress = progress.clone();
-            saved.write(path)?;
-        }
-        Ok(())
+            saved
+        };
+        Ok(checkpoint.write(path)?)
     }
     fn export(&mut self, path: &Path, samples: &[(Position, Color)]) -> train::Result<Value> {
+        self.flush_pending_loss()?;
+        let (weights, _) = self.snapshot()?;
         let borrowed: Vec<_> = samples.iter().map(|(p, c)| (p, *c)).collect();
-        let cp = &self.checkpoint;
-        let report = quantization_report(&cp.parameters, cp.settings.scale, &borrowed)?;
-        crate::nn::atomic_write(path, &export(&cp.parameters, cp.settings.scale)?)?;
+        let report = quantization_report(&weights, self.settings.scale, &borrowed)?;
+        crate::nn::atomic_write(path, &super::export(&weights, self.settings.scale)?)?;
         Ok(serde_json::to_value(report)?)
     }
+}
+
+pub(crate) fn validation(
+    w: &Parameters,
+    scale: Scale,
+    batch: &BatchSlot,
+    targets: &[f32],
+) -> train::Result<Validation> {
+    let features = Features::from_batch(batch)?;
+    let loss = loss(w, scale, &features, targets)?;
+    let mut v = Validation {
+        loss_sum: loss * batch.len() as f64,
+        positions: batch.len(),
+        ..Validation::default()
+    };
+    for features in &features {
+        let f = reference::forward_validated(w, features);
+        for (key, values) in [
+            ("ft", f.a.iter().flatten().copied().collect::<Vec<_>>()),
+            ("l1", f.y.to_vec()),
+            ("l2", f.u.to_vec()),
+        ] {
+            for (suffix, count) in [
+                ("lower", values.iter().filter(|&&x| x <= 0.0).count()),
+                ("upper", values.iter().filter(|&&x| x >= 1.0).count()),
+            ] {
+                *v.sums.entry(format!("{key}_{suffix}")).or_insert(0.0) += count as f64;
+            }
+        }
+    }
+    Ok(v)
+}
+
+fn collect((result, positions): (gpu::step::StepResult, usize)) -> train::Result<StepMetrics> {
+    let metrics = result.collect()?;
+    Ok(StepMetrics {
+        loss_sum: metrics.loss * positions as f64,
+        positions,
+        compute_seconds: f64::from(metrics.forward_ms + metrics.backward_ms + metrics.optimizer_ms)
+            / 1000.0,
+    })
 }

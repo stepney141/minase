@@ -1,10 +1,19 @@
-//! Simpleの照合・計測の引数。CUDA処理はフェーズ4bで実装する。
+//! SimpleのCPU/CUDA一致検査と更新時間の計測。
+use super::{
+    gpu::{engine::Evaluator, step::Step},
+    *,
+};
 use crate::nnue::{
+    data::{FeatureSet, synthetic::synthetic_batch},
+    gpu::{Device, HostRing},
     options::{DeviceKind, TrainingOptions},
     train,
 };
-use serde_json::Value;
+use serde_json::{Value, json};
 use std::path::PathBuf;
+
+pub(crate) const ATOL: f64 = 1e-6;
+pub(crate) const RTOL: f64 = 1e-5;
 #[derive(Clone, clap::Args)]
 /// CPU/CUDA一致検査の条件。
 pub struct CheckArgs {
@@ -43,11 +52,128 @@ pub struct BenchArgs {
     #[arg(long)]
     pub profile: bool,
 }
-/// SimpleのCUDA実装が未実装であることを明示する。
-pub fn check(_args: CheckArgs) -> train::Result<Value> {
-    Err(super::Error::CudaUnavailable.into())
+fn compare(report: &mut [f64; 3], actual: f64, expected: f64) -> train::Result<()> {
+    let absolute = (actual - expected).abs();
+    if !actual.is_finite() || !expected.is_finite() || absolute > ATOL + RTOL * expected.abs() {
+        return Err(
+            crate::nnue::gpu::Error::Equivalence(format!("GPU={actual}, CPU={expected}")).into(),
+        );
+    }
+    report[0] += 1.0;
+    report[1] = report[1].max(absolute);
+    if expected != 0.0 {
+        report[2] = report[2].max(absolute / expected.abs());
+    }
+    Ok(())
 }
-/// CUDAを含む更新計測はフェーズ4bで実装する。
-pub fn bench(_args: BenchArgs) -> train::Result<Value> {
-    Err(super::Error::CudaUnavailable.into())
+/// 前進、検証、連続更新の重みと両モーメントを照合する。
+pub fn check(args: CheckArgs) -> train::Result<Value> {
+    check_width(args, H)
+}
+pub(crate) fn check_width(args: CheckArgs, width: usize) -> train::Result<Value> {
+    args.training.validate()?;
+    let scale = Scale::new(args.teacher_cp_per_logit)?;
+    let batch = synthetic_batch(FeatureSet::HalfKpVm, args.batch, args.seed)?;
+    let features = Features::from_batch(&batch)?;
+    let targets = crate::nnue::data::build_targets(
+        &batch,
+        &[scale.teacher(); 3],
+        &[args.training.lambda; 3],
+    )?;
+    let device = Device::new(0)?;
+    let mut weights = Parameters::initialize(args.seed, width)?;
+    let mut optimizer = AdamW::new(optimizer_config(&args.training), width)?;
+    let mut evaluator = Evaluator::new(device.clone(), &weights, scale, args.batch)?;
+    let validation_device_bytes = evaluator.device_bytes()?;
+    let actual = evaluator.evaluate(&batch, &targets)?;
+    let mut report = [0.0; 3];
+    for (feature, actual) in features.iter().zip(&actual.forward) {
+        let expected = reference::forward_validated(&weights, feature);
+        for (actual, expected) in forward_values(actual)
+            .into_iter()
+            .zip(forward_values(&expected))
+        {
+            compare(&mut report, actual, expected)?;
+        }
+    }
+    let expected = super::trainer::validation(&weights, scale, &batch, &targets)?;
+    compare(&mut report, actual.validation.loss_sum, expected.loss_sum)?;
+    for (key, expected) in expected.sums {
+        compare(&mut report, actual.validation.sums[&key], expected)?;
+    }
+    drop(evaluator);
+    let mut step = Step::new(device.clone(), &weights, &optimizer, scale, args.batch)?;
+    let mut ring = HostRing::new(&device, FeatureSet::HalfKpVm, args.batch)?;
+    for _ in 0..3 {
+        let (loss, gradients) = backward(&weights, scale, &features, &targets)?;
+        optimizer.update(&mut weights, &gradients, 1.0)?;
+        let ticket = ring.upload(&batch)?;
+        let actual = step.enqueue(&mut ring, &ticket, &targets, 1.0)?.collect()?;
+        compare(&mut report, actual.loss, loss)?;
+        if actual.step != optimizer.step {
+            return Err(train::Error::Invalid("CPU/CUDA update count differs").into());
+        }
+        let gpu_gradients = step.gradients()?;
+        for p in Parameter::ALL {
+            for (&a, &e) in gpu_gradients[p].iter().zip(&gradients[p]) {
+                compare(&mut report, f64::from(a), f64::from(e))?;
+            }
+        }
+        let (gpu, adam) = step.snapshot()?;
+        for (gpu, cpu) in [
+            (&gpu, &weights),
+            (&adam.m, &optimizer.m),
+            (&adam.v, &optimizer.v),
+        ] {
+            for p in Parameter::ALL {
+                for (&a, &e) in gpu[p].iter().zip(&cpu[p]) {
+                    compare(&mut report, f64::from(a), f64::from(e))?;
+                }
+            }
+        }
+    }
+    Ok(
+        json!({"device": device.name(), "validation_device_bytes": validation_device_bytes, "comparisons": report[0] as u64, "max_absolute_error": report[1], "max_relative_error": report[2], "atol": ATOL, "rtol": RTOL}),
+    )
+}
+pub(crate) fn forward_values(f: &Forward) -> Vec<f64> {
+    f.a.iter()
+        .flatten()
+        .chain(&f.x)
+        .chain(&f.y)
+        .chain(&f.h1)
+        .chain(&f.u)
+        .chain(&f.h2)
+        .copied()
+        .chain([f.output])
+        .collect()
+}
+pub(super) fn optimizer_config(options: &TrainingOptions) -> OptimizerConfig {
+    let groups = options.optimizer();
+    OptimizerConfig {
+        ft: groups.ft,
+        head: groups.head,
+    }
+}
+/// 実データを供給して更新時間を測る。
+pub fn bench(args: BenchArgs) -> train::Result<Value> {
+    super::bench::run(args)
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    #[ignore = "requires a CUDA GPU"]
+    fn gpu_cli_equivalence_checks_forward_gradients_and_updates() {
+        super::check_width(
+            super::CheckArgs {
+                batch: 129,
+                seed: 71,
+                teacher_cp_per_logit: 1072.65,
+                training: crate::nnue::options::TrainingOptions::new(0.75),
+            },
+            16,
+        )
+        .unwrap();
+    }
 }
