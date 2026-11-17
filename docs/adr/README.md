@@ -422,3 +422,6 @@ PSTは駒の種類と升ごとの値の表による評価、FMはFactorization M
 - 2026年11月17日 [PV-MCTSの根の候補手ごとの統計は、既定で無効のUSIオプション`VerboseMoveStats`で、探索の終わりに1回だけ出す](print-pv-mcts-root-move-statistics-once-at-the-end-of-search-through-verbosemovestats.md)
 - 2026年11月17日 [PV-MCTSの探索木の全節点の不変条件を、フィーチャ`invariants`の下で、探索の終わり、自己対局の各手の決定の前、および木の付け替えの前後に検査する](validate-the-pv-mcts-tree-under-the-invariants-feature-at-the-end-of-each-search.md)
 - 2026年11月17日 [`bench`は起動した探索の方式で固定局面を探索し、PV-MCTSでは文字列のハッシュで方策と価値を決める評価器で固定回数だけ探索して、2つのコミットの出力の一致で回帰を検出する](run-bench-with-the-launched-search-and-detect-pv-mcts-regressions-with-a-hash-evaluator.md)
+- 2026年11月17日 [上位N手の読み筋を出すUSIオプション`MultiPV`は、USIの層が宣言して保持し、値が2以上のときだけ`info`行に順位を付ける](declare-multipv-in-the-usi-layer-and-rank-info-lines-only-when-it-is-two-or-more.md)
+- 2026年11月17日 [αβ探索のMultiPVは、各深さで根の探索をN回繰り返して選んだ手を除いていき、全N本を読み終えた反復だけを結果にする](search-alphabeta-multipv-by-repeating-the-root-search-and-keep-only-complete-iterations.md)
+- 2026年11月17日 [PV-MCTSのMultiPVは、探索を変えずに、終了時の根の辺を最善手と同じ比較規則で並べて上位N本を出し、2本目以降の未訪問の辺には評価値を付けない](rank-pv-mcts-root-edges-by-the-best-move-rule-for-multipv-and-leave-unvisited-edges-unscored.md)

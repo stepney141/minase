@@ -391,7 +391,7 @@ impl Searcher<'_> {
     /// 詰みを探す印は基準の手の前回の値で決め、前回のN本になければ立てない。
     /// k＝1は前回の1本目を使い、持ち越しの減衰と更新も行う。
     /// 時間管理は整列後の1本目で判断し、詰みの早期停止はN本目の勝ちと1本目の負けで決める。
-    /// 設計判断の理由は`docs/plans/multipv.md`にある。
+    /// 設計判断の理由は`docs/adr/search-alphabeta-multipv-by-repeating-the-root-search-and-keep-only-complete-iterations.md`にある。
     ///
     /// 窓の置き方と移し方の判断の理由は`docs/adr/center-aspiration-windows-on-the-best-move-average-and-move-both-edges-on-failure.md`に、
     /// fail highの減深と反復の深さの扱いの判断の理由は`docs/adr/reduce-aspiration-depth-after-fail-highs-and-late-iterations.md`にある。
@@ -534,7 +534,7 @@ impl Searcher<'_> {
     /// 根の静的評価の保存とhistoryの更新、および子孫の更新は続ける。
     /// 候補の除外、窓、前回の読み筋、詰みを探す印、およびfail highの規則は[`Self::search_iteration`]に従う。
     /// 中断された場合は`None`を返し、呼び出し側がその反復の全N本を捨てる。
-    /// 根の限定探索の値を保存しない理由は`docs/plans/multipv.md`にある。
+    /// 根の限定探索の値を保存しない理由は`docs/adr/search-alphabeta-multipv-by-repeating-the-root-search-and-keep-only-complete-iterations.md`にある。
     #[allow(clippy::too_many_arguments)]
     pub(super) fn search_root(
         &mut self,

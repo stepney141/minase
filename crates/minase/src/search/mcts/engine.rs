@@ -495,7 +495,7 @@ impl Engine {
 /// またはQを0.001〜0.999に丸めた対数オッズに勝率尺度を掛けたcpを使う。
 /// 2本目以降の未訪問の辺はdlshogiと同じく値を持たない。
 /// ふかうら王の勝率0.5は根拠のない値なので採らない。
-/// 理由は`docs/plans/multipv.md`を参照する。
+/// 理由は`docs/adr/rank-pv-mcts-root-edges-by-the-best-move-rule-for-multipv-and-leave-unvisited-edges-unscored.md`にある。
 pub(super) fn pv_lines(tree: &Tree, count: usize, score: i32, cp_per_logit: f32) -> Vec<PvLine> {
     tree.root()
         .ranked_edges()

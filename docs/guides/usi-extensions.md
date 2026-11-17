@@ -132,6 +132,7 @@ minaseは`bestmove`の直前に必ず`info string stop <理由>`の1行を出す
 手数が0の場合も勝敗の符号を付けて`mate +0`、`mate -0`と書く。
 完了していない反復の途中結果を指し手に採用したときは、`info string partial`の行に続けて、完了した深さに1を足した値を深さとする`info`の行を出し、評価値に`lowerbound`を付けて下界であることを示す。
 評価値の換算と出力の条件は、`score_text`、`write_info`、および`write_final_info_if_deeper`のdocコメントにある。
+`MultiPV`を2以上にしたときの`info`の行の形は、「オプション」の節の「複数の読み筋」にある。
 
 ## オプション
 
@@ -152,6 +153,7 @@ minaseは`usi`への応答で次のオプションを宣言する。
 | `ByoyomiMargin` | spin、0〜60,000 | 30 | 秒読みの締切の前に残す余裕で、単位はmsである（[ADR](../adr/give-the-byoyomi-margin-as-a-millisecond-usi-option.md)）。 |
 | `DrawValueBlack` | spin、−28,999〜28,999 | 0 | 探索を始める局面（根）が先手番のときに引き分けへ与える評価値。単位は根の手番側から見たcpである。 |
 | `DrawValueWhite` | spin、−28,999〜28,999 | 0 | 探索を始める局面（根）が後手番のときに引き分けへ与える評価値。単位は根の手番側から見たcpである。 |
+| `MultiPV` | spin、1〜35,856 | 1 | 探索を始める局面（根）の上位何手の読み筋を出すか。2以上なら、`info`の行に順位を付けて複数の読み筋を出す（「複数の読み筋」の節）。 |
 | `NnModel` | string | `<empty>`（未設定） | MCTSだけが宣言する。ネットのONNX形式のファイルのパス。指定は必須であり、相対パスはエンジンの作業ディレクトリから解決する。 |
 | `NnBackend` | combo、`tensorrt`、`cuda`、`cpu` | `tensorrt` | MCTSだけが宣言する。推論の実行プロバイダ。 |
 | `NnCacheDir` | string | `$XDG_CACHE_HOME/minase/tensorrt`（環境変数が空なら空） | MCTSだけが宣言する。TensorRTのキャッシュを置くディレクトリ。空の文字列は`<empty>`と書く。 |
@@ -197,6 +199,33 @@ info string movestats move <着手> visits <N> value-sum <W> q <Q|-> prior <P> v
 実行中の探索を`gameover`や`quit`で捨てた場合は出さない。
 対局ハーネスは既知の語の`info string`の行だけを読むので、`movestats`の行は対局の記録を変えない。
 各欄の定義は`crates/minase/src/search/mcts/move_stats.rs`の`lines`、出力の箇所は`crates/minase/src/protocol/usi.rs`の`write_move_stats`のdocコメントにある。
+
+### 複数の読み筋
+
+`MultiPV`を2以上にすると、minaseは探索を始める局面（根）の上位N手の読み筋を、順位を付けて出す。
+検討で最善手に次ぐ手がどれだけ劣るかを見たり、評価関数が候補手をどう順位づけるかを調べたりするための機能であり、対局と棋力測定は既定値1で行う（[ADR](../adr/declare-multipv-in-the-usi-layer-and-rank-info-lines-only-when-it-is-two-or-more.md)）。
+Nは、`MultiPV`の値と根の候補手の数の小さい方である。
+根の候補手は、同一局面の反復に関する規則R1で反復勝ちの手があればその手だけ、なければ反復負けに直結する手を除いた手であり（[chu-shogi.md](../rules/chu-shogi.md)第31条）、ほかの規則では全合法手である。
+
+```text
+info depth <d> multipv <k> score <評価> nodes <n> nps <nps> time <ms> pv <着手>...
+```
+
+`<k>`は1始まりの順位で、1本目から順に続けてN行を出す。
+`nodes`、`nps`、および`time`は、全行で同じ値である。
+αβ探索は、各深さで根をN回探索し、N本をすべて読み終えるたびにN行を出すので、全行の深さは同じであり、同じ深さに届くまでの時間はNが1のときより長い。
+Nが2以上のαβ探索は途中結果を使わず、途中で止まった深さは読み終えた読み筋も含めて捨てて、最後に完了した深さのN本を結果にする（[ADR](../adr/search-alphabeta-multipv-by-repeating-the-root-search-and-keep-only-complete-iterations.md)）。
+最初の深さのN本がそろう前に止まると、`info`の行を出さずに根の候補の先頭の手を返す。
+PV-MCTSは、探索の終了時に1回だけN行を出し、各行の深さはその読み筋の手数である。
+PV-MCTSの2本目以降で一度も読まなかった手の行は、`score`を持たない（[ADR](../adr/rank-pv-mcts-root-edges-by-the-best-move-rule-for-multipv-and-leave-unvisited-edges-unscored.md)）。
+
+`MultiPV`が1なら`multipv`を付けず、出力は読み筋が1本だけの場合と同じである。
+`MultiPV`が2以上なら、根の候補手が1つでNが1になるときでも、そのときにαβ探索が出すことがある途中結果の`lowerbound`の行も含めて、`multipv 1`を付ける。
+
+`bestmove`は1本目の読み筋の1手目、予想手は1本目の読み筋の2手目であり、投了の判定も1本目の評価値で行う。
+対局ハーネスは、`multipv`を含まない行と`multipv 1`の行の評価値だけを、その手の評価値として記録する。
+CECPの層は`MultiPV`を宣言せず、読み筋を1本だけ使う。
+出力の形と経路は`crates/minase/src/protocol/usi.rs`の`write_pv_lines`と`write_final_info_if_deeper`のdocコメントにある。
 
 ## 独自のコマンド
 

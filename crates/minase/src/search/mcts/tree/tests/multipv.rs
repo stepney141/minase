@@ -1,4 +1,4 @@
-//! multipv.mdの検証11〜12。順位と値は仕様から固定する。
+//! docs/plans/archived/multipv.mdの検証11〜12。順位と値は仕様から固定する。
 use super::*;
 use crate::search::mcts::engine::pv_lines;
 

@@ -15,8 +15,15 @@ Nが2以上では、全N本を読み終えた反復だけを結果とし、途�
 
 ## 状態
 
-起案の段階であり、2026年11月15日に起案して、まだ着手していない。
-次の一手は、利用者の承認を得て、masterから切ったブランチでフェーズ1を始めることである。
+本書は完了時点で凍結した記録であり、以後の変更を反映しない。現行の仕様はコードのdocコメントに、設計判断は[docs/adr/](../../adr/README.md)にある。
+状態は完了（採用）である。2026年11月15日に起案し、2026年11月17日に着手して、同じ日にフェーズ1〜4を終えた。
+既定値1では、フェーズ1〜3のそれぞれで対象の検証を行い、`bench`の深さ9の結果、USIの`go depth 9`と`go nodes`の出力、持ち時間つきの探索の時間管理の判断、およびPV-MCTSの`go nodes 800`の出力が変更前のmasterと一致し、フェーズ2で測った`bench`の速さの差も分解能以内に収まった（[イベントの変更](../../measurements/multipv/multipv-events-default-equivalence.md)、[αβ探索](../../measurements/multipv/multipv-alphabeta-default-equivalence.md)、および[PV-MCTS](../../measurements/multipv/multipv-mcts-default-equivalence.md)の記録）。
+「検証」の3.の診断では、試験用の時計として、呼ばれるたびに1 msずつ進む時計を使い、時計を読む位置まで変わっていないことも確かめた。この診断では途中結果の採用と詰みによる早期停止が起きなかったので、この2つの経路は変更なしで通る既存の単体試験が固定している。
+Nが2以上の性質（「検証」の6.〜14.）は、αβ探索、PV-MCTS、USIの層、および対局ハーネスの単体試験で固定した。
+実装の中で決めた細部は2つある。1つ目は、αβ探索の時間管理の評価値の低下の因子に1本目の読み筋の評価値を使い、Stockfishが使う最後に読んだ読み筋の探索値は使わないことである。2つ目は、同期版の`search()`が`SearchSnapshot`の`MultiPV`に従い、これを使う自己対局と教師の生成器はこの値を設定しないので、Nが1のままであることである。
+設計判断は、[USIオプションのADR](../../adr/declare-multipv-in-the-usi-layer-and-rank-info-lines-only-when-it-is-two-or-more.md)、[αβ探索のADR](../../adr/search-alphabeta-multipv-by-repeating-the-root-search-and-keep-only-complete-iterations.md)、および[PV-MCTSのADR](../../adr/rank-pv-mcts-root-edges-by-the-best-move-rule-for-multipv-and-leave-unvisited-edges-unscored.md)の3本に移した。
+仕様は、ソースのdocコメントと[USIの独自拡張の手引き](../../guides/usi-extensions.md)の「複数の読み筋」の節に移した。
+開発用GUIで複数の読み筋を表示する変更は、別リポジトリ`minase-gui`で別に計画する。
 
 ## 目的
 
@@ -40,7 +47,7 @@ MultiPVは、対局の強さを上げる機能ではない。
 次の項目は扱わない。
 
 - 開発用GUI（別リポジトリ`minase-gui`）で複数の読み筋を表示する変更は扱わない。GUIの側の変更は、本書の完了後に`minase-gui`で別に計画する。
-- PV-MCTSの探索中の定期的な`info`の出力は扱わない。いまのPV-MCTSは探索の終了時にだけ`info`を出し（[MCTSの対局の探索のADR](../adr/search-mcts-games-by-puct-with-virtual-loss-batches.md)）、本書もその規則を保つ。
+- PV-MCTSの探索中の定期的な`info`の出力は扱わない。いまのPV-MCTSは探索の終了時にだけ`info`を出し（[MCTSの対局の探索のADR](../../adr/search-mcts-games-by-puct-with-virtual-loss-batches.md)）、本書もその規則を保つ。
 - αβ探索で、窓外れの読み直しの途中や、1本ずつの読み筋の完了ごとに途中経過を出す処理は扱わない。理由は「αβ探索の出力の時期」の節にある。
 - USIの`go searchmoves`（根の候補を利用者が絞る指定）は扱わない。minaseは`go`の未知の引数を拒否しており、本書もその扱いを変えない。
 - xboard系の通信規約CECP（`--protocol cecp`）での複数の読み筋は扱わない。CECPの層は探索のオプションを宣言せず（`crates/minase/src/protocol/cecp.rs`）、探索は既定値1で動き続ける。
@@ -51,9 +58,9 @@ MultiPVは、対局の強さを上げる機能ではない。
 本書は、αβ探索の根の探索、反復深化、およびLazy SMPの現行の実装に依存する。
 Lazy SMPは、複数のスレッド（ワーカー）が、探索済みの局面の値を記録する置換表を共有して同じ根を探索する並列化であり、進捗を通信層へ送るワーカーを主ワーカー、それ以外を補助ワーカーと呼ぶ。
 該当するのは、`crates/minase/src/search/alphabeta/`の`root.rs`、`deepening.rs`、`team.rs`である。
-根の探索の窓（aspiration window、前の反復の値の近くに狭く置いた値の範囲で読み、外れたら広げて読み直す手法）の置き方は[窓の置き方のADR](../adr/center-aspiration-windows-on-the-best-move-average-and-move-both-edges-on-failure.md)に、根の手の並べ方は[根の手の順序のADR](../adr/order-root-moves-by-previous-subtree-nodes.md)に、上限時間で止めた反復の扱いは[中断した反復を捨てるADR](../adr/keep-discarding-hard-interrupted-iterations-and-reject-fair-share-budgets.md)に従う。
-PV-MCTSの最善手の選び方と評価値の求め方は、[MCTSの対局の探索のADR](../adr/search-mcts-games-by-puct-with-virtual-loss-batches.md)と`crates/minase/src/search/mcts/tree.rs`の`best_edge`に従う。
-USIの出力の規約は、[USIの独自拡張の手引き](../guides/usi-extensions.md)と`crates/minase/src/protocol/usi.rs`のdocコメントにある。
+根の探索の窓（aspiration window、前の反復の値の近くに狭く置いた値の範囲で読み、外れたら広げて読み直す手法）の置き方は[窓の置き方のADR](../../adr/center-aspiration-windows-on-the-best-move-average-and-move-both-edges-on-failure.md)に、根の手の並べ方は[根の手の順序のADR](../../adr/order-root-moves-by-previous-subtree-nodes.md)に、上限時間で止めた反復の扱いは[中断した反復を捨てるADR](../../adr/keep-discarding-hard-interrupted-iterations-and-reject-fair-share-budgets.md)に従う。
+PV-MCTSの最善手の選び方と評価値の求め方は、[MCTSの対局の探索のADR](../../adr/search-mcts-games-by-puct-with-virtual-loss-batches.md)と`crates/minase/src/search/mcts/tree.rs`の`best_edge`に従う。
+USIの出力の規約は、[USIの独自拡張の手引き](../../guides/usi-extensions.md)と`crates/minase/src/protocol/usi.rs`のdocコメントにある。
 
 先行実装は、手元に複製した次の3つのリポジトリで読んだ。
 読んだ時点で、どれも作業ツリーに未コミットの改変がないことを`git status --short`で確かめた。
@@ -67,8 +74,8 @@ USIの出力の規約は、[USIの独自拡張の手引き](../guides/usi-extens
 ふかうら王は、dlshogiのPV-MCTSをやねうら王の枠組みへ移したエンジンであり、やねうら王のリポジトリにある。
 minaseが探索機能の設計で先行実装として調べる中将棋エンジンHaChuは、複数の読み筋を出す機能を持たない。
 
-[ネットの外部ファイル化](nnue-external-network-file.md)の後は、検証の`bench`と、固定の深さとノード数の探索の前に、`RuleSet`、`EvalFile`、および`isready`を送る。
-[tatara化とHalfKP_vm](nnue-tatara-framework-and-halfkp-vm.md)は探索が評価器を呼ぶ箇所を列挙型へ改めるので、本書と探索のコードが重なる。後からmasterへ入れる側が、先に入った変更に合わせる。
+[ネットの外部ファイル化](../nnue-external-network-file.md)の後は、検証の`bench`と、固定の深さとノード数の探索の前に、`RuleSet`、`EvalFile`、および`isready`を送る。
+[tatara化とHalfKP_vm](../nnue-tatara-framework-and-halfkp-vm.md)は探索が評価器を呼ぶ箇所を列挙型へ改めるので、本書と探索のコードが重なる。後からmasterへ入れる側が、先に入った変更に合わせる。
 
 ## 設計判断
 
@@ -97,13 +104,13 @@ minaseが探索機能の設計で先行実装として調べる中将棋エン�
 ### オプションの名前と範囲
 
 オプションの名前は`MultiPV`とする。
-USI原典は予約名として`USI_MultiPV`を定める（[USI原典の調査](../research/protocols/usi-lishogi.md)）が、本書が読んだやねうら王、ふかうら王、およびdlshogiは、どれも`MultiPV`で宣言する。
+USI原典は予約名として`USI_MultiPV`を定める（[USI原典の調査](../../research/protocols/usi-lishogi.md)）が、本書が読んだやねうら王、ふかうら王、およびdlshogiは、どれも`MultiPV`で宣言する。
 GUIが送るオプション名はエンジンが宣言した名前に従うので、実績のあるエンジンと同じ名前にしておけば、それらのエンジン向けの検討の設定をそのまま使える。
 両方の名前を宣言すると同じ設定に2つの入口ができ、どちらを後に送ったかで値が決まる。
 
 既定値は1、最小値は1とする。
 最大値は、方策の要素数`POLICY_SIZE`の35,856とする（`crates/minase/src/nn/policy.rs`）。
-合法手はどれも異なる方策の要素へ写り、その写像が単射であることは試験で確かめてあるので（[方策の符号化のADR](../adr/encode-the-zero-policy-as-249-planes-per-from-square.md)）、1局面の合法手の数は35,856を超えない。
+合法手はどれも異なる方策の要素へ写り、その写像が単射であることは試験で確かめてあるので（[方策の符号化のADR](../../adr/encode-the-zero-policy-as-249-planes-per-from-square.md)）、1局面の合法手の数は35,856を超えない。
 先行実装も、最大値を合法手の数の上界から決めている。
 Stockfishは、チェスの合法手の上界`MAX_MOVES`の256を最大値にする（`src/types.h`の115行）。
 やねうら王は、将棋の合法手の最大数593に余裕を加えた600を最大値にする（`source/types.h`の704行）。
@@ -166,7 +173,7 @@ Stockfishの根の手の並びは、各回の探索の後に、その回で得�
 2.は基準の手の選び方だけが、5.はcorrection historyの扱いだけが、Stockfishと異なる。
 この7つのほかに、次に述べる詰みを探す印の決め方もStockfishと異なる。
 
-根の部分木のノード数は、根の手の並べ方に使う（[根の手の順序のADR](../adr/order-root-moves-by-previous-subtree-nodes.md)）。
+根の部分木のノード数は、根の手の並べ方に使う（[根の手の順序のADR](../../adr/order-root-moves-by-previous-subtree-nodes.md)）。
 いまは、窓外れの読み直しの分も含めて手ごとに足し、窓の中で探索を終えたときに前の反復の記録を置き換える（`root.rs`の`search_iteration`）。
 Nが2以上では、読み直しの分を含むN本の全体で手ごとに足し合わせ、反復が完了したときに1回だけ置き換える。
 1本ごとに置き換えると、最後の読み筋で読んだ手の記録だけが残るからである。
@@ -196,7 +203,7 @@ Nが1なら、これはいまの規則と同じである。
 このとき完了のイベントの読み筋の列は、その1手だけの1要素とし、Nにかかわらず`info`行を出さない。
 いまも深さ0の結果は`info`行として出さないので（`usi.rs`の`write_final_info_if_deeper`）、この扱いはNが1のときと同じである。
 
-minaseは、上限時間で止めた反復の値を捨て、秒読みと固定時間の途中結果だけを例外とする規則を採っている（[中断した反復を捨てるADR](../adr/keep-discarding-hard-interrupted-iterations-and-reject-fair-share-budgets.md)）。
+minaseは、上限時間で止めた反復の値を捨て、秒読みと固定時間の途中結果だけを例外とする規則を採っている（[中断した反復を捨てるADR](../../adr/keep-discarding-hard-interrupted-iterations-and-reject-fair-share-budgets.md)）。
 本書はこの規則をN本の全体へ広げる。
 Stockfishは、止まった反復で読み終えた読み筋を残し、未完了の順位には前の反復の値と1つ浅い深さを出す（`src/search.cpp`の2318〜2323行）。
 さらに、止まった探索の値が先に完了した読み筋の確定した負けを追い越さないよう補正する（同464〜510行）。
@@ -237,7 +244,7 @@ Nが1ならN本目は1本目であり、いまの`mate_early_stop`と同じ判�
 この案の根拠は、伸縮が1本目の手の安定だけを見ており、2番手以下の手の安定を表さないことである。
 しかし、Stockfishもやねうら王も、Nが2以上でこの伸縮を使い続ける（やねうら王`yaneuraou-search.cpp`の1924行以降）。
 また、伸縮を使うかどうかの判定は、相手の手番に読む先読み（ponder）の後の手で持ち時間の目安を25%増やす処理などと共有されている。
-この判定は`team.rs`の`uses_instability_scaling`であり、25%の増分は[先読みの予算のADR](../adr/measure-budget-from-ponderhit-and-add-a-quarter-after-pondering.md)が定めたものである。
+この判定は`team.rs`の`uses_instability_scaling`であり、25%の増分は[先読みの予算のADR](../../adr/measure-budget-from-ponderhit-and-add-a-quarter-after-pondering.md)が定めたものである。
 Nが2以上のときだけ伸縮を止めると、この共有の判定を2つに割ることになる。
 Nを2以上にするのは対局のためではないので、分岐を増やしてまで2番手以下の安定を時間配分に反映する理由がない。
 
@@ -301,7 +308,7 @@ minaseはふかうら王と同じく、最善手と読み筋の順位に1つの�
 確定した辺は、子の確定した勝敗を根の手番側から見た勝敗に反転し、手数を1増やした値を使う。
 これはいまの`Proof::score`と同じ値であり、同一局面の反復による勝敗の帯の区別もそのまま保つ。
 未確定で訪問済みの辺は、その辺のQを勝率pとし、いまの`Driver::score`と同じく0.001〜0.999に丸めてから、勝率尺度（ロジット1あたりの評価値の大きさで、単位はcp）を掛けた対数オッズで評価値に換算する。
-換算の式と丸めの範囲は、[MCTSの対局の探索のADR](../adr/search-mcts-games-by-puct-with-virtual-loss-batches.md)が定めたものである。
+換算の式と丸めの範囲は、[MCTSの対局の探索のADR](../../adr/search-mcts-games-by-puct-with-virtual-loss-batches.md)が定めたものである。
 1本目は、いまの`Driver::score`の値をそのまま使う。
 `go nodes 1`のように最善手が未訪問のときも、1本目はいまと同じく根の価値から評価値を求める。
 
@@ -377,8 +384,8 @@ CONTRIBUTING.mdは、棋力に影響し得る変更の採否をSPRTで決める�
 
 SPRTを行う代案は採らない。
 Eloは、対局の勝率から換算した強さの差である。
-minaseのSPRTの採否基準は、帰無仮説を0 Elo、対立仮説を10 Eloの改善とする検定であり（[SPRTの手引き](../guides/sprt.md)）、変わらないことを示す検定ではないので、本書の採否の判定には使えない。
-処理を変えない変更をbenchの出力の一致で確かめる方法は、探索部のモジュール再編などで採ってきた（[移動だけの再編の教訓](../lessons/verify-move-only-reorganization.md)）。
+minaseのSPRTの採否基準は、帰無仮説を0 Elo、対立仮説を10 Eloの改善とする検定であり（[SPRTの手引き](../../guides/sprt.md)）、変わらないことを示す検定ではないので、本書の採否の判定には使えない。
+処理を変えない変更をbenchの出力の一致で確かめる方法は、探索部のモジュール再編などで採ってきた（[移動だけの再編の教訓](../../lessons/verify-move-only-reorganization.md)）。
 
 ## 探索から通信層へ渡すイベント
 
@@ -392,15 +399,15 @@ minaseのSPRTの採否基準は、帰無仮説を0 Elo、対立仮説を10 Elo�
 
 CECPの層は、`Finished`の最善手だけを使っており、変更の影響を受けない。
 `SearchEvent`は`minase`クレートの公開の型であり（`crates/minase/src/search/mod.rs`）、そのフィールドを変えるのは、CONTRIBUTING.mdの公開APIの互換性を壊す変更に当たる。
-エンジンの公開APIから型を消した過去の変更も、互換性を壊す変更として扱った（[旧パスを残さないADR](../adr/do-not-re-export-moved-items-at-old-paths.md)）。
+エンジンの公開APIから型を消した過去の変更も、互換性を壊す変更として扱った（[旧パスを残さないADR](../../adr/do-not-re-export-moved-items-at-old-paths.md)）。
 そのため、この変更のコミットメッセージでは、Conventional Commitsのtypeの直後に`!`を付け、本文に`BREAKING CHANGE:`フッターを書く。
 旧い形のフィールドは残さない。
 
 ## 実装フェーズ
 
 本書の実装は、masterから切った1つのブランチとworktreeで行う。
-プログラムの実装は、プロジェクトの分担に従ってコード生成のエージェントCodexへ委任し、設計書を書いたエージェントClaudeは設計の確定、レビュー、検証、および文書を受け持つ（[委任の手引き](../guides/codex-delegation.md)）。
-各フェーズの委任では、[教訓の索引](../lessons/README.md)の「Rustの実装とテスト」と「探索の変更と採否測定」の節の規則を指示書に写す。
+プログラムの実装は、プロジェクトの分担に従ってコード生成のエージェントCodexへ委任し、設計書を書いたエージェントClaudeは設計の確定、レビュー、検証、および文書を受け持つ（[委任の手引き](../../guides/codex-delegation.md)）。
+各フェーズの委任では、[教訓の索引](../../lessons/README.md)の「Rustの実装とテスト」と「探索の変更と採否測定」の節の規則を指示書に写す。
 
 ### フェーズ1　イベントの形と出力の経路
 
@@ -424,24 +431,24 @@ USIの層の性質（同13.）は、フェーズ2と3のそれぞれで、その
 ### フェーズ4　文書の移し替え
 
 仕様をdocコメントと手引きへ、設計判断をADRへ移す。
-`MultiPV`の宣言、範囲、出力の形、およびPV-MCTSの未訪問の辺の扱いは、`crates/minase/src/protocol/usi.rs`のdocコメントと[USIの独自拡張の手引き](../guides/usi-extensions.md)の「オプション」の節へ書く。
+`MultiPV`の宣言、範囲、出力の形、およびPV-MCTSの未訪問の辺の扱いは、`crates/minase/src/protocol/usi.rs`のdocコメントと[USIの独自拡張の手引き](../../guides/usi-extensions.md)の「オプション」の節へ書く。
 αβ探索の2本目以降の7つの処理、反復の完了の規則、および時間管理の規則は、`root.rs`と`deepening.rs`のdocコメントへ書く。
 ハーネスの記録の規則は、`crates/minase/src/harness/engine/usi.rs`のdocコメントへ書く。
 方式の選択、棄却した代案、および先行実装の調査は、ADRに書く。
 
 ## 検証
 
-各フェーズで、`cargo fmt --check`、`cargo clippy`、および[テストの手引き](../guides/testing-minase-rules.md)のマージ前の検査を行う。
+各フェーズで、`cargo fmt --check`、`cargo clippy`、および[テストの手引き](../../guides/testing-minase-rules.md)のマージ前の検査を行う。
 既定値1の一致は、変更前のmasterのコミットを基準、変更後のコミットを候補として、同じ機械で同じrelease設定でビルドした2つのバイナリで確かめる。
 αβ探索の局面には、`bench`の15局面（`crates/minase/src/diagnostics/bench.rs`の`BENCH_POSITIONS`）を使う。
 
-1. `scripts/bench_compare.py`の参照、基準、および親の3つの指定のすべてに基準のコミットを与え、`--depth 9 --threads 1`で候補と比べたとき、局面ごとのノード数、最善手、および評価値が全行一致する（[移動だけの再編の教訓](../lessons/verify-move-only-reorganization.md)）。深さ9は、係数を対局の勝敗から調整するSPSAの道具が、借りる機械の速さを測るのに使う深さと同じである。
+1. `scripts/bench_compare.py`の参照、基準、および親の3つの指定のすべてに基準のコミットを与え、`--depth 9 --threads 1`で候補と比べたとき、局面ごとのノード数、最善手、および評価値が全行一致する（[移動だけの再編の教訓](../../lessons/verify-move-only-reorganization.md)）。深さ9は、係数を対局の勝敗から調整するSPSAの道具が、借りる機械の速さを測るのに使う深さと同じである。
 2. αβ探索を`Threads=1`で起動し、15局面のそれぞれに`go depth 9`と`go nodes <n>`を送ったUSIの出力が、`time`と`nps`の値を除いて一致する。nは、1.のbenchでその局面の深さ9の探索に要したノード数の半分とし、深さ9までのどこかの反復の途中で止まるようにする。`go nodes`では、`info string stop nodes`が出て、最後の`info`行の深さが停止の前に完了した反復の深さであること、すなわち反復の途中で止めて未完了の反復を捨てたことも確かめる。
 3. 「採否の判定」の節の一時的な診断で、制御できる時計を使った持ち時間つきの探索を、基準と候補で同じ局面の列について実行し、反復ごとの時間管理の入力（最善手、評価値、反復の中で最善手が変わった回数、最善手に費やしたノード数、全体のノード数）、前の探索から引き継ぐ値、停止の理由、および結果が一致する。局面の列は、初期局面から固定の着手列で進めた同じ対局の連続した局面とし、表を引き継いで続けて探索する。補助ワーカーの関数も、同じ局面で単独で動かして結果を比べる。
 4. PV-MCTSを、推論にCPUを使う設定（`NnBackend=cpu`）で起動し、同じ15局面に`go nodes 800`を送ったUSIの出力が、`time`と`nps`の値を除いて一致する。800回は、これまでのMCTSの固定ノードの対局と同じ1手の回数である。ネットは、AlphaZero型探索の強化学習の1回目の実行で32周目（サイクル32）に得た学習の状態を、学習器の`export-onnx`でONNX形式のファイルとしてリポジトリの外の作業用ディレクトリへ書き出し直したものとする。ネットワーク接続の記憶装置（NAS）にある`nets/cycle-0032.onnx`は入力と方策の出力が32ビットの浮動小数点数であり、いまの推論器が受け付ける形式と異なるからである。いまの推論器は、入力を8ビットの整数、方策を16ビットの浮動小数点数で受け渡す。2つのバイナリは同じ書き出し済みのファイルを使い、ONNX Runtimeの環境は`tools/train/zero/env.sh`で読み込み、ファイルのSHA-256を記録する。
 5. 1.の`scripts/bench_compare.py`で、`--rounds 3 --repetitions 3`の速度の比較を、ほかの負荷を止めた同じ機械で行う。親に対する候補の速度比（親比）と1との差が、同じ出力に併記される親の分解能以内に収まる。親比は候補と親の毎秒ノード数の比であり、分解能は、親を候補と交互に測った各回の中央値について、最大と最小の差を、それらの中央値で割った割合である。3回ずつの交互測定は、`scripts/bench_compare.py`の既定の回数である。収まらなければ、生成コードの関数の集合と機械語の大きさを`nm --size-sort`で基準と比べて原因を調べる。`nm`による比較は原因を探すためのものであり、速度の条件を満たしたことの代わりにはならない。
 
-Nが2以上の性質は、実装の出力を写すのではなく、MultiPVの定義、USI原典、および本書の契約から導いた期待で試験する（[テストの一般原則](../guides/testing-general-principles.md)）。
+Nが2以上の性質は、実装の出力を写すのではなく、MultiPVの定義、USI原典、および本書の契約から導いた期待で試験する（[テストの一般原則](../../guides/testing-general-principles.md)）。
 
 6. αβ探索で`Threads=1`の固定の深さの探索をすると、各`Progress`の読み筋の数はNであり、各読み筋の1手目はすべて異なって根の候補に含まれ、全行の深さは同じで、値は降順に並ぶ。最後の`Progress`の1本目の手は、`Finished`の最善手と一致する。`MultiPV`が根の候補手の数より大きい局面、根の候補手が1つの局面、R1で反復勝ちの手だけが候補になる局面、およびR1で全合法手が反復負けに直結して全手が候補に残る局面も試す。
 7. 王駒を取る手がちょうど2つあり、ほかの手には固定の深さで詰みがないことを確かめた固定の局面で、その深さで`MultiPV`を3にすると、1本目と2本目がその2手で詰みの値を持ち、3本目は詰みの値を持たない。

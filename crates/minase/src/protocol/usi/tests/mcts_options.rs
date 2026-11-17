@@ -1113,7 +1113,7 @@ fn mcts_multipv_nodes_one_emits_two_lines_with_no_second_score() {
     assert_mcts_pv_lines(&output, &Game::new(Rules::JCSA), 2, true);
 }
 
-// multipv.mdの検証13。連続した行、統計の共有、合法性、最善手との一致を検査する。
+// docs/plans/archived/multipv.mdの検証13。連続した行、統計の共有、合法性、最善手との一致を検査する。
 fn assert_mcts_pv_lines(output: &str, game: &Game, count: usize, ranked: bool) {
     assert!(!output.contains("error:"), "{output}");
     let all: Vec<_> = output.lines().collect();

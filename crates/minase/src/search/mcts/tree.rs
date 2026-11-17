@@ -260,7 +260,7 @@ impl Node {
     /// 未確定同士は訪問回数、訪問済みならQ、未訪問なら方策のlogitで比べる。
     /// 評価待ちなら空になる。MultiPVと根の統計の表示が使う。
     /// 辺そのものを並べ替えず、探索と木の再利用を変えない。
-    /// 理由は`docs/plans/multipv.md`を参照する。
+    /// MultiPVで使う理由は`docs/adr/rank-pv-mcts-root-edges-by-the-best-move-rule-for-multipv-and-leave-unvisited-edges-unscored.md`にある。
     pub fn ranked_edges(&self) -> Vec<usize> {
         if matches!(self.state, NodeState::Pending { .. }) {
             return Vec::new();
@@ -692,10 +692,7 @@ impl Tree {
     ///
     /// 根の辺は未訪問でも含め、2手目以降は訪問済みの辺だけを含める。
     /// 展開済みまたは勝敗の確定した子だけを進み、木も探索も変更しない。
-    /// 根の順位は[`Node::ranked_edges`]で決める。
-    /// MultiPVの値は1本目が根の評価値、以降は親から見た確定値かQの対数オッズである。
-    /// 2本目以降の未訪問の辺はdlshogiと同じく値を持たず、根拠のない勝率0.5を使わない。
-    /// 理由は`docs/plans/multipv.md`を参照する。
+    /// MultiPVの各読み筋は、[`Node::ranked_edges`]で並べた根の辺からこの関数でたどる。
     pub(super) fn variation_from_edge(&self, index: usize) -> Vec<Move> {
         let mut edge = &self.root.edges[index];
         let mut pv = vec![edge.mv];

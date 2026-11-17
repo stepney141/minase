@@ -1,4 +1,4 @@
-//! docs/plans/multipv.mdの検証6〜10と、Stockfish 5c4cef0b:624の停止条件を検査する。
+//! docs/plans/archived/multipv.mdの検証6〜10と、Stockfish 5c4cef0b:624の停止条件を検査する。
 
 use super::*;
 

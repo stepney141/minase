@@ -206,7 +206,7 @@ pub(super) fn run_main_worker(
 /// 最善手変更回数は各ワーカーのk＝1だけで数え、探索量の分母には全N本のノード数を使う。
 /// 詰みの早期停止はN本目が3手以内の勝ち、または1本目がちょうど2手の負けのときに限る
 /// （Stockfish 5c4cef0b `src/search.cpp:592-624`）。途中結果はN＝1だけで採用する。
-/// 設計判断の理由は`docs/plans/multipv.md`にある。
+/// 設計判断の理由は`docs/adr/search-alphabeta-multipv-by-repeating-the-root-search-and-keep-only-complete-iterations.md`にある。
 #[allow(clippy::too_many_arguments)]
 pub(super) fn run_main_worker_with_iteration_hook(
     nnue: &Nnue,
