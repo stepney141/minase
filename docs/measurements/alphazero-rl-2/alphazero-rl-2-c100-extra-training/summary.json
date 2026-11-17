@@ -1,0 +1,280 @@
+[
+  {
+    "run_name": "alphazero-rl-2-c100-extra-base-ab500",
+    "baseline": {
+      "kind": "alphabeta",
+      "limit": {
+        "nodes": 500
+      }
+    },
+    "rules_source": "lishogi",
+    "seed": 2026111811,
+    "max_ply": 4096,
+    "nn_model": "/mnt/synology_nas/minase/alphazero/nets/cycles-rl2-az/cycle-0100.onnx",
+    "network_sha256": "8ab8574a527ee297272900b69e7b222958944cc324c8fe81492ae376ea9f886c",
+    "attempted_pairs": 100,
+    "valid_pairs": 100,
+    "discarded_pairs": 0,
+    "discarded_pair_numbers": [],
+    "valid": {
+      "pentanomial": [
+        87,
+        0,
+        13,
+        0,
+        0
+      ],
+      "elo": {
+        "elo": -463.1593016918648,
+        "lower": -592.0532835249576,
+        "upper": -385.6752577389514
+      },
+      "score_rate": 0.065
+    },
+    "terminations": [
+      {
+        "kind": "adjudicated_win",
+        "reason": "BareKing",
+        "winner": "baseline",
+        "count": 9
+      },
+      {
+        "kind": "adjudicated_win",
+        "reason": "BareKing",
+        "winner": "candidate",
+        "count": 3
+      },
+      {
+        "kind": "adjudicated_win",
+        "reason": "RoyalCapture",
+        "winner": "baseline",
+        "count": 178
+      },
+      {
+        "kind": "adjudicated_win",
+        "reason": "RoyalCapture",
+        "winner": "candidate",
+        "count": 10
+      }
+    ],
+    "forfeits": {
+      "illegal_move": {
+        "candidate": 0,
+        "baseline": 0
+      },
+      "crash": {
+        "candidate": 0,
+        "baseline": 0
+      },
+      "timeout": {
+        "candidate": 0,
+        "baseline": 0
+      },
+      "time_forfeit": {
+        "candidate": 0,
+        "baseline": 0
+      },
+      "rejected_move": {
+        "candidate": 0,
+        "baseline": 0
+      }
+    },
+    "move_forfeit_pair_numbers": [],
+    "without_move_forfeits": {
+      "pentanomial": [
+        87,
+        0,
+        13,
+        0,
+        0
+      ],
+      "elo": {
+        "elo": -463.1593016918648,
+        "lower": -592.0532835249576,
+        "upper": -385.6752577389514
+      },
+      "score_rate": 0.065
+    },
+    "discarded_as_losses": {
+      "pentanomial": [
+        87,
+        0,
+        13,
+        0,
+        0
+      ],
+      "elo": {
+        "elo": -463.1593016918648,
+        "lower": -592.0532835249576,
+        "upper": -385.6752577389514
+      },
+      "score_rate": 0.065
+    },
+    "discarded_as_wins": {
+      "pentanomial": [
+        87,
+        0,
+        13,
+        0,
+        0
+      ],
+      "elo": {
+        "elo": -463.1593016918648,
+        "lower": -592.0532835249576,
+        "upper": -385.6752577389514
+      },
+      "score_rate": 0.065
+    },
+    "affected_pairs": 0,
+    "affected_pair_fraction": 0.0,
+    "affected_pair_fraction_exceeds_5_percent": false,
+    "plies": {
+      "min": 83,
+      "median": 250.5,
+      "max": 1034
+    },
+    "active_wall_time_seconds": 3075.296387486
+  },
+  {
+    "run_name": "alphazero-rl-2-c100-extra-r3-ab500",
+    "baseline": {
+      "kind": "alphabeta",
+      "limit": {
+        "nodes": 500
+      }
+    },
+    "rules_source": "lishogi",
+    "seed": 2026111811,
+    "max_ply": 4096,
+    "nn_model": "/mnt/synology_nas/minase/alphazero/experiments/rl2-c100-extra/run-3/train/model.onnx",
+    "network_sha256": "55d7be4daa5c6e4a04fb3307bb05dc234cdfe131bcbe49ef26dee36827e2b6f7",
+    "attempted_pairs": 100,
+    "valid_pairs": 100,
+    "discarded_pairs": 0,
+    "discarded_pair_numbers": [],
+    "valid": {
+      "pentanomial": [
+        61,
+        2,
+        34,
+        0,
+        3
+      ],
+      "elo": {
+        "elo": -235.4453070402864,
+        "lower": -299.15890899803117,
+        "upper": -183.15200856545877
+      },
+      "score_rate": 0.205
+    },
+    "terminations": [
+      {
+        "kind": "adjudicated_draw",
+        "reason": "Repetition",
+        "winner": null,
+        "count": 2
+      },
+      {
+        "kind": "adjudicated_win",
+        "reason": "BareKing",
+        "winner": "baseline",
+        "count": 8
+      },
+      {
+        "kind": "adjudicated_win",
+        "reason": "BareKing",
+        "winner": "candidate",
+        "count": 9
+      },
+      {
+        "kind": "adjudicated_win",
+        "reason": "RoyalCapture",
+        "winner": "baseline",
+        "count": 150
+      },
+      {
+        "kind": "adjudicated_win",
+        "reason": "RoyalCapture",
+        "winner": "candidate",
+        "count": 31
+      }
+    ],
+    "forfeits": {
+      "illegal_move": {
+        "candidate": 0,
+        "baseline": 0
+      },
+      "crash": {
+        "candidate": 0,
+        "baseline": 0
+      },
+      "timeout": {
+        "candidate": 0,
+        "baseline": 0
+      },
+      "time_forfeit": {
+        "candidate": 0,
+        "baseline": 0
+      },
+      "rejected_move": {
+        "candidate": 0,
+        "baseline": 0
+      }
+    },
+    "move_forfeit_pair_numbers": [],
+    "without_move_forfeits": {
+      "pentanomial": [
+        61,
+        2,
+        34,
+        0,
+        3
+      ],
+      "elo": {
+        "elo": -235.4453070402864,
+        "lower": -299.15890899803117,
+        "upper": -183.15200856545877
+      },
+      "score_rate": 0.205
+    },
+    "discarded_as_losses": {
+      "pentanomial": [
+        61,
+        2,
+        34,
+        0,
+        3
+      ],
+      "elo": {
+        "elo": -235.4453070402864,
+        "lower": -299.15890899803117,
+        "upper": -183.15200856545877
+      },
+      "score_rate": 0.205
+    },
+    "discarded_as_wins": {
+      "pentanomial": [
+        61,
+        2,
+        34,
+        0,
+        3
+      ],
+      "elo": {
+        "elo": -235.4453070402864,
+        "lower": -299.15890899803117,
+        "upper": -183.15200856545877
+      },
+      "score_rate": 0.205
+    },
+    "affected_pairs": 0,
+    "affected_pair_fraction": 0.0,
+    "affected_pair_fraction_exceeds_5_percent": false,
+    "plies": {
+      "min": 70,
+      "median": 262.0,
+      "max": 2829
+    },
+    "active_wall_time_seconds": 3491.976278685
+  }
+]

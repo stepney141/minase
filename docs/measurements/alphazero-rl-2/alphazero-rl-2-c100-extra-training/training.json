@@ -1,0 +1,149 @@
+[
+  {
+    "run": 1,
+    "samples": 22607298,
+    "completed_steps": 22077,
+    "optimizer_steps": 110334,
+    "positions_per_second": 13461.376301230082,
+    "network_sha256": "913c931adac274125453528a7ae22078074a4887adffaaf9e80998cf86a825bf",
+    "sample_sha256": "7de80da7c15fe5716494e5957402261a84e1dd530fb101ffff5c77999d9b2b83",
+    "provenance_trainer_commit": "94b3a82726422577c849078869b6d9a4bc9e3eee",
+    "init_sha256": "f06e1dd2b0497581df6381cbaaaaceafa1811316a11360e41a04fe2bce6b56c0",
+    "diagnostics": {
+      "training_sample": {
+        "game_count": 13460,
+        "position_count": 1190112,
+        "hash_modulus": 20,
+        "hash_remainder": 1,
+        "policy": 2.6498069763183594,
+        "value": 0.5486888289451599,
+        "value_result": 0.523857593536377,
+        "legal_probability_mass": 0.99346524477005,
+        "log_legal_probability_mass": -0.006764474790543318,
+        "policy_agreement": 0.2613930404186249
+      },
+      "latest_training_sample": {
+        "game_count": 95,
+        "position_count": 11572,
+        "hash_modulus": 20,
+        "hash_remainder": 1,
+        "policy": 2.902754783630371,
+        "value": 0.5678286552429199,
+        "value_result": 0.549252450466156,
+        "legal_probability_mass": 0.9936820268630981,
+        "log_legal_probability_mass": -0.006476679351180792,
+        "policy_agreement": 0.1831144094467163
+      },
+      "validation": {
+        "game_count": 81,
+        "position_count": 37816,
+        "hash_modulus": 20,
+        "hash_remainder": 0,
+        "policy": 2.9912877082824707,
+        "value": 0.5686965584754944,
+        "value_result": 0.55461186170578,
+        "legal_probability_mass": 0.99361652135849,
+        "log_legal_probability_mass": -0.006646703463047743,
+        "policy_agreement": 0.16445419192314148
+      }
+    }
+  },
+  {
+    "run": 2,
+    "samples": 22607298,
+    "completed_steps": 22077,
+    "optimizer_steps": 132411,
+    "positions_per_second": 13644.807029537846,
+    "network_sha256": "9a01a3bb27f14af563fa8829e926439153a45250d1baf2d6cc30511a4150964c",
+    "sample_sha256": "54c487e6e2e667849de1ac3f18f1e6e5e29c024b5a575b902a99fa60e1a44601",
+    "provenance_trainer_commit": "94b3a82726422577c849078869b6d9a4bc9e3eee",
+    "init_sha256": "aaaf26cc10c036974c59975d3bd0790c5ae5740aad98ca0d2b162d3201eb4255",
+    "diagnostics": {
+      "training_sample": {
+        "game_count": 13454,
+        "position_count": 1190374,
+        "hash_modulus": 20,
+        "hash_remainder": 1,
+        "policy": 2.640958547592163,
+        "value": 0.5508763790130615,
+        "value_result": 0.5254902839660645,
+        "legal_probability_mass": 0.9946539998054504,
+        "log_legal_probability_mass": -0.0056167785078287125,
+        "policy_agreement": 0.26432448625564575
+      },
+      "latest_training_sample": {
+        "game_count": 95,
+        "position_count": 11601,
+        "hash_modulus": 20,
+        "hash_remainder": 1,
+        "policy": 2.9171106815338135,
+        "value": 0.5674679279327393,
+        "value_result": 0.5427151322364807,
+        "legal_probability_mass": 0.9947604537010193,
+        "log_legal_probability_mass": -0.005491157062351704,
+        "policy_agreement": 0.18239806592464447
+      },
+      "validation": {
+        "game_count": 81,
+        "position_count": 37816,
+        "hash_modulus": 20,
+        "hash_remainder": 0,
+        "policy": 3.0010054111480713,
+        "value": 0.5682803392410278,
+        "value_result": 0.5497481822967529,
+        "legal_probability_mass": 0.9948917031288147,
+        "log_legal_probability_mass": -0.005513401236385107,
+        "policy_agreement": 0.16929341852664948
+      }
+    }
+  },
+  {
+    "run": 3,
+    "samples": 45214597,
+    "completed_steps": 44154,
+    "optimizer_steps": 176565,
+    "positions_per_second": 13574.122444315606,
+    "network_sha256": "55d7be4daa5c6e4a04fb3307bb05dc234cdfe131bcbe49ef26dee36827e2b6f7",
+    "sample_sha256": "a84304e7f0f4cf4354907f01410bded79c0b62b262f1cc470dae1f03d15c9337",
+    "provenance_trainer_commit": "94b3a82726422577c849078869b6d9a4bc9e3eee",
+    "init_sha256": "694f918f68eabbe71c0a5396a7033b9f141a333c0fa1bfe3944236db339b760b",
+    "diagnostics": {
+      "training_sample": {
+        "game_count": 13468,
+        "position_count": 2382740,
+        "hash_modulus": 20,
+        "hash_remainder": 1,
+        "policy": 2.643233060836792,
+        "value": 0.5453362464904785,
+        "value_result": 0.5169743895530701,
+        "legal_probability_mass": 0.9947595000267029,
+        "log_legal_probability_mass": -0.0054725054651498795,
+        "policy_agreement": 0.2630354166030884
+      },
+      "latest_training_sample": {
+        "game_count": 95,
+        "position_count": 23207,
+        "hash_modulus": 20,
+        "hash_remainder": 1,
+        "policy": 2.9245223999023438,
+        "value": 0.5534678101539612,
+        "value_result": 0.5212386846542358,
+        "legal_probability_mass": 0.9950000047683716,
+        "log_legal_probability_mass": -0.005229291506111622,
+        "policy_agreement": 0.17925626039505005
+      },
+      "validation": {
+        "game_count": 81,
+        "position_count": 37816,
+        "hash_modulus": 20,
+        "hash_remainder": 0,
+        "policy": 2.998842477798462,
+        "value": 0.5680029988288879,
+        "value_result": 0.5489552021026611,
+        "legal_probability_mass": 0.9950006604194641,
+        "log_legal_probability_mass": -0.005260032135993242,
+        "policy_agreement": 0.16506241261959076
+      }
+    }
+  }
+]

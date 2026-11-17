@@ -24,6 +24,12 @@ summary = "docs/measurements/alphazero-rl-2/alphazero-rl-2-short-matches-c0010-c
 run_name = "alphazero-rl-2-progress-c0100-timing-hachu3"
 condition = "rl2-short-8e419486"
 
+[[strength]]
+cycle = 100
+summary = "docs/measurements/alphazero-rl-2/alphazero-rl-2-c100-extra-training/summary.json"
+run_name = "alphazero-rl-2-c100-extra-base-ab500"
+condition = "rl2-8e419486"
+
 [[validation]]
 cycle = 1
 path = "docs/training/alphazero-rl-2/validation/cycle-0001.json"
