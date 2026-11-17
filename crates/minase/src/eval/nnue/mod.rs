@@ -12,6 +12,7 @@
 //! 全長はその位置に`Head::byte_len(H)`を足した値となる。Dは入力特徴数である。
 //! 出力部の式と値域は[`head`]、バイト配置と検証条件は[`Network::decode`]に定める。
 
+#[allow(dead_code)] // 学習器とMNUE自身の試験のために保持する。
 pub(crate) mod accumulator;
 pub mod feature_set;
 mod file;
@@ -19,14 +20,10 @@ mod format;
 pub use file::{NetworkFile, NetworkFileError, read_network_file};
 pub mod head;
 pub mod input;
-// 探索へ接続するまでの一時的な許可。
-#[allow(dead_code)]
 pub mod network;
 mod stats;
 #[cfg(test)]
 mod tests;
-// 探索の評価器へ接続するまでの一時的な許可。
-#[allow(dead_code)]
 pub(crate) mod transformer;
 
 use super::features::{FEATURE_COUNT, PIECE_STATE_COUNT, feature_index, piece_state};
@@ -62,6 +59,7 @@ pub struct Network<F: FeatureSet, H: Head> {
     /// 盤上に現れる駒の値は[`Self::piece_value`]の不変条件を満たす。
     piece_values: [i32; PIECE_STATE_COUNT],
     /// 全駒状態の固定駒価値の成り前後の差と0の最大値。
+    #[allow(dead_code)] // MNUE自身の試験で使う。
     max_promotion_gain: i32,
     /// 出力をセンチポーンへ戻す勝率尺度。
     cp_per_logit: f32,
@@ -69,12 +67,12 @@ pub struct Network<F: FeatureSet, H: Head> {
     checksum: [u8; 32],
 }
 
-/// 探索が使う、王の位置で条件付けないP型の入力特徴集合。
+/// MNUEの学習器と試験が使う、王の位置で条件付けないP型の入力特徴集合。
 /// 理由は`docs/adr/use-p-type-input-features-for-the-nnue.md`にある。
 pub type ActiveFeatureSet = P;
-/// 探索が使う出力部。
+/// MNUEの学習器と試験が使う出力部。
 pub type ActiveHead = PairwiseL16L32;
-/// 探索が使う具体化済みのNNUE。
+/// MNUEの学習器と試験が使う具体化済みのNNUE。
 pub type Nnue = Network<ActiveFeatureSet, ActiveHead>;
 
 impl<F: FeatureSet, H: Head> Network<F, H> {
@@ -114,6 +112,7 @@ impl<F: FeatureSet, H: Head> Network<F, H> {
     }
 
     /// SEEの取り返しで得られる成り益の上限を、固定の探索用駒価値の差として返す。
+    #[allow(dead_code)] // MNUE自身の試験で使う。
     pub(crate) const fn max_promotion_gain(&self) -> i32 {
         self.max_promotion_gain
     }
@@ -138,6 +137,7 @@ impl<F: FeatureSet, H: Head> Network<F, H> {
     /// 非線形の経路を含めず、`q×Δmg + (90−q)×Δeg`を720で割る前の分子として返す。
     /// 線形の経路は王の位置で条件付けないため、入力特徴集合によらず成り立つ。
     /// 理由は`docs/adr/order-quiets-by-the-stockfish-history-sum-and-update-histories-in-stockfish-form.md`と`docs/adr/compose-the-nnue-of-a-piece-value-initialized-linear-path-and-pairwise-products-with-two-hidden-layers.md`にある。
+    #[allow(dead_code)] // MNUE自身の試験で使う。
     pub(crate) fn quiet_move_pst_delta(&self, position: &Position, mv: Move) -> i64 {
         let side = position.side_to_move();
         let piece = position.piece_at(mv.from).expect("quiet mover exists");
@@ -182,6 +182,7 @@ pub fn evaluate_for_diagnostics<F: FeatureSet, H: Head>(
 }
 
 /// USIの評価の内訳表示に使う、線形の特徴別寄与と非線形の出力。
+#[allow(dead_code)] // MNUE自身の試験で使う。
 pub(crate) struct Breakdown {
     /// 線形と非線形の和を±28,999へ制限したセンチポーン評価。
     pub(crate) score: i32,
@@ -196,6 +197,7 @@ pub(crate) struct Breakdown {
 }
 
 /// 局面を全再計算し、手番側視点の[`Breakdown`]を返す。
+#[allow(dead_code)] // MNUE自身の試験で使う。
 pub(crate) fn breakdown(nnue: &Nnue, position: &Position) -> Breakdown {
     use super::features::{feature_index, lion_feature_index};
     let side = position.side_to_move();

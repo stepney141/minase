@@ -57,7 +57,7 @@ fn unfiltered_snapshot(game: &Game, repetition: SearchRepetition) -> SearchSnaps
 }
 
 /// 固定深さ・1ワーカーで、置換表と探索の履歴表を毎回新しくして比較する。
-fn search_snapshot(nnue: &Nnue, snapshot: &SearchSnapshot) -> SearchResult {
+fn search_snapshot(nnue: &Network, snapshot: &SearchSnapshot) -> SearchResult {
     let threads = worker_count(1);
     crate::search::search(
         nnue,
@@ -93,7 +93,7 @@ fn article_31_r1_search_avoids_the_unfiltered_repetition_losing_move() {
     assert!(classified.winning().is_empty());
     assert_eq!(classified.losing(), &[losing]);
 
-    let nnue = epoch_zero_nnue();
+    let nnue = fixed_network();
     // 攻撃連続数を0にした対照は、周回を引き分けとして読む。
     let unfiltered = search_snapshot(
         &nnue,

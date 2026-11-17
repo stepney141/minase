@@ -83,19 +83,12 @@ fn quiescence_applies_see_threshold_then_floor_with_fixed_bounds() {
         ],
     );
     let capture = step(sq(5, 4), sq(5, 5));
-    let nnue = test_nnue();
     assert!(legal_moves(&position).contains(&capture));
-    let loss = nnue.piece_value(position.piece_at(capture.from).unwrap())
-        - nnue.piece_value(position.piece_at(capture.to).unwrap());
+    let loss = crate::eval::piece_values::piece_value(position.piece_at(capture.from).unwrap())
+        - crate::eval::piece_values::piece_value(position.piece_at(capture.to).unwrap());
     assert!(loss > 1);
-    assert!(!see_prunes(&position, engine_rules(), nnue, capture, -loss));
-    assert!(see_prunes(
-        &position,
-        engine_rules(),
-        nnue,
-        capture,
-        -loss + 1
-    ));
+    assert!(!see_prunes(&position, engine_rules(), capture, -loss));
+    assert!(see_prunes(&position, engine_rules(), capture, -loss + 1));
 
     for (case, delta_margin, see_floor, threshold_prunes, floor_prunes, nodes) in [
         ("threshold", loss - 1, -INFINITY, true, false, 0),
@@ -117,19 +110,12 @@ fn quiescence_applies_see_threshold_then_floor_with_fixed_bounds() {
             searcher.delta_margin = delta_margin;
             searcher.qsearch_see_floor = see_floor;
             assert_eq!(
-                see_prunes(
-                    &position,
-                    searcher.rules,
-                    searcher.nnue,
-                    capture,
-                    -delta_margin,
-                ),
+                see_prunes(&position, searcher.rules, capture, -delta_margin,),
                 threshold_prunes,
                 "{case}"
             );
             assert_eq!(
-                !threshold_prunes
-                    && see_prunes(&position, searcher.rules, searcher.nnue, capture, see_floor,),
+                !threshold_prunes && see_prunes(&position, searcher.rules, capture, see_floor,),
                 floor_prunes,
                 "{case}"
             );
@@ -180,10 +166,9 @@ fn quiescence_delta_pruned_low_value_capture_raises_and_stores_best() {
         zero_position_correction(searcher, &board);
         searcher.delta_margin = 37;
         searcher.qsearch_see_floor = -INFINITY;
-        let stand_pat = evaluate(searcher.nnue, &board);
-        let captured_value = searcher
-            .nnue
-            .piece_value(board.piece_at(capture.to).unwrap());
+        let stand_pat = evaluate(searcher.network, &board);
+        let captured_value =
+            crate::eval::piece_values::piece_value(board.piece_at(capture.to).unwrap());
         let expected = stand_pat + searcher.delta_margin + captured_value;
         assert!(expected < REPETITION_BAND_START);
 
@@ -216,10 +201,9 @@ fn quiescence_low_value_group_stat_excludes_leading_tt_capture() {
         zero_position_correction(searcher, &board);
         searcher.delta_margin = 37;
         searcher.qsearch_see_floor = -INFINITY;
-        let stand_pat = evaluate(searcher.nnue, &board);
-        let captured_value = searcher
-            .nnue
-            .piece_value(board.piece_at(capture.to).unwrap());
+        let stand_pat = evaluate(searcher.network, &board);
+        let captured_value =
+            crate::eval::piece_values::piece_value(board.piece_at(capture.to).unwrap());
         let expected = stand_pat + searcher.delta_margin + captured_value;
         searcher.tt.store(
             search_key(&board),
@@ -260,15 +244,9 @@ fn quiescence_see_threshold_pruned_capture_raises_best() {
         zero_position_correction(searcher, &board);
         searcher.delta_margin = 2;
         searcher.qsearch_see_floor = -INFINITY;
-        let stand_pat = evaluate(searcher.nnue, &board);
+        let stand_pat = evaluate(searcher.network, &board);
         let alpha = stand_pat + 1;
-        assert!(see_prunes(
-            &board,
-            searcher.rules,
-            searcher.nnue,
-            capture,
-            -1,
-        ));
+        assert!(see_prunes(&board, searcher.rules, capture, -1,));
 
         assert_eq!(
             searcher.quiesce(&mut board.clone(), alpha, INFINITY, 0),
@@ -295,10 +273,9 @@ fn quiescence_does_not_raise_best_to_repetition_band() {
     let (board, capture) = single_low_value_capture();
     with_root_searcher(&board, &[], |searcher| {
         zero_position_correction(searcher, &board);
-        let stand_pat = evaluate(searcher.nnue, &board);
-        let captured_value = searcher
-            .nnue
-            .piece_value(board.piece_at(capture.to).unwrap());
+        let stand_pat = evaluate(searcher.network, &board);
+        let captured_value =
+            crate::eval::piece_values::piece_value(board.piece_at(capture.to).unwrap());
         searcher.delta_margin = REPETITION_BAND_START - stand_pat - captured_value;
         searcher.qsearch_see_floor = -INFINITY;
         assert!(searcher.delta_margin > 0);
@@ -325,7 +302,7 @@ fn quiescence_without_captures_stores_stand_pat() {
     let board = bare_kings();
     with_root_searcher(&board, &[], |searcher| {
         zero_position_correction(searcher, &board);
-        let stand_pat = evaluate(searcher.nnue, &board);
+        let stand_pat = evaluate(searcher.network, &board);
         assert_eq!(
             searcher.quiesce(&mut board.clone(), -INFINITY, INFINITY, 0),
             Some(stand_pat)
@@ -369,15 +346,15 @@ fn quiescence_delta_pruning_uses_alpha_raised_by_an_earlier_capture() {
         zero_position_correction(searcher, &board);
         searcher.delta_margin = 0;
         searcher.qsearch_see_floor = -INFINITY;
-        let stand_pat = evaluate(searcher.nnue, &board);
+        let stand_pat = evaluate(searcher.network, &board);
         let later_estimate =
-            stand_pat + searcher.nnue.piece_value(board.piece_at(later.to).unwrap());
+            stand_pat + crate::eval::piece_values::piece_value(board.piece_at(later.to).unwrap());
         let mut child = board.clone();
         child.make_move_unchecked(first, engine_rules());
-        let first_score = -evaluate(searcher.nnue, &child);
+        let first_score = -evaluate(searcher.network, &child);
         assert!(stand_pat < later_estimate);
         assert!(later_estimate <= first_score);
-        assert!(!see_prunes(&board, searcher.rules, searcher.nnue, first, 0,));
+        assert!(!see_prunes(&board, searcher.rules, first, 0,));
 
         assert_eq!(
             searcher.quiesce(&mut board.clone(), -INFINITY, INFINITY, ply),
@@ -413,7 +390,7 @@ fn quiescence_without_captures_matches_static_evaluation() {
         .iter()
         .map(|&mv| {
             let undo = position.make_move_unchecked(mv, engine_rules());
-            let score = -crate::eval::evaluate(test_nnue(), &position);
+            let score = -evaluate(test_network(), &position);
             position.unmake_move(undo);
             score
         })
@@ -443,7 +420,7 @@ fn quiescence_without_captures_matches_static_evaluation() {
 fn quiescence_max_ply_does_not_probe_or_store() {
     let board = bare_kings();
     let key = search_key(&board);
-    let stand_pat = evaluate(test_nnue(), &board);
+    let stand_pat = evaluate(test_network(), &board);
     let table = small_tt();
     table.store(key, 8, 12_345, None, Bound::Exact, None, MAX_PLY, false);
     let raw_before = table.raw_entry(key);
@@ -461,7 +438,7 @@ fn quiescence_max_ply_does_not_probe_or_store() {
 fn quiescence_tt_cutoff_requires_a_zero_window() {
     let board = bare_kings();
     let key = search_key(&board);
-    let stand_pat = evaluate(test_nnue(), &board);
+    let stand_pat = evaluate(test_network(), &board);
 
     let exact = small_tt();
     exact.store(key, 0, stand_pat + 7, None, Bound::Exact, None, 0, false);
@@ -514,7 +491,7 @@ fn quiescence_tt_cutoff_requires_a_zero_window() {
 fn quiescence_tt_value_replaces_stand_pat_only_for_the_matching_bound_direction() {
     let board = bare_kings();
     let key = search_key(&board);
-    let stand_pat = evaluate(test_nnue(), &board);
+    let stand_pat = evaluate(test_network(), &board);
     for (case, bound, stored, expected) in [
         ("exact below", Bound::Exact, stand_pat - 7, stand_pat - 7),
         ("exact above", Bound::Exact, stand_pat + 7, stand_pat + 7),
@@ -545,7 +522,7 @@ fn quiescence_tt_value_replaces_stand_pat_only_for_the_matching_bound_direction(
 fn quiescence_tt_cutoff_uses_mate_but_not_repetition_band_values() {
     let board = bare_kings();
     let key = search_key(&board);
-    let stand_pat = evaluate(test_nnue(), &board);
+    let stand_pat = evaluate(test_network(), &board);
 
     let mate = small_tt();
     mate.store(key, 0, MATE - 5, None, Bound::Exact, None, 0, false);
@@ -574,7 +551,7 @@ fn quiescence_tt_replacement_at_beta_returns_before_candidates() {
     let (board, _) = single_low_value_capture();
     with_root_searcher(&board, &[], |searcher| {
         zero_position_correction(searcher, &board);
-        let stand_pat = evaluate(searcher.nnue, &board);
+        let stand_pat = evaluate(searcher.network, &board);
         let stored = stand_pat + 20;
         let key = search_key(&board);
         searcher.tt.store(
@@ -606,10 +583,9 @@ fn quiescence_delta_pruning_uses_stand_pat_before_tt_replacement() {
         zero_position_correction(searcher, &board);
         searcher.delta_margin = 37;
         searcher.qsearch_see_floor = -INFINITY;
-        let stand_pat = evaluate(searcher.nnue, &board);
-        let captured_value = searcher
-            .nnue
-            .piece_value(board.piece_at(capture.to).unwrap());
+        let stand_pat = evaluate(searcher.network, &board);
+        let captured_value =
+            crate::eval::piece_values::piece_value(board.piece_at(capture.to).unwrap());
         let stored = stand_pat + searcher.delta_margin + captured_value;
         searcher.tt.store(
             search_key(&board),
@@ -635,7 +611,7 @@ fn quiescence_delta_pruning_uses_stand_pat_before_tt_replacement() {
 fn quiescence_stand_pat_cutoff_stores_static_eval_without_a_search_value() {
     let board = bare_kings();
     let key = search_key(&board);
-    let stand_pat = evaluate(test_nnue(), &board);
+    let stand_pat = evaluate(test_network(), &board);
     let table = small_tt();
 
     assert_eq!(
@@ -663,7 +639,7 @@ fn quiescence_stand_pat_cutoff_stores_static_eval_without_a_search_value() {
 pub(super) fn quiescence_stand_pat_cutoff_blends_return_but_stores_unadjusted_static_eval() {
     let board = bare_kings();
     let key = search_key(&board);
-    let unadjusted = evaluate(test_nnue(), &board);
+    let unadjusted = evaluate(test_network(), &board);
     with_root_searcher(&board, &[], |searcher| {
         zero_position_correction(searcher, &board);
         searcher.correction.store(
@@ -696,7 +672,7 @@ pub(super) fn quiescence_stand_pat_cutoff_blends_return_but_stores_unadjusted_st
 fn quiescence_stand_pat_cutoff_does_not_store_on_a_tt_hit() {
     let board = bare_kings();
     let key = search_key(&board);
-    let stand_pat = evaluate(test_nnue(), &board);
+    let stand_pat = evaluate(test_network(), &board);
     let table = small_tt();
     table.store(key, 0, stand_pat, None, Bound::Upper, None, 0, true);
     let raw = table.raw_entry(key);
@@ -716,7 +692,7 @@ fn quiescence_stand_pat_cutoff_does_not_store_on_a_tt_hit() {
 fn quiescence_uses_static_eval_from_a_value_less_tt_entry() {
     let board = bare_kings();
     let key = search_key(&board);
-    let evaluated = evaluate(test_nnue(), &board);
+    let evaluated = evaluate(test_network(), &board);
     let stored = if evaluated == 1_234 { -1_234 } else { 1_234 };
     let table = small_tt();
     table.store_static_eval(key, stored, false);
@@ -761,7 +737,7 @@ fn quiescence_stores_depth_zero_and_reuses_it_on_revisit() {
     assert_eq!(stored_move.from, capture.from);
     assert_eq!(stored_move.to, capture.to);
     assert_eq!(hit.value.unwrap().score, first_score);
-    assert_eq!(hit.static_eval, Some(evaluate(test_nnue(), &position)));
+    assert_eq!(hit.static_eval, Some(evaluate(test_network(), &position)));
 
     let (second_score, second_nodes) =
         run_quiesce(&position, first_score, first_score + 1, 0, &table);
@@ -784,15 +760,14 @@ fn quiescence_records_bounds_and_no_move_by_exit_path() {
         ],
     );
     let key = search_key(&position);
-    let stand_pat = evaluate(test_nnue(), &position);
-    let nnue = test_nnue();
+    let stand_pat = evaluate(test_network(), &position);
     let mut captures = Vec::new();
     MoveGenerator::standard().generate_captures(&position, &mut captures);
     assert!(!captures.is_empty());
     assert!(
         captures
             .iter()
-            .all(|&mv| see_prunes(&position, engine_rules(), nnue, mv, 0,))
+            .all(|&mv| see_prunes(&position, engine_rules(), mv, 0,))
     );
     let cases = [
         ("upper", stand_pat, INFINITY, Bound::Upper),
@@ -942,17 +917,16 @@ fn history_ordering_position() -> (Position, [Move; 6]) {
 
 fn captures_with_history(
     board: &Position,
-    nnue: &Nnue,
     history: &CaptureHistory,
     tt_move: Option<Move>,
 ) -> Vec<Move> {
     let generator = MoveGenerator::standard();
-    let ranks = CaptureRanks::new(nnue);
+    let ranks = CaptureRanks::new();
     let mut buffers = QsearchBuffers::default();
     buffers.reset(board);
-    buffers.initialize(board, &generator, nnue, &ranks);
+    buffers.initialize(board, &generator, &ranks);
     buffers.set_tt_move(board, &generator, tt_move);
-    std::iter::from_fn(|| buffers.next(board, &generator, nnue, &ranks, history))
+    std::iter::from_fn(|| buffers.next(board, &generator, &ranks, history))
         .map(|candidate| candidate.capture.mv)
         .collect()
 }
@@ -962,7 +936,6 @@ fn captures_with_history(
 #[test]
 fn quiescence_capture_history_preserves_group_order_and_tt_priority() {
     let (board, moves) = history_ordering_position();
-    let nnue = test_nnue();
     for (case, cutoff, tt_index, expected) in [
         ("no_history", None, None, [5, 0, 1, 2, 3, 4]),
         ("raw_history", Some((4, 0, 1)), None, [5, 4, 1, 2, 3, 0]),
@@ -986,25 +959,23 @@ fn quiescence_capture_history_preserves_group_order_and_tt_priority() {
             } else {
                 super::super::capture_history::CAPTURE_HISTORY_LIMIT
             };
-            history.update(&board, nnue, moves[winner], bonus);
-            history.update(&board, nnue, moves[loser], -bonus);
-            assert!(history.read(&board, nnue, moves[winner]) > 0, "{case}");
-            assert!(history.read(&board, nnue, moves[loser]) < 0, "{case}");
+            history.update(&board, moves[winner], bonus);
+            history.update(&board, moves[loser], -bonus);
+            assert!(history.read(&board, moves[winner]) > 0, "{case}");
+            assert!(history.read(&board, moves[loser]) < 0, "{case}");
             if depth == 1 {
-                assert_eq!(history.read(&board, nnue, moves[winner]), 1, "{case}");
-                assert_eq!(history.read(&board, nnue, moves[loser]), -1, "{case}");
+                assert_eq!(history.read(&board, moves[winner]), 1, "{case}");
+                assert_eq!(history.read(&board, moves[loser]), -1, "{case}");
                 assert_eq!(
                     super::super::capture_history::CaptureHistory::adjustment(
-                        nnue,
-                        history.read(&board, nnue, moves[winner])
+                        history.read(&board, moves[winner])
                     ),
                     0,
                     "{case}"
                 );
                 assert_eq!(
                     super::super::capture_history::CaptureHistory::adjustment(
-                        nnue,
-                        history.read(&board, nnue, moves[loser])
+                        history.read(&board, moves[loser])
                     ),
                     0,
                     "{case}"
@@ -1012,7 +983,7 @@ fn quiescence_capture_history_preserves_group_order_and_tt_priority() {
             }
         }
         assert_eq!(
-            captures_with_history(&board, nnue, &history, tt_index.map(|index| moves[index])),
+            captures_with_history(&board, &history, tt_index.map(|index| moves[index])),
             expected.map(|index| moves[index]),
             "{case}"
         );
@@ -1036,20 +1007,16 @@ fn quiescence_capture_history_orders_special_and_ordinary_captures_together() {
             (sq(8, 6), Color::White, PieceKind::Pawn),
         ],
     );
-    let nnue = test_nnue();
     let mut public = Vec::new();
     MoveGenerator::standard().generate_captures(&board, &mut public);
     let mut reference: Vec<_> = public
         .into_iter()
-        .map(|mv| (mv, move_order_key(&board, nnue, mv).unwrap()))
+        .map(|mv| (mv, move_order_key(&board, mv).unwrap()))
         .collect();
     order_captures(&mut reference);
     let reference: Vec<_> = reference.into_iter().map(|(mv, _)| mv).collect();
     let history = empty_capture_history();
-    assert_eq!(
-        captures_with_history(&board, nnue, &history, None),
-        reference
-    );
+    assert_eq!(captures_with_history(&board, &history, None), reference);
     let lion_moves: Vec<_> = reference
         .iter()
         .copied()
@@ -1068,13 +1035,13 @@ fn quiescence_capture_history_orders_special_and_ordinary_captures_together() {
     for reward_special in [true, false] {
         let mut history = empty_capture_history();
         if reward_special {
-            history.update(&board, nnue, lion_moves[0], 1);
+            history.update(&board, lion_moves[0], 1);
             for &mv in &ordinary {
-                history.update(&board, nnue, mv, -1);
+                history.update(&board, mv, -1);
             }
         } else {
-            history.update(&board, nnue, ordinary[1], 1);
-            history.update(&board, nnue, lion_moves[0], -1);
+            history.update(&board, ordinary[1], 1);
+            history.update(&board, lion_moves[0], -1);
         }
         let expected: Vec<_> = if reward_special {
             lion_moves.iter().chain(&ordinary).copied().collect()
@@ -1084,9 +1051,6 @@ fn quiescence_capture_history_orders_special_and_ordinary_captures_together() {
                 .chain(lion_moves.iter().copied())
                 .collect()
         };
-        assert_eq!(
-            captures_with_history(&board, nnue, &history, None),
-            expected
-        );
+        assert_eq!(captures_with_history(&board, &history, None), expected);
     }
 }

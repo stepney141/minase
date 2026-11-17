@@ -41,7 +41,7 @@ fn counted_root_improvements(scores: &[i32], alpha: i32, beta: i32) -> u64 {
     let position = Position::initial();
     let moves: Vec<_> = legal_moves(&position)
         .into_iter()
-        .filter(|&mv| move_order_key(&position, test_nnue(), mv).is_none() && !mv.promote)
+        .filter(|&mv| move_order_key(&position, mv).is_none() && !mv.promote)
         .take(scores.len())
         .collect();
     assert_eq!(moves.len(), scores.len());
@@ -156,7 +156,7 @@ fn best_move_change_count_includes_each_aspiration_retry_and_is_taken_once() {
     let position = Position::initial();
     let moves: Vec<_> = legal_moves(&position)
         .into_iter()
-        .filter(|&mv| move_order_key(&position, test_nnue(), mv).is_none() && !mv.promote)
+        .filter(|&mv| move_order_key(&position, mv).is_none() && !mv.promote)
         .take(3)
         .collect();
     assert_eq!(moves.len(), 3);
@@ -169,7 +169,11 @@ fn best_move_change_count_includes_each_aspiration_retry_and_is_taken_once() {
         let mut ordered = moves.clone();
         searcher.order_root_moves(&position, &mut ordered, None);
         assert_eq!(ordered[0], first);
-        let delta = current_initial_delta(searcher.nnue.pawn_value(), 0, searcher.worker_index);
+        let delta = current_initial_delta(
+            crate::eval::piece_values::pawn_value(),
+            0,
+            searcher.worker_index,
+        );
         let scores = [0, 2 * delta, 4 * delta];
         for (&mv, score) in ordered.iter().zip(scores) {
             let mut child = position.clone();
@@ -212,7 +216,7 @@ fn iteration_sets_seek_mate_from_previous_score_before_window_research() {
     let moves = legal_moves(&position);
     with_root_searcher(&position, &[], |searcher| {
         assert!(!searcher.seek_mate);
-        assert_eq!(searcher.nnue.pawn_value(), 100);
+        assert_eq!(crate::eval::piece_values::pawn_value(), 100);
         // D=2の閾値は26803、D=5は105769/25を切り捨てて4591。
         // 窓の中心となる平均は0に固定し、組の値と反復の深さだけを変える。
         for (depth, previous_score, expected) in [
@@ -352,7 +356,7 @@ pub(super) fn root_uses_tt_static_evaluation_before_current_correction() {
     let position = bare_kings();
     let moves = legal_moves(&position);
     with_root_searcher(&position, &[], |searcher| {
-        let evaluated = evaluate(searcher.nnue, &position);
+        let evaluated = evaluate(searcher.network, &position);
         let tt_static_eval = if evaluated == 1_000 { -1_000 } else { 1_000 };
         let correction = position_correction(searcher, position.side_to_move(), 0);
         searcher.tt.store(
@@ -385,7 +389,7 @@ fn root_stores_static_eval_only_on_a_tt_miss() {
     let position = bare_kings();
     let moves = legal_moves(&position);
     with_root_searcher(&position, &[], |searcher| {
-        let raw = evaluate(searcher.nnue, &position);
+        let raw = evaluate(searcher.network, &position);
         searcher
             .shared
             .external_stop
@@ -493,7 +497,11 @@ fn interrupted_root_iteration_discards_only_current_counts() {
         let completed = searcher.completed_root_nodes.clone();
         // 最初のfail-high窓を完了し、読み直しの途中で止める。
         searcher.interrupt_at = Some((searcher.nodes + 2, StopReason::NodeLimit));
-        let delta = current_initial_delta(searcher.nnue.pawn_value(), 0, searcher.worker_index);
+        let delta = current_initial_delta(
+            crate::eval::piece_values::pawn_value(),
+            0,
+            searcher.worker_index,
+        );
         set_root_move_averages(searcher, best_move, Some((-delta, 0)));
         assert!(
             searcher
@@ -719,7 +727,11 @@ fn iteration_centers_the_window_on_the_previous_best_average() {
     let moves = legal_moves(&position);
     let history = repeated_root_children(&position, &moves);
     with_root_searcher(&position, &history, |searcher| {
-        let delta = current_initial_delta(searcher.nnue.pawn_value(), 0, searcher.worker_index);
+        let delta = current_initial_delta(
+            crate::eval::piece_values::pawn_value(),
+            0,
+            searcher.worker_index,
+        );
         let best_move = moves[0];
         set_root_move_averages(searcher, best_move, Some((delta, 0)));
         let (_, score) = searcher
@@ -742,7 +754,7 @@ fn iteration_uses_signed_square_average_to_set_initial_window_width() {
     let position = quiet_midgame();
     let moves = legal_moves(&position);
     let history = repeated_root_children(&position, &moves);
-    let pawn = test_nnue().pawn_value();
+    let pawn = crate::eval::piece_values::pawn_value();
     let narrow_q = 0;
     let wide_q = 1_000_000;
     let narrow_delta = current_initial_delta(pawn, narrow_q, 0);
@@ -882,7 +894,7 @@ fn root_window_classifies_bounds_and_cuts_off_remaining_moves() {
             assert_eq!(hit.value.unwrap().bound, bound);
             assert_eq!(hit.value.unwrap().score, score);
             assert_eq!(hit.best_move, Some(best_move));
-            assert_eq!(hit.static_eval, Some(evaluate(searcher.nnue, &position)));
+            assert_eq!(hit.static_eval, Some(evaluate(searcher.network, &position)));
         });
     }
 }
@@ -948,7 +960,11 @@ fn completed_fail_high_keeps_iteration_depth_and_sets_recovery() {
     let moves = legal_moves(&position);
     let history = repeated_root_children(&position, &moves);
     with_root_searcher(&position, &history, |searcher| {
-        let delta = current_initial_delta(searcher.nnue.pawn_value(), 0, searcher.worker_index);
+        let delta = current_initial_delta(
+            crate::eval::piece_values::pawn_value(),
+            0,
+            searcher.worker_index,
+        );
         let best_move = moves[0];
         set_root_move_averages(searcher, best_move, Some((-delta - 1, 0)));
         let (_, score) = searcher
@@ -982,7 +998,11 @@ fn fail_low_only_keeps_the_decayed_recovery() {
     let history = repeated_root_children(&position, &moves);
     with_root_searcher(&position, &history, |searcher| {
         searcher.fail_high_recovery = 3;
-        let delta = current_initial_delta(searcher.nnue.pawn_value(), 0, searcher.worker_index);
+        let delta = current_initial_delta(
+            crate::eval::piece_values::pawn_value(),
+            0,
+            searcher.worker_index,
+        );
         let best_move = moves[0];
         set_root_move_averages(searcher, best_move, Some((delta + 1, 0)));
         let (_, score) = searcher
@@ -1016,7 +1036,7 @@ fn aspiration_researches_scores_equal_to_either_edge() {
     let position = quiet_midgame();
     let moves = legal_moves(&position);
     let history = repeated_root_children(&position, &moves);
-    let delta = current_initial_delta(test_nnue().pawn_value(), 0, 0);
+    let delta = current_initial_delta(crate::eval::piece_values::pawn_value(), 0, 0);
     let move_count = moves.len() as u64;
     for (average, expected_nodes, first_move_nodes, other_move_nodes) in [
         (delta, 2 * move_count + 1, 3, 2),
@@ -1202,7 +1222,11 @@ fn aspiration_retry_interruption_keeps_fail_high_bound() {
     let moves = legal_moves(&board);
     let history = repeated_root_children(&board, &moves);
     with_root_searcher(&board, &history, |searcher| {
-        let delta = current_initial_delta(searcher.nnue.pawn_value(), 0, searcher.worker_index);
+        let delta = current_initial_delta(
+            crate::eval::piece_values::pawn_value(),
+            0,
+            searcher.worker_index,
+        );
         let best_move = moves[0];
         set_root_move_averages(searcher, best_move, Some((-delta - 1, 0)));
         searcher.interrupt_at = Some((1, StopReason::NodeLimit));
@@ -1233,7 +1257,7 @@ pub(super) fn root_history_updates_best_and_only_searched_non_improving_quiets()
     let board = Position::initial();
     let moves: Vec<_> = legal_moves(&board)
         .into_iter()
-        .filter(|&mv| move_order_key(&board, test_nnue(), mv).is_none())
+        .filter(|&mv| move_order_key(&board, mv).is_none())
         .take(4)
         .collect();
     assert_eq!(moves.len(), 4);
@@ -1336,7 +1360,7 @@ pub(super) fn root_lmr_research_records_only_the_final_score() {
     let board = Position::initial();
     let moves: Vec<_> = legal_moves(&board)
         .into_iter()
-        .filter(|&mv| move_order_key(&board, test_nnue(), mv).is_none() && !mv.promote)
+        .filter(|&mv| move_order_key(&board, mv).is_none() && !mv.promote)
         .take(11)
         .collect();
     assert_eq!(moves.len(), 11);

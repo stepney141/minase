@@ -29,7 +29,7 @@ pub(super) fn quiet_board() -> Position {
 
 // 葉でβ打ち切りが起こらず、親でfutility pruningが発動しない窓を作る。
 #[cfg(feature = "tuning")]
-fn quiet_alpha(board: &Position, nnue: &Nnue) -> i32 {
+fn quiet_alpha(board: &Position, nnue: &Network) -> i32 {
     let static_eval = evaluate(nnue, board);
     let alpha = legal_moves(board)
         .into_iter()
@@ -43,7 +43,15 @@ fn quiet_alpha(board: &Position, nnue: &Nnue) -> i32 {
         .max(static_eval)
         + 1;
     let lmr_depth = pruning_lmr_depth(1, 1, false, false, false);
-    assert!(alpha < futility_value(nnue.pawn_value(), static_eval, alpha, lmr_depth));
+    assert!(
+        alpha
+            < futility_value(
+                crate::eval::piece_values::pawn_value(),
+                static_eval,
+                alpha,
+                lmr_depth
+            )
+    );
     alpha
 }
 
@@ -58,7 +66,7 @@ pub(super) fn search_quiet_board(board: &Position) -> (i32, u64) {
     params::set("FutilityBase", 400).unwrap();
     params::set("FutilityLmrDepth", 0).unwrap();
     params::set("FutilityAboveAlpha", 0).unwrap();
-    let alpha = quiet_alpha(board, test_nnue());
+    let alpha = quiet_alpha(board, test_network());
     let result = run_negamax(board, 1, alpha, alpha + 1, 0, &small_tt());
     params::set("FutilityBase", futility[0]).unwrap();
     params::set("FutilityLmrDepth", futility[1]).unwrap();
@@ -114,8 +122,12 @@ pub(super) fn late_move_non_improving_parameter_scales_limit() {
 // Stockfish src/search.cpp:1080, 1199。比較で良化していなくても静的評価がβ以上ならimproving側の上限を使う。
 #[cfg(feature = "tuning")]
 pub(super) fn late_move_pruning_uses_improving_updated_after_null_move() {
-    let nnue = test_nnue();
-    assert_eq!(nnue.pawn_value(), 100, "固定ネットの歩兵価値");
+    let nnue = test_network();
+    assert_eq!(
+        crate::eval::piece_values::pawn_value(),
+        100,
+        "固定ネットの歩兵価値"
+    );
     let board = quiet_board();
     let moves = legal_moves(&board);
     let improved_limit = (params::lmp_base() + params::lmp_slope()) / 100;
@@ -128,7 +140,7 @@ pub(super) fn late_move_pruning_uses_improving_updated_after_null_move() {
         (0, improved_limit as u64),
         (1, other_limit as u64),
     ] {
-        with_nnue_root_searcher(nnue, &board, &[], |searcher| {
+        with_network_root_searcher(nnue, &board, &[], |searcher| {
             searcher.seek_mate = true;
             searcher
                 .tt
@@ -141,7 +153,7 @@ pub(super) fn late_move_pruning_uses_improving_updated_after_null_move() {
             let correction = position_correction(searcher, side, 2);
             assert!(correction > 0);
             let static_eval = evaluate(nnue, &board) + correction;
-            searcher.accumulators[2] = searcher.accumulators[0].clone();
+            searcher.evaluator.refresh_for_test(&board, 2);
             searcher.material_keys[2] = key;
             searcher.static_evals[0] = static_eval + 1000;
             searcher.static_evals[1] = -static_eval;
@@ -151,11 +163,16 @@ pub(super) fn late_move_pruning_uses_improving_updated_after_null_move() {
             let updated_improving = beta_offset <= 0;
             let lmr_depth = pruning_lmr_depth(1, 1, updated_improving, false, true);
             assert!(
-                futility_value(nnue.pawn_value(), static_eval, alpha, lmr_depth) > alpha,
+                futility_value(
+                    crate::eval::piece_values::pawn_value(),
+                    static_eval,
+                    alpha,
+                    lmr_depth
+                ) > alpha,
                 "先行するfutility pruningは発動しない"
             );
             for &mv in &moves {
-                assert!(!mv.promote && move_order_key(&board, nnue, mv).is_none());
+                assert!(!mv.promote && move_order_key(&board, mv).is_none());
                 let mut child = board.clone();
                 child.make_move_unchecked(mv, engine_rules());
                 assert_eq!(
@@ -167,9 +184,11 @@ pub(super) fn late_move_pruning_uses_improving_updated_after_null_move() {
                     -5
                 );
                 assert!(-evaluate(nnue, &child) < alpha, "子の値は窓を下回る");
-                assert!(legal_moves(&child).iter().all(|&reply| {
-                    !reply.promote && move_order_key(&child, nnue, reply).is_none()
-                }));
+                assert!(
+                    legal_moves(&child).iter().all(|&reply| {
+                        !reply.promote && move_order_key(&child, reply).is_none()
+                    })
+                );
             }
             set_test_path_ply(searcher, 2);
             let score = searcher
@@ -189,7 +208,7 @@ pub(super) fn late_move_pruning_uses_improving_updated_after_null_move() {
 // 深さ4の零窓と、前の反復の主変化を辿るPVノードでも上限後の静かな手を省く。
 #[cfg(feature = "tuning")]
 pub(super) fn late_move_pruning_applies_at_depth_four_and_follow_pv_nodes() {
-    let nnue = test_nnue();
+    let nnue = test_network();
     let board = quiet_board();
     let moves = legal_moves(&board);
     let history = repeated_root_children(&board, &moves);
@@ -199,16 +218,16 @@ pub(super) fn late_move_pruning_applies_at_depth_four_and_follow_pv_nodes() {
     assert!(
         moves
             .iter()
-            .all(|&mv| !mv.promote && move_order_key(&board, nnue, mv).is_none())
+            .all(|&mv| !mv.promote && move_order_key(&board, mv).is_none())
     );
     assert!(expected_nodes > 0 && expected_nodes < moves.len() as u64);
 
     for (case, width, follow_pv) in [("zero-window", 1, false), ("PV", 2, true)] {
-        with_nnue_root_searcher(nnue, &board, &history, |searcher| {
+        with_network_root_searcher(nnue, &board, &history, |searcher| {
             searcher.seek_mate = true;
             searcher.null_move_ply = Some(0);
             searcher.follow_pv[0] = follow_pv;
-            let alpha = evaluate(searcher.nnue, &board) + 1;
+            let alpha = evaluate(searcher.network, &board) + 1;
             assert!(alpha > DRAW_SCORE);
             assert_eq!(
                 searcher.negamax(&mut board.clone(), depth, alpha, alpha + width, 0, false),
@@ -275,7 +294,7 @@ pub(super) fn late_move_pruning_does_not_apply_while_royal_is_attacked() {
     let limit = usize::try_from(late_move_limit(depth, false)).unwrap();
     let counted_quiets = moves
         .iter()
-        .filter(|&&mv| !mv.promote && move_order_key(&board, test_nnue(), mv).is_none())
+        .filter(|&&mv| !mv.promote && move_order_key(&board, mv).is_none())
         .count();
     assert!(royal_under_attack(&board));
     assert!(counted_quiets > limit);
@@ -283,7 +302,7 @@ pub(super) fn late_move_pruning_does_not_apply_while_royal_is_attacked() {
     with_root_searcher(&board, &history, |searcher| {
         searcher.seek_mate = true;
         searcher.null_move_ply = Some(0);
-        let alpha = evaluate(searcher.nnue, &board) + 1;
+        let alpha = evaluate(searcher.network, &board) + 1;
         assert!(alpha > DRAW_SCORE);
         assert_eq!(
             searcher.negamax(&mut board.clone(), depth, alpha, alpha + 1, 0, false),
@@ -343,7 +362,7 @@ pub(super) fn check_late_move_protected_moves(limit: u64) {
             let quiets: Vec<_> = moves
                 .iter()
                 .copied()
-                .filter(|&mv| !mv.promote && move_order_key(&board, searcher.nnue, mv).is_none())
+                .filter(|&mv| !mv.promote && move_order_key(&board, mv).is_none())
                 .collect();
             assert!(quiets.len() > 3);
             let tt_move = quiets[0];
@@ -352,7 +371,7 @@ pub(super) fn check_late_move_protected_moves(limit: u64) {
             searcher.tt.store(
                 search_key(&board),
                 0,
-                evaluate(searcher.nnue, &board),
+                evaluate(searcher.network, &board),
                 None,
                 Bound::Upper,
                 Some(tt_move),
@@ -362,19 +381,19 @@ pub(super) fn check_late_move_protected_moves(limit: u64) {
             // 捕獲手はSEEでも切られず、子はすべて反復引き分けになる。
             let protected = moves
                 .iter()
-                .filter(|&&mv| mv.promote || move_order_key(&board, searcher.nnue, mv).is_some())
+                .filter(|&&mv| mv.promote || move_order_key(&board, mv).is_some())
                 .count();
             assert!(protected > 0);
             for &mv in &moves {
-                if move_order_key(&board, searcher.nnue, mv).is_some() {
-                    assert!(!see_prunes(&board, engine_rules(), searcher.nnue, mv, -2));
+                if move_order_key(&board, mv).is_some() {
+                    assert!(!see_prunes(&board, engine_rules(), mv, -2));
                 }
             }
             let mut picker = MovePicker::new(Some(tt_move), killers);
             let mut ordered = Vec::new();
             while let Some((mv, capture)) = picker.next(
                 &board,
-                searcher.nnue,
+                searcher.network,
                 &searcher.generator,
                 searcher_move_picker_context(searcher, 0),
                 &std::cell::OnceCell::new(),
@@ -390,7 +409,7 @@ pub(super) fn check_late_move_protected_moves(limit: u64) {
                 if !late_move_pruned && mv != tt_move && !capture && !mv.promote {
                     assert!(mv.mid.is_none());
                     assert!(
-                        !see_prunes(&board, engine_rules(), searcher.nnue, mv, 0),
+                        !see_prunes(&board, engine_rules(), mv, 0),
                         "静かな手のSEEによる枝刈りをこの局面から除外する: {mv:?}"
                     );
                 }
@@ -400,7 +419,7 @@ pub(super) fn check_late_move_protected_moves(limit: u64) {
             } else {
                 capture
             }));
-            let alpha = evaluate(searcher.nnue, &board) - 1;
+            let alpha = evaluate(searcher.network, &board) - 1;
             assert!(alpha > DRAW_SCORE);
             assert_eq!(
                 searcher.negamax(&mut board.clone(), 1, alpha, alpha + 1, 0, false),
@@ -431,7 +450,7 @@ pub(super) fn late_move_pruning_searches_safe_quiets_after_losing_tt_move() {
             (sq(11, 0), Color::Black, PieceKind::King),
         ],
     );
-    let nnue = test_nnue();
+    let nnue = test_network();
     let alpha = evaluate(nnue, &board) + 1;
     let losing_move = Move {
         from: sq(11, 0),
@@ -445,7 +464,7 @@ pub(super) fn late_move_pruning_searches_safe_quiets_after_losing_tt_move() {
     assert!(
         moves
             .iter()
-            .all(|&mv| !mv.promote && move_order_key(&board, nnue, mv).is_none())
+            .all(|&mv| !mv.promote && move_order_key(&board, mv).is_none())
     );
     let safe_moves = moves
         .iter()
@@ -504,7 +523,7 @@ pub(super) fn late_move_pruning_searches_exactly_the_first_counted_quiets_up_to_
         let mut picker = MovePicker::new(None, [None; KILLER_COUNT]);
         while let Some((mv, capture)) = picker.next(
             &board,
-            searcher.nnue,
+            searcher.network,
             &searcher.generator,
             searcher_move_picker_context(searcher, 0),
             &std::cell::OnceCell::new(),
@@ -513,7 +532,7 @@ pub(super) fn late_move_pruning_searches_exactly_the_first_counted_quiets_up_to_
             ordered.push(mv);
         }
     });
-    let static_eval = evaluate(test_nnue(), &board);
+    let static_eval = evaluate(test_network(), &board);
     let lmr_depth = pruning_lmr_depth(1, 1, false, false, true);
     let futility = futility_value(100, static_eval, static_eval, lmr_depth);
     assert!(futility > static_eval);
@@ -526,7 +545,7 @@ pub(super) fn late_move_pruning_searches_exactly_the_first_counted_quiets_up_to_
         let history = repeated_root_children(&board, &other_moves);
         with_root_searcher(&board, &history, |searcher| {
             zero_position_correction(searcher, &board);
-            let alpha = evaluate(searcher.nnue, &board) + margin - 1;
+            let alpha = evaluate(searcher.network, &board) + margin - 1;
             searcher.seek_mate = true;
             searcher.tt.store(
                 search_key(&board),
@@ -542,7 +561,7 @@ pub(super) fn late_move_pruning_searches_exactly_the_first_counted_quiets_up_to_
             child.make_move_unchecked(target, engine_rules());
             store_position_correction(searcher, &child, 0);
             searcher.continuation_correction.values_mut().fill(0);
-            let target_score = -evaluate(searcher.nnue, &child);
+            let target_score = -evaluate(searcher.network, &child);
             assert!(target_score > DRAW_SCORE && alpha > DRAW_SCORE);
             let searched_score = if target_score <= alpha {
                 -qsearch_entry_cutoff_score(-target_score, -alpha)

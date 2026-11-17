@@ -9,14 +9,19 @@ use minase_core::rng::XorShift64;
 use std::num::NonZeroU64;
 
 /// P型、幅32、除数128の固定ネットを作る。
-/// PSQTは駒割だけ、第1層の重みは−8〜8、バイアスは0〜64、後段の重みは−2〜2。
-/// 後段のバイアスとskipの行を0とし、鏡映対を共有する。
+/// PSQTは駒割だけ、第1層の重みは−8〜8、バイアスは0〜64で、鏡映対を共有する。
+/// L1の0〜14行は−16〜16、出力へ直接足す15行は−8〜8、L2は−48〜48、
+/// 出力の重みは−64〜64とし、後段のバイアスは0にする。
+/// 除数128での切り捨て後にも静かな着手の差を残し、駒割が支配する範囲として選んだ。
+/// benchと固定ランダム対局の47標本で後段は最大24 cp、25通りとなり、
+/// 初期局面の合法手後は12通りとなる。これらの性質はnetworkの試験で検査する。
 pub fn fixed_layer_stack() -> LayerStackNetwork {
     LayerStackNetwork::new(layer_stack_parameters())
         .expect("fixed LayerStack satisfies all constraints")
 }
 
-pub(super) fn layer_stack_parameters() -> LayerStackParameters {
+/// 固定LayerStackの検証用パラメータを返す。
+pub fn layer_stack_parameters() -> LayerStackParameters {
     let width = 32;
     let mut rng = XorShift64::new(NonZeroU64::new(0x7461_7461_7261_5031).unwrap());
     let mut ft_biases = vec![0; width];
@@ -49,10 +54,12 @@ pub(super) fn layer_stack_parameters() -> LayerStackParameters {
         };
         *weight = 128 * piece_value_of_state(state) * sign;
     }
-    let mut l1_weights: Vec<_> = (0..16 * width)
-        .map(|_| (rng.next() % 5) as i8 - 2)
+    let l1_weights: Vec<_> = (0..16 * width)
+        .map(|i| {
+            let range = if i / width == 15 { 8 } else { 16 };
+            (rng.next() % (2 * range + 1)) as i8 - range as i8
+        })
         .collect();
-    l1_weights[15 * width..].fill(0);
     LayerStackParameters {
         width,
         fv_scale: 128,
@@ -63,14 +70,18 @@ pub(super) fn layer_stack_parameters() -> LayerStackParameters {
         l1_biases: vec![0; 16],
         l1_weights,
         l2_biases: vec![0; 32],
-        l2_weights: (0..32 * 30).map(|_| (rng.next() % 5) as i8 - 2).collect(),
+        l2_weights: (0..32 * 30).map(|_| (rng.next() % 97) as i8 - 48).collect(),
         output_bias: 0,
-        output_weights: (0..32).map(|_| (rng.next() % 5) as i8 - 2).collect(),
+        output_weights: (0..32)
+            .map(|_| ((rng.next() % 129) as i16 - 64) as i8)
+            .collect(),
     }
 }
 
 /// HalfKP_vm、幅16、除数128の固定ネットを作る。
-/// 第1層の重みは−8〜8、バイアスは0〜64、後段の重みは−2〜2、バイアスは0。
+/// 第1層の重みは−8〜8、バイアスは0〜64、後段の重みは各層とも−32〜32、バイアスは0。
+/// 除数128での切り捨て後にも差を残すためにこの範囲を選んだ。
+/// benchの最大絶対値は28 cp、初期局面の合法手後は11通りとなる。
 /// 第1層の重みだけで30,855,168バイトを保持する。
 pub fn fixed_simple() -> SimpleNetwork {
     SimpleNetwork::new(simple_parameters()).expect("fixed Simple satisfies all constraints")
@@ -88,11 +99,11 @@ pub(super) fn simple_parameters() -> SimpleParameters {
             .collect(),
         l1_biases: vec![0; 32],
         l1_weights: (0..32 * 2 * width)
-            .map(|_| (rng.next() % 5) as i8 - 2)
+            .map(|_| (rng.next() % 65) as i8 - 32)
             .collect(),
         l2_biases: vec![0; 32],
-        l2_weights: (0..32 * 32).map(|_| (rng.next() % 5) as i8 - 2).collect(),
+        l2_weights: (0..32 * 32).map(|_| (rng.next() % 65) as i8 - 32).collect(),
         output_bias: 0,
-        output_weights: (0..32).map(|_| (rng.next() % 5) as i8 - 2).collect(),
+        output_weights: (0..32).map(|_| (rng.next() % 65) as i8 - 32).collect(),
     }
 }

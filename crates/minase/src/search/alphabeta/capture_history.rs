@@ -6,7 +6,6 @@
 //! 静止探索では生の履歴値で同じ捕獲価値の群内を並べる。
 //! 上限と適用範囲の理由は`docs/adr/update-capture-history-in-stockfish-form-and-use-it-in-ordering-qsearch-and-lmr.md`にある。
 
-use crate::eval::Nnue;
 use minase_core::board::{BOARD_SQUARE_COUNT, Square};
 use minase_core::mv::Move;
 use minase_core::piece::{COLOR_COUNT, PIECE_KIND_COUNT, PieceCode, PieceKind};
@@ -68,8 +67,8 @@ impl CaptureHistory {
     }
 
     /// 捕獲手の履歴値を返す。
-    pub(super) fn read(&self, position: &Position, nnue: &Nnue, mv: Move) -> i32 {
-        i32::from(self.values[index(position, nnue, mv)])
+    pub(super) fn read(&self, position: &Position, mv: Move) -> i32 {
+        i32::from(self.values[index(position, mv)])
     }
 
     /// 既に選んだ被捕獲駒種で履歴を引く。2枚取りの同値では到達升の駒種を渡す。
@@ -82,14 +81,16 @@ impl CaptureHistory {
     /// `尺度 = 歩兵価値 × CaptureHistoryScale / 100` を先に整数で求め、`履歴値 × 尺度 / 10692` を返す。
     /// 整数除算は0方向へ丸め、換算値の絶対値は尺度以下に保つ。
     /// 捕獲価値の差が大きい手の順序を履歴だけで覆さないための制限である。
-    pub(super) fn adjustment(nnue: &Nnue, history: i32) -> i32 {
-        let scale = i64::from(nnue.pawn_value()) * i64::from(params::capture_history_scale()) / 100;
+    pub(super) fn adjustment(history: i32) -> i32 {
+        let scale = i64::from(crate::eval::piece_values::pawn_value())
+            * i64::from(params::capture_history_scale())
+            / 100;
         (i64::from(history) * scale / i64::from(CAPTURE_HISTORY_LIMIT)) as i32
     }
 
     /// 指定した捕獲手の要素へ、上限10692の重力式で符号つきの更新量を与える。
-    pub(super) fn update(&mut self, position: &Position, nnue: &Nnue, mv: Move, bonus: i32) {
-        let value = &mut self.values[index(position, nnue, mv)];
+    pub(super) fn update(&mut self, position: &Position, mv: Move, bonus: i32) {
+        let value = &mut self.values[index(position, mv)];
         *value = history_gravity(i32::from(*value), bonus, CAPTURE_HISTORY_LIMIT) as i16;
     }
 
@@ -108,10 +109,9 @@ impl CaptureHistory {
 
 /// 着手前の所有者と駒種、到達升、被捕獲駒種の順で添字を構成する。
 /// 2枚取りでは価値の高い被捕獲駒を選び、同値なら捕獲升の列の後方、すなわち到達升を選ぶ。
-fn index(position: &Position, nnue: &Nnue, mv: Move) -> usize {
+fn index(position: &Position, mv: Move) -> usize {
     let mover = piece_at_for_ordering(position, mv.from);
     let victim = captured_kind_for_history(
-        nnue,
         position
             .captured_squares(mv)
             .into_iter()
@@ -142,12 +142,11 @@ fn index_from_parts(mover: PieceCode, to: usize, victim: PieceKind) -> usize {
 /// 捕獲履歴の添字に使う被捕獲駒種を返す。
 /// 2枚取りでは価値の高い駒を選び、同値なら列の後方にある到達升の駒を選ぶ。
 pub(super) fn captured_kind_for_history(
-    nnue: &Nnue,
     pieces: impl IntoIterator<Item = PieceCode>,
 ) -> Option<PieceKind> {
     pieces
         .into_iter()
         // `Iterator::max_by_key`は最大値が複数あれば最後の要素を返す。
-        .max_by_key(|&piece| nnue.piece_value(piece))
+        .max_by_key(|&piece| crate::eval::piece_values::piece_value(piece))
         .and_then(PieceCode::kind)
 }

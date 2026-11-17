@@ -88,18 +88,21 @@ impl<F: FeatureSet, H: Head> Network<F, H> {
     ///
     /// 計数の回収中に別スレッドがパニックし、Mutexがpoisonedになった場合にパニックする。
     pub fn take_accumulator_stats(&self) -> AccumulatorStats {
-        DESTINATION.with_borrow(|current| {
-            if let Some(current) = current
-                && Arc::ptr_eq(&current.0, &self.accumulator_stats)
-            {
-                current.collect();
-            }
-        });
-        std::mem::take(
-            &mut *self
-                .accumulator_stats
-                .lock()
-                .expect("accumulator statistics mutex poisoned"),
-        )
+        take(&self.accumulator_stats)
     }
+}
+
+pub(super) fn take(destination: &SharedStats) -> AccumulatorStats {
+    DESTINATION.with_borrow(|current| {
+        if let Some(current) = current
+            && Arc::ptr_eq(&current.0, destination)
+        {
+            current.collect();
+        }
+    });
+    std::mem::take(
+        &mut *destination
+            .lock()
+            .expect("accumulator statistics mutex poisoned"),
+    )
 }

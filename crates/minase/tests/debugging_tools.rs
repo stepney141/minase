@@ -134,7 +134,7 @@ fn bench_succeeds_as_a_usi_command() {
     let result = usi_session(concat!(
         "setoption name RuleSet value JCSA\nsetoption name EvalFile value ",
         env!("CARGO_MANIFEST_DIR"),
-        "/nets/nnue-epoch0.bin\nisready\nbench depth 1\nquit\n"
+        "/nets/test-layer-stack.bin\nisready\nbench depth 1\nquit\n"
     ));
     assert_eq!(
         result.status.code(),
@@ -173,7 +173,7 @@ fn diagnostic_runtime_failure_ends_the_process() {
         concat!(
             "setoption name RuleSet value JCSA\nsetoption name EvalFile value ",
             env!("CARGO_MANIFEST_DIR"),
-            "/nets/nnue-epoch0.bin\nisready\nbench depth 1 repetitions {}\nusi\nquit\n"
+            "/nets/test-layer-stack.bin\nisready\nbench depth 1 repetitions {}\nusi\nquit\n"
         ),
         usize::MAX
     ));

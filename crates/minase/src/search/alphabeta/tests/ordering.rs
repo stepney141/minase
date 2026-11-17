@@ -6,7 +6,7 @@ use super::*;
 #[test]
 fn staged_picker_classifies_capture_and_quiet_tt_moves() {
     let position = staged_picker_fixture();
-    let nnue = test_nnue();
+    let nnue = test_network();
     let capture_history = empty_capture_history();
     let generator = MoveGenerator::new(engine_rules());
     let history = Box::new([[[0; BOARD_SQUARE_COUNT]; BOARD_SQUARE_COUNT]; COLOR_COUNT]);
@@ -46,7 +46,7 @@ fn staged_picker_classifies_capture_and_quiet_tt_moves() {
 #[test]
 fn staged_picker_shares_tt_legality_and_capture_classification() {
     let board = staged_picker_fixture();
-    let nnue = test_nnue();
+    let nnue = test_network();
     let generator = MoveGenerator::new(engine_rules());
     let history = Box::new([[[0; BOARD_SQUARE_COUNT]; BOARD_SQUARE_COUNT]; COLOR_COUNT]);
     let capture_history = empty_capture_history();
@@ -127,7 +127,7 @@ impl ReferenceMovePicker {
     fn next(
         &mut self,
         position: &Position,
-        nnue: &Nnue,
+        nnue: &Network,
         generator: &MoveGenerator,
         history: &HistoryTable,
     ) -> Option<(Move, bool)> {
@@ -145,7 +145,7 @@ impl ReferenceMovePicker {
                             moves.contains(&tt_move)
                         }
                     {
-                        return Some((tt_move, move_order_key(position, nnue, tt_move).is_some()));
+                        return Some((tt_move, move_order_key(position, tt_move).is_some()));
                     }
                 }
                 MovePickerStage::Captures => {
@@ -157,7 +157,7 @@ impl ReferenceMovePicker {
                                 .into_iter()
                                 .filter(|&mv| Some(mv) != self.tt_move)
                                 .map(|mv| {
-                                    let key = move_order_key(position, nnue, mv)
+                                    let key = move_order_key(position, mv)
                                         .expect("capture generator must not return a quiet move");
                                     (mv, key)
                                 }),
@@ -202,7 +202,7 @@ impl ReferenceMovePicker {
                     self.quiets.sort_by_cached_key(|&mv| {
                         (
                             Reverse(history[color][mv.from.dense_index()][mv.to.dense_index()]),
-                            Reverse(nnue.quiet_move_pst_delta(position, mv)),
+                            Reverse(nnue.quiet_move_delta(position, mv)),
                         )
                     });
                     self.stage = MovePickerStage::Done;
@@ -222,7 +222,7 @@ impl ReferenceMovePicker {
 /// 静かな手の整列は同点時の生成順を保ち、履歴を更新しても重複した手を返さない。
 #[test]
 fn staged_picker_matches_reference_sequence_with_changing_history() {
-    let nnue = test_nnue();
+    let nnue = test_network();
     let capture_history = empty_capture_history();
     let mut picker = MovePicker::new(None, [None; KILLER_COUNT]);
     for name in [
@@ -249,7 +249,7 @@ fn staged_picker_matches_reference_sequence_with_changing_history() {
             let quiets: Vec<_> = all
                 .iter()
                 .copied()
-                .filter(|&mv| move_order_key(&position, nnue, mv).is_none())
+                .filter(|&mv| move_order_key(&position, mv).is_none())
                 .collect();
             let first = quiets.first().copied();
             let last = quiets.last().copied();
@@ -330,7 +330,7 @@ fn reference_sequence(
     tt_move: Option<Move>,
     killers: [Option<Move>; KILLER_COUNT],
 ) -> Vec<(Move, bool)> {
-    let nnue = test_nnue();
+    let nnue = test_network();
     let generator = MoveGenerator::new(engine_rules());
     let history = Box::new([[[0; BOARD_SQUARE_COUNT]; BOARD_SQUARE_COUNT]; COLOR_COUNT]);
     let mut reference = ReferenceMovePicker::new(tt_move, killers);
@@ -338,7 +338,7 @@ fn reference_sequence(
 }
 
 fn picker_sequence(picker: &mut MovePicker, board: &Position) -> Vec<(Move, bool)> {
-    let nnue = test_nnue();
+    let nnue = test_network();
     let generator = MoveGenerator::new(engine_rules());
     let history = Box::new([[[0; BOARD_SQUARE_COUNT]; BOARD_SQUARE_COUNT]; COLOR_COUNT]);
     let capture_history = empty_capture_history();
@@ -359,7 +359,7 @@ fn picker_sequence(picker: &mut MovePicker, board: &Position) -> Vec<(Move, bool
 #[test]
 fn early_killers_preserve_capture_order_and_return_every_legal_move_once() {
     let (board, capture, killers) = losing_capture_fixture();
-    assert!(see_prunes(&board, engine_rules(), test_nnue(), capture, 0));
+    assert!(see_prunes(&board, engine_rules(), capture, 0));
     let illegal = Move {
         from: sq(10, 10),
         ..capture
@@ -404,7 +404,6 @@ fn early_killers_preserve_capture_order_and_return_every_legal_move_once() {
 /// 非負の先頭捕獲と捕獲手のないノードでは、前置を要求しても順序を変えない。
 #[test]
 fn early_killers_leave_non_losing_or_absent_captures_in_reference_order() {
-    let nnue = test_nnue();
     for board in [
         staged_picker_fixture(),
         position(
@@ -417,12 +416,12 @@ fn early_killers_leave_non_losing_or_absent_captures_in_reference_order() {
     ] {
         let quiets: Vec<_> = legal_moves(&board)
             .into_iter()
-            .filter(|&mv| move_order_key(&board, nnue, mv).is_none())
+            .filter(|&mv| move_order_key(&board, mv).is_none())
             .collect();
         let killers = [quiets.first().copied(), quiets.last().copied()];
         let expected = reference_sequence(&board, None, killers);
         if expected[0].1 {
-            assert!(!see_prunes(&board, engine_rules(), nnue, expected[0].0, 0));
+            assert!(!see_prunes(&board, engine_rules(), expected[0].0, 0));
         }
         let mut picker = MovePicker::new(None, killers);
         picker.reset(None, killers, true);
@@ -477,7 +476,7 @@ fn assert_killer_hint(
     legal: bool,
     quiet: bool,
 ) {
-    let nnue = test_nnue();
+    let nnue = test_network();
     let generator = MoveGenerator::new(rules);
     let history = Box::new([[[0; BOARD_SQUARE_COUNT]; BOARD_SQUARE_COUNT]; COLOR_COUNT]);
     let capture_history = empty_capture_history();
@@ -506,7 +505,7 @@ fn assert_killer_hint(
                 && tt != Some(candidate)
                 && let Some(&(first, true)) = expected.first()
                 && !captures_last_royal(board, first)
-                && see_prunes(board, rules, nnue, first, 0)
+                && see_prunes(board, rules, first, 0)
             {
                 expected.retain(|&(mv, _)| mv != candidate);
                 expected.insert(0, (candidate, false));
@@ -677,7 +676,7 @@ fn article_30_killers_preserve_forced_and_deferred_promotions() {
 /// 部分整列、枝刈りの遅延、成り手の継続で、全件整列した列の順位を保存する。
 #[test]
 fn limited_quiet_picker_preserves_original_ordinals_and_promotions() {
-    let nnue = test_nnue();
+    let nnue = test_network();
     let mut history = Box::new([[[0; BOARD_SQUARE_COUNT]; BOARD_SQUARE_COUNT]; COLOR_COUNT]);
     let capture_history = empty_capture_history();
     let promoted_late = position(

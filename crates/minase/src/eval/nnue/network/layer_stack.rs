@@ -41,6 +41,7 @@ pub struct LayerStackNetwork {
     fv_scale: i32,
     psqt: Box<[i32]>,
     dense: Dense,
+    pub(super) accumulator_stats: super::super::stats::SharedStats,
 }
 
 /// P型の第1層と、視点ごとのPSQTの和。
@@ -114,6 +115,7 @@ impl LayerStackNetwork {
             fv_scale: p.fv_scale,
             psqt: p.psqt_weights.into_boxed_slice(),
             dense,
+            accumulator_stats: Default::default(),
         })
     }
     /// 第1層の幅を返す。
@@ -233,7 +235,8 @@ impl LayerStackNetwork {
     /// L2の32成分を6ビット右シフトして制限し、出力層の積和とskipを足す。
     fn dense(&self, acc: &LayerStackAccumulator, side: Color) -> i32 {
         let width = self.width();
-        let mut input = vec![0; width];
+        let mut storage = [0; 1024];
+        let input = &mut storage[..width];
         for (part, perspective) in [side, side.opposite()].into_iter().enumerate() {
             let row = acc.ft.row(perspective).expect("P always has a context");
             for i in 0..width / 2 {
@@ -246,7 +249,7 @@ impl LayerStackNetwork {
             let y = affine(
                 d.l1_biases[i],
                 &d.l1_weights[i * width..(i + 1) * width],
-                &input,
+                input,
             );
             z[i] = square_activation(y);
             z[15 + i] = activation(y);
@@ -254,7 +257,7 @@ impl LayerStackNetwork {
         let skip = affine(
             d.l1_biases[15],
             &d.l1_weights[15 * width..16 * width],
-            &input,
+            input,
         );
         let h: [u8; 32] = std::array::from_fn(|k| {
             activation(affine(

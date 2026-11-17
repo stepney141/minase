@@ -58,14 +58,12 @@ fn search_apis_use_the_supplied_nnue() {
         ],
     );
     // 固定ネットの出力バイアスだけを変え、注入した重みを区別する。
-    use sha2::{Digest, Sha256};
-    let mut bytes = epoch_zero_nnue_bytes();
-    let baseline = Nnue::decode(&bytes).unwrap();
-    let end = bytes.len();
-    bytes[end - 4..].copy_from_slice(&520_192_i32.to_le_bytes());
-    let checksum = Sha256::digest(&bytes[192..]);
-    bytes[144..176].copy_from_slice(&checksum);
-    let supplied = Nnue::decode(&bytes).unwrap();
+    let baseline = fixed_network();
+    let mut parameters = crate::eval::nnue::network::test_util::layer_stack_parameters();
+    parameters.output_bias = 128 * 100;
+    let supplied = Network::LayerStack(
+        crate::eval::nnue::network::LayerStackNetwork::new(parameters).unwrap(),
+    );
     let mut child = position.clone();
     let root_move = legal_moves(&position)
         .into_iter()

@@ -13,7 +13,6 @@
 //! 強制成りは成り後の価値を使い、負も含む差額を加える。
 //! 到達升以外での2段階移動による2枚目の捕獲益は見積もらず、王駒による取り返しにも特別な停止規則を置かない。
 
-use crate::eval::Nnue;
 use minase_core::board::Bitboard;
 use minase_core::mv::Move;
 use minase_core::piece::{Color, PieceCode, PieceKind};
@@ -34,13 +33,7 @@ const MAX_GAINS: usize = 93;
 /// 交換列を最後まで逆算した値が得られる場合と同じ閾値判定を返し、規則依存で判定不能なら偽を返す。
 /// 2段階移動の手は偽を返す。
 /// 最初の取り返しで交換評価が閾値以上と確定したら、残る逆引きと逆算を省く。
-pub(super) fn see_prunes(
-    position: &Position,
-    rules: MoveRules,
-    nnue: &Nnue,
-    mv: Move,
-    threshold: i32,
-) -> bool {
+pub(super) fn see_prunes(position: &Position, rules: MoveRules, mv: Move, threshold: i32) -> bool {
     if mv.mid.is_some() {
         return false;
     }
@@ -58,7 +51,7 @@ pub(super) fn see_prunes(
     {
         return false;
     }
-    let captured_value = captured_piece.map_or(0, |piece| nnue.piece_value(piece));
+    let captured_value = captured_piece.map_or(0, crate::eval::piece_values::piece_value);
 
     let piece_after_move = if mv.promote {
         moving_piece
@@ -67,13 +60,14 @@ pub(super) fn see_prunes(
     } else {
         moving_piece
     };
-    let moving_value = nnue.piece_value(moving_piece);
-    let mut piece_value = nnue.piece_value(piece_after_move);
+    let moving_value = crate::eval::piece_values::piece_value(moving_piece);
+    let mut piece_value = crate::eval::piece_values::piece_value(piece_after_move);
     let mut gains = [0_i32; MAX_GAINS];
     gains[0] = captured_value + piece_value - moving_value;
     // 相手の成り益を最大に見積もっても交換評価が閾値以上なら、取り返しの列挙を省く。
     if gains[0] >= threshold
-        && captured_value - moving_value - nnue.max_promotion_gain() >= threshold
+        && captured_value - moving_value - crate::eval::piece_values::max_promotion_gain()
+            >= threshold
     {
         return false;
     }
@@ -101,7 +95,7 @@ pub(super) fn see_prunes(
         debug_assert!(depth < MAX_GAINS);
         gains[depth] = piece_value - gains[depth - 1];
 
-        let (next, next_piece, next_value) = least_valuable_attacker(position, nnue, attackers);
+        let (next, next_piece, next_value) = least_valuable_attacker(position, attackers);
         let next_kind = next_piece.kind().expect("attacking piece has a kind");
         let promotion_choice = rules.promotion_choice_for(
             side,
@@ -119,14 +113,14 @@ pub(super) fn see_prunes(
             PromotionChoice::PromotionOptional => {
                 let promoted = promoted_piece(side, next_kind);
                 let unpromoted_value = next_value;
-                let promoted_value = nnue.piece_value(promoted);
+                let promoted_value = crate::eval::piece_values::piece_value(promoted);
                 gains[depth] += (promoted_value - unpromoted_value).max(0);
                 piece_value = unpromoted_value.max(promoted_value);
             }
             PromotionChoice::PromotionForced => {
                 let promoted = promoted_piece(side, next_kind);
                 let unpromoted_value = next_value;
-                let promoted_value = nnue.piece_value(promoted);
+                let promoted_value = crate::eval::piece_values::piece_value(promoted);
                 gains[depth] += promoted_value - unpromoted_value;
                 piece_value = promoted_value;
             }
@@ -182,14 +176,13 @@ fn lion_capture_is_rule_dependent(
 /// 選択中に読んだ情報を交換列にも渡し、同じ升を引き直さない。
 fn least_valuable_attacker(
     position: &Position,
-    nnue: &Nnue,
     attackers: Bitboard,
 ) -> (minase_core::Square, PieceCode, i32) {
     attackers
         .into_iter()
         .map(|square| {
             let piece = piece_at(position, square);
-            (square, piece, nnue.piece_value(piece))
+            (square, piece, crate::eval::piece_values::piece_value(piece))
         })
         .min_by_key(|&(square, _, value)| (value, square.raw()))
         .expect("non-empty attacker set has a least valuable piece")
@@ -214,9 +207,7 @@ fn piece_at(position: &Position, square: minase_core::Square) -> PieceCode {
 
 #[cfg(test)]
 mod tests {
-    use super::super::tests::{NNUE_HEADER_LENGTH, epoch_zero_nnue_bytes, test_nnue};
     use super::*;
-    use crate::eval::features::FEATURE_COUNT;
     use minase_core::MoveGenerator;
     use minase_core::position::PositionBuilder;
     use minase_core::rules::Rules;
@@ -232,7 +223,7 @@ mod tests {
     /// 静かな手では初手の捕獲価値を0とする。その他は最も安い攻撃駒で交互に取り返す利得列を作り、
     /// 末尾から取り返さない選択肢と比較して逆算する。
     /// 初手と取り返しの成り益はモジュールの契約に従って利得へ加える。
-    fn see_reference(position: &Position, rules: MoveRules, nnue: &Nnue, mv: Move) -> Option<i32> {
+    fn see_reference(position: &Position, rules: MoveRules, mv: Move) -> Option<i32> {
         if mv.mid.is_some() {
             return None;
         }
@@ -247,7 +238,7 @@ mod tests {
         {
             return None;
         }
-        let captured_value = captured_piece.map_or(0, |piece| nnue.piece_value(piece));
+        let captured_value = captured_piece.map_or(0, crate::eval::piece_values::piece_value);
 
         let piece_after_move = if mv.promote {
             moving_piece
@@ -257,9 +248,9 @@ mod tests {
             moving_piece
         };
         let mut gains = [0_i32; MAX_GAINS];
-        gains[0] =
-            captured_value + nnue.piece_value(piece_after_move) - nnue.piece_value(moving_piece);
-        let mut piece_value = nnue.piece_value(piece_after_move);
+        gains[0] = captured_value + crate::eval::piece_values::piece_value(piece_after_move)
+            - crate::eval::piece_values::piece_value(moving_piece);
+        let mut piece_value = crate::eval::piece_values::piece_value(piece_after_move);
         let mut lion_on_square =
             moving_kind == PieceKind::Lion || (moving_kind == PieceKind::Kirin && mv.promote);
         let mut side = moving_piece
@@ -285,7 +276,7 @@ mod tests {
             debug_assert!(depth < MAX_GAINS);
             gains[depth] = piece_value - gains[depth - 1];
 
-            let next = least_valuable_attacker(position, nnue, attackers);
+            let next = least_valuable_attacker(position, attackers);
             let next_piece = piece_at(position, next);
             let next_kind = next_piece.kind().expect("attacking piece has a kind");
             let promotion_choice = rules.promotion_choice_for(
@@ -299,19 +290,19 @@ mod tests {
             );
             match promotion_choice {
                 PromotionChoice::NoPromotion => {
-                    piece_value = nnue.piece_value(next_piece);
+                    piece_value = crate::eval::piece_values::piece_value(next_piece);
                 }
                 PromotionChoice::PromotionOptional => {
                     let promoted = promoted_piece(side, next_kind);
-                    let unpromoted_value = nnue.piece_value(next_piece);
-                    let promoted_value = nnue.piece_value(promoted);
+                    let unpromoted_value = crate::eval::piece_values::piece_value(next_piece);
+                    let promoted_value = crate::eval::piece_values::piece_value(promoted);
                     gains[depth] += (promoted_value - unpromoted_value).max(0);
                     piece_value = unpromoted_value.max(promoted_value);
                 }
                 PromotionChoice::PromotionForced => {
                     let promoted = promoted_piece(side, next_kind);
-                    let unpromoted_value = nnue.piece_value(next_piece);
-                    let promoted_value = nnue.piece_value(promoted);
+                    let unpromoted_value = crate::eval::piece_values::piece_value(next_piece);
+                    let promoted_value = crate::eval::piece_values::piece_value(promoted);
                     gains[depth] += promoted_value - unpromoted_value;
                     piece_value = promoted_value;
                 }
@@ -332,14 +323,15 @@ mod tests {
     }
 
     /// 最小駒価値の攻撃駒を返す。同値なら生の升番号が小さい駒を選ぶ。
-    fn least_valuable_attacker(
-        position: &Position,
-        nnue: &Nnue,
-        attackers: Bitboard,
-    ) -> minase_core::Square {
+    fn least_valuable_attacker(position: &Position, attackers: Bitboard) -> minase_core::Square {
         attackers
             .into_iter()
-            .min_by_key(|&square| (nnue.piece_value(piece_at(position, square)), square.raw()))
+            .min_by_key(|&square| {
+                (
+                    crate::eval::piece_values::piece_value(piece_at(position, square)),
+                    square.raw(),
+                )
+            })
             .expect("non-empty attacker set has a least valuable piece")
     }
 
@@ -360,18 +352,12 @@ mod tests {
     }
 
     /// 負、0、正の閾値と期待値の境界で契約を検査する。
-    fn assert_prune_contract(
-        board: &Position,
-        rules: MoveRules,
-        nnue: &Nnue,
-        mv: Move,
-        expected: Option<i32>,
-    ) {
-        let reference = see_reference(board, rules, nnue, mv);
+    fn assert_prune_contract(board: &Position, rules: MoveRules, mv: Move, expected: Option<i32>) {
+        let reference = see_reference(board, rules, mv);
         assert_eq!(reference, expected, "move={mv:?}");
         for threshold in [-200, 0, 150] {
             assert_eq!(
-                see_prunes(board, rules, nnue, mv, threshold),
+                see_prunes(board, rules, mv, threshold),
                 reference.is_some_and(|value| value < threshold),
                 "move={mv:?}, threshold={threshold}"
             );
@@ -379,7 +365,7 @@ mod tests {
         if let Some(value) = expected {
             for threshold in [value - 1, value, value + 1] {
                 assert_eq!(
-                    see_prunes(board, rules, nnue, mv, threshold),
+                    see_prunes(board, rules, mv, threshold),
                     value < threshold,
                     "move={mv:?}, threshold={threshold}, expected={value}"
                 );
@@ -391,7 +377,6 @@ mod tests {
     // benchの15局面と各規則32局面の固定シード対局で参照値と照合する。
     #[test]
     fn see_prunes_matches_reference_on_bench_and_random_captures() {
-        let nnue = test_nnue();
         for rules in see_test_rules() {
             let generator = MoveGenerator::new(rules);
             let mut checked = 0;
@@ -403,10 +388,10 @@ mod tests {
                 let mut captures = Vec::new();
                 generator.generate_captures(&board, &mut captures);
                 for mv in captures {
-                    let reference = see_reference(&board, rules, nnue, mv);
+                    let reference = see_reference(&board, rules, mv);
                     for threshold in [-200, 0, 150] {
                         assert_eq!(
-                            see_prunes(&board, rules, nnue, mv, threshold),
+                            see_prunes(&board, rules, mv, threshold),
                             reference.is_some_and(|value| value < threshold),
                             "rules={rules:?}, position={index}, move={mv:?}, threshold={threshold}"
                         );
@@ -414,7 +399,7 @@ mod tests {
                     if let Some(value) = reference {
                         for threshold in [value - 1, value, value + 1] {
                             assert_eq!(
-                                see_prunes(&board, rules, nnue, mv, threshold),
+                                see_prunes(&board, rules, mv, threshold),
                                 value < threshold,
                                 "rules={rules:?}, position={index}, move={mv:?}, threshold={threshold}"
                             );
@@ -431,7 +416,6 @@ mod tests {
     // benchの15局面と各規則32局面の固定シード対局で参照値と照合する。
     #[test]
     fn see_prunes_matches_reference_on_bench_and_random_quiets() {
-        let nnue = test_nnue();
         for rules in see_test_rules() {
             let generator = MoveGenerator::new(rules);
             let mut checked = 0;
@@ -448,10 +432,10 @@ mod tests {
                 for mv in moves.into_iter().filter(|&mv| {
                     mv.mid.is_none() && board.captured_squares(mv).iter().all(Option::is_none)
                 }) {
-                    let reference = see_reference(&board, rules, nnue, mv);
+                    let reference = see_reference(&board, rules, mv);
                     for threshold in [-200, 0, 150] {
                         assert_eq!(
-                            see_prunes(&board, rules, nnue, mv, threshold),
+                            see_prunes(&board, rules, mv, threshold),
                             reference.is_some_and(|value| value < threshold),
                             "rules={rules:?}, position={index}, move={mv:?}, threshold={threshold}"
                         );
@@ -459,7 +443,7 @@ mod tests {
                     if let Some(value) = reference {
                         for threshold in [value - 1, value, value + 1] {
                             assert_eq!(
-                                see_prunes(&board, rules, nnue, mv, threshold),
+                                see_prunes(&board, rules, mv, threshold),
                                 value < threshold,
                                 "rules={rules:?}, position={index}, move={mv:?}, threshold={threshold}"
                             );
@@ -482,7 +466,6 @@ mod tests {
     // 取り返される飛車、取り返されない歩兵、およびじっとを手計算と照合する。
     #[test]
     fn see_values_match_hand_calculated_quiet_moves_and_jitto() {
-        let nnue = test_nnue();
         let rules = MoveRules::standard();
         let rook = unpromoted(Color::Black, PieceKind::Rook);
         let white_pawn = unpromoted(Color::White, PieceKind::Pawn);
@@ -490,25 +473,23 @@ mod tests {
         assert_prune_contract(
             &losing,
             rules,
-            nnue,
             quiet(sq(5, 4), sq(5, 5)),
-            Some(-value(nnue, rook)),
+            Some(-value(rook)),
         );
 
         let black_pawn = unpromoted(Color::Black, PieceKind::Pawn);
         let safe = position(Color::Black, &[(sq(5, 4), black_pawn)]);
-        assert_prune_contract(&safe, rules, nnue, quiet(sq(5, 4), sq(5, 5)), Some(0));
+        assert_prune_contract(&safe, rules, quiet(sq(5, 4), sq(5, 5)), Some(0));
 
         let lion = unpromoted(Color::Black, PieceKind::Lion);
         let waiting = position(Color::Black, &[(sq(5, 5), lion)]);
-        assert_prune_contract(&waiting, rules, nnue, quiet(sq(5, 5), sq(5, 5)), Some(0));
+        assert_prune_contract(&waiting, rules, quiet(sq(5, 5), sq(5, 5)), Some(0));
     }
 
     // 静かな手で獅子を相手獅子の利きへ進める場合も、
     // 到達升の獅子捕獲規則に依存するため判定不能とする。
     #[test]
     fn see_returns_none_for_quiet_lion_move_into_rule_dependent_attack() {
-        let nnue = test_nnue();
         let board = position(
             Color::Black,
             &[
@@ -519,7 +500,6 @@ mod tests {
         assert_prune_contract(
             &board,
             MoveRules::standard(),
-            nnue,
             quiet(sq(5, 4), sq(5, 5)),
             None,
         );
@@ -529,7 +509,6 @@ mod tests {
     // 取り返される損失の直前、等号、直後で厳密な境界を検査する。
     #[test]
     fn see_prunes_respects_threshold_and_strict_boundary() {
-        let nnue = test_nnue();
         let board = position(
             Color::Black,
             &[
@@ -540,49 +519,33 @@ mod tests {
         );
         let mv = capture(sq(5, 4), sq(5, 5));
         let rules = MoveRules::standard();
-        let loss = value(nnue, unpromoted(Color::Black, PieceKind::Rook))
-            - value(nnue, unpromoted(Color::White, PieceKind::Bishop));
+        let loss = value(unpromoted(Color::Black, PieceKind::Rook))
+            - value(unpromoted(Color::White, PieceKind::Bishop));
         assert!(loss > 0);
-        assert_prune_contract(&board, rules, nnue, mv, Some(-loss));
+        assert_prune_contract(&board, rules, mv, Some(-loss));
         for (threshold, prunes) in [
             (-loss - 1, false),
             (-loss, false),
             (-loss + 1, true),
             (0, true),
         ] {
-            assert_eq!(see_prunes(&board, rules, nnue, mv, threshold), prunes);
+            assert_eq!(see_prunes(&board, rules, mv, threshold), prunes);
         }
     }
 
     /// 捕獲価値が成り益の上限付近でも、交換結果に従って枝刈りする。
     #[test]
     fn see_prunes_respects_the_promotion_gain_bound() {
-        use crate::eval::{PIECE_STATE_COUNT, piece_state_of};
-        use sha2::{Digest, Sha256};
-
-        for captured_value in [799_i32, 800, 801, 999, 1000, 1001] {
-            // MNUEの駒価値表を直接指定する。最大の成り益は歩100→金1000の900。
-            let mut bytes = epoch_zero_nnue_bytes();
-            let base = NNUE_HEADER_LENGTH + FEATURE_COUNT * 4;
-            for state in 0..PIECE_STATE_COUNT {
-                bytes[base + state * 4..base + state * 4 + 4]
-                    .copy_from_slice(&1000_i32.to_le_bytes());
-            }
+        // 固定表の成り益上限の前後を、交換列の参照計算と照合する。
+        for kind in [
+            PieceKind::Pawn,
+            PieceKind::Rook,
+            PieceKind::FreeKing,
+            PieceKind::Lion,
+        ] {
             let mover = unpromoted(Color::Black, PieceKind::Pawn);
-            let victim = unpromoted(Color::White, PieceKind::FreeKing);
-            let royal_value = captured_value.max(1000) + 100;
-            for (state, value) in [
-                (piece_state_of(mover), 100),
-                (piece_state_of(victim), captured_value),
-                (PieceKind::King.index(), royal_value),
-                (PieceKind::CrownPrince.index(), royal_value),
-            ] {
-                bytes[base + state * 4..base + state * 4 + 4].copy_from_slice(&value.to_le_bytes());
-            }
-            let checksum = Sha256::digest(&bytes[NNUE_HEADER_LENGTH..]);
-            bytes[144..176].copy_from_slice(&checksum);
-            let nnue = Nnue::decode(&bytes).unwrap();
-            assert_eq!(nnue.max_promotion_gain(), 900);
+            let victim = unpromoted(Color::White, kind);
+            let captured_value = value(victim);
             let board = position(
                 Color::Black,
                 &[
@@ -594,25 +557,27 @@ mod tests {
             assert_prune_contract(
                 &board,
                 MoveRules::standard(),
-                &nnue,
                 capture(sq(5, 4), sq(5, 5)),
-                Some(captured_value - 100),
+                Some(captured_value - value(mover)),
             );
 
-            assert!(!see_prunes(
-                &board,
-                MoveRules::standard(),
-                &nnue,
-                capture(sq(5, 4), sq(5, 5)),
-                -200,
-            ));
+            // 駒価値表は固定なので、閾値を動かして成り益を使う早期終了の境界を跨ぐ。
+            let bound =
+                captured_value - value(mover) - crate::eval::piece_values::max_promotion_gain();
+            for threshold in [bound - 1, bound, bound + 1, -200] {
+                assert!(!see_prunes(
+                    &board,
+                    MoveRules::standard(),
+                    capture(sq(5, 4), sq(5, 5)),
+                    threshold,
+                ));
+            }
         }
     }
 
     // 同価値の駒の交換は値0となり、枝刈りしない。
     #[test]
     fn see_prunes_preserves_zero_value_exchanges() {
-        let nnue = test_nnue();
         let board = position(
             Color::Black,
             &[
@@ -624,7 +589,6 @@ mod tests {
         assert_prune_contract(
             &board,
             MoveRules::standard(),
-            nnue,
             capture(sq(5, 4), sq(5, 5)),
             Some(0),
         );
@@ -634,11 +598,9 @@ mod tests {
     // 加えてから判定する。同価値の捕獲でも成り益分の損を枝刈りする。
     #[test]
     fn see_prunes_includes_recapture_promotion_before_early_exit() {
-        let nnue = test_nnue();
         let mover = unpromoted(Color::White, PieceKind::Rook);
         let attacker = unpromoted(Color::Black, PieceKind::DragonHorse);
-        let bonus =
-            value(nnue, promoted(Color::Black, PieceKind::HornedFalcon)) - value(nnue, attacker);
+        let bonus = value(promoted(Color::Black, PieceKind::HornedFalcon)) - value(attacker);
         assert!(bonus > 0);
         for kind in [PieceKind::Rook, PieceKind::FreeKing] {
             let victim = unpromoted(Color::Black, kind);
@@ -646,11 +608,10 @@ mod tests {
                 Color::White,
                 &[(sq(5, 10), mover), (sq(5, 8), victim), (sq(4, 7), attacker)],
             );
-            let expected = value(nnue, victim) - value(nnue, mover) - bonus;
+            let expected = value(victim) - value(mover) - bonus;
             assert_prune_contract(
                 &board,
                 MoveRules::standard(),
-                nnue,
                 capture(sq(5, 10), sq(5, 8)),
                 Some(expected),
             );
@@ -662,24 +623,12 @@ mod tests {
         }
     }
 
-    // P6の強制成りで
-    // 価値が下がる初手もg0へ反映する。取り返しの有無を両方検査する。
+    // P6の強制成りを初手の利得へ反映し、取り返しの有無を検査する。
     #[test]
-    fn see_prunes_accounts_for_value_loss_on_forced_initial_promotion() {
-        use crate::eval::piece_state_of;
-        use sha2::{Digest, Sha256};
-
-        // 検証用の重みでは成香の価値だけを1へ下げ、強制成りの負の差額を作る。
-        let mut bytes = epoch_zero_nnue_bytes();
+    fn see_prunes_accounts_for_forced_initial_promotion() {
         let promoted_lance = promoted(Color::Black, PieceKind::WhiteHorse);
-        let offset = NNUE_HEADER_LENGTH + FEATURE_COUNT * 4 + piece_state_of(promoted_lance) * 4;
-        bytes[offset..offset + 4].copy_from_slice(&1_i32.to_le_bytes());
-        let checksum = Sha256::digest(&bytes[NNUE_HEADER_LENGTH..]);
-        bytes[144..176].copy_from_slice(&checksum);
-        let nnue = Nnue::decode(&bytes).unwrap();
         let mover = unpromoted(Color::Black, PieceKind::Lance);
         let victim = unpromoted(Color::White, PieceKind::Pawn);
-        assert!(value(&nnue, promoted_lance) < value(&nnue, mover));
         let rules = MoveRules {
             p6: true,
             ..MoveRules::standard()
@@ -706,14 +655,14 @@ mod tests {
                 pieces.push((sq(5, 9), unpromoted(Color::White, PieceKind::Rook)));
             }
             let board = position(Color::Black, &pieces);
-            let expected = value(&nnue, victim) - value(&nnue, mover)
-                + if defended {
-                    0
-                } else {
-                    value(&nnue, promoted_lance)
-                };
-            assert!(expected < 0);
-            assert_prune_contract(&board, rules, &nnue, mv, Some(expected));
+            let expected =
+                value(victim) - value(mover) + if defended { 0 } else { value(promoted_lance) };
+            if defended {
+                assert!(expected < 0);
+            } else {
+                assert!(expected > 0);
+            }
+            assert_prune_contract(&board, rules, mv, Some(expected));
         }
     }
 
@@ -721,7 +670,6 @@ mod tests {
     // なる列も枝刈りしない。負の中間利得による早期枝刈りは禁止する。
     #[test]
     fn see_prunes_preserves_late_rule_dependence_with_and_without_early_exit() {
-        let nnue = test_nnue();
         for victim_kind in [PieceKind::Lion, PieceKind::Pawn] {
             let board = position(
                 Color::Black,
@@ -736,7 +684,6 @@ mod tests {
             assert_prune_contract(
                 &board,
                 MoveRules::standard(),
-                nnue,
                 capture(sq(5, 0), sq(5, 5)),
                 None,
             );
@@ -773,8 +720,8 @@ mod tests {
         }
     }
 
-    fn value(nnue: &Nnue, piece: PieceCode) -> i32 {
-        nnue.piece_value(piece)
+    fn value(piece: PieceCode) -> i32 {
+        crate::eval::piece_values::piece_value(piece)
     }
 
     // 初手から判定不能なら枝刈りしない。
@@ -782,7 +729,6 @@ mod tests {
     // 獅子を取って成る初手は規則依存なので判定不能とする。
     #[test]
     fn see_returns_none_for_rule_dependent_initial_moves() {
-        let nnue = test_nnue();
         let rules = MoveRules::standard();
         let target = sq(5, 5);
         let valuable_piece = unpromoted(Color::White, PieceKind::SilverGeneral);
@@ -801,7 +747,7 @@ mod tests {
             to: target,
             promote: false,
         };
-        assert_prune_contract(&two_stage, rules, nnue, attached_capture, None);
+        assert_prune_contract(&two_stage, rules, attached_capture, None);
 
         let igui = Move {
             from: sq(5, 7),
@@ -809,7 +755,7 @@ mod tests {
             to: sq(5, 7),
             promote: false,
         };
-        assert_prune_contract(&two_stage, rules, nnue, igui, None);
+        assert_prune_contract(&two_stage, rules, igui, None);
 
         let kirin = position(
             Color::Black,
@@ -824,14 +770,13 @@ mod tests {
             to: sq(5, 8),
             promote: true,
         };
-        assert_prune_contract(&kirin, rules, nnue, mv, None);
+        assert_prune_contract(&kirin, rules, mv, None);
     }
 
     // 到達升の獅子を、獅子または
     // 成れる麒麟が取る段階を含む交換列は判定不能とする。
     #[test]
     fn see_returns_none_for_rule_dependent_recaptures() {
-        let nnue = test_nnue();
         let rules = MoveRules::standard();
         let victim = unpromoted(Color::White, PieceKind::Pawn);
 
@@ -878,7 +823,7 @@ mod tests {
         ];
 
         for (board, mv) in cases {
-            assert_prune_contract(&board, rules, nnue, mv, None);
+            assert_prune_contract(&board, rules, mv, None);
         }
     }
 
@@ -886,7 +831,6 @@ mod tests {
     // および王駒による取り返しを手計算した交換列と照合する。
     #[test]
     fn see_values_match_hand_calculated_exchange_sequences() {
-        let nnue = test_nnue();
         let rules = MoveRules::standard();
         let target = sq(5, 5);
 
@@ -899,9 +843,8 @@ mod tests {
         assert_prune_contract(
             &unguarded,
             rules,
-            nnue,
             capture(sq(5, 4), target),
-            Some(value(nnue, white_go_between)),
+            Some(value(white_go_between)),
         );
 
         for white_lion in [
@@ -918,9 +861,8 @@ mod tests {
             assert_prune_contract(
                 &lion_capture,
                 rules,
-                nnue,
                 capture(sq(5, 0), target),
-                Some(value(nnue, white_lion)),
+                Some(value(white_lion)),
             );
         }
 
@@ -938,9 +880,8 @@ mod tests {
         assert_prune_contract(
             &defended,
             rules,
-            nnue,
             capture(sq(5, 0), target),
-            Some(value(nnue, white_pawn) - value(nnue, black_rook)),
+            Some(value(white_pawn) - value(black_rook)),
         );
 
         let black_gold = unpromoted(Color::Black, PieceKind::GoldGeneral);
@@ -957,13 +898,12 @@ mod tests {
         );
         // 金で仲人を取って歩に取り返されたところで交換を止める。
         // 銀で歩を取り返すと飛車の遮蔽が外れ、さらに銀と歩の価値差だけ損する。
-        assert!(value(nnue, black_silver) > value(nnue, white_pawn));
+        assert!(value(black_silver) > value(white_pawn));
         assert_prune_contract(
             &xray,
             rules,
-            nnue,
             capture(sq(4, 4), target),
-            Some(value(nnue, white_go_between) - value(nnue, black_gold)),
+            Some(value(white_go_between) - value(black_gold)),
         );
 
         let free_king = unpromoted(Color::White, PieceKind::FreeKing);
@@ -980,9 +920,8 @@ mod tests {
         assert_prune_contract(
             &king_recapture,
             rules,
-            nnue,
             capture(sq(4, 4), target),
-            Some(value(nnue, free_king)),
+            Some(value(free_king)),
         );
     }
 
@@ -990,7 +929,6 @@ mod tests {
     // 非獅子の取り返しと獅子による取り返しの価値を反映する。
     #[test]
     fn article_14_5_see_values_lion_captures_of_non_lions() {
-        let nnue = test_nnue();
         let rules = MoveRules::standard();
         let target = sq(5, 5);
         let black_lion = unpromoted(Color::Black, PieceKind::Lion);
@@ -1007,9 +945,8 @@ mod tests {
         assert_prune_contract(
             &lion_is_recaptured,
             rules,
-            nnue,
             capture(sq(4, 4), target),
-            Some(value(nnue, white_pawn) - value(nnue, black_lion)),
+            Some(value(white_pawn) - value(black_lion)),
         );
 
         let black_gold = unpromoted(Color::Black, PieceKind::GoldGeneral);
@@ -1025,14 +962,13 @@ mod tests {
         );
         // 飛車は金より高価なので、獅子に飛車を取られる応酬は後手の損を増やす。
         // 後手は取り返さず、歩1枚の損で交換を止める。
-        assert!(value(nnue, white_rook) > value(nnue, black_gold));
-        assert!(value(nnue, black_gold) > value(nnue, white_pawn));
+        assert!(value(white_rook) > value(black_gold));
+        assert!(value(black_gold) > value(white_pawn));
         assert_prune_contract(
             &lion_recaptures,
             rules,
-            nnue,
             capture(sq(4, 4), target),
-            Some(value(nnue, white_pawn)),
+            Some(value(white_pawn)),
         );
     }
 
@@ -1040,7 +976,6 @@ mod tests {
     // 届く場合も、非獅子を1枚取る取り返しとして評価する。
     #[test]
     fn article_11_see_values_lion_like_special_recaptures() {
-        let nnue = test_nnue();
         let rules = MoveRules::standard();
         let target = sq(5, 5);
         let mover = unpromoted(Color::Black, PieceKind::GoldGeneral);
@@ -1065,18 +1000,18 @@ mod tests {
                 ],
             ),
         ];
-        let expected = value(nnue, victim) - value(nnue, mover);
+        let expected = value(victim) - value(mover);
 
         for (index, board) in cases.into_iter().enumerate() {
             let mv = capture(sq(4, 4), target);
             assert_eq!(
-                see_reference(&board, rules, nnue, mv),
+                see_reference(&board, rules, mv),
                 Some(expected),
                 "case={index}"
             );
             for threshold in [0, -200, expected, expected + 1] {
                 assert_eq!(
-                    see_prunes(&board, rules, nnue, mv, threshold),
+                    see_prunes(&board, rules, mv, threshold),
                     expected < threshold,
                     "case={index}, threshold={threshold}"
                 );
@@ -1088,7 +1023,6 @@ mod tests {
     // 駒の任意成りによる正の差額を交換列へ含める。
     #[test]
     fn see_accounts_for_promotions_in_initial_and_recapture_moves() {
-        let nnue = test_nnue();
         let rules = MoveRules::standard();
         let target = sq(5, 8);
         let dragon_horse = unpromoted(Color::Black, PieceKind::DragonHorse);
@@ -1111,11 +1045,10 @@ mod tests {
         assert_prune_contract(
             &first_promotion,
             rules,
-            nnue,
             promoting_capture,
-            Some(value(nnue, white_pawn) - value(nnue, dragon_horse)),
+            Some(value(white_pawn) - value(dragon_horse)),
         );
-        assert!(value(nnue, horned_falcon) > value(nnue, dragon_horse));
+        assert!(value(horned_falcon) > value(dragon_horse));
 
         let white_rook = unpromoted(Color::White, PieceKind::Rook);
         let black_pawn = unpromoted(Color::Black, PieceKind::Pawn);
@@ -1127,13 +1060,12 @@ mod tests {
                 (sq(4, 7), dragon_horse),
             ],
         );
-        let promotion_bonus = (value(nnue, horned_falcon) - value(nnue, dragon_horse)).max(0);
+        let promotion_bonus = (value(horned_falcon) - value(dragon_horse)).max(0);
         assert_prune_contract(
             &promoted_recapture,
             rules,
-            nnue,
             capture(sq(5, 10), target),
-            Some(value(nnue, black_pawn) - value(nnue, white_rook) - promotion_bonus),
+            Some(value(black_pawn) - value(white_rook) - promotion_bonus),
         );
     }
 
@@ -1141,7 +1073,6 @@ mod tests {
     // 成れないため、交換列へ成りの差額を加えない。
     #[test]
     fn p5_see_respects_p5_deferred_pawn_on_recapture() {
-        let nnue = test_nnue();
         let target = sq(5, 9);
         let white_rook = unpromoted(Color::White, PieceKind::Rook);
         let black_go_between = unpromoted(Color::Black, PieceKind::GoBetween);
@@ -1160,9 +1091,8 @@ mod tests {
         assert_prune_contract(
             &board,
             rules,
-            nnue,
             capture(sq(5, 10), target),
-            Some(value(nnue, black_go_between) - value(nnue, white_rook)),
+            Some(value(black_go_between) - value(white_rook)),
         );
     }
 
@@ -1170,7 +1100,6 @@ mod tests {
     // 2升目への直接跳びでも通常の交換として扱う。
     #[test]
     fn article_11_see_accepts_single_capture_lion_like_moves_without_mid() {
-        let nnue = test_nnue();
         let rules = MoveRules::standard();
         let victim = unpromoted(Color::White, PieceKind::GoBetween);
         let cases = [
@@ -1209,7 +1138,7 @@ mod tests {
         ];
 
         for (board, mv) in cases {
-            assert_prune_contract(&board, rules, nnue, mv, Some(value(nnue, victim)));
+            assert_prune_contract(&board, rules, mv, Some(value(victim)));
         }
     }
 }

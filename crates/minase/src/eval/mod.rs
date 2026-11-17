@@ -24,6 +24,9 @@ pub fn piece_state_of(piece: PieceCode) -> usize {
 }
 
 /// NNUEで局面を手番側の視点からセンチポーン評価する。
-pub fn evaluate(nnue: &Nnue, position: &Position) -> i32 {
-    nnue::evaluate(nnue, position)
+pub fn evaluate(
+    network: &nnue::network::Network,
+    position: &Position,
+) -> Result<i32, nnue::input::AnchorError> {
+    network.evaluate(position)
 }

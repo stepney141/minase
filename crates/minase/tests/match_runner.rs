@@ -95,7 +95,7 @@ fn run_minase_candidate_match(candidate: &str) -> String {
             concat!(
                 "EvalFile=",
                 env!("CARGO_MANIFEST_DIR"),
-                "/nets/nnue-epoch0.bin"
+                "/nets/test-layer-stack.bin"
             ),
         ])
         .args(["--rules", "JCSA"])

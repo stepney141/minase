@@ -11,7 +11,7 @@ fn events(snapshot: SearchSnapshot, limits: SearchLimits) -> Vec<SearchEvent> {
             histories: crate::search::HistoryTables::new(worker_count(1)),
             threads: worker_count(1),
         },
-        Arc::clone(shared_test_nnue()),
+        Arc::clone(shared_test_network()),
         snapshot,
         limits,
         301,
@@ -269,6 +269,6 @@ fn multipv_secondary_root_does_not_count_a_later_winning_move() {
         let hit = searcher.tt.probe(search_key(&board), 0).unwrap();
         assert_eq!(hit.value, None);
         assert_eq!(hit.best_move, None);
-        assert_eq!(hit.static_eval, Some(evaluate(test_nnue(), &board)));
+        assert_eq!(hit.static_eval, Some(evaluate(test_network(), &board)));
     });
 }

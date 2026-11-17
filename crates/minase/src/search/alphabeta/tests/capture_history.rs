@@ -17,7 +17,6 @@ fn capture(from: Square, to: Square) -> Move {
 /// 2枚取りでは価値の大きい駒種を選び、到達升を添字にする。
 #[test]
 fn capture_history_double_capture_uses_more_valuable_victim() {
-    let nnue = test_nnue();
     for (mid_kind, to_kind) in [
         (PieceKind::Pawn, PieceKind::Rook),
         (PieceKind::Rook, PieceKind::Pawn),
@@ -38,7 +37,7 @@ fn capture_history_double_capture_uses_more_valuable_victim() {
         };
         assert!(legal_moves(&board).contains(&mv));
         let mut history = empty_capture_history();
-        history.update(&board, nnue, mv, 9);
+        history.update(&board, mv, 9);
         for (victim, expected) in [(PieceKind::Pawn, 0), (PieceKind::Rook, 9)] {
             let single = position(
                 Color::Black,
@@ -47,19 +46,15 @@ fn capture_history_double_capture_uses_more_valuable_victim() {
                     (sq(6, 6), Color::White, victim),
                 ],
             );
-            assert_eq!(
-                history.read(&single, nnue, capture(mv.from, mv.to)),
-                expected
-            );
+            assert_eq!(history.read(&single, capture(mv.from, mv.to)), expected);
         }
-        assert_eq!(history.read(&board, nnue, capture(mv.from, sq(5, 6))), 0);
+        assert_eq!(history.read(&board, capture(mv.from, sq(5, 6))), 0);
     }
 }
 
 /// 同値の2枚取りでは到達升の駒種を選ぶ。王将と太子の価値は等しい。
 #[test]
 fn capture_history_equal_victims_prefer_destination() {
-    let nnue = test_nnue();
     let board = position_with_promoted_pieces(
         Color::Black,
         &[
@@ -69,23 +64,23 @@ fn capture_history_equal_victims_prefer_destination() {
         ],
     );
     assert_eq!(
-        nnue.piece_value(board.piece_at(sq(5, 6)).unwrap()),
-        nnue.piece_value(board.piece_at(sq(6, 6)).unwrap())
+        crate::eval::piece_values::piece_value(board.piece_at(sq(5, 6)).unwrap()),
+        crate::eval::piece_values::piece_value(board.piece_at(sq(6, 6)).unwrap())
     );
     let mv = Move {
         mid: Some(sq(5, 6)),
         ..capture(sq(5, 5), sq(6, 6))
     };
     let mut history = empty_capture_history();
-    history.update(&board, nnue, mv, 4);
-    let info = super::super::ordering::CaptureInfo::new(&board, nnue, mv);
+    history.update(&board, mv, 4);
+    let info = super::super::ordering::CaptureInfo::new(&board, mv);
     assert_eq!(info.victim, PieceKind::CrownPrince);
     assert_eq!(history.read_parts(info.mover, mv.to, info.victim), 4);
     assert!(super::super::royal::captured_last_royal(
         &board,
         info.captured
     ));
-    assert_eq!(history.read(&board, nnue, capture(mv.from, mv.to)), 4);
+    assert_eq!(history.read(&board, capture(mv.from, mv.to)), 4);
     let king = position(
         Color::Black,
         &[
@@ -93,13 +88,12 @@ fn capture_history_equal_victims_prefer_destination() {
             (mv.to, Color::White, PieceKind::King),
         ],
     );
-    assert_eq!(history.read(&king, nnue, capture(mv.from, mv.to)), 0);
+    assert_eq!(history.read(&king, capture(mv.from, mv.to)), 0);
 }
 
 /// 成る手は着手前の駒種を使い、成駒と先後を区別する。
 #[test]
 fn capture_history_promotion_uses_pre_move_piece_and_color() {
-    let nnue = test_nnue();
     let mv = Move {
         promote: true,
         ..capture(sq(5, 7), sq(5, 8))
@@ -115,11 +109,10 @@ fn capture_history_promotion_uses_pre_move_piece_and_color() {
     );
     assert!(legal_moves(&board).contains(&mv));
     let mut history = empty_capture_history();
-    history.update(&board, nnue, mv, 16);
+    history.update(&board, mv, 16);
     assert_eq!(
         history.read(
             &board,
-            nnue,
             Move {
                 promote: false,
                 ..mv
@@ -139,7 +132,7 @@ fn capture_history_promotion_uses_pre_move_piece_and_color() {
                 (mv.to, color.opposite(), PieceKind::Pawn, false),
             ],
         );
-        assert_eq!(history.read(&other, nnue, mv), expected);
+        assert_eq!(history.read(&other, mv), expected);
     }
 }
 
@@ -163,7 +156,7 @@ fn picked(searcher: &Searcher<'_>, board: &Position, tt: Option<Move>) -> Vec<(M
     std::iter::from_fn(|| {
         picker.next(
             board,
-            searcher.nnue,
+            searcher.network,
             &searcher.generator,
             searcher_move_picker_context(searcher, 0),
             &std::cell::OnceCell::new(),
@@ -175,7 +168,11 @@ fn picked(searcher: &Searcher<'_>, board: &Position, tt: Option<Move>) -> Vec<(M
 /// 非ゼロ履歴は捕獲段だけを変え、TT手を先頭に保ち、合法手の重複を作らない。
 #[test]
 fn capture_history_changes_picker_but_preserves_root_and_tt_order() {
-    assert_eq!(test_nnue().pawn_value(), 100, "固定ネットの歩兵価値");
+    assert_eq!(
+        crate::eval::piece_values::pawn_value(),
+        100,
+        "固定ネットの歩兵価値"
+    );
     // 歩兵価値100での上限の換算値は尺度そのものになる。
     let board = capture_fixture();
     with_root_searcher(&board, &[], |searcher| {
@@ -191,39 +188,31 @@ fn capture_history_changes_picker_but_preserves_root_and_tt_order() {
         searcher.order_moves(&board, &mut root_before, None, 0);
         searcher.capture_history.update(
             &board,
-            searcher.nnue,
             winner,
             super::super::capture_history::CAPTURE_HISTORY_LIMIT,
         );
         searcher.capture_history.update(
             &board,
-            searcher.nnue,
             captures[0],
             -super::super::capture_history::CAPTURE_HISTORY_LIMIT,
         );
         assert_eq!(
-            searcher.capture_history.read(&board, searcher.nnue, winner),
+            searcher.capture_history.read(&board, winner),
             super::super::capture_history::CAPTURE_HISTORY_LIMIT
         );
         assert_eq!(
-            searcher
-                .capture_history
-                .read(&board, searcher.nnue, captures[0]),
+            searcher.capture_history.read(&board, captures[0]),
             -super::super::capture_history::CAPTURE_HISTORY_LIMIT
         );
         assert_eq!(
             super::super::capture_history::CaptureHistory::adjustment(
-                searcher.nnue,
-                searcher.capture_history.read(&board, searcher.nnue, winner)
+                searcher.capture_history.read(&board, winner)
             ),
             params::capture_history_scale()
         );
         assert_eq!(
             super::super::capture_history::CaptureHistory::adjustment(
-                searcher.nnue,
-                searcher
-                    .capture_history
-                    .read(&board, searcher.nnue, captures[0])
+                searcher.capture_history.read(&board, captures[0])
             ),
             -params::capture_history_scale()
         );
@@ -288,7 +277,7 @@ fn assert_capture_history_after_cutoff(quiet_cutoff: bool) {
         assert_eq!(searcher.nodes, winner_index as u64 + 1);
         for (index, &(mv, is_capture)) in moves.iter().enumerate() {
             if is_capture {
-                let history = searcher.capture_history.read(&board, searcher.nnue, mv);
+                let history = searcher.capture_history.read(&board, mv);
                 if index > winner_index || index == 0 {
                     // 最初の手はαを−10から0へ上げたため、探索済みの手の列には入らない。
                     assert_eq!(history, 0, "move {index}, quiet={quiet_cutoff}");
@@ -317,16 +306,15 @@ fn capture_history_negamax_penalizes_searched_captures_on_quiet_cutoff() {
 #[test]
 fn capture_history_update_uses_shared_gravity() {
     let board = capture_fixture();
-    let nnue = test_nnue();
     let mv = capture(sq(5, 5), sq(5, 7));
     let limit = super::super::capture_history::CAPTURE_HISTORY_LIMIT;
     for old in [-limit, -10, 0, 10, limit] {
         for bonus in [-(limit + 1), -9, 0, 9, limit + 1] {
             let mut history = empty_capture_history();
             history.values_mut().fill(i16::try_from(old).unwrap());
-            history.update(&board, nnue, mv, bonus);
+            history.update(&board, mv, bonus);
             assert_eq!(
-                history.read(&board, nnue, mv),
+                history.read(&board, mv),
                 super::super::history::history_gravity(old, bonus, limit)
             );
         }
@@ -337,28 +325,21 @@ fn capture_history_update_uses_shared_gravity() {
 #[test]
 fn capture_history_adjustment_truncates_toward_zero() {
     let board = capture_fixture();
-    let nnue = test_nnue();
     let winner = capture(sq(5, 5), sq(5, 7));
     let loser = capture(sq(5, 5), sq(3, 5));
     let mut history = empty_capture_history();
-    history.update(&board, nnue, winner, 1);
-    history.update(&board, nnue, loser, -1);
+    history.update(&board, winner, 1);
+    history.update(&board, loser, -1);
     assert!(
-        nnue.pawn_value() * params::capture_history_scale()
+        crate::eval::piece_values::pawn_value() * params::capture_history_scale()
             < 100 * super::super::capture_history::CAPTURE_HISTORY_LIMIT
     );
     assert_eq!(
-        super::super::capture_history::CaptureHistory::adjustment(
-            nnue,
-            history.read(&board, nnue, winner)
-        ),
+        super::super::capture_history::CaptureHistory::adjustment(history.read(&board, winner)),
         0
     );
     assert_eq!(
-        super::super::capture_history::CaptureHistory::adjustment(
-            nnue,
-            history.read(&board, nnue, loser)
-        ),
+        super::super::capture_history::CaptureHistory::adjustment(history.read(&board, loser)),
         0
     );
 }
@@ -380,7 +361,7 @@ fn see_pruning_uses_raw_capture_history_in_margin() {
     );
     let target = capture(sq(5, 3), sq(5, 4));
     let tt_move = capture(sq(11, 0), sq(10, 0));
-    let nnue = test_nnue();
+    let nnue = test_network();
     let moves = legal_moves(&board);
     assert!(moves.contains(&target));
     assert!(moves.contains(&tt_move));
@@ -389,36 +370,23 @@ fn see_pruning_uses_raw_capture_history_in_margin() {
     let mut penalized = empty_capture_history();
     penalized.update(
         &board,
-        nnue,
         target,
         -super::super::capture_history::CAPTURE_HISTORY_LIMIT,
     );
-    let raw = penalized.read(&board, nnue, target);
-    let adjustment = super::super::capture_history::CaptureHistory::adjustment(
-        nnue,
-        penalized.read(&board, nnue, target),
-    );
-    let base_margin = super::super::pruning::see_margin(nnue.pawn_value(), 1, 0);
-    let raw_margin = super::super::pruning::see_margin(nnue.pawn_value(), 1, raw);
-    let adjusted_margin = super::super::pruning::see_margin(nnue.pawn_value(), 1, adjustment);
+    let raw = penalized.read(&board, target);
+    let adjustment =
+        super::super::capture_history::CaptureHistory::adjustment(penalized.read(&board, target));
+    let base_margin =
+        super::super::pruning::see_margin(crate::eval::piece_values::pawn_value(), 1, 0);
+    let raw_margin =
+        super::super::pruning::see_margin(crate::eval::piece_values::pawn_value(), 1, raw);
+    let adjusted_margin =
+        super::super::pruning::see_margin(crate::eval::piece_values::pawn_value(), 1, adjustment);
+    assert!(!see_prunes(&board, engine_rules(), target, -base_margin));
+    assert!(see_prunes(&board, engine_rules(), target, -raw_margin));
     assert!(!see_prunes(
         &board,
         engine_rules(),
-        nnue,
-        target,
-        -base_margin
-    ));
-    assert!(see_prunes(
-        &board,
-        engine_rules(),
-        nnue,
-        target,
-        -raw_margin
-    ));
-    assert!(!see_prunes(
-        &board,
-        engine_rules(),
-        nnue,
         target,
         -adjusted_margin
     ));
@@ -466,7 +434,6 @@ fn see_pruning_uses_raw_capture_history_in_margin() {
             if penalize {
                 searcher.capture_history.update(
                     &board,
-                    searcher.nnue,
                     target,
                     -super::super::capture_history::CAPTURE_HISTORY_LIMIT,
                 );
@@ -503,7 +470,7 @@ fn capture_history_excludes_see_pruned_captures_and_quiet_tt_move() {
     let leaf_value = |mv| {
         let mut child = board.clone();
         child.make_move_unchecked(mv, engine_rules());
-        -evaluate(test_nnue(), &child)
+        -evaluate(test_network(), &child)
     };
     let beta = leaf_value(winner);
     assert!(leaf_value(quiet) < beta);
@@ -515,23 +482,14 @@ fn capture_history_excludes_see_pruned_captures_and_quiet_tt_move() {
         );
         assert!(!royal_under_attack(&board));
         assert!(board.gives_check(&MoveGenerator::standard(), winner));
-        let history = searcher.capture_history.read(&board, searcher.nnue, pruned);
-        let margin =
-            crate::search::alphabeta::pruning::see_margin(searcher.nnue.pawn_value(), 3, history);
-        assert!(see_prunes(
-            &board,
-            engine_rules(),
-            searcher.nnue,
-            pruned,
-            -margin
-        ));
-        assert!(!see_prunes(
-            &board,
-            engine_rules(),
-            searcher.nnue,
-            winner,
-            -margin
-        ));
+        let history = searcher.capture_history.read(&board, pruned);
+        let margin = crate::search::alphabeta::pruning::see_margin(
+            crate::eval::piece_values::pawn_value(),
+            3,
+            history,
+        );
+        assert!(see_prunes(&board, engine_rules(), pruned, -margin));
+        assert!(!see_prunes(&board, engine_rules(), winner, -margin));
         searcher.tt.store(
             search_key(&board),
             0,
@@ -551,11 +509,8 @@ fn capture_history_excludes_see_pruned_captures_and_quiet_tt_move() {
             Some(beta)
         );
         assert_eq!(searcher.nodes, 2);
-        assert_eq!(
-            searcher.capture_history.read(&board, searcher.nnue, pruned),
-            0
-        );
-        assert!(searcher.capture_history.read(&board, searcher.nnue, winner) > 0);
+        assert_eq!(searcher.capture_history.read(&board, pruned), 0);
+        assert!(searcher.capture_history.read(&board, winner) > 0);
     });
 }
 
@@ -595,7 +550,7 @@ fn capture_history_excludes_capture_futility_pruned_capture() {
 
         // 子を静止探索に固定し、LMR係数と通常探索の置換表打ち切り条件を分離する。
         let depth = 1;
-        let static_eval = evaluate(searcher.nnue, &board);
+        let static_eval = evaluate(searcher.network, &board);
         let lmr_depth =
             super::super::pruning::pruning_lmr_depth(depth, pruned_index, false, false, true);
         assert!(lmr_depth < super::super::pruning::CAPTURE_FUTILITY_LMR_DEPTH_LIMIT);
@@ -603,14 +558,14 @@ fn capture_history_excludes_capture_futility_pruned_capture() {
             .captured_squares(pruned)
             .into_iter()
             .flatten()
-            .map(|square| searcher.nnue.piece_value(board.piece_at(square).unwrap()))
+            .map(|square| crate::eval::piece_values::piece_value(board.piece_at(square).unwrap()))
             .sum();
         let alpha = 20_000;
         let beta = alpha + 1;
         assert!(alpha > static_eval);
         assert!(
             super::super::pruning::capture_futility_value(
-                searcher.nnue.pawn_value(),
+                crate::eval::piece_values::pawn_value(),
                 static_eval,
                 lmr_depth,
                 captured_value,
@@ -620,16 +575,14 @@ fn capture_history_excludes_capture_futility_pruned_capture() {
         assert!(!see_prunes(
             &board,
             engine_rules(),
-            searcher.nnue,
             pruned,
-            -super::super::pruning::see_margin(searcher.nnue.pawn_value(), depth, 0),
+            -super::super::pruning::see_margin(crate::eval::piece_values::pawn_value(), depth, 0),
         ));
         assert!(!see_prunes(
             &board,
             engine_rules(),
-            searcher.nnue,
             winner,
-            -super::super::pruning::see_margin(searcher.nnue.pawn_value(), depth, 0),
+            -super::super::pruning::see_margin(crate::eval::piece_values::pawn_value(), depth, 0),
         ));
 
         for &mv in &moves {
@@ -667,10 +620,7 @@ fn capture_history_excludes_capture_futility_pruned_capture() {
             searcher.tt.probe(search_key(&board), 0).unwrap().best_move,
             Some(winner)
         );
-        assert_eq!(
-            searcher.capture_history.read(&board, searcher.nnue, pruned),
-            0
-        );
+        assert_eq!(searcher.capture_history.read(&board, pruned), 0);
     });
 }
 
@@ -678,7 +628,7 @@ fn capture_history_excludes_capture_futility_pruned_capture() {
 fn stopped_search(histories: &mut crate::search::HistoryTables, threads: NonZeroUsize) {
     let snapshot = snapshot_for(&Position::initial());
     let outcome = run_search_team(
-        test_nnue(),
+        test_network(),
         &snapshot.position,
         snapshot.rules(),
         snapshot.repetition(),
@@ -907,7 +857,7 @@ pub(super) fn zero_decay_clears_capture_history_between_searches() {
     for threads in [DEFAULT_THREADS, worker_count(4)] {
         let mut histories = crate::search::HistoryTables::new(threads);
         crate::search::search(
-            test_nnue(),
+            test_network(),
             &snapshot_for(&quiet_midgame()),
             &depth_limits(3),
             threads,
@@ -952,7 +902,6 @@ pub(super) fn capture_decay_probe() -> i64 {
 #[test]
 fn capture_history_gravity_stays_bounded_at_limit_extremes() {
     let board = capture_fixture();
-    let nnue = test_nnue();
     let winner = capture(sq(5, 5), sq(5, 7));
     let earlier = capture(sq(5, 5), sq(3, 5));
     let limit = super::super::capture_history::CAPTURE_HISTORY_LIMIT;
@@ -960,10 +909,10 @@ fn capture_history_gravity_stays_bounded_at_limit_extremes() {
     for old in [-limit, -limit + 1, -10, 0, 10, limit - 1, limit] {
         for bonus in [0, 1, 9, limit, limit + 1] {
             history.values_mut().fill(i16::try_from(old).unwrap());
-            history.update(&board, nnue, winner, bonus);
-            history.update(&board, nnue, earlier, -bonus);
-            let rewarded = history.read(&board, nnue, winner);
-            let penalized = history.read(&board, nnue, earlier);
+            history.update(&board, winner, bonus);
+            history.update(&board, earlier, -bonus);
+            let rewarded = history.read(&board, winner);
+            let penalized = history.read(&board, earlier);
             assert!((-limit..=limit).contains(&rewarded));
             assert!((-limit..=limit).contains(&penalized));
             if bonus >= limit {
@@ -993,7 +942,6 @@ fn capture_history_i16_matches_i32_reference_on_random_capture_sequences() {
         std::mem::size_of_val(actual.values()) * 2,
         std::mem::size_of_val(reference.as_slice())
     );
-    let nnue = test_nnue();
     let bonuses = [i32::MIN, -10_692, -1001, -9, 0, 9, 1001, 10_692, i32::MAX];
     let mut updates = 0_usize;
     for text in [
@@ -1023,7 +971,7 @@ fn capture_history_i16_matches_i32_reference_on_random_capture_sequences() {
                     .into_iter()
                     .flatten()
                     .map(|square| board.piece_at(square).unwrap())
-                    .max_by_key(|&piece| nnue.piece_value(piece))
+                    .max_by_key(|&piece| crate::eval::piece_values::piece_value(piece))
                     .unwrap()
                     .kind()
                     .unwrap();
@@ -1037,7 +985,7 @@ fn capture_history_i16_matches_i32_reference_on_random_capture_sequences() {
                     captured: Some(victim),
                 };
                 // 捕獲情報の共有は、従来の別々の捕獲升走査と同じ値を返す。
-                let info = super::super::ordering::CaptureInfo::new(&board, nnue, mv);
+                let info = super::super::ordering::CaptureInfo::new(&board, mv);
                 assert_eq!(info.mover, piece);
                 assert_eq!(info.victim, victim);
                 assert_eq!(info.captured, board.captured_squares(mv));
@@ -1047,7 +995,9 @@ fn capture_history_i16_matches_i32_reference_on_random_capture_sequences() {
                         .captured_squares(mv)
                         .into_iter()
                         .flatten()
-                        .map(|square| nnue.piece_value(board.piece_at(square).unwrap()))
+                        .map(|square| crate::eval::piece_values::piece_value(
+                            board.piece_at(square).unwrap()
+                        ))
                         .sum::<i32>()
                 );
                 for bonus in bonuses {
@@ -1055,11 +1005,11 @@ fn capture_history_i16_matches_i32_reference_on_random_capture_sequences() {
                     let value = &mut reference[index];
                     *value += b - *value * b.abs() / CAPTURE_HISTORY_LIMIT;
                     if updates.is_multiple_of(2) {
-                        actual.update(&board, nnue, mv, bonus);
+                        actual.update(&board, mv, bonus);
                     } else {
                         actual.update_record(record, bonus);
                     }
-                    assert_eq!(actual.read(&board, nnue, mv), *value);
+                    assert_eq!(actual.read(&board, mv), *value);
                     assert_eq!(actual.read_parts(info.mover, mv.to, info.victim), *value);
                     assert_eq!(actual.read_record(record), *value);
                     updates += 1;

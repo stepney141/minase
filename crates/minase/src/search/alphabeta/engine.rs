@@ -3,7 +3,7 @@
 use core::num::NonZeroUsize;
 use std::sync::Arc;
 
-use crate::eval::Nnue;
+use crate::eval::nnue::network::Network;
 use crate::search::alphabeta::team::run_search_team;
 use crate::search::clock::{MonotonicClock, SearchClock};
 use crate::search::events::{PvLine, SearchEvent};
@@ -169,6 +169,12 @@ impl Engine {
                 });
             }
         };
+        if let Err(error) = nnue.check_search_root(&snapshot.position) {
+            return Err(StartFailure {
+                searcher: Searcher::AlphaBeta(self),
+                error: StartError::UnsupportedRoot(error),
+            });
+        }
         if self.transposition_table.is_none() {
             match TranspositionTable::new(DEFAULT_TT_SIZE_MB) {
                 Ok(table) => self.transposition_table = Some(table),
@@ -196,7 +202,7 @@ impl Engine {
 /// 時計は探索チームと的中通知で共有する。
 pub(in crate::search) fn start_search_with_clock(
     mut engine: crate::search::alphabeta::Engine,
-    nnue: Arc<Nnue>,
+    nnue: Arc<Network>,
     snapshot: SearchSnapshot,
     limits: SearchLimits,
     search_id: u64,

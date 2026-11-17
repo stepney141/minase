@@ -1488,7 +1488,7 @@ impl UsiProtocol {
             "eval" => self
                 .searcher
                 .as_ref()
-                .and_then(Searcher::nnue)
+                .and_then(Searcher::network)
                 .ok_or_else(|| "eval requires isready".to_owned())
                 .and_then(|network| diagnostic_evaluation(engine.game().position(), network)),
             "tt" => self
@@ -2259,26 +2259,35 @@ fn diagnostic_position(engine: &Engine) -> Result<Vec<String>, String> {
     Ok(lines)
 }
 
-/// NNUEを全計算した手番側の評価値と、線形経路の寄与を表示する。
-///
-/// 入力特徴集合はP型である。
-/// 升ごとの線形寄与は720で割り、0.1 cpへ丸めて表示する。
-/// 線形評価の整数除算と表示時の丸めがあるため、表示した寄与の和は評価値と一致するとは限らない。
-/// 非線形出力は別行で示し、合計評価の±28,999 cpへの切り詰めも注記する。
-fn diagnostic_evaluation(position: &Position, weights: &nnue::Nnue) -> Result<Vec<String>, String> {
+/// 本体と同じ整数の演算順で評価値と経路ごとの寄与を表示する。
+fn diagnostic_evaluation(
+    position: &Position,
+    network: &nnue::network::Network,
+) -> Result<Vec<String>, String> {
     position.validate().map_err(|error| error.to_string())?;
-    let detail = nnue::breakdown(weights, position);
-    let mut lines = vec![
-        format!("evaluation {}", detail.score),
-        format!("q {}", detail.q),
-    ];
-    lines.extend(diagnostic_grid(7, |square| {
-        format!("{:.1}", detail.board[square.dense_index()] as f64 / 720.0)
-    }));
-    lines.push(format!("lion {:.1}", detail.lion as f64 / 720.0));
-    lines.push(format!("nonlinear {}", detail.nonlinear));
-    lines.push("note linear contributions are rounded to 0.1 cp; linear evaluation uses integer truncation by 720; the sum with nonlinear output is clamped to +/-28999 cp".to_owned());
-    Ok(lines)
+    match network {
+        nnue::network::Network::LayerStack(net) => {
+            let d = net.breakdown(position);
+            let mut lines = vec![
+                format!("evaluation {}", d.value),
+                "structure LayerStack".to_owned(),
+                "feature-set P".to_owned(),
+            ];
+            lines.extend(diagnostic_grid(7, |square| {
+                d.squares[square.dense_index()].to_string()
+            }));
+            lines.push(format!("lion {}", d.lion));
+            lines.push(format!("psqt {}", d.psqt));
+            lines.push(format!("dense {}", d.dense));
+            lines.push(format!("fv-scale {}", d.fv_scale));
+            lines.push("note evaluation = clamp((dense + psqt) / fv-scale, -28999, 28999) with division truncated toward zero; psqt = (sum of square contributions + lion) / 2 truncated toward zero".to_owned());
+            Ok(lines)
+        }
+        nnue::network::Network::Simple(net) => {
+            let d = net.breakdown(position).map_err(|error| error.to_string())?;
+            Ok(vec![format!("evaluation {}", d.value), "structure Simple".to_owned(), "feature-set HalfKPVm".to_owned(), format!("dense {}", d.out), format!("fv-scale {}", d.fv_scale), "note evaluation = clamp(dense / fv-scale, -28999, 28999) with division truncated toward zero".to_owned()])
+        }
+    }
 }
 
 /// 置換表の項目を、詰み手数補正後の探索値、静的評価、および記録手のUSI表記へ変換する。
@@ -2488,7 +2497,7 @@ mod tests {
         complete
     }
 
-    const TEST_NETWORK: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/nets/nnue-epoch0.bin");
+    const TEST_NETWORK: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/nets/test-layer-stack.bin");
 
     fn ready_response() -> String {
         use sha2::{Digest, Sha256};
@@ -4850,17 +4859,84 @@ mod tests {
             &mut protocol,
             &format!("position sfen {INITIAL_BOARD} - 1\neval\n"),
         );
-        let score = nnue::evaluate(&weights, protocol.engine().unwrap().game().position());
+        let score = weights
+            .evaluate(protocol.engine().unwrap().game().position())
+            .unwrap();
         assert!(
             output.contains(&format!("info string evaluation {score}\n")),
             "{output}"
         );
-        assert!(output.contains("integer truncation"));
+        assert!(output.contains("division truncated toward zero"));
         assert!(output.contains("info string lion "));
-        let rows: Vec<_> = output.lines().skip(3).take(12).collect();
+        let rows: Vec<_> = output.lines().skip(4).take(12).collect();
         assert_eq!(rows.len(), 12);
         for row in rows {
             assert_eq!(row.split_whitespace().count(), 15);
+        }
+    }
+
+    #[test]
+    fn diagnostic_evaluation_obeys_structure_order_and_integer_arithmetic() {
+        use crate::eval::nnue::network::{
+            Network,
+            test_util::{fixed_layer_stack, fixed_simple},
+        };
+        for network in [
+            Network::LayerStack(fixed_layer_stack()),
+            Network::Simple(fixed_simple()),
+        ] {
+            for position in minase_core::test_util::bench_positions() {
+                let lines = diagnostic_evaluation(&position, &network).unwrap();
+                let number = |index: usize, name: &str| -> i64 {
+                    lines[index]
+                        .strip_prefix(&format!("{name} "))
+                        .unwrap()
+                        .parse()
+                        .unwrap()
+                };
+                let evaluation = number(0, "evaluation");
+                assert_eq!(evaluation, i64::from(network.evaluate(&position).unwrap()));
+                match &network {
+                    Network::LayerStack(_) => {
+                        assert_eq!(lines[1], "structure LayerStack");
+                        assert_eq!(lines[2], "feature-set P");
+                        let mut sum = 0_i64;
+                        for (rank, line) in lines[4..16].iter().enumerate() {
+                            let cells: Vec<_> = line.split_whitespace().collect();
+                            assert_eq!(cells[0], char::from(b'a' + rank as u8).to_string());
+                            assert_eq!(cells.len(), 13);
+                            sum += cells[1..]
+                                .iter()
+                                .map(|x| x.parse::<i64>().unwrap())
+                                .sum::<i64>();
+                        }
+                        let lion = number(16, "lion");
+                        let psqt = number(17, "psqt");
+                        let dense = number(18, "dense");
+                        let scale = number(19, "fv-scale");
+                        assert_eq!(psqt, (sum + lion) / 2);
+                        assert_eq!(evaluation, ((dense + psqt) / scale).clamp(-28999, 28999));
+                        assert_eq!(
+                            lines[20],
+                            "note evaluation = clamp((dense + psqt) / fv-scale, -28999, 28999) with division truncated toward zero; psqt = (sum of square contributions + lion) / 2 truncated toward zero"
+                        );
+                        assert_eq!(lines.len(), 21);
+                    }
+                    Network::Simple(_) => {
+                        assert_eq!(lines[1], "structure Simple");
+                        assert_eq!(lines[2], "feature-set HalfKPVm");
+                        assert_eq!(
+                            evaluation,
+                            (number(3, "dense") / number(4, "fv-scale")).clamp(-28999, 28999)
+                        );
+                        assert_eq!(
+                            lines[5],
+                            "note evaluation = clamp(dense / fv-scale, -28999, 28999) with division truncated toward zero"
+                        );
+                        assert_eq!(lines.len(), 6);
+                    }
+                }
+            }
         }
     }
 

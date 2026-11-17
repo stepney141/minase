@@ -11,7 +11,7 @@ use minase_core::test_util::{
     bench_positions, position_from_codes, reflect_ranks_and_swap_colors, sampled_random_positions,
     sq,
 };
-use minase_core::{Move, MoveGenerator, MoveRules, PieceCode, PieceKind};
+use minase_core::{Move, MoveGenerator, MoveRules, PieceCode, PieceKind, Square};
 use std::num::NonZeroU64;
 
 mod format;
@@ -74,6 +74,74 @@ fn specimens() -> Vec<Position> {
         .into_iter()
         .chain(sampled_random_positions(MoveRules::standard()))
         .collect()
+}
+
+/// 固定ネットは静かな局面を区別し、駒割との差を50 cp以内に保つ。
+#[test]
+fn fixed_layer_stack_dense_contribution_is_visible_and_bounded() {
+    let net = fixed_layer_stack();
+    let mut values = std::collections::BTreeSet::new();
+    let mut max_difference = 0;
+    for p in specimens() {
+        let b = net.breakdown(&p);
+        values.insert(b.dense / b.fv_scale);
+        let material: i32 = Square::all()
+            .filter_map(|s| p.piece_at(s))
+            .map(|piece| {
+                let sign = if piece.color().unwrap() == p.side_to_move() {
+                    1
+                } else {
+                    -1
+                };
+                sign * crate::eval::handcrafted::piece_value(piece.kind().unwrap())
+            })
+            .sum();
+        max_difference = max_difference.max((net.evaluate(&p) - material).abs());
+    }
+    let maximum = values.iter().map(|v| v.abs()).max().unwrap();
+    eprintln!(
+        "LayerStack: dense max={maximum} cp, distinct={}, material difference={max_difference} cp",
+        values.len()
+    );
+    assert!((15..=50).contains(&maximum));
+    assert!(values.len() >= 20);
+    assert!(max_difference <= 50);
+}
+
+#[test]
+fn fixed_networks_distinguish_initial_legal_moves() {
+    let root = Position::initial();
+    for net in [
+        Network::LayerStack(fixed_layer_stack()),
+        Network::Simple(fixed_simple()),
+    ] {
+        let values: std::collections::BTreeSet<_> = legal_moves(&root)
+            .into_iter()
+            .map(|mv| {
+                let mut child = root.clone();
+                child.make_move_unchecked(mv, MoveRules::standard());
+                net.evaluate(&child).unwrap()
+            })
+            .collect();
+        eprintln!(
+            "{:?}: initial child distinct={}",
+            net.feature_set(),
+            values.len()
+        );
+        assert!(values.len() >= 10);
+    }
+}
+
+#[test]
+fn fixed_simple_bench_scores_are_visible() {
+    let net = fixed_simple();
+    let maximum = bench_positions()
+        .iter()
+        .map(|p| net.evaluate(p).unwrap().abs())
+        .max()
+        .unwrap();
+    eprintln!("Simple: bench max={maximum} cp");
+    assert!(maximum >= 15);
 }
 
 /// 第1層もi64で加算し、剰余演算や製品の活性化関数を用いない参照。

@@ -10,7 +10,7 @@ use std::{
     sync::atomic::{AtomicU64, Ordering},
 };
 
-const NETWORK: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/nets/nnue-epoch0.bin");
+const NETWORK: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/nets/test-layer-stack.bin");
 struct Directory(PathBuf);
 impl Directory {
     fn new() -> Self {
@@ -136,12 +136,15 @@ fn same_path_reset_discards_network_and_hashes_the_entire_replacement() {
     let (result, output) = run(&mut protocol, &setup);
     result.unwrap();
     assert_eq!(output, ready(&bytes));
-    // MNUE版5の勝率尺度だけを変える。本体のチェックサムは同じでも識別子は変わる。
+    // 除数だけを変えた有効なネットでもファイル全体の識別子は変わる。
     let old = read_network_file(&path).unwrap();
-    bytes[108..112].copy_from_slice(&1234.0_f32.to_le_bytes());
+    let mut parameters = minase::eval::nnue::network::test_util::layer_stack_parameters();
+    parameters.fv_scale *= 2;
+    bytes = minase::eval::nnue::network::LayerStackNetwork::new(parameters)
+        .unwrap()
+        .encode();
     fs::write(&path, &bytes).unwrap();
     let new = read_network_file(&path).unwrap();
-    assert_eq!(old.network().checksum(), new.network().checksum());
     assert_ne!(old.sha256(), new.sha256());
     let (result, output) = run(
         &mut protocol,

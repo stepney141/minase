@@ -1001,9 +1001,7 @@ fn random_games_preserve_accumulators_symmetry_and_epoch_zero_evaluation<F: Feat
 fn network_file_width_checksum_and_rules_match_header() {
     let path = std::path::Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/nets/nnue-epoch0.bin"));
     let bytes = std::fs::read(path).unwrap();
-    let file = read_network_file(path).unwrap();
-    assert_eq!(file.sha256(), &<[u8; 32]>::from(Sha256::digest(&bytes)));
-    let nnue = file.network();
+    let nnue = Nnue::decode(&bytes).unwrap();
     assert_eq!(
         nnue.width(),
         u32::from_le_bytes(EPOCH_ZERO[104..108].try_into().unwrap()) as usize

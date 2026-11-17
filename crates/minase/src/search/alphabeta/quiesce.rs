@@ -2,7 +2,6 @@
 
 use core::cmp::Reverse;
 
-use crate::eval::Nnue;
 use crate::eval::{PIECE_STATE_COUNT, piece_state_of};
 use crate::search::snapshot::{SearchRepetition, search_key};
 use crate::search::{MATE, MAX_PLY, REPETITION_BAND_START, in_repetition_band};
@@ -200,7 +199,7 @@ impl Searcher<'_> {
             v,
             correction_from_weighted_sum(
                 self.correction_weighted_sum_at(side, ply),
-                self.nnue.pawn_value(),
+                crate::eval::piece_values::pawn_value(),
             ),
         );
         let best = pruning_eval(
@@ -226,7 +225,7 @@ impl Searcher<'_> {
         alpha = alpha.max(best);
         let buffers = &mut self.qsearch[ply as usize];
         buffers.reset(position);
-        buffers.initialize(position, &self.generator, self.nnue, &self.capture_ranks);
+        buffers.initialize(position, &self.generator, &self.capture_ranks);
         let mut best = best;
         let mut best_move = None;
         let mut candidate_count = 0;
@@ -240,7 +239,6 @@ impl Searcher<'_> {
         'candidates: while let Some(candidate) = self.qsearch[ply as usize].next(
             position,
             &self.generator,
-            self.nnue,
             &self.capture_ranks,
             self.capture_history,
         ) {
@@ -278,13 +276,7 @@ impl Searcher<'_> {
                                 >= params::qsearch_move_limit() as usize
                                 && !is_double_lion)
                                 || futility_value <= alpha
-                                || see_prunes(
-                                    position,
-                                    self.rules,
-                                    self.nnue,
-                                    mv,
-                                    alpha - futility_base,
-                                );
+                                || see_prunes(position, self.rules, mv, alpha - futility_base);
                             if would_prune {
                                 if is_recapture {
                                     self.stats.quiesce_recapture_exemptions += 1;
@@ -337,7 +329,7 @@ impl Searcher<'_> {
                     }
 
                     let see_threshold = alpha - futility_base;
-                    if see_prunes(position, self.rules, self.nnue, mv, see_threshold) {
+                    if see_prunes(position, self.rules, mv, see_threshold) {
                         if self.checking_move_exempts_qsearch_pruning(
                             position,
                             mv,
@@ -362,8 +354,7 @@ impl Searcher<'_> {
                     // 同じ候補が厳しい閾値を通過したなら、下限でも枝刈りしない。
                     see_floor_passed = see_threshold >= self.qsearch_see_floor;
                 }
-                if !see_floor_passed
-                    && see_prunes(position, self.rules, self.nnue, mv, self.qsearch_see_floor)
+                if !see_floor_passed && see_prunes(position, self.rules, mv, self.qsearch_see_floor)
                 {
                     #[cfg(feature = "search-stats")]
                     {
@@ -400,7 +391,7 @@ impl Searcher<'_> {
                 };
                 self.path_keys.push(path_key);
                 self.path_moves.push(PathMove {
-                    record: Some(MoveRecord::from_undo(self.nnue, &undo)),
+                    record: Some(MoveRecord::from_undo(&undo)),
                     attacking: None,
                 });
                 self.pending_accumulators[(ply + 1) as usize] = Some(PendingAccumulator {
@@ -473,12 +464,12 @@ pub(super) struct QsearchCapture {
 }
 
 impl QsearchCapture {
-    fn new(nnue: &Nnue, capture: CaptureCandidate, captured_value: i32, history: i32) -> Self {
+    fn new(capture: CaptureCandidate, captured_value: i32, history: i32) -> Self {
         let piece = capture.piece;
         Self {
             captured_value,
             history,
-            attacker_value: nnue.piece_value(piece),
+            attacker_value: crate::eval::piece_values::piece_value(piece),
             origin_key: (
                 piece.kind().expect("capture origin has a kind").index() as u8,
                 capture.mv.from.raw(),
@@ -497,16 +488,18 @@ pub(super) struct CaptureRanks {
 }
 
 impl CaptureRanks {
-    pub(super) fn new(nnue: &Nnue) -> Self {
+    pub(super) fn new() -> Self {
         let mut states: [_; PIECE_STATE_COUNT] = core::array::from_fn(|state| state);
-        states.sort_unstable_by_key(|&state| Reverse(nnue.piece_value_of_state(state)));
+        states.sort_unstable_by_key(|&state| {
+            Reverse(crate::eval::piece_values::piece_value_of_state(state))
+        });
         let mut ranks = Self {
             rank_of_state: [0; PIECE_STATE_COUNT],
             ranks_of_kind: [[0; 2]; PIECE_KIND_COUNT],
             values: Vec::with_capacity(PIECE_STATE_COUNT),
         };
         for state in states {
-            let value = nnue.piece_value_of_state(state);
+            let value = crate::eval::piece_values::piece_value_of_state(state);
             if ranks.values.last() != Some(&value) {
                 ranks.values.push(value);
             }
@@ -601,7 +594,6 @@ impl QsearchBuffers {
         &mut self,
         position: &Position,
         generator: &MoveGenerator,
-        nnue: &Nnue,
         ranks: &CaptureRanks,
     ) {
         let opponent = position.side_to_move().opposite();
@@ -613,9 +605,11 @@ impl QsearchBuffers {
                 .captured
                 .into_iter()
                 .flatten()
-                .map(|square| nnue.piece_value(piece_at_for_ordering(position, square)))
+                .map(|square| {
+                    crate::eval::piece_values::piece_value(piece_at_for_ordering(position, square))
+                })
                 .sum();
-            let mut candidate = QsearchCapture::new(nnue, capture, captured_value, 0);
+            let mut candidate = QsearchCapture::new(capture, captured_value, 0);
             candidate.seq = self.special.len() as u16;
             self.special.push(candidate);
         });
@@ -670,7 +664,6 @@ impl QsearchBuffers {
         &mut self,
         position: &Position,
         generator: &MoveGenerator,
-        nnue: &Nnue,
         ranks: &CaptureRanks,
         capture_history: &CaptureHistory,
     ) -> Option<()> {
@@ -698,8 +691,8 @@ impl QsearchBuffers {
         self.group.clear();
         self.cursor = 0;
         generator.emit_ordinary_captures(position, &self.capturers, targets, &mut |capture| {
-            let history = capture_history.read(position, nnue, capture.mv);
-            let mut candidate = QsearchCapture::new(nnue, capture, value, history);
+            let history = capture_history.read(position, capture.mv);
+            let mut candidate = QsearchCapture::new(capture, value, history);
             candidate.seq = self.group.len() as u16;
             self.group.push(candidate);
         });
@@ -710,7 +703,7 @@ impl QsearchBuffers {
             self.group
                 .extend(self.special[special_start..self.special_cursor].iter().map(
                     |&candidate| QsearchCapture {
-                        history: capture_history.read(position, nnue, candidate.capture.mv),
+                        history: capture_history.read(position, candidate.capture.mv),
                         ..candidate
                     },
                 ));
@@ -728,7 +721,6 @@ impl QsearchBuffers {
         &mut self,
         position: &Position,
         generator: &MoveGenerator,
-        nnue: &Nnue,
         ranks: &CaptureRanks,
         capture_history: &CaptureHistory,
     ) -> Option<QsearchCapture> {
@@ -739,10 +731,9 @@ impl QsearchBuffers {
             let captured_value = captured
                 .into_iter()
                 .flatten()
-                .map(|s| nnue.piece_value(piece_at_for_ordering(position, s)))
+                .map(|s| crate::eval::piece_values::piece_value(piece_at_for_ordering(position, s)))
                 .sum();
             return Some(QsearchCapture::new(
-                nnue,
                 CaptureCandidate {
                     mv,
                     piece: piece_at_for_ordering(position, mv.from),
@@ -759,7 +750,7 @@ impl QsearchBuffers {
                     return Some(candidate);
                 }
             }
-            self.generate_group(position, generator, nnue, ranks, capture_history)?;
+            self.generate_group(position, generator, ranks, capture_history)?;
         }
     }
 }

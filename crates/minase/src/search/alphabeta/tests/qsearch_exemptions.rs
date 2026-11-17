@@ -289,14 +289,8 @@ fn qsearch_see_threshold_exempts_recapture_promotion_and_check() {
         zero_position_correction(searcher, &recapture_board);
         searcher.delta_margin = 0;
         searcher.qsearch_see_floor = -INFINITY;
-        assert!(see_prunes(
-            &recapture_board,
-            engine_rules(),
-            searcher.nnue,
-            recapture,
-            0,
-        ));
-        let alpha = evaluate(searcher.nnue, &recapture_board);
+        assert!(see_prunes(&recapture_board, engine_rules(), recapture, 0,));
+        let alpha = evaluate(searcher.network, &recapture_board);
         assert!(qsearch_at_leaf(searcher, &recapture_board, alpha, Some(recapture.to)).is_some());
         assert_eq!(searcher.nodes, 1);
         #[cfg(feature = "search-stats")]
@@ -309,14 +303,8 @@ fn qsearch_see_threshold_exempts_recapture_promotion_and_check() {
         zero_position_correction(searcher, &promotion_board);
         searcher.delta_margin = 0;
         searcher.qsearch_see_floor = -INFINITY;
-        assert!(see_prunes(
-            &promotion_board,
-            engine_rules(),
-            searcher.nnue,
-            promotion,
-            0,
-        ));
-        let alpha = evaluate(searcher.nnue, &promotion_board);
+        assert!(see_prunes(&promotion_board, engine_rules(), promotion, 0,));
+        let alpha = evaluate(searcher.network, &promotion_board);
         assert!(qsearch_at_leaf(searcher, &promotion_board, alpha, None).is_some());
         assert_eq!(searcher.nodes, 1);
         #[cfg(feature = "search-stats")]
@@ -330,14 +318,8 @@ fn qsearch_see_threshold_exempts_recapture_promotion_and_check() {
         zero_position_correction(searcher, &checking_board);
         searcher.delta_margin = 0;
         searcher.qsearch_see_floor = -INFINITY;
-        assert!(see_prunes(
-            &checking_board,
-            engine_rules(),
-            searcher.nnue,
-            checking,
-            0,
-        ));
-        let alpha = evaluate(searcher.nnue, &checking_board);
+        assert!(see_prunes(&checking_board, engine_rules(), checking, 0,));
+        let alpha = evaluate(searcher.network, &checking_board);
         assert!(qsearch_at_leaf(searcher, &checking_board, alpha, None).is_some());
         assert_eq!(searcher.nodes, 1);
         #[cfg(feature = "search-stats")]
@@ -355,7 +337,7 @@ fn qsearch_see_floor_still_prunes_each_exemption_kind() {
         zero_position_correction(searcher, &recapture_board);
         searcher.delta_margin = 0;
         searcher.qsearch_see_floor = 0;
-        let alpha = evaluate(searcher.nnue, &recapture_board);
+        let alpha = evaluate(searcher.network, &recapture_board);
         assert!(qsearch_at_leaf(searcher, &recapture_board, alpha, Some(recapture.to)).is_some());
         assert_eq!(searcher.nodes, 0);
         #[cfg(feature = "search-stats")]
@@ -368,7 +350,7 @@ fn qsearch_see_floor_still_prunes_each_exemption_kind() {
         zero_position_correction(searcher, &promotion_board);
         searcher.delta_margin = 0;
         searcher.qsearch_see_floor = 0;
-        let alpha = evaluate(searcher.nnue, &promotion_board);
+        let alpha = evaluate(searcher.network, &promotion_board);
         assert!(qsearch_at_leaf(searcher, &promotion_board, alpha, None).is_some());
         assert_eq!(searcher.nodes, 0);
         #[cfg(feature = "search-stats")]
@@ -382,7 +364,7 @@ fn qsearch_see_floor_still_prunes_each_exemption_kind() {
         zero_position_correction(searcher, &checking_board);
         searcher.delta_margin = 0;
         searcher.qsearch_see_floor = 0;
-        let alpha = evaluate(searcher.nnue, &checking_board);
+        let alpha = evaluate(searcher.network, &checking_board);
         assert!(qsearch_at_leaf(searcher, &checking_board, alpha, None).is_some());
         assert_eq!(searcher.nodes, 0);
         #[cfg(feature = "search-stats")]

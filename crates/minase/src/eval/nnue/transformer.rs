@@ -70,7 +70,8 @@ impl<I: Indexer> FtAccumulator<I> {
 
     /// 指定視点の累算値を返す。文脈がなければ`None`を返す。
     pub(crate) fn row(&self, perspective: Color) -> Option<&[i16]> {
-        self.contexts[perspective.index()].map(|_| self.rows[perspective.index()].as_ref())
+        self.context(perspective)
+            .map(|_| self.rows[perspective.index()].as_ref())
     }
 
     /// 指定視点の文脈を返す。

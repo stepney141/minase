@@ -4,7 +4,7 @@ use super::*;
 use crate::selfplay_gen::{
     opening::read_openings,
     play::{PlaySettings, play_game_from_opening},
-    test_support::{TemporaryDirectory, epoch_zero_nnue, test_table},
+    test_support::{TemporaryDirectory, fixed_network, test_table},
 };
 use fs2::FileExt;
 use minase::training::records::{Entry, GameRecord, Origin, Outcome, Policy, TeacherKind};
@@ -31,7 +31,7 @@ fn nz_usize(value: usize) -> NonZeroUsize {
 }
 
 fn conditions(
-    nnue: &Nnue,
+    nnue: &Network,
     games: u32,
     chunk_games: u32,
     max_ply: u16,
@@ -42,7 +42,7 @@ fn conditions(
     GenerationConditions::new(
         Rules::LISHOGI,
         COMMIT.to_owned(),
-        *nnue.checksum(),
+        <[u8; 32]>::from(sha2::Sha256::digest(nnue.encode())),
         7,
         nz_u32(games),
         nz_u32(chunk_games),
@@ -85,7 +85,7 @@ fn opening_fixture(directory: &Path, name: &str, plies: &[u32]) -> (Vec<Opening>
 fn run(
     directory: &Path,
     conditions: &GenerationConditions,
-    nnue: &Nnue,
+    nnue: &Network,
     openings: Option<&[Opening]>,
     concurrency: usize,
 ) -> RunReport {
@@ -94,7 +94,7 @@ fn run(
 
 fn direct_reference(
     conditions: &GenerationConditions,
-    nnue: &Nnue,
+    nnue: &Network,
     openings: &[Opening],
 ) -> Vec<u8> {
     let mut writer = Writer::new(Cursor::new(Vec::new()), conditions.header.clone()).unwrap();
@@ -197,7 +197,7 @@ fn assert_report_data_eq(first: &RunReport, second: &RunReport) {
 #[test]
 fn reassembled_teacher_matches_direct_writer_bytes() {
     let temporary = TemporaryDirectory::new();
-    let nnue = epoch_zero_nnue();
+    let nnue = fixed_network();
     let (openings, checksum) = opening_fixture(&temporary.0, "reference", &[60; 5]);
     let conditions = conditions(&nnue, 5, 2, 64, 1, Some(checksum), false);
     let output = temporary.0.join("output");
@@ -228,7 +228,7 @@ fn reassembled_teacher_matches_direct_writer_bytes() {
 #[test]
 fn reassembly_statistics_match_hand_counted_records() {
     let temporary = TemporaryDirectory::new();
-    let nnue = epoch_zero_nnue();
+    let nnue = fixed_network();
     let conditions = conditions(&nnue, 5, 3, 64, 1, None, false);
     let output = temporary.0.join("output");
     write_config(&output, &conditions);
@@ -308,7 +308,7 @@ fn reassembly_statistics_match_hand_counted_records() {
 #[test]
 fn resume_regenerates_only_the_missing_chunk() {
     let temporary = TemporaryDirectory::new();
-    let nnue = epoch_zero_nnue();
+    let nnue = fixed_network();
     let (openings, checksum) = opening_fixture(&temporary.0, "resume", &[60; 5]);
     let conditions = conditions(&nnue, 5, 2, 64, 1, Some(checksum), false);
     let output = temporary.0.join("output");
@@ -354,7 +354,7 @@ fn resume_regenerates_only_the_missing_chunk() {
 #[test]
 fn parallelism_changes_only_execution_fields() {
     let temporary = TemporaryDirectory::new();
-    let nnue = epoch_zero_nnue();
+    let nnue = fixed_network();
     let (openings, checksum) = opening_fixture(&temporary.0, "parallel", &[60; 6]);
     let conditions = conditions(&nnue, 6, 2, 64, 1, Some(checksum), false);
     let first_path = temporary.0.join("first");
@@ -382,7 +382,7 @@ fn parallelism_changes_only_execution_fields() {
 #[test]
 fn completed_chunks_skip_transposition_table_construction() {
     let temporary = TemporaryDirectory::new();
-    let nnue = epoch_zero_nnue();
+    let nnue = fixed_network();
     let conditions = conditions(&nnue, 1, 1, 1, usize::MAX, None, false);
     let output = temporary.0.join("output");
     write_config(&output, &conditions);
@@ -410,7 +410,7 @@ fn completed_chunks_skip_transposition_table_construction() {
 #[test]
 fn copied_committed_chunks_resume_in_a_new_directory() {
     let temporary = TemporaryDirectory::new();
-    let nnue = epoch_zero_nnue();
+    let nnue = fixed_network();
     let (openings, checksum) = opening_fixture(&temporary.0, "copy", &[60; 5]);
     let conditions = conditions(&nnue, 5, 2, 64, 1, Some(checksum), false);
     let original = temporary.0.join("original");
@@ -447,7 +447,7 @@ fn copied_committed_chunks_resume_in_a_new_directory() {
 #[test]
 fn short_and_empty_chunks_resume_across_parallelism() {
     let temporary = TemporaryDirectory::new();
-    let nnue = epoch_zero_nnue();
+    let nnue = fixed_network();
     let (openings, checksum) = opening_fixture(&temporary.0, "mixed", &[60, 61, 61, 61, 61]);
     let conditions = conditions(&nnue, 5, 2, 61, 1, Some(checksum), false);
     let output = temporary.0.join("output");
@@ -479,7 +479,7 @@ fn short_and_empty_chunks_resume_across_parallelism() {
 #[test]
 fn config_mismatch_names_every_changed_field() {
     let temporary = TemporaryDirectory::new();
-    let nnue = epoch_zero_nnue();
+    let nnue = fixed_network();
     let (openings, checksum) = opening_fixture(&temporary.0, "conditions-a", &[60; 2]);
     let original = conditions(&nnue, 2, 1, 64, 1, Some(checksum), false);
     let output = temporary.0.join("output");
@@ -542,7 +542,7 @@ fn config_mismatch_names_every_changed_field() {
 #[test]
 fn dirty_state_rejects_committed_resume_and_rewrites_without_chunks() {
     let temporary = TemporaryDirectory::new();
-    let nnue = epoch_zero_nnue();
+    let nnue = fixed_network();
     let (openings, checksum) = opening_fixture(&temporary.0, "dirty", &[60; 2]);
     for (saved_dirty, current_dirty) in [(true, false), (false, true)] {
         let saved = conditions(&nnue, 2, 1, 64, 1, Some(checksum.clone()), saved_dirty);
@@ -585,7 +585,7 @@ fn dirty_state_rejects_committed_resume_and_rewrites_without_chunks() {
 #[test]
 fn missing_committed_mnsd_fails_before_table_construction() {
     let temporary = TemporaryDirectory::new();
-    let nnue = epoch_zero_nnue();
+    let nnue = fixed_network();
     let conditions = conditions(&nnue, 2, 2, 1, usize::MAX, None, false);
     let output = temporary.0.join("output");
     write_config(&output, &conditions);
@@ -626,7 +626,7 @@ fn missing_committed_mnsd_fails_before_table_construction() {
 #[test]
 fn chunk_summary_number_must_match_its_file_name() {
     let temporary = TemporaryDirectory::new();
-    let nnue = epoch_zero_nnue();
+    let nnue = fixed_network();
     let conditions = conditions(&nnue, 2, 2, 1, 1, None, false);
     let output = temporary.0.join("output");
     write_config(&output, &conditions);
@@ -667,7 +667,7 @@ fn chunk_summary_number_must_match_its_file_name() {
 #[test]
 fn chunk_summary_first_game_must_match_its_range() {
     let temporary = TemporaryDirectory::new();
-    let nnue = epoch_zero_nnue();
+    let nnue = fixed_network();
     let conditions = conditions(&nnue, 4, 2, 1, 1, None, false);
     let output = temporary.0.join("output");
     write_config(&output, &conditions);
@@ -709,7 +709,7 @@ fn chunk_summary_first_game_must_match_its_range() {
 #[test]
 fn reassembly_rejects_header_range_and_count_errors() {
     let temporary = TemporaryDirectory::new();
-    let nnue = epoch_zero_nnue();
+    let nnue = fixed_network();
     let conditions = conditions(&nnue, 2, 2, 64, 1, None, false);
 
     let header_path = temporary.0.join("header");
@@ -717,7 +717,7 @@ fn reassembly_rejects_header_range_and_count_errors() {
     let wrong_header = Header::new(
         Rules::LISHOGI.to_string(),
         COMMIT.to_owned(),
-        *nnue.checksum(),
+        <[u8; 32]>::from(sha2::Sha256::digest(nnue.encode())),
         TeacherKind::AlphaBeta,
         100,
         8,
@@ -821,7 +821,7 @@ fn reassembly_rejects_header_range_and_count_errors() {
 #[test]
 fn nonempty_and_locked_directories_are_rejected() {
     let temporary = TemporaryDirectory::new();
-    let nnue = epoch_zero_nnue();
+    let nnue = fixed_network();
     let conditions = conditions(&nnue, 1, 1, 1, 1, None, false);
     let nonempty = temporary.0.join("nonempty");
     fs::create_dir(&nonempty).unwrap();
@@ -874,7 +874,7 @@ fn nonempty_and_locked_directories_are_rejected() {
 #[test]
 fn corrupt_external_files_return_typed_errors() {
     let temporary = TemporaryDirectory::new();
-    let nnue = epoch_zero_nnue();
+    let nnue = fixed_network();
     let conditions = conditions(&nnue, 1, 1, 1, 1, None, false);
 
     let config_path = temporary.0.join("bad-config");
@@ -953,7 +953,7 @@ fn corrupt_external_files_return_typed_errors() {
 #[test]
 fn rejected_openings_resume_and_concurrency_preserve_bytes_and_statistics() {
     let temporary = TemporaryDirectory::new();
-    let nnue = epoch_zero_nnue();
+    let nnue = fixed_network();
     let mut conditions = conditions(&nnue, 4, 2, 200, 1, None, false);
     conditions.config.policy.opening_score_limit = 0;
     conditions.config.policy.adjudication_score = 1;
@@ -1005,13 +1005,17 @@ fn rejected_openings_resume_and_concurrency_preserve_bytes_and_statistics() {
     );
 }
 
-/// 同じファイルは再開でき、本体が同じでも勝率尺度が違えば再開を拒否する。
+/// 同じファイルは再開でき、出力の除数が違えば再開を拒否する。
 #[test]
 fn resume_compares_entire_external_network_files() {
     use minase::eval::nnue::read_network_file;
     let temporary = TemporaryDirectory::new();
     let path = temporary.0.join("network.bin");
-    let mut bytes = fs::read(concat!(env!("CARGO_MANIFEST_DIR"), "/nets/nnue-epoch0.bin")).unwrap();
+    let bytes = fs::read(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/nets/test-layer-stack.bin"
+    ))
+    .unwrap();
     fs::write(&path, &bytes).unwrap();
     let first = read_network_file(&path).unwrap();
     let directory = temporary.0.join("output");
@@ -1051,11 +1055,13 @@ fn resume_compares_entire_external_network_files() {
     assert_eq!(resumed.chunks_reused, 2);
     assert_eq!(fs::read(directory.join("teacher.mnsd")).unwrap(), saved);
 
-    // MNUE版5のヘッダの勝率尺度だけを変え、重み本体は保つ。
-    bytes[108..112].copy_from_slice(&(first.network().cp_per_logit() * 2.0).to_le_bytes());
-    fs::write(&path, &bytes).unwrap();
+    // 除数だけを変えた有効なネットも、ファイル全体の識別子で区別する。
+    let mut parameters = minase::eval::nnue::network::test_util::layer_stack_parameters();
+    parameters.fv_scale *= 2;
+    let replacement = minase::eval::nnue::network::LayerStackNetwork::new(parameters).unwrap();
+    fs::write(&path, replacement.encode()).unwrap();
     let second = read_network_file(&path).unwrap();
-    assert_eq!(first.network().checksum(), second.network().checksum());
+    assert_ne!(first.sha256(), second.sha256());
     let error = generate_to_directory(
         &directory,
         &make_conditions(*second.sha256()),

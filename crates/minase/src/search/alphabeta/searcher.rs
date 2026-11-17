@@ -3,8 +3,8 @@
 use std::sync::atomic::Ordering as AtomicOrdering;
 use std::time::Duration;
 
-use crate::eval::Nnue;
-use crate::eval::nnue::accumulator::NnueAccumulator;
+use crate::eval::nnue::network::Network;
+use crate::eval::nnue::network::SearchEvaluator;
 use crate::search::events::StopReason;
 use crate::search::{DRAW_SCORE, MAX_PLY, REPETITION_WIN, SearchRepetition, TranspositionTable};
 use minase_core::board::{BOARD_SQUARE_COUNT, Square};
@@ -71,7 +71,7 @@ impl RepetitionHistory {
 /// ワーカー固有の探索状態を構築する。
 #[allow(clippy::too_many_arguments)]
 pub(super) fn new_searcher<'a>(
-    nnue: &'a Nnue,
+    nnue: &'a Network,
     position: &Position,
     rules: MoveRules,
     repetition: SearchRepetition,
@@ -87,7 +87,7 @@ pub(super) fn new_searcher<'a>(
     continuation_history: &'a ContinuationHistory,
     pawn_history: &'a PawnHistory,
 ) -> Searcher<'a> {
-    let root_accumulator = nnue.refresh_accumulator(position);
+    let evaluator = SearchEvaluator::new(nnue, position);
     let root_pawn_key = pawn_key(position);
     let root_correction_keys = correction_piece_keys(position);
     Searcher {
@@ -101,7 +101,7 @@ pub(super) fn new_searcher<'a>(
         path_state_at_interrupt: None,
         #[cfg(feature = "search-stats")]
         stats: crate::search::SearchStats::default(),
-        nnue,
+        network: nnue,
         rules,
         repetition,
         draw_value,
@@ -135,12 +135,12 @@ pub(super) fn new_searcher<'a>(
         pv: (0..=MAX_PLY)
             .map(|ply| Vec::with_capacity((MAX_PLY - ply) as usize))
             .collect(),
-        capture_ranks: CaptureRanks::new(nnue),
+        capture_ranks: CaptureRanks::new(),
         move_pickers: (0..=MAX_PLY)
             .map(|_| MovePicker::new(None, [None; KILLER_COUNT]))
             .collect(),
         qsearch: (0..=MAX_PLY).map(|_| QsearchBuffers::default()).collect(),
-        accumulators: vec![root_accumulator; MAX_PLY as usize + 1],
+        evaluator,
         pending_accumulators: (0..=MAX_PLY).map(|_| None).collect(),
         material_keys: [material_key(position); MAX_PLY as usize + 1],
         pawn_keys: [root_pawn_key; MAX_PLY as usize + 1],
@@ -149,8 +149,11 @@ pub(super) fn new_searcher<'a>(
         static_evals: [0; MAX_PLY as usize + 1],
         correction: CorrectionTable::new(correction_values),
         continuation_correction,
-        delta_margin: nnue.pawn_value() * params::delta_margin() / 100,
-        qsearch_see_floor: qsearch_see_floor(nnue.pawn_value(), params::qsearch_see_margin()),
+        delta_margin: crate::eval::piece_values::pawn_value() * params::delta_margin() / 100,
+        qsearch_see_floor: qsearch_see_floor(
+            crate::eval::piece_values::pawn_value(),
+            params::qsearch_see_margin(),
+        ),
         history,
         capture_history,
         continuation_history,
@@ -193,12 +196,11 @@ pub(super) struct MoveRecord {
 
 impl MoveRecord {
     /// 適用済みの着手について、`Undo`が保持する着手前の情報から記録を作る。
-    pub(super) fn from_undo(nnue: &Nnue, undo: &Undo) -> Self {
+    pub(super) fn from_undo(undo: &Undo) -> Self {
         Self {
             mv: undo.mv,
             piece: undo.moved_piece_before,
             captured: captured_kind_for_history(
-                nnue,
                 undo.captured
                     .iter()
                     .flatten()
@@ -269,7 +271,7 @@ pub(super) struct Searcher<'a> {
     #[cfg(feature = "search-stats")]
     pub(super) stats: crate::search::SearchStats,
     /// 探索中に使う検証済み学習NNUE。
-    pub(super) nnue: &'a Nnue,
+    pub(super) network: &'a Network,
     /// 探索内の着手適用に使う規則。
     pub(super) rules: MoveRules,
     /// 採用中の反復規則と、規則が要する根の時点の状態。
@@ -344,7 +346,7 @@ pub(super) struct Searcher<'a> {
     /// ワーカー内で共有する捕獲価値の順位。
     pub(super) capture_ranks: CaptureRanks,
     /// plyごとのNNUE累算値。
-    pub(super) accumulators: Vec<NnueAccumulator>,
+    pub(super) evaluator: SearchEvaluator<'a>,
     /// 評価または子の探索まで保留する更新。親は子へ進む前に必ず確定する。
     pub(super) pending_accumulators: Vec<Option<PendingAccumulator>>,
     /// plyごとの駒種別枚数のハッシュ。null moveでは変化しない。
@@ -393,19 +395,9 @@ impl Searcher<'_> {
         if pending.computed {
             return;
         }
-        let (parents, children) = self.accumulators.split_at_mut(index);
         match &pending.update {
-            AccumulatorUpdate::Move(undo) => self.nnue.update_accumulator_after_move(
-                &parents[index - 1],
-                &mut children[0],
-                position,
-                undo,
-            ),
-            AccumulatorUpdate::Null(lion) => self.nnue.update_accumulator_after_null(
-                &parents[index - 1],
-                &mut children[0],
-                *lion,
-            ),
+            AccumulatorUpdate::Move(undo) => self.evaluator.update_after_move(ply, position, undo),
+            AccumulatorUpdate::Null(lion) => self.evaluator.update_after_null(ply, *lion),
         }
         pending.computed = true;
     }
@@ -414,10 +406,8 @@ impl Searcher<'_> {
     pub(super) fn evaluate_at(&mut self, position: &Position, ply: u32) -> i32 {
         self.ensure_accumulator(position, ply);
         #[cfg(feature = "invariants")]
-        self.nnue
-            .assert_accumulator(position, &self.accumulators[ply as usize], ply);
-        self.nnue
-            .evaluate_accumulator(&self.accumulators[ply as usize], position.side_to_move())
+        self.evaluator.assert_accumulator(position, ply);
+        self.evaluator.evaluate(ply, position.side_to_move())
     }
 
     /// 子の探索終了後に実着手のUndoを回収し、保留記録を消す。

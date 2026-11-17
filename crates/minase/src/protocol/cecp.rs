@@ -269,7 +269,7 @@ impl CecpProtocol {
             .searcher
             .as_mut()
             .ok_or_else(|| io::Error::other("searcher is busy"))?;
-        if searcher.nnue().is_none()
+        if searcher.network().is_none()
             && let Err(error) = searcher.prepare()
         {
             writeln!(output, "tellusererror {error}")?;
@@ -1180,7 +1180,7 @@ mod tests {
             concat!(
                 "option EvalFile=",
                 env!("CARGO_MANIFEST_DIR"),
-                "/nets/nnue-epoch0.bin\n"
+                "/nets/test-layer-stack.bin\n"
             ),
         );
         protocol

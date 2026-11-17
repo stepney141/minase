@@ -63,7 +63,7 @@ fn play(game: &mut Game, moves: &[Move]) {
     }
 }
 
-fn with_snapshot(snapshot: &SearchSnapshot, nnue: &Nnue, test: impl FnOnce(&mut Searcher<'_>)) {
+fn with_snapshot(snapshot: &SearchSnapshot, nnue: &Network, test: impl FnOnce(&mut Searcher<'_>)) {
     with_repetition_root_searcher(
         nnue,
         snapshot.position(),
@@ -91,7 +91,7 @@ fn best_allowed_leaf(searcher: &Searcher<'_>, board: &Position, forbidden: Move)
                     .iter()
                     .all(|&reply| child.captured_squares(reply).iter().all(Option::is_none))
             );
-            -evaluate(searcher.nnue, &child)
+            -evaluate(searcher.network, &child)
         })
         .max()
         .unwrap()
@@ -99,7 +99,7 @@ fn best_allowed_leaf(searcher: &Searcher<'_>, board: &Position, forbidden: Move)
 
 #[test]
 fn articles_31_r2_and_23_skip_repetitions_of_start_history_and_path() {
-    let nnue = epoch_zero_nnue();
+    let nnue = fixed_network();
     for prefix in [false, true] {
         for history_plies in [0, 2, 3] {
             let (mut game, cycle) = cycle_fixture(RepetitionRule::R2, prefix);
@@ -143,7 +143,7 @@ fn articles_31_r2_and_23_skip_repetitions_of_start_history_and_path() {
 
 #[test]
 fn articles_31_r3_and_23_count_root_once_and_allow_only_second_and_third_occurrences() {
-    let nnue = epoch_zero_nnue();
+    let nnue = fixed_network();
     for occurrences in 1..=3 {
         for history_plies in [0, 2, 3] {
             let (mut game, cycle) = cycle_fixture(RepetitionRule::R3, false);
@@ -215,7 +215,7 @@ fn articles_31_r3_and_23_count_root_once_and_allow_only_second_and_third_occurre
 
 #[test]
 fn articles_31_r3_and_23_add_occurrences_across_history_and_path() {
-    let nnue = epoch_zero_nnue();
+    let nnue = fixed_network();
     for history_cycles in 0..=2 {
         let (mut game, cycle) = cycle_fixture(RepetitionRule::R3, false);
         for _ in 0..history_cycles {
@@ -234,7 +234,7 @@ fn articles_31_r3_and_23_add_occurrences_across_history_and_path() {
     }
 }
 
-fn search_snapshot(snapshot: &SearchSnapshot, nnue: &Nnue, depth: u32) -> SearchResult {
+fn search_snapshot(snapshot: &SearchSnapshot, nnue: &Network, depth: u32) -> SearchResult {
     let threads = worker_count(1);
     let mut histories = crate::search::HistoryTables::new(threads);
     zero_correction_histories(&mut histories);
@@ -251,7 +251,7 @@ fn search_snapshot(snapshot: &SearchSnapshot, nnue: &Nnue, depth: u32) -> Search
 
 #[test]
 fn articles_31_r2_and_23_do_not_mix_the_forbidden_draw_into_the_best_legal_score() {
-    let nnue = epoch_zero_nnue();
+    let nnue = fixed_network();
     let mut results = Vec::new();
     for rule in [RepetitionRule::R1, RepetitionRule::R2] {
         let (mut game, cycle) = cycle_fixture(rule, false);
@@ -333,7 +333,7 @@ fn trapped_fixture(rule: RepetitionRule) -> (Game, [Move; 4]) {
 #[test]
 fn articles_31_r2_r3_and_23_all_forbidden_moves_lose_in_the_repetition_band() {
     check_no_generated_moves_keep_the_mate_score();
-    let nnue = epoch_zero_nnue();
+    let nnue = fixed_network();
     for rule in [RepetitionRule::R2, RepetitionRule::R3] {
         let (mut game, cycle) = trapped_fixture(rule);
         if rule == RepetitionRule::R3 {
@@ -418,7 +418,7 @@ fn check_no_generated_moves_keep_the_mate_score() {
         ),
     );
     let snapshot = SearchSnapshot::from_game(&game).unwrap();
-    let nnue = epoch_zero_nnue();
+    let nnue = fixed_network();
     with_snapshot(&snapshot, &nnue, |searcher| {
         let mut current = snapshot.position().clone();
         push_path_move(searcher, &mut current, Some(step(sq(10, 0), sq(10, 1))));
@@ -436,7 +436,7 @@ fn check_no_generated_moves_keep_the_mate_score() {
 #[test]
 pub(super) fn articles_31_r2_and_23_forbidden_tt_killer_and_quiet_moves_do_not_consume_ranks_or_nodes()
  {
-    let nnue = epoch_zero_nnue();
+    let nnue = fixed_network();
     // 白の候補は王3手、金6手、歩1手であり、金の戻り1手だけが禁止される。
     // 禁止手を除いた候補数と、現在の静かな手の上限から探索件数を求める。
     let mut game = Game::from_position(
@@ -636,7 +636,7 @@ fn articles_31_r2_r3_and_23_p2_waiting_rights_do_not_hide_a_repetition() {
         let snapshot = SearchSnapshot::from_game(&game).unwrap();
         assert!(waiting.promotion_deferred().contains(sq(4, 8)));
         assert_eq!(snapshot.history_keys()[1], waiting.zobrist());
-        with_snapshot(&snapshot, &epoch_zero_nnue(), |searcher| {
+        with_snapshot(&snapshot, &fixed_network(), |searcher| {
             let mut current = snapshot.position().clone();
             let before = current.clone();
             assert_eq!(
@@ -673,7 +673,7 @@ fn articles_31_r2_r3_and_23_p2_waiting_rights_do_not_hide_a_repetition() {
         // 待機状態を持つ根も、成り権を含めず経路の先頭へ積む。
         let root_game = Game::from_position(game.rules(), waiting.clone());
         let root_snapshot = SearchSnapshot::from_game(&root_game).unwrap();
-        with_snapshot(&root_snapshot, &epoch_zero_nnue(), |searcher| {
+        with_snapshot(&root_snapshot, &fixed_network(), |searcher| {
             assert_eq!(searcher.path_keys, vec![waiting.zobrist()]);
         });
     }
@@ -681,7 +681,7 @@ fn articles_31_r2_r3_and_23_p2_waiting_rights_do_not_hide_a_repetition() {
 
 #[test]
 fn articles_31_r2_r3_and_23_p2_live_paths_use_repetition_keys_and_tt_keeps_rights() {
-    let nnue = epoch_zero_nnue();
+    let nnue = fixed_network();
     for rule in [RepetitionRule::R2, RepetitionRule::R3] {
         let (game, waiting, _) = p2_fixture(rule);
         let root_game = Game::from_position(game.rules(), waiting.clone());
@@ -737,7 +737,7 @@ fn articles_31_r2_r3_and_23_p2_live_paths_use_repetition_keys_and_tt_keeps_right
 
 #[test]
 fn articles_31_r2_r3_and_23_search_prohibitions_equal_referee_prohibitions() {
-    let nnue = epoch_zero_nnue();
+    let nnue = fixed_network();
     for rule in [RepetitionRule::R2, RepetitionRule::R3] {
         let (mut game, cycle) = cycle_fixture(rule, true);
         for occurrence in 1..=if rule == RepetitionRule::R3 { 3 } else { 1 } {
@@ -772,7 +772,7 @@ fn articles_31_r2_r3_and_23_search_prohibitions_equal_referee_prohibitions() {
 
 #[test]
 fn articles_31_r2_r3_and_23_null_move_counts_only_the_latest_subtree() {
-    let nnue = epoch_zero_nnue();
+    let nnue = fixed_network();
     for rule in [RepetitionRule::R2, RepetitionRule::R3] {
         let (mut game, cycle) = cycle_fixture(rule, false);
         if rule == RepetitionRule::R3 {
@@ -830,7 +830,7 @@ fn articles_31_r1_r2_and_23_keep_r1_keys_and_history_equal_to_search_keys() {
     );
     assert_eq!(snapshot.history_keys()[1], search_key(&waiting));
     assert_ne!(snapshot.history_keys()[1], waiting.zobrist());
-    with_snapshot(&snapshot, &epoch_zero_nnue(), |searcher| {
+    with_snapshot(&snapshot, &fixed_network(), |searcher| {
         // R1は適用不能な手であっても局面を変更せず、禁止の判定だけを直ちに終える。
         let mut current = Position::empty(Color::Black);
         let before = current.clone();

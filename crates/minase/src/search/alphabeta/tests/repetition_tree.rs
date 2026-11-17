@@ -216,7 +216,7 @@ fn article_31_r1_search_can_switch_to_a_quiet_move_inside_the_tree() {
         )
         .unwrap();
         let result = crate::search::search(
-            test_nnue(),
+            test_network(),
             &snapshot,
             &depth_limits(3),
             DEFAULT_THREADS,
@@ -366,21 +366,42 @@ fn article_31_r1_two_workers_score_the_path_cycle_ten_times() {
         vec![attack],
     )
     .unwrap();
-    let nnue = test_nnue();
+    let nnue = test_network();
     for attempt in 0..10 {
         let threads = worker_count(2);
-        // 深さ3でfail highが1回増えても、深さ4の窓は2手先まで読める深さ2以上になる。
+        // 根の黒は攻撃的なじっとに限定され、白の静かなじっとで黒の反復負けになる。
+        // 白の獅子と王は黒王から遠く、深さ4では王駒捕獲による、反復勝ちより高い値を得られない。
+        // 白の勝ちを返す応手を先に読み、静的評価による手順の枝刈りに依存させない。
+        let mut child = root.clone();
+        child.make_move_unchecked(attack, engine_rules());
+        let reply = step(sq(8, 8), sq(8, 8));
+        assert!(legal_moves(&child).contains(&reply));
+        let mut returned = child.clone();
+        returned.make_move_unchecked(reply, engine_rules());
+        assert_eq!(search_key(&returned), search_key(&root));
+        let mut table = small_tt();
+        table.store(
+            search_key(&child),
+            0,
+            0,
+            None,
+            Bound::Upper,
+            Some(reply),
+            1,
+            false,
+        );
         let result = crate::search::search(
             nnue,
             &snapshot,
             &depth_limits(4),
             threads,
-            &mut small_tt(),
+            &mut table,
             &mut crate::search::HistoryTables::new(threads),
         )
         .unwrap();
         assert_eq!(result.best_move, attack, "attempt {attempt}");
         assert_eq!(result.score, -(REPETITION_WIN - 2), "attempt {attempt}");
+        assert!(legal_moves(&root).contains(&result.best_move));
         assert_eq!(result.depth, 4);
     }
 }

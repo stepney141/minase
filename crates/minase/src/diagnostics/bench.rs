@@ -17,8 +17,8 @@ use std::io;
 use std::num::{NonZeroU32, NonZeroUsize};
 use std::time::Instant;
 
-use crate::eval::Nnue;
 use crate::eval::nnue::AccumulatorStats;
+use crate::eval::nnue::network::Network;
 use crate::search::{MAX_PLY, SearchLimits, SearchSnapshot, TranspositionTable, search};
 use minase_core::notation::usi;
 use minase_core::{Game, MoveGenerator, Rules, parse_sfen};
@@ -327,7 +327,7 @@ fn median_f64(values: &mut [f64]) -> f64 {
 
 /// 固定局面集を1回探索する。
 fn run_bench(
-    nnue: &Nnue,
+    nnue: &Network,
     rules: Rules,
     limits: &SearchLimits,
     threads: NonZeroUsize,
@@ -408,7 +408,7 @@ fn run_bench(
 
 /// 指定されたネットで、固定局面とJCSA規則を使って探索ベンチを実行する。
 pub fn run(
-    nnue: &crate::eval::Nnue,
+    nnue: &crate::eval::nnue::network::Network,
     arguments: Arguments,
     output: &mut dyn FnMut(&str) -> io::Result<()>,
 ) -> Result<(), Error> {
@@ -581,7 +581,7 @@ mod tests {
         let limits = SearchLimits::new(Some(1), None, None, None).unwrap();
         let nnue = crate::eval::nnue::read_network_file(std::path::Path::new(concat!(
             env!("CARGO_MANIFEST_DIR"),
-            "/nets/nnue-epoch0.bin"
+            "/nets/test-layer-stack.bin"
         )))
         .unwrap()
         .network()
@@ -610,37 +610,36 @@ mod tests {
     /// 全ワーカーの根の再計算を数え、集計を次の実行へ持ち越さないことを検査する。
     #[test]
     fn accumulator_counts_include_all_workers_and_exclude_previous_runs() {
-        use crate::eval::nnue::{
-            ActiveFeatureSet,
-            feature_set::{FeatureSet, Mirror},
-        };
-
-        let nnue = Nnue::decode(include_bytes!("../../nets/nnue-epoch0.bin")).unwrap();
-        let rules = Rules::JCSA;
-        let limits = SearchLimits::new(Some(1), None, None, None).unwrap();
-        let mut table = TranspositionTable::new(1).unwrap();
-        for count in [1, 2] {
-            let threads = NonZeroUsize::new(count).unwrap();
-            for _ in 0..2 {
-                let run = run_bench(
-                    &nnue,
-                    rules,
-                    &limits,
-                    threads,
-                    &mut table,
-                    false,
-                    &mut |_| Ok(()),
-                )
-                .unwrap();
-                let roots = (BENCH_POSITIONS.len() * count) as u64;
-                // P型では根だけを再計算し、HalfKP型では文脈の変更時にも再計算する。
-                if ActiveFeatureSet::MIRROR == Mirror::Shared {
-                    assert_eq!(run.accumulators.refreshes, roots);
-                } else {
-                    assert!(run.accumulators.refreshes >= roots);
+        for nnue in [
+            Network::LayerStack(crate::eval::nnue::network::test_util::fixed_layer_stack()),
+            Network::Simple(crate::eval::nnue::network::test_util::fixed_simple()),
+        ] {
+            let rules = Rules::JCSA;
+            let limits = SearchLimits::new(Some(1), None, None, None).unwrap();
+            let mut table = TranspositionTable::new(1).unwrap();
+            for count in [1, 2] {
+                let threads = NonZeroUsize::new(count).unwrap();
+                for _ in 0..2 {
+                    let run = run_bench(
+                        &nnue,
+                        rules,
+                        &limits,
+                        threads,
+                        &mut table,
+                        false,
+                        &mut |_| Ok(()),
+                    )
+                    .unwrap();
+                    let roots = (BENCH_POSITIONS.len() * count) as u64;
+                    // P型では根だけを再計算し、HalfKP型では文脈の変更時にも再計算する。
+                    if matches!(nnue, Network::LayerStack(_)) {
+                        assert_eq!(run.accumulators.refreshes, roots);
+                    } else {
+                        assert!(run.accumulators.refreshes >= roots);
+                    }
+                    assert!(run.accumulators.incremental_updates > 0);
+                    assert_eq!(nnue.take_accumulator_stats(), AccumulatorStats::default());
                 }
-                assert!(run.accumulators.incremental_updates > 0);
-                assert_eq!(nnue.take_accumulator_stats(), AccumulatorStats::default());
             }
         }
     }

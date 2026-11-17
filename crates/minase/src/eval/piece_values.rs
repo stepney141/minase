@@ -6,7 +6,7 @@
 //! 第1世代から後の世代まで探索用の値を固定するためにv0の駒割を出どころとする。
 
 use super::{features::piece_state, handcrafted};
-use minase_core::{Color, PieceCode, PieceKind};
+use minase_core::{PieceCode, PieceKind};
 
 const VALUES: [i32; 47] = build_values();
 
@@ -49,19 +49,31 @@ pub const fn pawn_value() -> i32 {
 }
 
 /// 成れる18種の成りによる価値の差と0の最大値を返す。
-pub fn max_promotion_gain() -> i32 {
-    let mut maximum = 0;
-    for kind in PieceKind::ALL.into_iter().filter(|kind| kind.can_promote()) {
-        let before = PieceCode::new(Color::Black, kind).expect("promotable kind is unpromoted");
-        let after = before.promote().expect("promotable kind has a promotion");
-        maximum = maximum.max(piece_value(after) - piece_value(before));
-    }
-    maximum
+pub const fn max_promotion_gain() -> i32 {
+    MAX_PROMOTION_GAIN
 }
+
+const MAX_PROMOTION_GAIN: i32 = 2115;
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use minase_core::Color;
+
+    #[test]
+    fn promotion_bound_matches_all_promotable_kinds() {
+        let actual = PieceKind::ALL
+            .into_iter()
+            .filter(|kind| kind.can_promote())
+            .map(|kind| {
+                let before = PieceCode::new(Color::Black, kind).unwrap();
+                piece_value(before.promote().unwrap()) - piece_value(before)
+            })
+            .max()
+            .unwrap()
+            .max(0);
+        assert_eq!(max_promotion_gain(), actual);
+    }
 
     #[test]
     fn all_states_follow_v0_piece_kinds() {

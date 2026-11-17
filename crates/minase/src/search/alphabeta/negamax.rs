@@ -254,8 +254,10 @@ impl Searcher<'_> {
             raw
         };
         let correction_weighted_sum = self.correction_weighted_sum_at(side, ply);
-        let correction =
-            correction_from_weighted_sum(correction_weighted_sum, self.nnue.pawn_value());
+        let correction = correction_from_weighted_sum(
+            correction_weighted_sum,
+            crate::eval::piece_values::pawn_value(),
+        );
         let static_eval = corrected_static_eval(raw, correction);
         self.static_evals[ply as usize] = static_eval;
         self.update_eval_difference_histories(ply, static_eval, self.tt_hits[ply as usize]);
@@ -273,7 +275,7 @@ impl Searcher<'_> {
         let razoring_node = all_node
             && !self.seek_mate
             && window_outside_bands
-            && eval < alpha - razoring_margin(self.nnue.pawn_value(), depth);
+            && eval < alpha - razoring_margin(crate::eval::piece_values::pawn_value(), depth);
         let late_move_node = window_outside_bands;
         let mut royal_attacked = None;
         // Stockfish src/search.cpp:1022-1033。余裕値が負でもβ未満の値では打ち切らない。
@@ -289,7 +291,7 @@ impl Searcher<'_> {
             && eval >= beta
             && eval
                 - reverse_futility_margin(
-                    self.nnue.pawn_value(),
+                    crate::eval::piece_values::pawn_value(),
                     depth,
                     tt_hit.is_some(),
                     improving,
@@ -330,7 +332,7 @@ impl Searcher<'_> {
                 depth,
                 static_eval,
                 beta,
-                self.nnue.pawn_value(),
+                crate::eval::piece_values::pawn_value(),
                 improving,
                 self.prior_nmp_fail_high[ply as usize],
             )
@@ -341,7 +343,7 @@ impl Searcher<'_> {
                     depth,
                     static_eval,
                     beta,
-                    self.nnue.pawn_value(),
+                    crate::eval::piece_values::pawn_value(),
                 ),
                 self.seek_mate,
             );
@@ -394,7 +396,7 @@ impl Searcher<'_> {
         let mut best_move_rank = 0;
         while let Some((mv, capture)) = self.move_pickers[ply as usize].next(
             position,
-            self.nnue,
+            self.network,
             &self.generator,
             MovePickerContext {
                 quiet_sort_limit,
@@ -423,7 +425,7 @@ impl Searcher<'_> {
             self.move_counts[ply as usize] = index + 1;
             // 枝刈りからstatScoreまで履歴の更新はないので、捕獲升と履歴を1回だけ読む。
             let capture_info = capture.then(|| {
-                let info = CaptureInfo::new(position, self.nnue, mv);
+                let info = CaptureInfo::new(position, mv);
                 let history = self
                     .capture_history
                     .read_parts(info.mover, mv.to, info.victim);
@@ -473,7 +475,7 @@ impl Searcher<'_> {
                         );
                         if lmr_depth < CAPTURE_FUTILITY_LMR_DEPTH_LIMIT
                             && capture_futility_value(
-                                self.nnue.pawn_value(),
+                                crate::eval::piece_values::pawn_value(),
                                 static_eval,
                                 lmr_depth,
                                 info.value,
@@ -497,9 +499,8 @@ impl Searcher<'_> {
                         && see_prunes(
                             position,
                             self.rules,
-                            self.nnue,
                             mv,
-                            -see_margin(self.nnue.pawn_value(), depth, history),
+                            -see_margin(crate::eval::piece_values::pawn_value(), depth, history),
                         )
                     {
                         index += 1;
@@ -544,7 +545,7 @@ impl Searcher<'_> {
                             self.history[side.index()][mv.from.dense_index()][mv.to.dense_index()],
                         );
                         if let Some(futility_value) = futility_pruning_value(
-                            self.nnue.pawn_value(),
+                            crate::eval::piece_values::pawn_value(),
                             static_eval,
                             alpha,
                             lmr_depth,
@@ -568,8 +569,11 @@ impl Searcher<'_> {
                             && mv.mid.is_none()
                             && !*royal_attacked.get_or_insert_with(|| royal_under_attack(position))
                         {
-                            let threshold = -quiet_see_margin(self.nnue.pawn_value(), lmr_depth);
-                            let pruned = see_prunes(position, self.rules, self.nnue, mv, threshold);
+                            let threshold = -quiet_see_margin(
+                                crate::eval::piece_values::pawn_value(),
+                                lmr_depth,
+                            );
+                            let pruned = see_prunes(position, self.rules, mv, threshold);
                             if !pruned {
                                 see_not_pruned_at = Some(threshold);
                             } else if !*gives_check.get_or_insert_with(|| {
@@ -584,11 +588,11 @@ impl Searcher<'_> {
                     // S3のSEEで枝刈りできる場合にだけ判定する（Stockfish src/search.cpp:1205, 1220-1225）。
                     // SEEが閾値以上または判定不能なら、それ以下の閾値でも枝刈りしない。
                     // 王手と判明していない手では、必要なときだけ同じ局面の王手判定を行う。
-                    let threshold = -see_margin(self.nnue.pawn_value(), depth, 0);
+                    let threshold = -see_margin(crate::eval::piece_values::pawn_value(), depth, 0);
                     if gives_check != Some(false)
                         && see_not_pruned_at.is_none_or(|previous| threshold > previous)
                         && !*royal_attacked.get_or_insert_with(|| royal_under_attack(position))
-                        && see_prunes(position, self.rules, self.nnue, mv, threshold)
+                        && see_prunes(position, self.rules, mv, threshold)
                         && *gives_check.get_or_insert_with(|| {
                             check_context.gives_check(position, &self.generator, mv)
                         })
@@ -602,7 +606,7 @@ impl Searcher<'_> {
             // 枝刈りを通った後、減深量を求める前に1回だけ計算する（src/search.cpp:1371-1381）。
             let stat_score = match capture_info {
                 Some((info, history)) => {
-                    capture_stat_score(info.value, self.nnue.pawn_value(), history)
+                    capture_stat_score(info.value, crate::eval::piece_values::pawn_value(), history)
                 }
                 None => self.move_stat_score(position, mv, false, ply),
             };
@@ -633,7 +637,7 @@ impl Searcher<'_> {
                     cutoff_count: self.cutoff_counts[(ply + 1) as usize],
                     alpha,
                     eval,
-                    pawn: self.nnue.pawn_value(),
+                    pawn: crate::eval::piece_values::pawn_value(),
                     correction_weighted_sum,
                     seek_mate_gives_check: self
                         .seek_mate
@@ -781,7 +785,7 @@ impl Searcher<'_> {
                 self.generator
                     .is_legal_move(position, mv, &mut Vec::new(), &mut Vec::new())
             })
-            .map(|mv| move_order_key(position, self.nnue, mv).is_some())
+            .map(|mv| move_order_key(position, mv).is_some())
     }
 
     /// LMRの式を使う手について、詰みを探す局面でだけ王手になるかを返す。
@@ -951,7 +955,7 @@ impl Searcher<'_> {
         self.non_pawn_keys[(ply + 1) as usize] = correction_keys.non_pawn;
         self.path_keys.push(repetition_key);
         self.path_moves.push(PathMove {
-            record: Some(MoveRecord::from_undo(self.nnue, &undo)),
+            record: Some(MoveRecord::from_undo(&undo)),
             attacking: None,
         });
         self.pending_accumulators[(ply + 1) as usize] = Some(PendingAccumulator {
@@ -995,7 +999,7 @@ impl Searcher<'_> {
                 first_depth,
                 value,
                 best,
-                self.nnue.pawn_value(),
+                crate::eval::piece_values::pawn_value(),
             );
             if research_depth > first_depth {
                 score = self

@@ -34,6 +34,7 @@ pub struct SimpleNetwork {
     ft: FeatureTransformer<HalfKpVm>,
     fv_scale: i32,
     dense: Dense,
+    pub(super) accumulator_stats: super::super::stats::SharedStats,
 }
 
 /// 手番側の評価値と、除算前の整数の出力。
@@ -65,6 +66,7 @@ impl SimpleNetwork {
             ft: transformer(p.width, p.ft_biases, p.ft_weights),
             fv_scale: p.fv_scale,
             dense,
+            accumulator_stats: Default::default(),
         })
     }
     /// 第1層の幅を返す。
@@ -162,10 +164,16 @@ impl SimpleNetwork {
     /// 両視点の累算値を0〜127へ制限し、手番側、相手側の順で2H成分に連結する。
     /// L1とL2は積和を6ビット算術右シフトして0〜127へ制限し、最後は出力層の積和を返す。
     fn out(&self, acc: &FtAccumulator<HalfKpVm>, side: Color) -> i32 {
-        let mut input = Vec::with_capacity(2 * self.width());
-        for perspective in [side, side.opposite()] {
+        let mut storage = [0; 2048];
+        let input = &mut storage[..2 * self.width()];
+        for (part, perspective) in [side, side.opposite()].into_iter().enumerate() {
             let row = acc.row(perspective).expect("search checks check_search_root and scores capture of the last royal as mate without evaluation");
-            input.extend(row.iter().map(|&x| x.clamp(0, 127) as u8));
+            for (dst, &x) in input[part * self.width()..(part + 1) * self.width()]
+                .iter_mut()
+                .zip(row)
+            {
+                *dst = x.clamp(0, 127) as u8;
+            }
         }
         let d = &self.dense;
         let columns = 2 * self.width();
@@ -173,7 +181,7 @@ impl SimpleNetwork {
             activation(affine(
                 d.l1_biases[j],
                 &d.l1_weights[j * columns..(j + 1) * columns],
-                &input,
+                input,
             ))
         });
         let h2: [u8; 32] = std::array::from_fn(|k| {

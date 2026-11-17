@@ -6,7 +6,7 @@ use std::sync::atomic::{AtomicBool, AtomicU64, Ordering as AtomicOrdering};
 use std::sync::{Arc, mpsc};
 use std::thread;
 
-use crate::eval::Nnue;
+use crate::eval::nnue::network::Network;
 use crate::search::alphabeta::team::run_search_team;
 use crate::search::clock::{MonotonicClock, SearchClock};
 use crate::search::error::SearchError;
@@ -122,10 +122,10 @@ impl Drop for SearchHandle {
 ///
 /// # Errors
 ///
-/// 外部停止手段を持たない同期版へ無期限探索を指定した場合は
+/// 無期限探索、またはネットが対応しない王駒構成の根を指定した場合は
 /// [`SearchError`]を返す。
 pub fn search(
-    nnue: &Nnue,
+    nnue: &Network,
     snapshot: &SearchSnapshot,
     limits: &SearchLimits,
     threads: NonZeroUsize,
@@ -135,6 +135,8 @@ pub fn search(
     if limits.is_infinite() {
         return Err(SearchError::InfiniteSynchronousSearch);
     }
+    nnue.check_search_root(&snapshot.position)
+        .map_err(SearchError::UnsupportedRoot)?;
     let stop = AtomicBool::new(false);
     Ok(run_search_team(
         nnue,

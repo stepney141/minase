@@ -11,7 +11,7 @@ fn previous_search_records_the_adopted_main_worker_result() {
     let snapshot = snapshot_for(&quiet_midgame());
     let mut histories = HistoryTables::new(DEFAULT_THREADS);
     let outcome = run_search_team(
-        test_nnue(),
+        test_network(),
         &snapshot.position,
         snapshot.rules(),
         snapshot.repetition(),
@@ -45,7 +45,7 @@ fn scaled_search_records_the_last_main_time_reduction() {
     let mut histories = HistoryTables::new(DEFAULT_THREADS);
     assert_eq!(histories.previous_search.time_reduction, 850);
     let outcome = run_search_team(
-        test_nnue(),
+        test_network(),
         &snapshot.position,
         snapshot.rules(),
         snapshot.repetition(),
@@ -79,7 +79,7 @@ fn clock_with_movetime_records_neutral_time_reduction() {
     let mut histories = HistoryTables::new(DEFAULT_THREADS);
     histories.previous_search.time_reduction = 777;
     let outcome = run_search_team(
-        test_nnue(),
+        test_network(),
         &snapshot.position,
         snapshot.rules(),
         snapshot.repetition(),
@@ -109,7 +109,7 @@ fn previous_search_is_cleared_when_every_worker_stops_at_depth_zero() {
     histories.previous_search.score_and_average = Some((123, 456));
     histories.previous_search.time_reduction = 777;
     let outcome = run_search_team(
-        test_nnue(),
+        test_network(),
         &snapshot.position,
         snapshot.rules(),
         snapshot.repetition(),
@@ -176,7 +176,7 @@ fn history_carry_ages_every_worker_once_before_the_first_iteration() {
             .map(|h| h.values().to_vec())
             .collect();
         let outcome = run_search_team(
-            test_nnue(),
+            test_network(),
             &snapshot.position,
             snapshot.rules(),
             snapshot.repetition(),
@@ -245,7 +245,6 @@ fn history_carry_survives_handle_round_trips_and_ages_once_per_go() {
         mid: None,
         promote: false,
     };
-    let nnue = test_nnue();
     for threads in [DEFAULT_THREADS, worker_count(4)] {
         let mut histories = HistoryTables::new(threads);
         for (worker, history) in histories.workers.iter_mut().enumerate() {
@@ -254,12 +253,9 @@ fn history_carry_survives_handle_round_trips_and_ages_once_per_go() {
         for (worker, history) in histories.capture.iter_mut().enumerate() {
             let depth = 30 + worker as u32;
             history.values_mut().fill(0);
-            history.update(&board, nnue, mv, (depth * depth) as i32);
+            history.update(&board, mv, (depth * depth) as i32);
             // 深さ30,31,32,33の二乗は900,961,1024,1089。
-            assert_eq!(
-                history.read(&board, nnue, mv),
-                [900, 961, 1024, 1089][worker]
-            );
+            assert_eq!(history.read(&board, mv), [900, 961, 1024, 1089][worker]);
         }
         let mut table = small_tt();
         for search_id in [801, 802] {
@@ -267,7 +263,7 @@ fn history_carry_survives_handle_round_trips_and_ages_once_per_go() {
             let capture_before: Vec<_> = histories
                 .capture
                 .iter()
-                .map(|h| h.read(&board, nnue, mv))
+                .map(|h| h.read(&board, mv))
                 .collect();
             let handle = start_search_with_clock(
                 crate::search::alphabeta::Engine {
@@ -277,7 +273,7 @@ fn history_carry_survives_handle_round_trips_and_ages_once_per_go() {
                     histories,
                     threads,
                 },
-                Arc::clone(shared_test_nnue()),
+                Arc::clone(shared_test_network()),
                 snapshot_for(&Position::initial()),
                 depth_limits(3),
                 search_id,
@@ -293,7 +289,7 @@ fn history_carry_survives_handle_round_trips_and_ages_once_per_go() {
             histories = engine.histories;
             for (worker, history) in histories.capture.iter().enumerate() {
                 assert_truncated_ratio(
-                    i64::from(history.read(&board, nnue, mv)),
+                    i64::from(history.read(&board, mv)),
                     i64::from(capture_before[worker]) * i64::from(params::capture_history_decay()),
                     100,
                 );
@@ -323,7 +319,7 @@ fn history_carry_orders_quiets_with_a_fresh_transposition_table() {
         for _ in 1..=2 {
             let table = small_tt();
             run_search_team(
-                test_nnue(),
+                test_network(),
                 &board,
                 snapshot.rules(),
                 snapshot.repetition(),
@@ -355,7 +351,7 @@ fn history_carry_orders_quiets_with_a_fresh_transposition_table() {
             };
             let repetition_history = RepetitionHistory::new(&[]);
             let searcher = new_searcher(
-                test_nnue(),
+                test_network(),
                 &board,
                 snapshot.rules(),
                 snapshot.repetition(),
@@ -459,7 +455,7 @@ fn history_carry_workers_update_their_own_table() {
 #[cfg(feature = "tuning")]
 pub(super) fn zero_decay_clears_history_between_searches() {
     let snapshot = snapshot_for(&quiet_midgame());
-    let nnue = test_nnue();
+    let nnue = test_network();
     for threads in [DEFAULT_THREADS, worker_count(4)] {
         let mut histories = HistoryTables::new(threads);
         crate::search::search(
@@ -567,7 +563,7 @@ fn history_moves(searcher: &Searcher<'_>, board: &Position, tt: Option<Move>) ->
     std::iter::from_fn(|| {
         picker.next(
             board,
-            searcher.nnue,
+            searcher.network,
             &searcher.generator,
             searcher_move_picker_context(searcher, 0),
             &std::cell::OnceCell::new(),
@@ -610,7 +606,7 @@ pub(super) fn quiet_history_negamax_updates_only_searched_quiets() {
             let moves = history_moves(searcher, &board, Some(tt_move));
             assert!(moves.iter().any(|&(_, capture)| capture));
             assert!(!royal_under_attack(&board));
-            let static_eval = evaluate(searcher.nnue, &board);
+            let static_eval = evaluate(searcher.network, &board);
             let quiet_see_pruned: Vec<_> = moves
                 .iter()
                 .enumerate()
@@ -625,15 +621,18 @@ pub(super) fn quiet_history_negamax_updates_only_searched_quiets() {
                         assert!(!see_prunes(
                             &board,
                             engine_rules(),
-                            searcher.nnue,
                             mv,
-                            -super::super::pruning::see_margin(searcher.nnue.pawn_value(), 10, 0),
+                            -super::super::pruning::see_margin(
+                                crate::eval::piece_values::pawn_value(),
+                                10,
+                                0
+                            ),
                         ));
                         return false;
                     }
                     assert_eq!(
                         super::super::pruning::futility_pruning_value(
-                            searcher.nnue.pawn_value(),
+                            crate::eval::piece_values::pawn_value(),
                             static_eval,
                             -10,
                             lmr_depth,
@@ -644,10 +643,9 @@ pub(super) fn quiet_history_negamax_updates_only_searched_quiets() {
                     see_prunes(
                         &board,
                         engine_rules(),
-                        searcher.nnue,
                         mv,
                         -super::super::pruning::quiet_see_margin(
-                            searcher.nnue.pawn_value(),
+                            crate::eval::piece_values::pawn_value(),
                             lmr_depth,
                         ),
                     )
@@ -786,16 +784,16 @@ fn quiet_history_excludes_pruned_quiets_on_promotion_cutoff() {
         let leaf_value = |mv| {
             let mut child = board.clone();
             child.make_move_unchecked(mv, engine_rules());
-            -evaluate(test_nnue(), &child)
+            -evaluate(test_network(), &child)
         };
         let beta = leaf_value(winner);
         assert!(leaf_value(tt_move) < beta);
         assert!(!royal_under_attack(&board));
-        let static_eval = evaluate(searcher.nnue, &board);
+        let static_eval = evaluate(searcher.network, &board);
         let lmr_depth = super::super::pruning::pruning_lmr_depth(3, 1, false, false, false);
         assert!(
             super::super::pruning::futility_value(
-                searcher.nnue.pawn_value(),
+                crate::eval::piece_values::pawn_value(),
                 static_eval,
                 beta - 1,
                 lmr_depth,

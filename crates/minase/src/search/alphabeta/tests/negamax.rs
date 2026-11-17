@@ -75,7 +75,7 @@ fn depth_zero_tt_score_does_not_cut_off_depth_one_negamax() {
     assert!(nodes > 1, "深さ1の子を探索しなければならない");
     let hit = table.probe(key, 0).unwrap();
     assert_eq!(hit.value.unwrap().depth, 1);
-    assert_eq!(hit.static_eval, Some(evaluate(test_nnue(), &position)));
+    assert_eq!(hit.static_eval, Some(evaluate(test_network(), &position)));
 }
 
 // 深さ不足の記録に静的評価があれば、探索値では打ち切らず、その静的評価に現在の補正を加えて保持する。
@@ -83,7 +83,7 @@ fn depth_zero_tt_score_does_not_cut_off_depth_one_negamax() {
 pub(super) fn negamax_uses_tt_static_evaluation_before_current_correction() {
     let position = bare_kings();
     with_root_searcher(&position, &[], |searcher| {
-        let evaluated = evaluate(searcher.nnue, &position);
+        let evaluated = evaluate(searcher.network, &position);
         let tt_static_eval = if evaluated == 1_000 { -1_000 } else { 1_000 };
         let correction = position_correction(searcher, position.side_to_move(), 0);
         searcher.tt.store(
@@ -112,7 +112,7 @@ pub(super) fn negamax_uses_tt_static_evaluation_before_current_correction() {
 pub(super) fn negamax_evaluates_when_tt_static_evaluation_is_absent() {
     let position = bare_kings();
     with_root_searcher(&position, &[], |searcher| {
-        let evaluated = evaluate(searcher.nnue, &position);
+        let evaluated = evaluate(searcher.network, &position);
         let correction = position_correction(searcher, position.side_to_move(), 0);
         searcher.tt.store(
             search_key(&position),
@@ -140,7 +140,7 @@ pub(super) fn negamax_evaluates_when_tt_static_evaluation_is_absent() {
 fn negamax_stores_static_eval_only_on_a_tt_miss() {
     let position = bare_kings();
     with_root_searcher(&position, &[], |searcher| {
-        let raw = evaluate(searcher.nnue, &position);
+        let raw = evaluate(searcher.network, &position);
         searcher
             .shared
             .external_stop
@@ -254,7 +254,7 @@ fn null_move_cutoff_without_captures_counts_no_nodes() {
     );
     let mut after_null = position.clone();
     after_null.make_null_move();
-    let expected = -evaluate(test_nnue(), &after_null);
+    let expected = -evaluate(test_network(), &after_null);
     with_root_searcher(&position, &[], |searcher| {
         zero_position_correction(searcher, &after_null);
         assert_eq!(
@@ -331,7 +331,7 @@ fn null_move_jitto_does_not_repeat_pre_null_position() {
     let mut returned = after_null.clone();
     returned.make_move_unchecked(reply, engine_rules());
     assert_eq!(search_key(&returned), search_key(&root));
-    assert!(evaluate(test_nnue(), &root) > DRAW_SCORE);
+    assert!(evaluate(test_network(), &root) > DRAW_SCORE);
 
     with_root_searcher(&root, &history, |searcher| {
         // 深さ0の記録は手順の優先にだけ使い、後手のじっとを最初に読む。
@@ -531,7 +531,7 @@ fn nested_null_move_restores_outer_repetition_scope() {
 #[test]
 fn article_31_r1_null_moves_restore_repetition_scope_after_completion_or_interruption() {
     let root = null_repetition_fixture();
-    let nnue = test_nnue();
+    let nnue = test_network();
     let mut shared_histories = crate::search::HistoryTables::new(DEFAULT_THREADS);
     for nested in [false, true] {
         let external_stop = AtomicBool::new(false);
@@ -686,10 +686,10 @@ fn early_killer_cutoff_skips_losing_capture_only_in_eligible_nodes() {
             searcher.killers[0] = killers;
             // null moveを無効にし、実着手による打ち切りだけを検査する。
             searcher.null_move_ply = Some(0);
-            let static_eval = evaluate(searcher.nnue, &board);
+            let static_eval = evaluate(searcher.network, &board);
             // 親ではrazoring、深さ1のkillerの子ではstand-patによる打ち切りを避ける。
             // 子の評価を親の手番へ戻し、子の静止探索が置換表を読む窓にする。
-            let alpha = static_eval.min(-evaluate(searcher.nnue, &killer_child)) - 1;
+            let alpha = static_eval.min(-evaluate(searcher.network, &killer_child)) - 1;
             let beta = alpha + width;
             // 浅い上界で判定用の評価値をαに置き、reverse futilityを避ける。
             // 記録手の有無と窓は保ち、killerを先に読む条件を変えない。
@@ -849,7 +849,7 @@ fn extended_depth_is_capped_before_tt_probe() {
 fn extended_search_stops_at_max_ply() {
     let board = bare_kings();
     with_root_searcher(&board, &[], |searcher| {
-        let value = evaluate(test_nnue(), &board);
+        let value = evaluate(test_network(), &board);
         set_test_path_ply(searcher, MAX_PLY);
         assert_eq!(
             searcher.negamax(&mut board.clone(), 2, -INFINITY, INFINITY, MAX_PLY, false),

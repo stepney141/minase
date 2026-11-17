@@ -103,7 +103,7 @@ fn snapshot_is_constructed_from_one_game_state() {
 #[test]
 fn synchronous_search_rejects_infinite_limits_without_panicking() {
     let snapshot = snapshot_for(&Position::initial());
-    let nnue = test_nnue();
+    let nnue = test_network();
     let result = crate::search::search(
         nnue,
         &snapshot,

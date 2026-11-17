@@ -15,9 +15,11 @@
 //! 構造記述の長さは1〜16,384バイトであり、再構築した記述との不一致、非0の詰め物、
 //! 途中切れ、末尾の余り、値域と鏡映共有の違反を拒否する。
 
+mod evaluator;
 mod layer_stack;
 mod leb128;
 mod simple;
+pub(crate) use evaluator::SearchEvaluator;
 pub use layer_stack::{LayerStackNetwork, LayerStackParameters};
 pub use simple::{SimpleNetwork, SimpleParameters};
 
@@ -296,6 +298,31 @@ pub enum Network {
 }
 
 impl Network {
+    /// 探索中に王駒の基準を一意に保てる根だけを受理する。
+    pub fn check_search_root(&self, position: &Position) -> Result<(), AnchorError> {
+        match self {
+            Self::LayerStack(_) => Ok(()),
+            Self::Simple(_) => super::input::HalfKpVm::check_search_root(position),
+        }
+    }
+    /// 静かな手の同点破りに使うPSQTの差。Simpleでは生成順を保つため0を返す。
+    pub fn quiet_move_delta(&self, position: &Position, mv: minase_core::Move) -> i64 {
+        match self {
+            Self::LayerStack(net) => net.quiet_move_psqt_delta(position, mv),
+            Self::Simple(_) => 0,
+        }
+    }
+    fn accumulator_stats(&self) -> &super::stats::SharedStats {
+        match self {
+            Self::LayerStack(net) => &net.accumulator_stats,
+            Self::Simple(net) => &net.accumulator_stats,
+        }
+    }
+    /// 全ワーカーを回収した後、累算器の更新回数を回収して0へ戻す。
+    pub fn take_accumulator_stats(&self) -> super::AccumulatorStats {
+        super::stats::take(self.accumulator_stats())
+    }
+
     /// 先頭の版で構造を選び、形式と全ての値域・共有条件を検査する。
     pub fn decode(bytes: &[u8]) -> Result<Self, FormatError> {
         match Reader::new(bytes).u32("version")? {

@@ -93,7 +93,7 @@ fn run_fixed_scaled_ponder(
         ponder_search_started: false,
     };
     run_main_worker_with_iteration_hook(
-        test_nnue(),
+        test_network(),
         &position,
         engine_rules(),
         SearchRepetition::R1 {
@@ -155,7 +155,7 @@ fn with_timed_ponder_searcher(
     let correction_values = new_correction_values();
     let repetition_history = RepetitionHistory::new(&[]);
     let mut searcher = new_searcher(
-        test_nnue(),
+        test_network(),
         &position,
         engine_rules(),
         SearchRepetition::R1 {
@@ -391,7 +391,7 @@ fn ponder_ignores_time_until_hit_but_obeys_depth_and_nodes() {
     let stop = AtomicBool::new(false);
     let hit_ns = AtomicU64::new(u64::MAX);
     let outcome = run_search_team(
-        test_nnue(),
+        test_network(),
         &snapshot.position,
         snapshot.rules(),
         snapshot.repetition(),
@@ -435,7 +435,7 @@ fn ponder_sets_mark_after_worker_count_rebuild() {
     assert!(!histories.previous_search.ponder_search_started);
 
     let _ = run_search_team(
-        test_nnue(),
+        test_network(),
         &position,
         engine_rules(),
         SearchRepetition::R1 {
@@ -502,7 +502,7 @@ fn ponderhit_records_only_the_first_notification_even_before_worker_start() {
 fn ponder_rechecks_pre_hit_iterations_once_and_checks_hard_first() {
     let ms = Duration::from_millis;
     let position = Position::initial();
-    let nnue = test_nnue();
+    let nnue = test_network();
     let table = small_tt();
     let mut shared_histories = crate::search::HistoryTables::new(DEFAULT_THREADS);
     let stop = AtomicBool::new(false);
@@ -628,7 +628,7 @@ fn ponder_mate_stop_waits_for_hit_and_stops_before_the_next_iteration() {
         .expect("the test clock must be valid");
     let run = |clock: &dyn SearchClock, hit_ns: &AtomicU64| {
         run_search_team(
-            test_nnue(),
+            test_network(),
             &position,
             engine_rules(),
             SearchRepetition::R1 {
@@ -755,7 +755,7 @@ fn ponder_long_iteration_stops_on_hit_without_spending_hard_budget() {
             let mut continuation_correction =
                 super::super::correction::ContinuationCorrectionHistory::new();
             let completed = run_auxiliary_worker(
-                test_nnue(),
+                test_network(),
                 &position,
                 engine_rules(),
                 SearchRepetition::R1 {
@@ -783,7 +783,7 @@ fn ponder_long_iteration_stops_on_hit_without_spending_hard_budget() {
             completed_depth.store(u64::from(completed.result.depth), AtomicOrdering::Relaxed);
             let repetition_history = RepetitionHistory::new(&[]);
             let mut searcher = new_searcher(
-                test_nnue(),
+                test_network(),
                 &position,
                 engine_rules(),
                 SearchRepetition::R1 {
@@ -861,7 +861,7 @@ fn ponder_team_adopts_completed_auxiliary_result_after_main_recheck() {
     for targeted_with_remaining_time in [false, true] {
         let position = Position::initial();
         let roots = legal_moves(&position);
-        let nnue = test_nnue();
+        let nnue = test_network();
         let table = small_tt();
         let stop = AtomicBool::new(false);
         let hit_ns = AtomicU64::new(u64::MAX);
@@ -1019,7 +1019,7 @@ fn ponder_hit_before_worker_start_obeys_the_iteration_start_budget() {
     let stop = AtomicBool::new(false);
     let hit_ns = AtomicU64::new(0);
     let outcome = run_search_team(
-        test_nnue(),
+        test_network(),
         &snapshot.position,
         snapshot.rules(),
         snapshot.repetition(),
@@ -1048,7 +1048,7 @@ fn ponder_hit_before_worker_start_obeys_the_iteration_start_budget() {
 fn byoyomi_period_skips_ponder_recheck_but_keeps_hard_limit() {
     let ms = Duration::from_millis;
     let position = Position::initial();
-    let nnue = test_nnue();
+    let nnue = test_network();
     let table = small_tt();
     let mut shared_histories = crate::search::HistoryTables::new(DEFAULT_THREADS);
     let stop = AtomicBool::new(false);
@@ -1150,7 +1150,7 @@ fn four_worker_byoyomi_search_and_ponderhit_return_legal_pv_at_deadline() {
                 histories: crate::search::HistoryTables::new(worker_count(4)),
                 threads: worker_count(4),
             },
-            Arc::clone(shared_test_nnue()),
+            Arc::clone(shared_test_network()),
             snapshot_for(&initial),
             limits,
             910,
