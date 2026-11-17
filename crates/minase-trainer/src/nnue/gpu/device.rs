@@ -8,9 +8,9 @@ use std::sync::Arc;
 /// CUDA文脈と、計算・転送それぞれの非同期ストリーム。
 #[derive(Clone, Debug)]
 pub struct Device {
-    pub(super) context: Arc<CudaContext>,
-    pub(super) compute: Arc<CudaStream>,
-    pub(super) transfer: Arc<CudaStream>,
+    pub(in crate::nnue) context: Arc<CudaContext>,
+    pub(in crate::nnue) compute: Arc<CudaStream>,
+    pub(in crate::nnue) transfer: Arc<CudaStream>,
     name: String,
     capability: (i32, i32),
 }
@@ -52,7 +52,7 @@ impl Device {
     }
 }
 
-pub(super) fn pinned_zeros<T: DeviceRepr + ValidAsZeroBits>(
+pub(in crate::nnue) fn pinned_zeros<T: DeviceRepr + ValidAsZeroBits>(
     device: &Device,
     len: usize,
 ) -> Result<PinnedHostSlice<T>> {
@@ -102,6 +102,21 @@ fn options(capability: (i32, i32)) -> CompileOptions {
     }
 }
 
+// 構造ごとのソースにも同じNVRTC設定と不在時のエラーを適用する。
+pub(in crate::nnue) fn compile_sources(
+    sources: &[&str],
+    capability: (i32, i32),
+) -> Result<cudarc::nvrtc::Ptx> {
+    // SAFETY: 実行環境のNVRTC共有ライブラリの存在だけを検査する。
+    if !unsafe { cudarc::nvrtc::sys::is_culib_present() } {
+        return Err(Error::CompilerUnavailable);
+    }
+    Ok(compile_ptx_with_opts(
+        sources.join("\n"),
+        options(capability),
+    )?)
+}
+
 pub(super) struct Kernels {
     pub acc: CudaFunction,
     pub linear: CudaFunction,
@@ -121,12 +136,7 @@ pub(super) struct Kernels {
 }
 impl Kernels {
     pub fn compile(device: &Device) -> Result<Self> {
-        // SAFETY: NVRTC共有ライブラリの存在検査だけを行い、未検証のポインタを渡さない。
-        // Device::newと同じく、実行環境のCUDAライブラリを信頼する。
-        if !unsafe { cudarc::nvrtc::sys::is_culib_present() } {
-            return Err(Error::CompilerUnavailable);
-        }
-        let ptx = compile_ptx_with_opts(source(), options(device.capability))?;
+        let ptx = compile_sources(&[&source()], device.capability)?;
         let module = device.context.load_module(ptx)?;
         Ok(Self {
             acc: module.load_function("forward_acc")?,

@@ -1,8 +1,11 @@
 //! P型LayerStackのCPU学習、再開、およびtatara形式への書き出し。
-//! パラメータとAdamWの状態はf32、参照計算とバッチ内の勾配縮約はf64で保持する。
+//! パラメータ、AdamWの状態、局面ごとの演算はf32、局面方向の縮約はf64とする。
 
 mod checkpoint;
 mod export;
+// 学習ループへの接続はフェーズ3cで行う。
+#[allow(dead_code)]
+pub(crate) mod gpu;
 mod model;
 mod optimizer;
 mod reference;

@@ -1,4 +1,4 @@
-use super::model::{ALPHA, Uniform, canonical, unit};
+use super::model::{ALPHA, HALF, Uniform, canonical, unit};
 use super::reference::{crelu_grad, forward_validated, square_grad};
 use super::*;
 use Parameter::*;
@@ -153,9 +153,10 @@ fn hand_calculated_forward_covers_negative_square_saturation_skip_and_psqt() {
     let p = 127.0 / 512.0;
     let y = p / 2.0 + 0.125;
     let z = 127.0 / 128.0 * y * y;
-    let u = z / 2.0 + (127.0 / 512.0) / 4.0 + 0.125 + y / 4.0 + 0.125;
-    let n = u / 2.0 + 0.25 - 0.125 + p / 4.0 + 0.0625;
-    let output = n + 0.375;
+    // 各層の出力を単精度へ丸める。比較は引き続き完全一致を要求する。
+    let u = f64::from((z / 2.0 + (127.0 / 512.0) / 4.0 + 0.125 + y / 4.0 + 0.125) as f32);
+    let n = f64::from((u / 2.0 + 0.25 - 0.125 + p / 4.0 + 0.0625) as f32);
+    let output = f64::from((n + 0.375) as f32);
     for j in 0..256 {
         assert_eq!(out.p[j], if j == 0 || j == 128 { p } else { 0.0 });
     }
@@ -237,7 +238,7 @@ fn finite_differences_cover_all_parameter_arrays_and_all_active_components() {
                     .iter()
                     .zip(targets)
                     .map(|(f, t)| {
-                        (sigmoid(1016.0 / 1072.65 * forward_validated(weights, f).output)
+                        (sigmoid(1016.0 / 1072.65 * finite_difference_output(weights, f))
                             - f64::from(t))
                         .powi(2)
                     })
@@ -269,14 +270,18 @@ fn activation_derivatives_are_zero_at_both_boundaries() {
     }
     assert_eq!(crelu_grad(0.5), 1.0);
     assert_eq!(square_grad(0.0), 0.0);
-    let edge = (128.0_f64 / 127.0).sqrt();
-    // 浮動小数点で平方根を戻すと境界をわずかに超えるが、0の規約は同じ。
-    assert!(ALPHA * edge * edge >= 1.0);
+    let inside = (128.0_f32 / 127.0).sqrt();
+    let edge = inside.next_up();
+    // 単精度の平方根は非飽和側に丸まる。隣接する表現可能な値で両側を検査する。
+    assert!(ALPHA as f32 * inside * inside < 1.0);
+    assert_ne!(square_grad(inside), 0.0);
+    assert_ne!(square_grad(-inside), 0.0);
+    assert!(ALPHA as f32 * edge * edge >= 1.0);
     for x in [-edge, edge, -2.0, 2.0] {
         assert_eq!(square_grad(x), 0.0);
     }
-    close(square_grad(-0.5), -127.0 / 128.0, 0.0);
-    close(square_grad(0.5), 127.0 / 128.0, 0.0);
+    close(f64::from(square_grad(-0.5)), -127.0 / 128.0, 0.0);
+    close(f64::from(square_grad(0.5)), 127.0 / 128.0, 0.0);
 }
 
 #[test]
@@ -789,4 +794,88 @@ fn integer_psqt_halves_and_final_scores_truncate_negative_odd_values_toward_zero
             assert_eq!(net.evaluate_for(&position, side).unwrap(), expected);
         }
     }
+}
+
+// 差分の差し引きで単精度の丸めが増幅しないよう、数式の目的関数だけを倍精度で評価する。
+fn finite_difference_output(w: &Parameters, features: &Features) -> f64 {
+    let c = |x: f64| x.clamp(0.0, 1.0);
+    let mut a = [[0.0; H]; 2];
+    let mut psqt = [0.0; 2];
+    for (v, rows) in features.views().iter().enumerate() {
+        for (j, value) in a[v].iter_mut().enumerate() {
+            *value = f64::from(w[FtBiases][j % HALF]);
+        }
+        for &f in rows {
+            let row = canonical(f);
+            psqt[v] += f64::from(w[Psqt][row]);
+            for (j, value) in a[v].iter_mut().enumerate() {
+                *value += f64::from(w[FtWeights][row * H + unit(f, j)]);
+            }
+        }
+    }
+    let p: [f64; H] =
+        std::array::from_fn(|j| ALPHA * c(a[j / HALF][j % HALF]) * c(a[j / HALF][j % HALF + HALF]));
+    let y: [f64; 16] = std::array::from_fn(|k| {
+        let bias = f64::from(w[L1Biases][k]) + f64::from(w[L1SharedBiases][k]);
+        p.iter().enumerate().fold(bias, |s, (i, x)| {
+            s + (f64::from(w[L1Weights][k * H + i]) + f64::from(w[L1SharedWeights][k * H + i])) * x
+        })
+    });
+    let z: [f64; 30] = std::array::from_fn(|i| {
+        if i < 15 {
+            c(ALPHA * y[i] * y[i])
+        } else {
+            c(y[i - 15])
+        }
+    });
+    let u: [f64; 32] = std::array::from_fn(|k| {
+        z.iter()
+            .enumerate()
+            .fold(f64::from(w[L2Biases][k]), |s, (i, x)| {
+                s + f64::from(w[L2Weights][k * 30 + i]) * x
+            })
+    });
+    let n = u
+        .iter()
+        .enumerate()
+        .fold(f64::from(w[L3Bias][0]) + y[15], |s, (i, x)| {
+            s + f64::from(w[L3Weights][i]) * c(*x)
+        });
+    n + (psqt[0] - psqt[1]) / 2.0
+}
+
+#[test]
+fn forward_uses_single_precision_and_the_gpu_reduction_tree() {
+    let mut w = Parameters::zeros();
+    w[FtBiases][0] = 0.5;
+    w[FtWeights][0] = 16_777_216.0;
+    w[FtWeights][72 * H] = -16_777_216.0;
+    let f = Features::new([vec![0, 144], vec![]]).unwrap();
+    // (0.5 + 2^24) - 2^24 is zero in f32 and 0.5 in f64.
+    assert_eq!(forward(&w, &f).unwrap().a[0][0], 0.0);
+
+    let mut w = Parameters::zeros();
+    w[FtBiases].fill(0.5);
+    w[L1Weights][15 * H] = 67_108_864.0;
+    w[L1Weights][15 * H + 1] = -67_108_864.0;
+    w[L1Weights][15 * H + 16] = 1.0;
+    let empty = Features::new([vec![], vec![]]).unwrap();
+    // p=127/512. The 16,8,4,2,1 tree first adds p to 127*2^17,
+    // where f32 rounds it away, then cancels the two large terms.
+    // An ascending sum or an f64 tree instead retains p.
+    let result = forward(&w, &empty).unwrap();
+    assert_eq!(result.y[15], 0.0);
+    assert_eq!(result.output, 0.0);
+}
+
+#[test]
+fn psqt_preserves_small_residuals_with_single_precision_compensation() {
+    let mut w = Parameters::zeros();
+    w[Psqt][0] = 67_108_864.0;
+    w[Psqt][72] = 1.0;
+    w[Psqt][144] = -67_108_864.0;
+    let f = Features::new([vec![0, 144, 288], vec![]]).unwrap();
+    let result = forward(&w, &f).unwrap();
+    assert_eq!(result.psqt, [1.0, 0.0]);
+    assert_eq!(result.output, 0.5);
 }

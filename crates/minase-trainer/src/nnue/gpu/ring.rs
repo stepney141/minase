@@ -215,7 +215,7 @@ fn copy<T: Copy + ValidAsZeroBits>(dst: &mut PinnedHostSlice<T>, src: &[T]) -> R
     Ok(())
 }
 
-pub(super) struct DeviceInput {
+pub(in crate::nnue) struct DeviceInput {
     pub record_indices: CudaSlice<u64>,
     pub features: CudaSlice<u32>,
     pub linear_features: CudaSlice<u32>,
@@ -236,26 +236,66 @@ pub(super) struct DeviceInput {
     pub linear_segments: usize,
     backward_done: CudaEvent,
 }
+// Allocation and accounting share the same input array lengths.
+struct InputLengths {
+    capacity: usize,
+    entries: usize,
+    linear_features: usize,
+    first_starts: usize,
+    first_offsets: usize,
+    linear_starts: usize,
+    linear_offsets: usize,
+}
+impl InputLengths {
+    fn new(set: InputFeatureSet, capacity: usize) -> Self {
+        let entries = capacity * 2 * FEATURE_COLUMNS;
+        Self {
+            capacity,
+            entries,
+            linear_features: capacity * FEATURE_COLUMNS,
+            first_starts: set.first_layer_rows() + 1,
+            first_offsets: max_segment_count(set.first_layer_rows(), entries) + 1,
+            linear_starts: CANONICAL_ROWS + 1,
+            linear_offsets: max_segment_count(CANONICAL_ROWS, capacity * FEATURE_COLUMNS) + 1,
+        }
+    }
+    fn bytes(&self) -> usize {
+        // record_indices:u64; counts/outcomes:u8; scores/classes:32 bits;
+        // features and both inverse-entry arrays use entries elements.
+        18 * self.capacity
+            + 4 * (3 * self.entries
+                + self.linear_features
+                + self.first_starts
+                + self.first_offsets
+                + self.linear_starts
+                + self.linear_offsets)
+    }
+}
+pub(in crate::nnue) fn device_bytes(set: InputFeatureSet, capacity: usize) -> Result<usize> {
+    if !(1..=MAX_BATCH_SIZE).contains(&capacity) {
+        return Err(Error::Invalid("ring capacity"));
+    }
+    Ok(2 * InputLengths::new(set, capacity).bytes())
+}
+
 impl DeviceInput {
     fn new(device: &Device, set: InputFeatureSet, capacity: usize) -> Result<Self> {
         let s = &device.transfer;
-        let entries = capacity * 2 * FEATURE_COLUMNS;
+        let lengths = InputLengths::new(set, capacity);
         Ok(Self {
             record_indices: s.alloc_zeros(capacity)?,
-            features: s.alloc_zeros(entries)?,
-            linear_features: s.alloc_zeros(capacity * FEATURE_COLUMNS)?,
+            features: s.alloc_zeros(lengths.entries)?,
+            linear_features: s.alloc_zeros(lengths.linear_features)?,
             piece_counts: s.alloc_zeros(capacity)?,
             teacher_scores: s.alloc_zeros(capacity)?,
             teacher_classes: s.alloc_zeros(capacity)?,
             outcomes: s.alloc_zeros(capacity)?,
-            first_segment_starts: s.alloc_zeros(set.first_layer_rows() + 1)?,
-            first_segment_offsets: s
-                .alloc_zeros(max_segment_count(set.first_layer_rows(), entries) + 1)?,
-            first_entries: s.alloc_zeros(entries)?,
-            linear_segment_starts: s.alloc_zeros(CANONICAL_ROWS + 1)?,
-            linear_segment_offsets: s
-                .alloc_zeros(max_segment_count(CANONICAL_ROWS, capacity * FEATURE_COLUMNS) + 1)?,
-            linear_entries: s.alloc_zeros(entries)?,
+            first_segment_starts: s.alloc_zeros(lengths.first_starts)?,
+            first_segment_offsets: s.alloc_zeros(lengths.first_offsets)?,
+            first_entries: s.alloc_zeros(lengths.entries)?,
+            linear_segment_starts: s.alloc_zeros(lengths.linear_starts)?,
+            linear_segment_offsets: s.alloc_zeros(lengths.linear_offsets)?,
+            linear_entries: s.alloc_zeros(lengths.entries)?,
             len: 0,
             first_len: 0,
             linear_len: 0,
@@ -385,9 +425,16 @@ impl HostRing {
     }
 
     pub(super) fn validate_device(&self, device: &Device, shape: Shape) -> Result<()> {
+        self.validate_streams(device, shape.feature_set())
+    }
+    pub(in crate::nnue) fn validate_streams(
+        &self,
+        device: &Device,
+        set: InputFeatureSet,
+    ) -> Result<()> {
         if !Arc::ptr_eq(&self.device.compute, &device.compute)
             || !Arc::ptr_eq(&self.device.transfer, &device.transfer)
-            || self.set != shape.feature_set()
+            || self.set != set
         {
             return Err(Error::Invalid("ring device streams or feature set"));
         }
@@ -401,7 +448,7 @@ impl HostRing {
             .record(&self.device.compute)?;
         self.state.finish(&ticket)
     }
-    pub(super) fn input(&self, ticket: &BatchTicket) -> Result<&DeviceInput> {
+    pub(in crate::nnue) fn input(&self, ticket: &BatchTicket) -> Result<&DeviceInput> {
         self.state.check(ticket)?;
         Ok(&self.inputs[ticket.device])
     }

@@ -9,11 +9,11 @@
 //! 理由は`docs/adr/write-trainer-kernels-in-cuda-cpp-via-nvrtc.md`と`docs/adr/archive/allow-unsafe-only-in-the-trainer-crate.md`にある。
 
 pub mod bench;
-mod device;
+pub(in crate::nnue) mod device;
 mod engine;
 pub mod equivalence;
 mod optimizer;
-mod ring;
+pub(in crate::nnue) mod ring;
 mod step;
 mod step_equivalence;
 
