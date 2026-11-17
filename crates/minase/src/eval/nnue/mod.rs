@@ -14,7 +14,9 @@
 
 pub(crate) mod accumulator;
 pub mod feature_set;
+mod file;
 mod format;
+pub use file::{NetworkFile, NetworkFileError, read_network_file};
 pub mod head;
 mod stats;
 #[cfg(test)]

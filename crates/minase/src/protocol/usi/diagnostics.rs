@@ -299,6 +299,8 @@ impl UsiProtocol {
     }
 
     /// 起動した探索方式で固定局面を測る。セッションの探索器や対局は変更しない。
+    /// αβ探索は準備済みのネットを使う。局面と規則は専用のJCSAに固定するが、
+    /// `isready`のために`RuleSet`と`EvalFile`を先に設定する。
     /// αβ探索はdepth・threads・repetitions、PV-MCTSはnodes・batchを受け付ける。
     /// PV-MCTSはハッシュの評価器で固定回数探索し、ネットの準備を要求しない。
     pub(super) fn handle_bench(&self, tokens: &[&str], output: &mut dyn Write) -> io::Result<()> {
@@ -318,9 +320,12 @@ impl UsiProtocol {
             Ok(arguments) => arguments,
             Err(error) => return write_error(output, &error.to_string()),
         };
+        let Some(network) = self.searcher.as_ref().and_then(Searcher::nnue) else {
+            return write_error(output, "bench requires isready");
+        };
         #[cfg(feature = "tuning")]
         TUNING_LOCKED.store(true, Ordering::Relaxed);
-        let result = bench::run(arguments, &mut |line| write_line(output, line));
+        let result = bench::run(network, arguments, &mut |line| write_line(output, line));
         finish(result, output)
     }
 }
@@ -490,7 +495,7 @@ mod tests {
     #[test]
     fn runtime_failure_returns_its_typed_source() {
         let mut output = Vec::new();
-        let error = UsiProtocol::new()
+        let error = super::super::tests::test_protocol()
             .run(
                 &mut io::Cursor::new(format!("bench depth 1 repetitions {}\nusi\n", usize::MAX)),
                 &mut output,

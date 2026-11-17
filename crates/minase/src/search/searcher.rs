@@ -179,6 +179,14 @@ impl std::error::Error for SetOptionError {
 /// 探索前の推論器の準備に失敗した理由。
 #[derive(Debug)]
 pub enum PrepareError {
+    /// NNUEのパスが指定されていない。
+    MissingEvalFile,
+    /// NNUEファイルの読み取りまたは復号の失敗。
+    Nnue(crate::eval::nnue::NetworkFileError),
+    /// MCTSの勝率尺度が指定されていない。
+    MissingScale,
+    /// MCTSの勝率尺度が有限の正数でない。
+    InvalidScale(String),
     /// 推論に使うネットのパスが指定されていない。
     MissingModel,
     /// TensorRTのキャッシュ先が指定されていない。
@@ -190,6 +198,13 @@ pub enum PrepareError {
 impl fmt::Display for PrepareError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            Self::MissingEvalFile => formatter.write_str("required option EvalFile is not set"),
+            Self::Nnue(error) => error.fmt(formatter),
+            Self::MissingScale => formatter.write_str("required option NnCpPerLogit is not set"),
+            Self::InvalidScale(value) => write!(
+                formatter,
+                "NnCpPerLogit must be a positive finite number: '{value}'"
+            ),
             Self::MissingModel => formatter.write_str("required option NnModel is not set"),
             Self::MissingCacheDir => {
                 formatter.write_str("NnCacheDir must be set for NnBackend tensorrt")
@@ -202,7 +217,12 @@ impl fmt::Display for PrepareError {
 impl std::error::Error for PrepareError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
-            Self::MissingModel | Self::MissingCacheDir => None,
+            Self::MissingModel
+            | Self::MissingCacheDir
+            | Self::MissingEvalFile
+            | Self::MissingScale
+            | Self::InvalidScale(_) => None,
+            Self::Nnue(error) => Some(error),
             Self::Network(error) => Some(error),
         }
     }
@@ -211,8 +231,8 @@ impl std::error::Error for PrepareError {
 /// 探索スレッドを開始する前の準備に失敗した理由。
 #[derive(Clone, Debug)]
 pub enum StartError {
-    /// 埋め込みNNUEの重みを読み込めない。
-    Weights(crate::eval::nnue::Error),
+    /// ネットが準備されていない。
+    NotPrepared,
     /// MCTSの入力または設定が不正。
     Mcts(mcts::Error),
     /// 置換表を確保できない。
@@ -222,7 +242,7 @@ pub enum StartError {
 impl fmt::Display for StartError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Weights(error) => error.fmt(formatter),
+            Self::NotPrepared => formatter.write_str("go requires isready"),
             Self::Mcts(error) => error.fmt(formatter),
             Self::TranspositionTable(error) => error.fmt(formatter),
         }
@@ -232,7 +252,7 @@ impl fmt::Display for StartError {
 impl std::error::Error for StartError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
-            Self::Weights(error) => Some(error),
+            Self::NotPrepared => None,
             Self::Mcts(error) => Some(error),
             Self::TranspositionTable(error) => Some(error),
         }
@@ -274,16 +294,10 @@ impl Searcher {
         Self::AlphaBeta(alphabeta::Engine::new())
     }
 
-    /// NNUEの勝率尺度を使い、ネットが未設定のMCTSを作る。
-    /// `NnModel`を[`Self::set_option`]で設定し、[`Self::prepare`]でネットと推論器を準備する。
-    ///
-    /// # Errors
-    /// 勝率尺度を持つNNUEの重みを読み込めない場合は拒否する。
-    pub fn mcts() -> Result<Self, StartError> {
-        let scale = crate::eval::weights()
-            .map_err(StartError::Weights)?
-            .cp_per_logit();
-        Ok(Self::Mcts(mcts::Engine::new(mcts::Config::new(scale))))
+    /// ネットと勝率尺度が未設定のMCTSを作る。
+    /// `NnModel`と`NnCpPerLogit`を設定し、`prepare`で準備する。
+    pub fn mcts() -> Self {
+        Self::Mcts(mcts::Engine::new())
     }
 
     /// 選ばれた方式のオプションを宣言順に返す。
@@ -329,27 +343,33 @@ impl Searcher {
     }
 
     /// 探索前に必要な領域と推論器を準備する。
-    /// αβ探索では未確保の置換表だけを既定容量で確保する。
+    /// αβ探索では`EvalFile`を読み、未確保の置換表を既定容量で確保する。
     /// 置換表の確保の失敗は次の[`Self::start`]で再試行して報告する。
-    /// MCTSでは、`NnModel`の未読込のネットを読み、未作成または設定変更で破棄された推論器を作成する。
+    /// MCTSでは`NnModel`の指定、`NnCpPerLogit`の指定と値の順に検査し、ネットと推論器を準備する。
     ///
     /// # Errors
-    /// MCTSのネットやキャッシュ先が未設定、ネットを読めない、または推論器を作れない場合は原因を返す。
+    /// ネットや勝率尺度などの必須設定がない、尺度が不正、ネットの読み取りや復号、
+    /// または推論器の作成に失敗した場合は原因を返す。
     pub fn prepare(&mut self) -> Result<(), PrepareError> {
         match self {
-            Self::AlphaBeta(engine) => {
-                engine.prepare();
-                Ok(())
-            }
+            Self::AlphaBeta(engine) => engine.prepare(),
             Self::Mcts(engine) => engine.prepare(),
         }
     }
 
-    /// 読み込み済みのMCTSのネットのSHA-256を返す。αβ探索と未読込では`None`。
+    /// 読み込み済みのネットのファイル全体のSHA-256を返す。未読込では`None`。
     pub fn network_sha256(&self) -> Option<&[u8; 32]> {
         match self {
-            Self::AlphaBeta(_) => None,
+            Self::AlphaBeta(engine) => engine.network.as_ref().map(|file| &file.sha256),
             Self::Mcts(engine) => engine.network_sha256(),
+        }
+    }
+
+    /// 診断用に準備済みのNNUEを借りる。未準備またはMCTSなら`None`。
+    pub fn nnue(&self) -> Option<&std::sync::Arc<crate::eval::Nnue>> {
+        match self {
+            Self::AlphaBeta(engine) => engine.network.as_ref().map(|file| &file.network),
+            Self::Mcts(_) => None,
         }
     }
 
@@ -395,7 +415,7 @@ impl Searcher {
     /// MCTSの推論が失敗した場合も`Finished`を送らず、`join`が元の`NnError`を返す。
     ///
     /// # Errors
-    /// αβ探索は重みの取得、置換表の確保の順に準備する。
+    /// αβ探索はネットの準備済み状態、置換表の確保の順に検査する。
     /// MCTSは推論器、深さ制限、および設定を検査する。
     /// 失敗した場合は探索を始めず、探索器と原因を返す。
     #[allow(clippy::result_large_err)] // 再試行に必要な探索状態を所有権ごと返す。
@@ -425,6 +445,7 @@ mod tests {
         let options: Vec<_> = searcher
             .options()
             .into_iter()
+            .filter(|option| option.name != "EvalFile")
             .map(|option| {
                 let SearchOptionKind::Spin { default, min, max } = option.kind else {
                     panic!("alpha-beta declares only spin options");
@@ -489,7 +510,7 @@ mod tests {
             Searcher::alpha_beta().set_option("Threads", SearchOptionValue::String("1".to_owned())),
             Err(SetOptionError::InvalidValue { .. })
         ));
-        let mut searcher = Searcher::mcts().unwrap();
+        let mut searcher = Searcher::mcts();
         for (name, value) in [
             ("Threads", SearchOptionValue::Combo("1".to_owned())),
             ("Threads", SearchOptionValue::Check(true)),

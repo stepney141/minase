@@ -7,8 +7,9 @@
 //! 指定不備、読み込み失敗、推論器の作成失敗は
 //! `error: <理由>`を標準エラーへ出して終了コード1で終え、別のネットや実行プロバイダへ切り替えない。
 //!
-//! 起動時に埋め込み評価重みを検証し、不正なら
-//! `error: embedded evaluation weights are invalid: <理由>`を標準エラーへ出して終了コード1で終える。
+//! αβ探索のネットは`EvalFile`で指定する。未設定、読み取り、復号の失敗は
+//! USIでは`isready`、CECPでは`new`か探索の開始で検出し、
+//! `error: <理由>`を標準エラーへ出して終了コード1で終える。
 //! 標準入力を専用スレッドで読み、チャネル経由で選んだプロトコルの`run_channel`へ渡す。
 //! セッションの入出力エラーも標準エラーへ報告して終了コード1で終える。
 //! 入出力ログの契約は[`super::io_log`]に従う。
@@ -50,19 +51,16 @@ fn create_searcher(protocol: ProtocolKind, search: SearchKind) -> Result<Searche
             if matches!(protocol, ProtocolKind::Cecp) {
                 return Err(SearchArgumentError::CecpUnsupported.into());
             }
-            Ok(Searcher::mcts()?)
+            Ok(Searcher::mcts())
         }
     }
 }
 
-/// 本モジュールの起動契約に従って評価重みを検査し、セッションを開始する。
+/// 本モジュールの起動契約に従ってセッションを開始する。
 /// 実行時のエラーは標準エラーへ報告し、終了コード1で終える。
 pub(super) fn main(protocol: ProtocolKind, io_log: Option<PathBuf>, search: SearchKind) {
     let started = Instant::now();
-    if let Err(error) = minase::eval::weights() {
-        eprintln!("error: embedded evaluation weights are invalid: {error}");
-        process::exit(1);
-    }
+
     if let Err(error) = run(started, protocol, io_log, search) {
         eprintln!("error: {error}");
         process::exit(1);

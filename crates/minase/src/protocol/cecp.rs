@@ -10,12 +10,12 @@
 //! | `protover` | `CecpProtocol::write_features`の宣言列を返す。 |
 //! | `rejected` | `setboard`、`usermove`、`ping`なら`tellusererror minase requires the <feature> feature`を出して終了し、他は無視する。 |
 //! | `variant` | `chu`だけを受理し、他は`Error (unsupported variant): <名前>`を返して継続する。 |
-//! | `new` | 規則が設定済みなら`handle_new`で初期局面の対局を始める。未設定ならエラーを通知してセッションを終了する。 |
+//! | `new` | 規則を確認し、EvalFileのネットを準備して初期局面の対局を始める。未設定や準備の失敗は通知してセッションを終了する。 |
 //! | `force`、`go` | `PlayMode`の担当手番と応手状態を変える。 |
 //! | `setboard`、`usermove` | `handle_setboard`と`handle_usermove`で局面や着手を適用する。 |
 //! | `ping N` | `pong N`を返す。 |
 //! | `result` | 対局状態機械の`EndGame`で開始待ちへ戻り、裁定の食い違いに異議を唱えない。 |
-//! | `option`、`memory`、`cores` | `handle_option`、`handle_memory`、`handle_cores`で設定を検査する。 |
+//! | `option`、`memory`、`cores` | `handle_option`、`handle_memory`、`handle_cores`で設定を検査する。`option EvalFile=<パス>`は読み込みを次の準備まで遅延する。 |
 //! | `time`、`otim`、`level`、`st`、`sd` | `TimeControl`の契約に従って両者の時計と探索制限を更新する。 |
 //! | `?` | 待機中は無応答で無視する。 |
 //! | `quit` | 無応答で終了する。 |
@@ -263,8 +263,25 @@ impl CecpProtocol {
         Ok(LineAction::Continue)
     }
 
+    /// 未準備のネットを読み、失敗は通知して原因を保持したままセッションを終了する。
+    fn prepare_network(&mut self, output: &mut dyn Write) -> io::Result<()> {
+        let searcher = self
+            .searcher
+            .as_mut()
+            .ok_or_else(|| io::Error::other("searcher is busy"))?;
+        if searcher.nnue().is_none()
+            && let Err(error) = searcher.prepare()
+        {
+            writeln!(output, "tellusererror {error}")?;
+            output.flush()?;
+            return Err(io::Error::other(error));
+        }
+        Ok(())
+    }
+
     /// 当該局面と正規化済み制限から非同期探索を開始する。
     fn start_search(&mut self, output: &mut dyn Write) -> io::Result<Option<ActiveSearch>> {
+        self.prepare_network(output)?;
         let limits = match self.time_control.search_limits(self.engine()?.ply()) {
             Ok(Some(limits)) => limits,
             Ok(None) => {
@@ -575,10 +592,12 @@ impl CecpProtocol {
     /// feature memory=1
     /// feature draw=0
     /// feature option="RuleSet -string "
+    /// feature option="EvalFile -file "
     /// feature smp=1
     /// feature done=1
     /// ```
     ///
+    /// `RuleSet -string`の直後に`EvalFile -file`を宣言する。
     /// 時間と容量のコマンドを受けるため`time=1`と`memory=1`を宣言し、引き分け提案を扱わないため`draw=0`とする。
     /// 必須の`setboard`、`usermove`、`ping`が拒否された場合はセッションを続けない。
     fn write_features(&self, output: &mut dyn Write) -> io::Result<()> {
@@ -599,17 +618,20 @@ impl CecpProtocol {
         writeln!(output, "feature memory=1")?;
         writeln!(output, "feature draw=0")?;
         writeln!(output, "feature option=\"RuleSet -string \"")?;
+        writeln!(output, "feature option=\"EvalFile -file \"")?;
         writeln!(output, "feature smp=1")?;
         writeln!(output, "feature done=1")
     }
 
-    /// 次局の規則を確定し、初期局面から対局を開始する。
+    /// 次局の規則を確認してネットを準備し、初期局面から対局を開始する。
     ///
     /// `NewGame`に続けて初形の`SetPosition`を適用し、`InGame`へ入る。
     /// CECPでは`new`の後に`setboard`なしで着手を受けるためである。
     /// 担当手番を後手にし、置換表とhistory表を空にする。
     /// 状態機械が拒否した場合は`Error (command not legal now): new`を返す。
     fn handle_new(&mut self, output: &mut dyn Write) -> io::Result<()> {
+        self.engine()?;
+        self.prepare_network(output)?;
         if !matches!(
             self.engine_mut()?.handle(EngineCommand::NewGame),
             EngineReply::Accepted { .. }
@@ -743,7 +765,9 @@ impl CecpProtocol {
 
     /// `option RuleSet=<値>`だけを処理し、他のオプション名は無視する。
     ///
-    /// 値はUSIの規則オプションと同じ[`parse_rule_set`]の文法で読む。
+    /// `EvalFile`はパスを保存し、ネット、置換表、history表を破棄する。読み取りは準備時に行う。
+    /// `RuleSet`との指定順は自由である。
+    /// 規則の値はUSIの規則オプションと同じ[`parse_rule_set`]の文法で読む。
     /// 最初の有効な指定で対局状態を生成し、以後は次局の規則だけを更新する。受理時は置換表とhistory表を空にする。
     /// 不正なら`Error (invalid option value): <受信行>`を返す。
     fn handle_option(&mut self, line: &str, output: &mut dyn Write) -> io::Result<()> {
@@ -753,6 +777,15 @@ impl CecpProtocol {
         let Some((name, value)) = remainder.split_once('=') else {
             return Ok(());
         };
+        if name == "EvalFile" {
+            let searcher = self
+                .searcher
+                .as_mut()
+                .ok_or_else(|| io::Error::other("searcher is busy"))?;
+            return searcher
+                .set_option("EvalFile", SearchOptionValue::String(value.to_owned()))
+                .map_err(io::Error::other);
+        }
         if name != "RuleSet" {
             return Ok(());
         }
@@ -1140,6 +1173,19 @@ mod tests {
         complete
     }
 
+    fn test_protocol() -> CecpProtocol {
+        let mut protocol = CecpProtocol::new();
+        run(
+            &mut protocol,
+            concat!(
+                "option EvalFile=",
+                env!("CARGO_MANIFEST_DIR"),
+                "/nets/nnue-epoch0.bin\n"
+            ),
+        );
+        protocol
+    }
+
     fn run(protocol: &mut CecpProtocol, input: &str) -> String {
         let mut input = Cursor::new(input.as_bytes());
         let mut output = Vec::new();
@@ -1151,7 +1197,7 @@ mod tests {
     fn new_without_ruleset_fails_with_typed_source() {
         use std::error::Error;
         for channel in [false, true] {
-            let mut protocol = CecpProtocol::new();
+            let mut protocol = test_protocol();
             let mut output = Vec::new();
             let result = if channel {
                 let (sender, receiver) = std::sync::mpsc::channel();
@@ -1178,7 +1224,7 @@ mod tests {
             ("usermove g4g5".to_owned(), "usermove"),
             ("usermove invalid".to_owned(), "usermove"),
         ] {
-            let mut protocol = CecpProtocol::new();
+            let mut protocol = test_protocol();
             assert_eq!(
                 run(&mut protocol, &format!("{input}\n")),
                 format!("Error (required option RuleSet is not set): {command}\n")
@@ -1191,13 +1237,13 @@ mod tests {
                 "pong 7\n"
             );
         }
-        assert_eq!(run(&mut CecpProtocol::new(), "result 1-0\nquit\n"), "");
+        assert_eq!(run(&mut test_protocol(), "result 1-0\nquit\n"), "");
     }
 
     // 第19条と第33条: lishogiのP3は香車にも最奥段での追加の成りを認める。
     #[test]
     fn article_33_first_ruleset_applies_lishogi_to_the_first_new() {
-        let mut protocol = CecpProtocol::new();
+        let mut protocol = test_protocol();
         let board = "11k/4L7/9g2/12/12/12/12/12/12/12/12/K11";
         let output = run(
             &mut protocol,
@@ -1217,7 +1263,7 @@ mod tests {
     fn time_and_otim_are_stored_in_either_order_and_normalized() {
         // [`TimeControl`]の換算は出力に現れないため、内部時計を直接観測して係数10を検査する。
         for input in ["time 6000\notim 123\n", "otim 123\ntime 6000\n"] {
-            let mut protocol = CecpProtocol::new();
+            let mut protocol = test_protocol();
             let rules = canonical_rules_text(&rule_codes(&[RuleCode::R1]));
             let mut setup_output = Vec::new();
             protocol
@@ -1256,7 +1302,7 @@ mod tests {
 
     #[test]
     fn new_and_level_clear_the_stored_opponent_time() {
-        let mut protocol = CecpProtocol::new();
+        let mut protocol = test_protocol();
         let rules = canonical_rules_text(&rule_codes(&[RuleCode::R1]));
         let mut setup_output = Vec::new();
         protocol
@@ -1298,7 +1344,7 @@ mod tests {
     }
 
     fn session(codes: &[RuleCode], input: &str) -> String {
-        let mut protocol = CecpProtocol::new();
+        let mut protocol = test_protocol();
         let rules = canonical_rules_text(&rule_codes(codes));
         let mut setup_output = Vec::new();
         protocol
@@ -1312,7 +1358,7 @@ mod tests {
     }
 
     fn queued_session(codes: &[RuleCode], input: &str) -> String {
-        let mut protocol = CecpProtocol::new();
+        let mut protocol = test_protocol();
         let rules = canonical_rules_text(&rule_codes(codes));
         let mut setup_output = Vec::new();
         protocol
@@ -1360,8 +1406,8 @@ mod tests {
     #[test]
     fn protover_declares_the_feature_set_with_done_last() {
         // [`CecpProtocol::write_features`]の宣言値を検査する。
-        // 宣言の行順は仕様が任意とするため（`docs/research/protocols/cecp.md`第4章）、done=1の終端以外は集合として検証する。
-        let output = run(&mut CecpProtocol::new(), "xboard\nprotover 2\nquit\n");
+        // 一般の宣言は集合として検査し、外部ネットの契約が指定する2オプションの順とdone=1の終端を検査する。
+        let output = run(&mut test_protocol(), "xboard\nprotover 2\nquit\n");
         let lines: Vec<_> = output.lines().collect();
 
         assert!(lines.iter().all(|line| line.starts_with("feature ")));
@@ -1379,10 +1425,16 @@ mod tests {
             "feature memory=1",
             "feature draw=0",
             "feature option=\"RuleSet -string \"",
+            "feature option=\"EvalFile -file \"",
             "feature smp=1",
         ] {
             assert!(lines.contains(&expected), "missing: {expected}");
         }
+        assert!(lines.windows(2).any(|pair| pair
+            == [
+                "feature option=\"RuleSet -string \"",
+                "feature option=\"EvalFile -file \"",
+            ]));
         // 文字列値は二重引用符で囲む（[`CecpProtocol::write_features`]の契約）。
         assert!(
             lines
@@ -1401,7 +1453,7 @@ mod tests {
         // 返す。正当値は無応答である。
         assert_eq!(parse_cores("1").map(NonZeroUsize::get), Some(1));
         assert_eq!(parse_cores("256").map(NonZeroUsize::get), Some(256));
-        let mut protocol = CecpProtocol::new();
+        let mut protocol = test_protocol();
         let rules = canonical_rules_text(&rule_codes(&[RuleCode::R1]));
         let mut setup_output = Vec::new();
         protocol
@@ -1706,7 +1758,7 @@ mod tests {
     fn go_without_search_limits_is_a_tellusererror() {
         // [`TimeControl::search_limits`]の契約: 探索制限のないgoは暗黙の既定値でフォールバック
         // せずtellusererrorを返す（暗黙フォールバックは禁止）。
-        let mut protocol = CecpProtocol::new();
+        let mut protocol = test_protocol();
         let rules = canonical_rules_text(&rule_codes(&[RuleCode::R1]));
         let mut setup_output = Vec::new();
         protocol
@@ -1763,7 +1815,7 @@ mod tests {
     fn result_is_accepted_as_the_external_verdict() {
         // [`PlayMode`]とモジュールdocのコマンド表: resultは外部要因を含む確定通知であり、エンジンは異議を唱えず
         // AwaitingStartへ戻る。
-        let mut protocol = CecpProtocol::new();
+        let mut protocol = test_protocol();
         let rules = canonical_rules_text(&rule_codes(&[RuleCode::R1]));
         let mut setup_output = Vec::new();
         protocol
@@ -1806,7 +1858,7 @@ mod tests {
         );
 
         // 探索中のnewは破棄のうえ次局を開始する。
-        let mut protocol = CecpProtocol::new();
+        let mut protocol = test_protocol();
         let rules = canonical_rules_text(&rule_codes(&[RuleCode::R1]));
         let mut setup_output = Vec::new();
         protocol
@@ -1824,7 +1876,7 @@ mod tests {
     #[test]
     fn move_now_and_queued_commands_complete_in_order() {
         // [`CecpProtocol::handle_searching_line`]の停止とpingの順序、および探索中のcoresを次の探索に適用する契約を検査する。
-        let mut protocol = CecpProtocol::new();
+        let mut protocol = test_protocol();
         let rules = canonical_rules_text(&rule_codes(&[RuleCode::R1]));
         let mut setup_output = Vec::new();
         protocol
@@ -1929,7 +1981,7 @@ mod tests {
     fn ruleset_option_latches_until_new_and_rejects_invalid_values() {
         // [`CecpProtocol::handle_option`]の契約: option NAME=VALUEで検証し、正当ならpendingのみ更新、不正なら
         // Error (invalid option value): <受信行>。commitはnew。
-        let mut protocol = CecpProtocol::new();
+        let mut protocol = test_protocol();
         let rules = canonical_rules_text(&rule_codes(&[RuleCode::R1, RuleCode::E2]));
         let mut setup_output = Vec::new();
         protocol

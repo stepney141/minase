@@ -78,8 +78,6 @@ pub const DEFAULT_DEPTH: NonZeroU32 = const { NonZeroU32::new(3).unwrap() };
 /// 固定局面の探索または結果の出力に失敗した原因。
 #[derive(Debug)]
 pub enum Error {
-    /// 埋め込みの評価関数を読み込めなかった。
-    Weights(crate::eval::nnue::Error),
     /// 固定局面の表記が不正だった。
     Position(minase_core::notation::sfen::SfenError),
     /// 探索の入力が不正だった。
@@ -99,7 +97,6 @@ pub enum Error {
 impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Weights(error) => write!(f, "embedded evaluation weights are invalid: {error}"),
             Self::Position(error) => write!(f, "bench position is invalid: {error}"),
             Self::Search(error) => write!(f, "bench search failed: {error}"),
             Self::Table(error) => write!(f, "bench transposition table failed: {error}"),
@@ -114,7 +111,6 @@ impl fmt::Display for Error {
 impl std::error::Error for Error {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
-            Self::Weights(error) => Some(error),
             Self::Position(error) => Some(error),
             Self::Search(error) => Some(error),
             Self::Table(error) => Some(error),
@@ -410,12 +406,12 @@ fn run_bench(
     })
 }
 
-/// 探索ベンチを実行する。
+/// 指定されたネットで、固定局面とJCSA規則を使って探索ベンチを実行する。
 pub fn run(
+    nnue: &crate::eval::Nnue,
     arguments: Arguments,
     output: &mut dyn FnMut(&str) -> io::Result<()>,
 ) -> Result<(), Error> {
-    let nnue = crate::eval::weights().map_err(Error::Weights)?;
     let rules = Rules::JCSA;
     let limits =
         SearchLimits::new(Some(arguments.depth.get()), None, None, None).map_err(Error::Search)?;
@@ -426,7 +422,7 @@ pub fn run(
         TranspositionTable::new(crate::search::DEFAULT_TT_SIZE_MB).map_err(Error::Table)?;
     if arguments.repetitions.get() == 1 {
         let result = run_bench(
-            &nnue,
+            nnue,
             rules,
             &limits,
             arguments.threads,
@@ -450,7 +446,7 @@ pub fn run(
     }
 
     let _ = run_bench(
-        &nnue,
+        nnue,
         rules,
         &limits,
         arguments.threads,
@@ -463,7 +459,7 @@ pub fn run(
         .map_err(Error::Allocation)?;
     for run in 1..=arguments.repetitions.get() {
         let result = run_bench(
-            &nnue,
+            nnue,
             rules,
             &limits,
             arguments.threads,
@@ -583,7 +579,12 @@ mod tests {
     fn total_node_counts_are_reproducible_across_runs() {
         let rules = Rules::JCSA;
         let limits = SearchLimits::new(Some(1), None, None, None).unwrap();
-        let nnue = crate::eval::weights().unwrap();
+        let nnue = crate::eval::nnue::read_network_file(std::path::Path::new(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/nets/nnue-epoch0.bin"
+        )))
+        .unwrap()
+        .network;
         // [`BENCH_POSITIONS`]の15局面を本番のbenchで解析し探索する。
         let mut transposition_table = TranspositionTable::new(1).unwrap();
         let mut run = || {

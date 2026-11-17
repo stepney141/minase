@@ -102,7 +102,13 @@ pub fn play_game(
         Err(InitializationError::Network(source)) => {
             return Err(MatchEngineError {
                 side: EngineSide::Candidate,
-                source,
+                source: source.into(),
+            });
+        }
+        Err(InitializationError::UndeclaredCecpOption(name)) => {
+            return Err(MatchEngineError {
+                side: EngineSide::Candidate,
+                source: crate::harness::MatchInitializationError::UndeclaredCecpOption(name),
             });
         }
         Err(InitializationError::Failure(reason)) => {
@@ -123,7 +129,13 @@ pub fn play_game(
         Err(InitializationError::Network(source)) => {
             return Err(MatchEngineError {
                 side: EngineSide::Baseline,
-                source,
+                source: source.into(),
+            });
+        }
+        Err(InitializationError::UndeclaredCecpOption(name)) => {
+            return Err(MatchEngineError {
+                side: EngineSide::Baseline,
+                source: crate::harness::MatchInitializationError::UndeclaredCecpOption(name),
             });
         }
         Err(InitializationError::Failure(reason)) => {

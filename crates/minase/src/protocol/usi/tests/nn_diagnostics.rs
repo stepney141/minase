@@ -22,7 +22,7 @@ fn nn_fixture_works_with_mcts_without_rules_or_preparation_and_overwrites() {
     let directory = TempDir::new();
     let path = directory.path().join("fixture out with spaces.jsonl");
     fs::write(&path, "old contents").unwrap();
-    let mut protocol = UsiProtocol::with_searcher(Searcher::mcts().unwrap());
+    let mut protocol = UsiProtocol::with_searcher(Searcher::mcts());
     let command = format!("nn-fixture out {}\n", path.display()).replace("out with", "out   with");
     let output = run(&mut protocol, &command);
     assert_eq!(
@@ -41,7 +41,7 @@ fn nn_fixture_write_failure_keeps_path_and_source_and_ends_session() {
     let directory = TempDir::new();
     let path = directory.path().join("absent/positions.jsonl");
     let mut output = Vec::new();
-    let error = UsiProtocol::new()
+    let error = test_protocol()
         .run(
             &mut Cursor::new(format!("nn-fixture out {}\nusi\n", path.display())),
             &mut output,
@@ -73,7 +73,7 @@ fn nn_eval_requires_mcts_and_preparation_without_creating_files() {
     let path = directory.path().join("evaluation.json");
     for (searcher, message) in [
         (Searcher::alpha_beta(), "nn-eval requires --search mcts"),
-        (Searcher::mcts().unwrap(), "nn-eval requires isready"),
+        (Searcher::mcts(), "nn-eval requires isready"),
     ] {
         let output = run(
             &mut UsiProtocol::with_searcher(searcher),
@@ -262,7 +262,7 @@ fn without_elapsed(output: &str) -> Vec<&str> {
 
 #[test]
 fn random_play_reports_three_games_and_reproduces_each_game() {
-    let mut protocol = UsiProtocol::new();
+    let mut protocol = test_protocol();
     assert_eq!(
         run(&mut protocol, "setoption name RuleSet value JCSA\n"),
         ""
@@ -296,7 +296,7 @@ fn random_play_reports_three_games_and_reproduces_each_game() {
 
 #[test]
 fn random_play_uses_last_accepted_rules_without_changing_the_current_game() {
-    let mut protocol = UsiProtocol::new();
+    let mut protocol = test_protocol();
     run(
         &mut protocol,
         "setoption name RuleSet value JCSA\nposition startpos moves 6i6h\nsetoption name RuleSet value lishogi\n",

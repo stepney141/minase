@@ -78,15 +78,23 @@ pub struct Engine {
     default_cache_dir: PathBuf,
     evaluator: Option<Box<dyn Evaluator + Send>>,
     driver: Option<Box<Driver>>,
-    config: Config,
+    config: SearchConfig,
+    scale_text: String,
+    cp_per_logit: Option<f32>,
     verbose_move_stats: bool,
     budget: Option<TimeBudget>,
+}
+
+impl Default for Engine {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl Engine {
     /// ネットを未設定で作り、読み込みと推論器の作成は`prepare`まで遅延する。
     /// TensorRTを既定とし、キャッシュ先は空でない`XDG_CACHE_HOME`の下に置く。
-    pub fn new(config: Config) -> Self {
+    pub fn new() -> Self {
         let cache_dir = default_cache_dir(std::env::var_os("XDG_CACHE_HOME").as_deref());
         Self {
             model_path: String::new(),
@@ -96,7 +104,9 @@ impl Engine {
             cache_dir,
             evaluator: None,
             driver: None,
-            config,
+            config: SearchConfig::default(),
+            scale_text: String::new(),
+            cp_per_logit: None,
             verbose_move_stats: false,
             budget: None,
         }
@@ -122,6 +132,12 @@ impl Engine {
             },
             SearchOption {
                 name: "NnModel",
+                kind: SearchOptionKind::String {
+                    default: String::new(),
+                },
+            },
+            SearchOption {
+                name: "NnCpPerLogit",
                 kind: SearchOptionKind::String {
                     default: String::new(),
                 },
@@ -188,9 +204,9 @@ impl Engine {
                             min: 1,
                             max: 65_536,
                         })?;
-                if self.config.search.capacity_bytes != capacity_bytes {
+                if self.config.capacity_bytes != capacity_bytes {
                     self.clear();
-                    self.config.search.capacity_bytes = capacity_bytes;
+                    self.config.capacity_bytes = capacity_bytes;
                 }
             }
             ("VerboseMoveStats", SearchOptionValue::Check(value)) => {
@@ -202,6 +218,13 @@ impl Engine {
                     self.model_path = value;
                     self.network = None;
                     self.evaluator = None;
+                    self.clear();
+                }
+            }
+            ("NnCpPerLogit", SearchOptionValue::String(value)) => {
+                if self.scale_text != value {
+                    self.scale_text = value;
+                    self.cp_per_logit = None;
                     self.clear();
                 }
             }
@@ -221,16 +244,16 @@ impl Engine {
             }
             ("NnBatchSize", SearchOptionValue::Spin(value)) => {
                 let batch_size = NonZeroUsize::new(value).expect("validated non-zero batch size");
-                if self.config.search.batch_size != batch_size {
-                    self.config.search.batch_size = batch_size;
+                if self.config.batch_size != batch_size {
+                    self.config.batch_size = batch_size;
                     self.evaluator = None;
                 }
             }
             ("PolicyTemperature", SearchOptionValue::Spin(value)) => {
                 let temperature = value as f32 / 100.0;
-                if self.config.search.policy_temperature != temperature {
+                if self.config.policy_temperature != temperature {
                     self.clear();
-                    self.config.search.policy_temperature = temperature;
+                    self.config.policy_temperature = temperature;
                 }
             }
             _ => unreachable!("all validated MCTS options are handled"),
@@ -253,10 +276,21 @@ impl Engine {
         }
     }
 
+    /// NnModelの未設定、NnCpPerLogitの未設定と値、ネットと推論器の順に検査する。
     pub(in crate::search) fn prepare(&mut self) -> Result<(), PrepareError> {
         if self.model_path.is_empty() {
             return Err(PrepareError::MissingModel);
         }
+        if self.scale_text.is_empty() {
+            return Err(PrepareError::MissingScale);
+        }
+        let scale = self
+            .scale_text
+            .parse::<f32>()
+            .ok()
+            .filter(|scale| scale.is_finite() && *scale > 0.0)
+            .ok_or_else(|| PrepareError::InvalidScale(self.scale_text.clone()))?;
+        self.cp_per_logit = Some(scale);
         if self.evaluator.is_none() {
             if self.network.is_none() {
                 self.network = Some(
@@ -266,7 +300,7 @@ impl Engine {
             }
             let provider = self.execution_provider()?;
             let network = self.network.as_ref().ok_or(PrepareError::MissingModel)?;
-            let evaluator = OnnxEvaluator::new(network, &provider, self.config.search.batch_size)
+            let evaluator = OnnxEvaluator::new(network, &provider, self.config.batch_size)
                 .map_err(PrepareError::Network)?;
             self.evaluator = Some(Box::new(evaluator));
         }
@@ -285,17 +319,13 @@ impl Engine {
             return Err(EvaluationError::NotPrepared);
         }
         let network = self.network.as_ref().ok_or(EvaluationError::NotPrepared)?;
-        Ok((
-            network.sha256(),
-            &self.backend,
-            self.config.search.batch_size,
-        ))
+        Ok((network.sha256(), &self.backend, self.config.batch_size))
     }
 
     /// 生のlogitを、探索と同じ温度とsoftmaxで事前確率へ変換する。
     pub(crate) fn policy_priors(&self, logits: &[f32]) -> Vec<f32> {
         let mut priors = logits.to_vec();
-        apply_policy_temperature(&mut priors, self.config.search.policy_temperature);
+        apply_policy_temperature(&mut priors, self.config.policy_temperature);
         crate::nn::softmax(&mut priors);
         priors
     }
@@ -312,7 +342,7 @@ impl Engine {
             .ok_or(EvaluationError::NotPrepared)?;
         let mut batch_logits = Vec::new();
         let mut batch_values = Vec::new();
-        for batch in queries.chunks(self.config.search.batch_size.get()) {
+        for batch in queries.chunks(self.config.batch_size.get()) {
             evaluator
                 .evaluate(batch, &mut batch_logits, &mut batch_values)
                 .map_err(EvaluationError::Inference)?;
@@ -400,12 +430,15 @@ impl Engine {
         clock: Arc<dyn SearchClock>,
     ) -> Result<SearchHandle, StartFailure> {
         let multi_pv = snapshot.multi_pv().get().min(snapshot.root_moves().len());
-        if let Err(error) = self.prepare_driver(snapshot, limits) {
-            return Err(StartFailure {
-                searcher: Searcher::Mcts(self),
-                error: StartError::Mcts(error),
-            });
-        }
+        let cp_per_logit = match self.prepare_driver(snapshot, limits) {
+            Ok(scale) => scale,
+            Err(error) => {
+                return Err(StartFailure {
+                    searcher: Searcher::Mcts(self),
+                    error: StartError::Mcts(error),
+                });
+            }
+        };
         // runも同じlimitsにtime_budgetを適用する。表示用の保持は探索を変更しない。
         self.budget = time_budget(&limits);
         Ok(SearchHandle::spawn(
@@ -423,16 +456,14 @@ impl Engine {
                 let stop_reason = run(
                     driver,
                     evaluator.as_mut(),
-                    &self.config.search,
+                    &self.config,
                     limits,
                     clock.as_ref(),
                     &hit_ns,
                     &stop,
                 )?;
-                let score = driver
-                    .score(self.config.cp_per_logit)
-                    .map_err(SearchJoinError::Mcts)?;
-                let lines = pv_lines(driver.tree(), multi_pv, score, self.config.cp_per_logit);
+                let score = driver.score(cp_per_logit).map_err(SearchJoinError::Mcts)?;
+                let lines = pv_lines(driver.tree(), multi_pv, score, cp_per_logit);
                 let best_move = driver
                     .tree()
                     .best_move()
@@ -457,18 +488,17 @@ impl Engine {
         &mut self,
         snapshot: SearchSnapshot,
         limits: SearchLimits,
-    ) -> Result<(), Error> {
+    ) -> Result<f32, Error> {
         if self.evaluator.is_none() {
             return Err(Error::MissingEvaluator);
         }
         if limits.depth().is_some() {
             return Err(Error::DepthLimitUnsupported);
         }
-        validate_scale(self.config.cp_per_logit)?;
-        self.config.search.puct.validate()?;
-        let draw = DrawValue::Game {
-            cp_per_logit: self.config.cp_per_logit,
-        };
+        let cp_per_logit = self.cp_per_logit.ok_or(Error::MissingEvaluator)?;
+        validate_scale(cp_per_logit)?;
+        self.config.puct.validate()?;
+        let draw = DrawValue::Game { cp_per_logit };
         // nodes 1は過去の訪問回数によらず、今回のネットの最大logitの手を返す。
         let reused = limits.nodes() != Some(1)
             && match &mut self.driver {
@@ -478,11 +508,11 @@ impl Engine {
         if !reused {
             self.driver = Some(Box::new(Driver::new(
                 snapshot,
-                self.config.search.capacity_bytes,
+                self.config.capacity_bytes,
                 draw,
             )?));
         }
-        Ok(())
+        Ok(cp_per_logit)
     }
 }
 

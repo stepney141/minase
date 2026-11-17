@@ -125,7 +125,7 @@ fn multipv_lines_are_ranked_and_share_statistics_even_without_a_score() {
 
 #[test]
 fn multipv_changes_preserve_tables_and_take_effect_after_the_current_search() {
-    let mut protocol = UsiProtocol::new();
+    let mut protocol = test_protocol();
     run(
         &mut protocol,
         &format!(
@@ -287,7 +287,7 @@ fn multipv_natural_stop_and_ponderhit_emit_complete_legal_groups() {
 #[test]
 fn multipv_finished_prints_all_lines_only_when_the_selected_worker_is_deeper() {
     for final_depth in [2, 3] {
-        let mut protocol = UsiProtocol::new();
+        let mut protocol = test_protocol();
         run(
             &mut protocol,
             "setoption name RuleSet value lishogi\nsetoption name USI_Hash value 1\nsetoption name MultiPV value 3\nposition startpos\n",

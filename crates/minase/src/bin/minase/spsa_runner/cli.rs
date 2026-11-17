@@ -18,6 +18,11 @@ pub(crate) struct Arguments {
     /// 再開ではディレクトリだけを受け付け、条件は`manifest.json`から読む。
     #[arg(long)]
     pub(super) resume: Option<PathBuf>,
+    /// 全対局で固定するUSIオプション。NAME=VALUEを指定順に繰り返せる。
+    /// Tune_で始まる名前と、大文字小文字を区別しない同名の重複は拒否する。
+    /// 再開時は指定せず、manifest.jsonに保存した列を使う。
+    #[arg(long = "option", value_name = "NAME=VALUE", conflicts_with = "resume", value_parser = super::super::match_runner::parse_usi_option)]
+    pub(super) options: Vec<(String, String)>,
     /// 全対局と摂動の基本シード。
     #[arg(long, required_unless_present = "resume", conflicts_with = "resume")]
     pub(super) seed: Option<u64>,
@@ -68,4 +73,20 @@ pub(super) enum Command {
         #[arg(long, value_parser = tuning_spec)]
         engine: PlayerSpec,
     },
+}
+
+impl Arguments {
+    pub(super) fn validate_options(&self) -> Result<(), String> {
+        let mut names = std::collections::HashSet::new();
+        for (name, _) in &self.options {
+            let key = name.to_ascii_lowercase();
+            if key.starts_with("tune_") {
+                return Err(format!("fixed option '{name}' must not start with Tune_"));
+            }
+            if !names.insert(key) {
+                return Err(format!("duplicate fixed option '{name}'"));
+            }
+        }
+        Ok(())
+    }
 }

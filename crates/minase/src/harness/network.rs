@@ -150,13 +150,13 @@ impl fmt::Display for EngineSide {
     }
 }
 
-/// 測定を中止するネットの誤りと、それを報告した側。
+/// 測定を中止するネットまたは設定の誤りと、それを報告した側。
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct MatchEngineError {
     /// 候補側または基準側。
     pub side: EngineSide,
-    /// 元のネットの誤り。
-    pub source: NetworkError,
+    /// 測定を中止するネットまたは設定の誤り。
+    pub source: MatchInitializationError,
 }
 
 impl fmt::Display for MatchEngineError {
@@ -168,5 +168,35 @@ impl fmt::Display for MatchEngineError {
 impl std::error::Error for MatchEngineError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         Some(&self.source)
+    }
+}
+
+/// 測定全体を止めるエンジンの初期設定の誤り。
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum MatchInitializationError {
+    /// ネットの識別子の誤り。
+    Network(NetworkError),
+    /// CECPエンジンが要求されたオプションを宣言していない。
+    UndeclaredCecpOption(String),
+}
+impl fmt::Display for MatchInitializationError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Network(error) => error.fmt(f),
+            Self::UndeclaredCecpOption(name) => write!(f, "CECP option '{name}' is not declared"),
+        }
+    }
+}
+impl std::error::Error for MatchInitializationError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::Network(error) => Some(error),
+            Self::UndeclaredCecpOption(_) => None,
+        }
+    }
+}
+impl From<NetworkError> for MatchInitializationError {
+    fn from(error: NetworkError) -> Self {
+        Self::Network(error)
     }
 }

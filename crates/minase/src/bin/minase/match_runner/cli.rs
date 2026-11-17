@@ -192,7 +192,7 @@ impl Arguments {
 }
 
 /// 最初の`=`でUSIオプションを分け、改行、空の名前、および測定用の予約名を拒否する。
-fn parse_usi_option(input: &str) -> Result<(String, String), String> {
+pub(crate) fn parse_usi_option(input: &str) -> Result<(String, String), String> {
     if input.contains(['\r', '\n']) {
         return Err("USI option names and values must not contain newlines".to_owned());
     }

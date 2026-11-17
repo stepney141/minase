@@ -12,7 +12,10 @@ impl Engine {
         evaluator: Option<Box<dyn Evaluator + Send>>,
         config: Config,
     ) -> Self {
-        let mut engine = Self::new(config);
+        let mut engine = Self::new();
+        engine.config = config.search;
+        engine.cp_per_logit = Some(config.cp_per_logit);
+        engine.scale_text = config.cp_per_logit.to_string();
         engine
             .set_option(
                 "NnModel",

@@ -8,7 +8,7 @@ use std::sync::atomic::Ordering as AtomicOrdering;
 const CORRECTION_INDEX: usize = 17;
 
 fn setup() -> UsiProtocol {
-    let mut protocol = UsiProtocol::new();
+    let mut protocol = test_protocol();
     let rules = canonical_rules_text(&rule_codes(&[RuleCode::R1]));
     assert_eq!(
         run(

@@ -21,6 +21,7 @@ use std::{io, thread};
 pub(in crate::harness) enum InitializationError {
     Failure(EngineFailure),
     Network(NetworkError),
+    UndeclaredCecpOption(String),
 }
 
 impl std::fmt::Display for InitializationError {
@@ -28,6 +29,7 @@ impl std::fmt::Display for InitializationError {
         match self {
             Self::Failure(error) => error.fmt(f),
             Self::Network(error) => error.fmt(f),
+            Self::UndeclaredCecpOption(name) => write!(f, "CECP option '{name}' is not declared"),
         }
     }
 }
@@ -37,6 +39,7 @@ impl std::error::Error for InitializationError {
         match self {
             Self::Failure(error) => Some(error),
             Self::Network(error) => Some(error),
+            Self::UndeclaredCecpOption(_) => None,
         }
     }
 }
@@ -144,8 +147,15 @@ impl EngineProcess {
             Protocol::Cecp => {
                 process.send("xboard")?;
                 process.send("protover 2")?;
-                if process.read_cecp_features()? {
+                let declarations = process.read_cecp_features()?;
+                if declarations.contains("RuleSet") {
                     process.send(&format!("option RuleSet={}", config.rules_source))?;
+                }
+                for (name, value) in &config.options {
+                    if !declarations.contains(name) {
+                        return Err(InitializationError::UndeclaredCecpOption(name.clone()));
+                    }
+                    process.send(&format!("option {name}={value}"))?;
                 }
                 process.send(&cecp_memory_text(config.hash_mb))?;
                 process.send("new")?;
@@ -168,6 +178,8 @@ impl EngineProcess {
                         unreachable!("CECP limits are validated during player resolution")
                     }
                 }
+                process.send("ping 0")?;
+                process.receive_until(|line| line.trim() == "pong 0")?;
             }
         }
         Ok(process)

@@ -41,6 +41,8 @@ fn settings(n: u64, pairs: usize, concurrency: usize) -> Settings {
 }
 fn manifest(s: Settings) -> Manifest {
     Manifest {
+        options: Vec::new(),
+        network_sha256: None,
         engine: EngineIdentity::Commit {
             hash: "a".repeat(40),
             sha256: "b".repeat(64),
@@ -643,21 +645,31 @@ fn command_engine_runs_resumes_and_sets_only_listed_parameters() {
     fs::write(
         &script,
         r#"
-import sys
+import sys, hashlib
+network = None
 with open(sys.argv[1], 'a', buffering=1) as log:
     for line in sys.stdin:
         log.write(line)
         if line.strip() == 'usi':
+            print('option name EvalFile type string default <empty>')
             print('option name Tune_X type spin default 250 min 100 max 400')
             print('option name Tune_Y type spin default 50 min 0 max 100')
             print('usiok', flush=True)
+        elif line.startswith('setoption name EvalFile value '):
+            network = line.strip().split(' value ', 1)[1]
         elif line.strip() == 'isready':
+            assert network is not None
+            with open(network, 'rb') as net:
+                print('info string network_sha256 ' + hashlib.sha256(net.read()).hexdigest())
             print('readyok', flush=True)
         elif line.startswith('go '):
             print('bestmove resign', flush=True)
 "#,
     )
     .unwrap();
+    let network = directory.0.join("network.bin");
+    fs::write(&network, b"first network").unwrap();
+    let option = format!("EvalFile={}", network.display());
     let params_file = directory.0.join("params.txt");
     fs::write(&params_file, "X,250.25,100,400,15,0.002\n").unwrap();
     let engine = format!("python3 -u {} {}", script.display(), transcript.display());
@@ -671,6 +683,8 @@ with open(sys.argv[1], 'a', buffering=1) as log:
             "42",
             "--engine",
             &engine,
+            "--option",
+            &option,
             "--params",
             params_file.to_str().unwrap(),
             "--rules",
@@ -710,10 +724,12 @@ with open(sys.argv[1], 'a', buffering=1) as log:
                 .unwrap(),
         )
     };
-    // 完了済みならエンジンを起動せず、起動記録も増やさない。
-    let commands_before = fs::read(&transcript).unwrap();
+    // 完了済みでもネットを照合するが、起動記録は増やさない。
+    let commands_before = fs::read_to_string(&transcript).unwrap();
     resume().unwrap();
-    assert_eq!(fs::read(&transcript).unwrap(), commands_before);
+    let probe = fs::read_to_string(&transcript).unwrap();
+    assert!(probe[commands_before.len()..].contains("isready\n"));
+    assert!(!probe[commands_before.len()..].contains("go "));
     assert_eq!(
         fs::read(run_dir.join("invocations.json")).unwrap(),
         invocations_before
@@ -757,7 +773,18 @@ with open(sys.argv[1], 'a', buffering=1) as log:
             .count(),
         12
     );
-    assert_eq!(commands.lines().filter(|line| *line == "usi").count(), 13);
+    assert_eq!(commands.lines().filter(|line| *line == "usi").count(), 16);
+    for initialization in commands
+        .split("usi\n")
+        .skip(1)
+        .filter(|part| part.contains("usinewgame"))
+    {
+        let fixed = initialization
+            .find("setoption name EvalFile value ")
+            .unwrap();
+        let tune = initialization.find("setoption name Tune_X value ").unwrap();
+        assert!(fixed < tune);
+    }
     assert!(
         commands
             .lines()
@@ -774,6 +801,25 @@ with open(sys.argv[1], 'a', buffering=1) as log:
     let m: Manifest =
         serde_json::from_slice(&fs::read(run_dir.join("manifest.json")).unwrap()).unwrap();
     assert_eq!(m.engine_sha256.len(), 64);
+    assert_eq!(
+        m.options,
+        [("EvalFile".to_owned(), network.to_str().unwrap().to_owned())]
+    );
+    use sha2::{Digest, Sha256};
+    assert_eq!(
+        m.network_sha256.as_ref().unwrap().to_string(),
+        format!("{:x}", Sha256::digest(b"first network"))
+    );
+    fs::write(&network, b"replacement network").unwrap();
+    let commands_before = fs::read_to_string(&transcript).unwrap();
+    let error = resume().unwrap_err();
+    assert!(matches!(
+        error.downcast_ref::<NetworkError>(),
+        Some(NetworkError::Mismatch { .. })
+    ));
+    let commands_after = fs::read_to_string(&transcript).unwrap();
+    assert!(!commands_after[commands_before.len()..].contains("go "));
+
     let (_, records) = Store::resume(&run_dir).unwrap();
     assert_eq!(records.len(), 2);
     assert!(

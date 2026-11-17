@@ -2,8 +2,9 @@
 //!
 //! 起動後に`xboard`と`protover 2`を送り、`feature done=1`を待つ。
 //! `RuleSet`オプションの宣言があれば、`new`より前に規則の原文を`option RuleSet=`で送る。
-//! 続けて`memory`、`new`、`variant chu`、`easy`、`nopost`、`force`を送り、
+//! 宣言と照合した追加オプションを指定順に`option <名前>=<値>`として送り、続けて`memory`、`new`、`variant chu`、`easy`、`nopost`、`force`を送り、
 //! 深さ固定なら`sd`、秒読みだけの固定時間なら`st`、それ以外の時間制御なら`level`を送る。
+//! 最後に`ping 0`を送り、応答期限内に`pong 0`を受けて初期化を完了する。
 //! 表現できる制限は[`validate_cecp_limit`]が定める。
 //!
 //! エンジンが対局状態を持つため、毎手は前回の送信以降の着手だけを`usermove`で送る。
@@ -39,9 +40,11 @@ pub(super) const CECP_MEMORY_MB: u64 = 256;
 pub(in crate::harness) const CECP_FIXED_TIME_CS: u64 = 3_000_000;
 
 impl EngineProcess {
-    /// 複数行のfeature宣言を`done=1`まで読み、RuleSetオプションの有無を返す。
-    pub(super) fn read_cecp_features(&self) -> Result<bool, EngineFailure> {
-        let mut has_ruleset = false;
+    /// 複数行のfeature宣言を`done=1`まで読み、宣言されたオプション名を返す。
+    pub(super) fn read_cecp_features(
+        &self,
+    ) -> Result<std::collections::HashSet<String>, EngineFailure> {
+        let mut options = std::collections::HashSet::new();
         self.receive_until(|line| {
             let mut fields = line.splitn(2, char::is_whitespace);
             if fields.next() != Some("feature") {
@@ -67,13 +70,20 @@ impl EngineProcess {
                         None => (value, ""),
                     }
                 };
-                has_ruleset |= name == "option" && value.starts_with("RuleSet ");
+                if name == "option" {
+                    let words: Vec<_> = value.split_whitespace().collect();
+                    if let Some(index) = words.iter().position(|word| word.starts_with('-'))
+                        && index > 0
+                    {
+                        options.insert(words[..index].join(" "));
+                    }
+                }
                 done |= name == "done" && value == "1";
                 rest = tail;
             }
             done
         })?;
-        Ok(has_ruleset)
+        Ok(options)
     }
 
     /// CECPの差分着手と時計を送り、`pong`までの応答を解釈する。

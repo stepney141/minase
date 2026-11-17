@@ -12,6 +12,7 @@ mod summary;
 
 use clap::error::ErrorKind;
 pub(super) use cli::Arguments;
+pub(crate) use cli::parse_usi_option;
 use cli::time_seed;
 use manifest::run_manifest;
 use minase::harness::*;
@@ -38,10 +39,7 @@ pub(super) fn main(arguments: Arguments) {
     if let Err(error) = arguments.validate_startup_args() {
         error.exit();
     }
-    if let Err(error) = minase::eval::weights() {
-        eprintln!("error: embedded evaluation weights are invalid: {error}");
-        process::exit(1);
-    }
+
     if let Err(error) = arguments.validate_ponder() {
         crate::subcommand_command(&["match", "run"])
             .error(ErrorKind::ValueValidation, error)

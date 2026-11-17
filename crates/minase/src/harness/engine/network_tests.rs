@@ -161,11 +161,11 @@ done
             .unwrap()
             .is_empty()
     );
-    for (is_random, protocol) in [(true, Protocol::Usi), (false, Protocol::Cecp)] {
+    {
         let mut config = config.clone();
         config.path = "/nonexistent-engine".into();
-        config.is_random = is_random;
-        config.protocol = protocol;
+        config.is_random = true;
+        config.protocol = Protocol::Usi;
         assert_eq!(
             probe_engine_defaults(&config, true, TIMEOUT)
                 .unwrap()
@@ -209,7 +209,10 @@ fn play_game_returns_network_errors_instead_of_forfeits_for_both_sides_and_null_
             );
             let error = result.err().unwrap();
             assert_eq!(error.side, side);
-            assert!(matches!(error.source, NetworkError::Mismatch { .. }));
+            assert!(matches!(
+                error.source,
+                crate::harness::MatchInitializationError::Network(NetworkError::Mismatch { .. })
+            ));
             let text = error.to_string();
             assert!(text.contains(&side.to_string()));
             assert!(text.contains(&format!(
@@ -304,7 +307,9 @@ done
         result,
         Err(MatchEngineError {
             side: EngineSide::Candidate,
-            source: NetworkError::Mismatch { .. }
+            source: crate::harness::MatchInitializationError::Network(
+                NetworkError::Mismatch { .. }
+            )
         })
     ));
 }

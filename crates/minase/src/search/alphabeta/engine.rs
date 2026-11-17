@@ -8,17 +8,19 @@ use crate::search::alphabeta::team::run_search_team;
 use crate::search::clock::{MonotonicClock, SearchClock};
 use crate::search::events::{PvLine, SearchEvent};
 use crate::search::{
-    DEFAULT_THREADS, DEFAULT_TT_SIZE_MB, HistoryTables, SearchHandle, SearchLimits, SearchOption,
-    SearchOptionKind, SearchOptionValue, SearchSnapshot, Searcher, SetOptionError, StartError,
-    StartFailure, TranspositionTable,
+    DEFAULT_THREADS, DEFAULT_TT_SIZE_MB, HistoryTables, PrepareError, SearchHandle, SearchLimits,
+    SearchOption, SearchOptionKind, SearchOptionValue, SearchSnapshot, Searcher, SetOptionError,
+    StartError, StartFailure, TranspositionTable,
 };
 
 /// αβ探索の置換表、history表、およびワーカー数。
 ///
 /// 表は対局内で持ち越し、新規対局や規則の変更で消去する。
 /// 理由は`docs/adr/carry-histories-and-correction-histories-within-a-game.md`にある。
-/// NNUEの重みは探索の開始時に取得する。
+/// NNUEの重みは`prepare`で外部ファイルから取得する。
 pub struct Engine {
+    pub(in crate::search) eval_file: String,
+    pub(in crate::search) network: Option<crate::eval::nnue::NetworkFile>,
     /// 準備または最初の探索まで未確保の置換表。
     pub(in crate::search) transposition_table: Option<TranspositionTable>,
     /// 次の探索へ持ち越す履歴表。
@@ -31,6 +33,8 @@ impl Engine {
     /// 置換表を確保せず、既定のワーカー数で履歴表を作る。
     pub(in crate::search) fn new() -> Self {
         Self {
+            eval_file: String::new(),
+            network: None,
             transposition_table: None,
             histories: HistoryTables::new(DEFAULT_THREADS),
             threads: DEFAULT_THREADS,
@@ -56,6 +60,12 @@ impl Engine {
                     max: 256,
                 },
             },
+            SearchOption {
+                name: "EvalFile",
+                kind: SearchOptionKind::String {
+                    default: String::new(),
+                },
+            },
         ]
     }
 
@@ -73,11 +83,13 @@ impl Engine {
                 name: name.to_owned(),
             })?;
         option.validate(&value)?;
-        let SearchOptionValue::Spin(value) = value else {
-            unreachable!("validated alpha-beta option is a spin value");
-        };
-        match option.name {
-            "USI_Hash" => {
+        match (option.name, value) {
+            ("EvalFile", SearchOptionValue::String(value)) => {
+                self.eval_file = value;
+                self.network = None;
+                self.clear();
+            }
+            ("USI_Hash", SearchOptionValue::Spin(value)) => {
                 match &mut self.transposition_table {
                     Some(table) => table.resize(value),
                     None => TranspositionTable::new(value).map(|table| {
@@ -87,14 +99,23 @@ impl Engine {
                 .map_err(SetOptionError::TranspositionTable)?;
                 self.histories.clear();
             }
-            "Threads" => {
-                let threads = NonZeroUsize::new(value).expect("validated non-zero worker count");
+            ("Threads", SearchOptionValue::Spin(value)) => {
+                let threads =
+                    NonZeroUsize::new(value).ok_or_else(|| SetOptionError::InvalidValue {
+                        name: option.name,
+                        value: value.to_string(),
+                    })?;
                 if self.threads != threads {
                     self.histories = HistoryTables::new(threads);
                     self.threads = threads;
                 }
             }
-            _ => unreachable!("all declared alpha-beta options are handled"),
+            (_, value) => {
+                return Err(SetOptionError::InvalidValue {
+                    name: option.name,
+                    value: value.to_string(),
+                });
+            }
         }
         Ok(())
     }
@@ -107,15 +128,25 @@ impl Engine {
         }
     }
 
-    /// USIの`isready`に先立ち、未確保の置換表の確保を試みる。
+    /// USIの`isready`でEvalFileのネットを読み、未確保の置換表の確保を試みる。
     /// 最初の`go`での確保が時計上の思考時間に含まれるのを避ける。
-    /// 失敗は`go`で再試行した際に報告する。
-    pub(in crate::search) fn prepare(&mut self) {
+    /// 置換表の確保の失敗は`go`で再試行した際に報告する。
+    pub(in crate::search) fn prepare(&mut self) -> Result<(), PrepareError> {
+        if self.eval_file.is_empty() {
+            return Err(PrepareError::MissingEvalFile);
+        }
+        if self.network.is_none() {
+            self.network = Some(
+                crate::eval::nnue::read_network_file(std::path::Path::new(&self.eval_file))
+                    .map_err(PrepareError::Nnue)?,
+            );
+        }
         if self.transposition_table.is_none()
             && let Ok(table) = TranspositionTable::new(DEFAULT_TT_SIZE_MB)
         {
             self.transposition_table = Some(table);
         }
+        Ok(())
     }
 
     /// 重みと置換表を準備し、状態を探索スレッドへ移す。
@@ -127,12 +158,12 @@ impl Engine {
         search_id: u64,
         ponder: bool,
     ) -> Result<SearchHandle, StartFailure> {
-        let nnue = match crate::eval::weights() {
-            Ok(nnue) => nnue,
-            Err(error) => {
+        let nnue = match &self.network {
+            Some(file) => Arc::clone(&file.network),
+            None => {
                 return Err(StartFailure {
                     searcher: Searcher::AlphaBeta(self),
-                    error: StartError::Weights(error),
+                    error: StartError::NotPrepared,
                 });
             }
         };

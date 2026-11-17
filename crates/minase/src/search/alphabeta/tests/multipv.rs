@@ -5,6 +5,8 @@ use super::*;
 fn events(snapshot: SearchSnapshot, limits: SearchLimits) -> Vec<SearchEvent> {
     let handle = start_search_with_clock(
         crate::search::alphabeta::Engine {
+            eval_file: String::new(),
+            network: None,
             transposition_table: Some(small_tt()),
             histories: crate::search::HistoryTables::new(worker_count(1)),
             threads: worker_count(1),

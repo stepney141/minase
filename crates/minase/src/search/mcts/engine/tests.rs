@@ -207,7 +207,7 @@ fn policy_temperature_accepts_boundaries_and_rejects_out_of_range_values() {
         engine
             .set_option("PolicyTemperature", SearchOptionValue::Spin(value))
             .unwrap();
-        assert_eq!(engine.config.search.policy_temperature, expected);
+        assert_eq!(engine.config.policy_temperature, expected);
     }
     for value in [9, 1001] {
         assert_eq!(
@@ -219,7 +219,7 @@ fn policy_temperature_accepts_boundaries_and_rejects_out_of_range_values() {
                 max: 1000,
             })
         );
-        assert_eq!(engine.config.search.policy_temperature, 10.0);
+        assert_eq!(engine.config.policy_temperature, 10.0);
     }
 }
 
@@ -312,7 +312,7 @@ fn batch_collection_honors_both_batch_size_and_remaining_simulations() {
 fn capacity_stops_after_evaluating_the_root_without_counting_a_failed_descent() {
     let input = initial();
     let mut engine = engine(UniformEvaluator);
-    engine.config.search.capacity_bytes =
+    engine.config.capacity_bytes =
         std::mem::size_of::<Node>() + input.root_moves().len() * std::mem::size_of::<Edge>();
     let (engine, event) = finish(engine.start(input, nodes(100), 1, false).unwrap());
     assert!(matches!(
@@ -345,7 +345,7 @@ fn ambiguous_lion_reuse_matches_a_fresh_repetition_win() {
     after_quiet.make_move_unchecked(quiet, input.rules());
     let reply = minase_core::notation::usi::parse(&after_quiet, "10c11d10c").unwrap();
     let mut previous = engine(ScriptedEvaluator::line(input.position(), &[quiet, reply]));
-    previous.config.search.batch_size = NonZeroUsize::new(256).unwrap();
+    previous.config.batch_size = NonZeroUsize::new(256).unwrap();
     let mut fresh_engine = engine(ScriptedEvaluator::line(input.position(), &[quiet, reply]));
     fresh_engine.config = previous.config;
     let (mut previous, _) = finish(previous.start(input, nodes(10_000), 1, false).unwrap());
@@ -440,7 +440,7 @@ fn new_root_at_a_repetition_terminal_is_rebuilt_from_snapshot_candidates() {
     let (root, line) = rook_cycle(false, false);
     let mut game = Game::from_position(rules(RepetitionRule::R1), root.clone());
     let mut engine = engine(ScriptedEvaluator::line(&root, &line));
-    engine.config.search.batch_size = NonZeroUsize::new(1).unwrap();
+    engine.config.batch_size = NonZeroUsize::new(1).unwrap();
     let (mut engine, _) = finish(
         engine
             .start(
@@ -619,7 +619,7 @@ fn hard_limit_caps_the_batch_using_root_evaluation_time_per_leaf() {
         batches: batches.clone(),
         milliseconds_per_leaf: 21,
     });
-    engine.config.search.batch_size = NonZeroUsize::new(256).unwrap();
+    engine.config.batch_size = NonZeroUsize::new(256).unwrap();
     let limits = SearchLimits::new(None, None, Some(100), None).unwrap();
     let (_, event) = finish(
         engine
@@ -756,7 +756,7 @@ fn gated() -> (Engine, Receiver<usize>, Sender<()>, Receiver<()>) {
         dropped: dropped_tx,
         calls: 0,
     });
-    engine.config.search.batch_size = NonZeroUsize::new(1).unwrap();
+    engine.config.batch_size = NonZeroUsize::new(1).unwrap();
     (engine, entered, release, dropped)
 }
 fn entered(receiver: &Receiver<usize>, expected: usize) {
@@ -1090,7 +1090,7 @@ fn an_already_requested_stop_cannot_skip_the_root_evaluation() {
 fn invalid_scale_puct_and_root_capacity_return_the_engine_before_spawning() {
     for scale in [0.0, -1.0, f32::NAN, f32::INFINITY] {
         let mut engine = engine(UniformEvaluator);
-        engine.config.cp_per_logit = scale;
+        engine.cp_per_logit = Some(scale);
         let failure = match engine.start(initial(), nodes(2), 1, false) {
             Err(failure) => failure,
             Ok(_) => panic!(),
@@ -1104,9 +1104,9 @@ fn invalid_scale_puct_and_root_capacity_return_the_engine_before_spawning() {
     for capacity in [false, true] {
         let mut engine = engine(UniformEvaluator);
         if capacity {
-            engine.config.search.capacity_bytes = 0;
+            engine.config.capacity_bytes = 0;
         } else {
-            engine.config.search.puct.c_base = 0.0;
+            engine.config.puct.c_base = 0.0;
         }
         let failure = match engine.start(initial(), nodes(2), 1, false) {
             Err(failure) => failure,
@@ -1204,14 +1204,14 @@ fn inference_options_accept_boundaries_and_map_backends_without_fallback() {
         engine
             .set_option("NnBatchSize", SearchOptionValue::Spin(size))
             .unwrap();
-        assert_eq!(engine.config.search.batch_size.get(), size);
+        assert_eq!(engine.config.batch_size.get(), size);
     }
     for size in [0, 1025, usize::MAX] {
         assert!(matches!(
             engine.set_option("NnBatchSize", SearchOptionValue::Spin(size)),
             Err(SetOptionError::OutOfRange { .. })
         ));
-        assert_eq!(engine.config.search.batch_size.get(), 1024);
+        assert_eq!(engine.config.batch_size.get(), 1024);
     }
     assert!(matches!(
         engine.set_option("NnBackend", SearchOptionValue::Combo("vulkan".to_owned())),
@@ -1263,7 +1263,7 @@ fn hash_capacity_change_discards_tree_and_keeps_evaluator() {
         .set_option("USI_Hash", SearchOptionValue::Spin(2))
         .unwrap();
     assert!(engine.driver.is_none());
-    assert_eq!(engine.config.search.capacity_bytes, 2 * 1024 * 1024);
+    assert_eq!(engine.config.capacity_bytes, 2 * 1024 * 1024);
     assert!(engine.evaluator.is_some());
 }
 
@@ -1547,7 +1547,7 @@ fn multipv_nodes_one_preserves_first_line_and_uses_root_value_only_for_it() {
     let mut results = Vec::new();
     for count in [1, 3] {
         let mut engine = engine(RootEvaluator);
-        engine.config.cp_per_logit = 100.0;
+        engine.cp_per_logit = Some(100.0);
         let handle = engine
             .start(
                 input.clone().with_multi_pv(count).unwrap(),
@@ -1606,4 +1606,28 @@ fn multipv_nodes_one_preserves_first_line_and_uses_root_value_only_for_it() {
         ));
     }
     assert_eq!(results[0], results[1]);
+}
+
+// NnCpPerLogitの変更で引き分けの換算が変わるため、前の探索木を再利用しない。
+#[test]
+fn scale_option_invalidates_tree_until_preparation_and_uses_the_new_scale() {
+    let mut engine = Engine::ready_for_test();
+    engine.prepare_driver(initial(), nodes(4)).unwrap();
+    engine
+        .set_option("NnCpPerLogit", SearchOptionValue::String(SCALE.to_string()))
+        .unwrap();
+    assert!(engine.driver.is_some());
+    engine
+        .set_option(
+            "NnCpPerLogit",
+            SearchOptionValue::String("1234.5".to_owned()),
+        )
+        .unwrap();
+    assert!(engine.driver.is_none());
+    assert!(matches!(
+        engine.prepare_driver(initial(), nodes(4)),
+        Err(Error::MissingEvaluator)
+    ));
+    engine.prepare().unwrap();
+    assert_eq!(engine.prepare_driver(initial(), nodes(4)).unwrap(), 1234.5);
 }

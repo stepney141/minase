@@ -128,10 +128,14 @@ fn perft_rejects_invalid_state_without_output() {
     );
 }
 
-/// benchは対局の初期化なしで成功し、終了コードと終端行の両方を返す。
+/// benchはネットの準備後に対局の初期化なしで成功し、終了コードと終端行の両方を返す。
 #[test]
 fn bench_succeeds_as_a_usi_command() {
-    let result = usi_session("bench depth 1\nquit\n");
+    let result = usi_session(concat!(
+        "setoption name RuleSet value JCSA\nsetoption name EvalFile value ",
+        env!("CARGO_MANIFEST_DIR"),
+        "/nets/nnue-epoch0.bin\nisready\nbench depth 1\nquit\n"
+    ));
     assert_eq!(
         result.status.code(),
         Some(0),
@@ -166,14 +170,18 @@ fn diagnostic_subcommands_are_rejected() {
 #[test]
 fn diagnostic_runtime_failure_ends_the_process() {
     let result = usi_session(&format!(
-        "bench depth 1 repetitions {}\nusi\nquit\n",
+        concat!(
+            "setoption name RuleSet value JCSA\nsetoption name EvalFile value ",
+            env!("CARGO_MANIFEST_DIR"),
+            "/nets/nnue-epoch0.bin\nisready\nbench depth 1 repetitions {}\nusi\nquit\n"
+        ),
         usize::MAX
     ));
     assert_eq!(result.status.code(), Some(1));
     let stdout = String::from_utf8(result.stdout).unwrap();
-    assert_eq!(stdout.lines().count(), 1);
+    assert_eq!(stdout.lines().count(), 3);
     assert!(
-        stdout.starts_with("info string error: bench allocation failed: "),
+        stdout.contains("info string error: bench allocation failed: "),
         "{stdout}"
     );
 }
