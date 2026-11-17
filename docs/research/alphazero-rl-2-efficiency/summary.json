@@ -1,0 +1,131 @@
+{
+  "inputs": [
+    {
+      "path": "/mnt/synology_nas/minase/alphazero/cycles.jsonl",
+      "sha256": "73a8d0b91d146e9a20c91d73b4e675518daa2867f42cc3b0c3c962c0205dd16a"
+    },
+    {
+      "path": "/mnt/synology_nas/minase/alphazero/cycles-rl2-az.jsonl",
+      "sha256": "d76b00b9865dcd5274b8425cccef80ec70f3513f63cc8fdf499f79dba56e95a6"
+    }
+  ],
+  "series": {
+    "alphazero-rl-1": {
+      "last_cycle": {
+        "series": "alphazero-rl-1",
+        "cycle": 32,
+        "generated_positions": 1009868,
+        "cumulative_generated_positions": 31594296,
+        "sample_count": 3850892,
+        "positions_seen": 3850892,
+        "cumulative_positions_seen": 120180504,
+        "optimizer_steps": 15043,
+        "cumulative_optimizer_steps": 469470,
+        "games": 9626,
+        "cumulative_games": 370573,
+        "plies": 4146110,
+        "cumulative_plies": 135911075,
+        "generation_seconds": 2078.754042,
+        "training_stage_seconds": 1430.133175,
+        "optimizer_loop_seconds": 1042.1778006350032,
+        "loading_seconds": 262.0649852360002,
+        "diagnostic_seconds": 37.819037265999214,
+        "checking_seconds": 89.219945,
+        "stage_seconds": 3598.107162,
+        "cumulative_stage_seconds": 119951.341951,
+        "external_value_loss": 0.6255190378031594,
+        "external_policy_agreement": 0.11379740182238487
+      },
+      "last_20_medians": {
+        "generation_seconds": 2069.6073450000004,
+        "training_stage_seconds": 1350.958807,
+        "optimizer_loop_seconds": 1038.6461411715054,
+        "loading_seconds": 187.1534352484996,
+        "diagnostic_seconds": 39.51020593249905,
+        "checking_seconds": 101.0760215,
+        "stage_seconds": 3534.462937
+      },
+      "generation_commits": [
+        "29b01a5ce6174780deedb0ac2b88688a24bd20e5",
+        "522192f3ba19357e08558191e9778c696280118f",
+        "6c9b9cda7b8c39a335b7beeb674d6f5f559b39f9",
+        "aa9a7fa87be6ba923ae853f333904c886ec2a801",
+        "d0e22dbf36a1728fb778e644ab4f496320e7c6e2",
+        "f8eac7e97bf2a886e2a03661dc5d2036f8741e4c"
+      ],
+      "trainer_commits": [
+        "29b01a5ce6174780deedb0ac2b88688a24bd20e5",
+        "522192f3ba19357e08558191e9778c696280118f",
+        "6c9b9cda7b8c39a335b7beeb674d6f5f559b39f9",
+        "aa9a7fa87be6ba923ae853f333904c886ec2a801",
+        "d0e22dbf36a1728fb778e644ab4f496320e7c6e2",
+        "f8eac7e97bf2a886e2a03661dc5d2036f8741e4c"
+      ]
+    },
+    "alphazero-rl-2": {
+      "last_cycle": {
+        "series": "alphazero-rl-2",
+        "cycle": 100,
+        "generated_positions": 1005395,
+        "cumulative_generated_positions": 95191852,
+        "sample_count": 967579,
+        "positions_seen": 966656,
+        "cumulative_positions_seen": 90375168,
+        "optimizer_steps": 944,
+        "cumulative_optimizer_steps": 88257,
+        "games": 1986,
+        "cumulative_games": 268896,
+        "plies": 1004016,
+        "cumulative_plies": 95041128,
+        "generation_seconds": 514.009188,
+        "training_stage_seconds": 277.342463,
+        "optimizer_loop_seconds": 89.6552489300957,
+        "loading_seconds": 72.77973087399732,
+        "diagnostic_seconds": 9.887909375946037,
+        "checking_seconds": 146.834046,
+        "stage_seconds": 938.185697,
+        "cumulative_stage_seconds": 94973.51973099998,
+        "external_value_loss": 0.6634016015030044,
+        "external_policy_agreement": 0.08161159258122179
+      },
+      "last_20_medians": {
+        "generation_seconds": 490.85004449999997,
+        "training_stage_seconds": 279.88739599999997,
+        "optimizer_loop_seconds": 85.62447759561474,
+        "loading_seconds": 64.59564566850895,
+        "diagnostic_seconds": 10.271936751028989,
+        "checking_seconds": 147.7382335,
+        "stage_seconds": 957.179934
+      },
+      "generation_commits": [
+        "324bea40818564c80175cf6ae3f172e1495386bf",
+        "3fb311f90677cc5fa5b305c1683d77fac6c04ee2",
+        "556e90aa1c2e8a291543a4d58b7455e246eb5c9d",
+        "6992a0e55a350ca09879bef8755648107ac1b4f8",
+        "8e419486e7cf5c93bbefb4f856bc203f2213cd21",
+        "9ebd3040fd6dae15aa10b1ce2af460118511b2f9"
+      ],
+      "trainer_commits": [
+        "324bea40818564c80175cf6ae3f172e1495386bf",
+        "556e90aa1c2e8a291543a4d58b7455e246eb5c9d",
+        "6992a0e55a350ca09879bef8755648107ac1b4f8",
+        "8e419486e7cf5c93bbefb4f856bc203f2213cd21",
+        "9ebd3040fd6dae15aa10b1ce2af460118511b2f9"
+      ]
+    }
+  },
+  "replay_at_cycle_100": {
+    "training_positions": 90429193,
+    "games": 268896,
+    "latest_cycle_positions": 967579,
+    "latest_cycle_fraction": 0.010699852203701518,
+    "latest_cycle_expected_samples": 10343.076331821296,
+    "first_50_cycles_fraction": 0.5017928115315593,
+    "last_10_cycles_fraction": 0.09355799514875689,
+    "mean_age_cycles": 49.785808129461024,
+    "expected_unused_fraction": 0.4951060101321412,
+    "last_50_expected_unused_fraction": 0.7459866363387965,
+    "latest_train_diagnostic_positions": 491,
+    "latest_validation_positions": 37816
+  }
+}
