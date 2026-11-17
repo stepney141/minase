@@ -175,6 +175,39 @@ mod tests {
     use super::*;
 
     #[test]
+    fn movestats_preserves_recorded_evaluation_stop_reason_and_time() {
+        let root = "info string movestats root simulations 5 reused 0 visits 4 value 0.5 tree-bytes 1024 capacity-bytes 4096 elapsed-ms 12 soft-ms - hard-ms - result none";
+        let candidate = "info string movestats move 1a1b visits 4 value-sum 2 q 0.5 prior 0.25 value 0.5 result none";
+        let mut observations = Vec::new();
+        for include_stats in [false, true] {
+            let mut evaluation = None;
+            let mut reason = None;
+            let mut time = None;
+            let mut lines = vec!["info depth 3 time 12 score cp 17"];
+            if include_stats {
+                lines.extend([root, candidate]);
+            }
+            lines.push("info string stop nodes");
+            // 読み飛ばした行が既に記録した停止理由も消さないことを確認する。
+            if include_stats {
+                lines.extend([root, candidate]);
+            }
+            for line in lines {
+                observe_usi_evaluation(&mut evaluation, line);
+                observe_usi_search_data(&mut reason, &mut time, line).unwrap();
+            }
+            observations.push((evaluation, reason, time));
+        }
+        assert_eq!(observations[0], observations[1]);
+        assert_eq!(
+            observations[0].0.as_ref().unwrap().score,
+            EngineScore::Cp(17)
+        );
+        assert_eq!(observations[0].1, Some(StopReasonRecord::Nodes));
+        assert_eq!(observations[0].2, Some(12));
+    }
+
+    #[test]
     fn usi_resource_probe_parses_exact_spin_option_defaults() {
         let mut defaults = EngineDefaults::default();
         observe_usi_default(

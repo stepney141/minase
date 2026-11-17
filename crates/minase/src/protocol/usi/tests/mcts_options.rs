@@ -624,3 +624,414 @@ fn model_paths_join_value_words_with_one_space() {
     assert_eq!(path, &PathBuf::from("/nonexistent path with spaces.onnx"));
     assert_eq!(output.lines().count(), 1);
 }
+
+// mcts-debugging-tools.md「検証」9の契約をプロトコルの出力で検査する。
+fn verbose_protocol() -> UsiProtocol {
+    let mut protocol = UsiProtocol::with_searcher(Searcher::Mcts(Engine::ready_for_test()));
+    let (result, output) = run(
+        &mut protocol,
+        "setoption name RuleSet value JCSA\nsetoption name VerboseMoveStats value true\nposition startpos\n",
+    );
+    result.unwrap();
+    assert!(output.is_empty());
+    protocol
+}
+
+fn stats_field<'a>(line: &'a str, name: &str) -> &'a str {
+    let mut words = line.split_whitespace();
+    while let Some(word) = words.next() {
+        if word == name {
+            return words.next().unwrap();
+        }
+    }
+    panic!("missing {name}: {line}");
+}
+
+fn stats_root(output: &str) -> &str {
+    let roots: Vec<_> = output
+        .lines()
+        .filter(|line| line.starts_with("info string movestats root "))
+        .collect();
+    assert_eq!(roots.len(), 1, "{output}");
+    roots[0]
+}
+
+fn stats_moves(output: &str) -> Vec<&str> {
+    output
+        .lines()
+        .filter(|line| line.starts_with("info string movestats move "))
+        .collect()
+}
+
+fn stats_bestmove(output: &str) -> &str {
+    let best: Vec<_> = output
+        .lines()
+        .filter_map(|line| line.strip_prefix("bestmove "))
+        .collect();
+    assert_eq!(best.len(), 1, "{output}");
+    best[0].split_whitespace().next().unwrap()
+}
+
+fn assert_stats_order(output: &str, game: &Game) {
+    assert!(!output.contains("info string error:"), "{output}");
+    let root = stats_root(output);
+    let moves = stats_moves(output);
+    let expected: HashSet<_> = game
+        .legal_moves()
+        .into_iter()
+        .map(|mv| usi::text_generated(game.position(), mv))
+        .collect();
+    assert_eq!(moves.len(), expected.len());
+    let actual: HashSet<_> = moves
+        .iter()
+        .map(|line| stats_field(line, "move").to_owned())
+        .collect();
+    assert_eq!(actual, expected);
+    assert_eq!(stats_field(moves[0], "move"), stats_bestmove(output));
+    let lines: Vec<_> = output.lines().collect();
+    let final_info = lines
+        .iter()
+        .rposition(|line| line.starts_with("info depth "))
+        .unwrap();
+    let root_index = lines.iter().position(|line| *line == root).unwrap();
+    assert_eq!(root_index, final_info + 1);
+    assert_eq!(&lines[root_index + 1..root_index + 1 + moves.len()], moves);
+    let stop = root_index + 1 + moves.len();
+    assert!(lines[stop].starts_with("info string stop "));
+    assert!(lines[stop + 1].starts_with("bestmove "));
+    assert_eq!(stop + 2, lines.len());
+    assert_eq!(
+        stats_field(root, "elapsed-ms"),
+        stats_field(lines[final_info], "time")
+    );
+}
+
+#[test]
+fn verbose_movestats_handshake_and_check_values() {
+    let mut protocol = verbose_protocol();
+    let (result, output) = run(&mut protocol, "usi\n");
+    result.unwrap();
+    let lines: Vec<_> = output.lines().collect();
+    let temperature = lines
+        .iter()
+        .position(|line| line.starts_with("option name PolicyTemperature "))
+        .unwrap();
+    assert_eq!(
+        lines[temperature + 1],
+        "option name VerboseMoveStats type check default false"
+    );
+    for value in ["true", "TRUE", "false", "FaLsE"] {
+        let (result, output) = run(
+            &mut protocol,
+            &format!(
+                "setoption name VerboseMoveStats value {value}\nposition startpos\ngo nodes 1\n"
+            ),
+        );
+        result.unwrap();
+        assert!(!output.contains("error:"));
+        assert_eq!(
+            output.contains("info string movestats root "),
+            value.eq_ignore_ascii_case("true")
+        );
+        assert_legal_bestmove(&output, &Game::new(Rules::JCSA));
+    }
+    // 拒否した入力は直前の有効な設定を変えない。
+    for value in ["", " value", " value yes", " value 1", " value 真"] {
+        let (result, output) = run(
+            &mut protocol,
+            &format!(
+                "setoption name VerboseMoveStats value true\nsetoption name VerboseMoveStats{value}\nposition startpos\ngo nodes 1\n"
+            ),
+        );
+        result.unwrap();
+        let error = if matches!(value, "" | " value") {
+            "info string error: VerboseMoveStats requires a value"
+        } else {
+            "info string error: VerboseMoveStats must be true or false"
+        };
+        assert_eq!(output.lines().next(), Some(error));
+        stats_root(&output);
+    }
+    let mut alpha = UsiProtocol::new();
+    let (result, output) = run(&mut alpha, "usi\n");
+    result.unwrap();
+    assert!(!output.contains("VerboseMoveStats"));
+    let (result, output) = run(&mut alpha, "setoption name VerboseMoveStats value true\n");
+    result.unwrap();
+    assert!(output.is_empty());
+}
+
+#[test]
+fn verbose_movestats_natural_finish_and_default_disabled() {
+    let mut protocol = UsiProtocol::with_searcher(Searcher::Mcts(Engine::ready_for_test()));
+    let (result, output) = run(
+        &mut protocol,
+        "setoption name RuleSet value JCSA\nposition startpos\ngo nodes 5\n",
+    );
+    result.unwrap();
+    assert!(!output.contains("movestats"));
+    assert_legal_bestmove(&output, &Game::new(Rules::JCSA));
+    let (result, output) = run(&mut verbose_protocol(), "go nodes 5\n");
+    result.unwrap();
+    assert_stats_order(&output, &Game::new(Rules::JCSA));
+    let root = stats_root(&output);
+    assert_eq!(stats_field(root, "soft-ms"), "-");
+    assert_eq!(stats_field(root, "hard-ms"), "-");
+}
+
+#[test]
+fn verbose_movestats_nodes_one_uses_tempered_softmax() {
+    use crate::nn::test_util::NonUniformEvaluator;
+    use crate::search::mcts::{Config, test_support::SCALE};
+    let engine = Engine::with_evaluator(Some(Box::new(NonUniformEvaluator)), Config::new(SCALE));
+    let mut protocol = UsiProtocol::with_searcher(Searcher::Mcts(engine));
+    let (result, output) = run(
+        &mut protocol,
+        "setoption name RuleSet value JCSA\nsetoption name VerboseMoveStats value true\nsetoption name PolicyTemperature value 140\nposition startpos\ngo nodes 1\n",
+    );
+    result.unwrap();
+    let game = Game::new(Rules::JCSA);
+    assert_stats_order(&output, &game);
+    let root = stats_root(&output);
+    for (field, expected) in [("simulations", "1"), ("reused", "0"), ("visits", "0")] {
+        assert_eq!(stats_field(root, field), expected);
+    }
+    let legal = game.legal_moves();
+    let leading = usi::text_generated(game.position(), legal[0]);
+    // logitを温度Tで割ってsoftmaxを取ると、先頭の重みはexp(ln(4)/T)、他は1になる。
+    let leading_weight = (4.0_f64.ln() / 1.4).exp();
+    let total = leading_weight + (legal.len() - 1) as f64;
+    for row in stats_moves(&output) {
+        assert_eq!(stats_field(row, "visits"), "0");
+        assert_eq!(stats_field(row, "q"), "-");
+        let weight = if stats_field(row, "move") == leading {
+            leading_weight
+        } else {
+            1.0
+        };
+        let expected = weight / total;
+        let prior = stats_field(row, "prior").parse::<f64>().unwrap();
+        assert!((prior - expected).abs() <= expected * 1e-6, "{row}");
+    }
+}
+
+#[test]
+fn verbose_movestats_reuses_same_root_and_selected_subtree_across_toggle() {
+    let mut protocol = verbose_protocol();
+    let (result, first) = run(&mut protocol, "go nodes 5\n");
+    result.unwrap();
+    assert_eq!(stats_field(stats_root(&first), "reused"), "0");
+    // 設定の切り替えで木を捨てない契約も、次の探索の持ち越しから確かめる。
+    let (result, second) = run(
+        &mut protocol,
+        "setoption name VerboseMoveStats value false\nsetoption name VerboseMoveStats value true\nposition startpos\ngo nodes 5\n",
+    );
+    result.unwrap();
+    assert_eq!(stats_field(stats_root(&second), "reused"), "4");
+    assert_eq!(stats_field(stats_root(&second), "simulations"), "5");
+
+    let mut protocol = verbose_protocol();
+    let (result, first) = run(&mut protocol, "go nodes 300\n");
+    result.unwrap();
+    assert_stats_order(&first, &Game::new(Rules::JCSA));
+    let mv = stats_bestmove(&first);
+    let visits = stats_field(stats_moves(&first)[0], "visits")
+        .parse::<u64>()
+        .unwrap();
+    // 展開済みの子への辺の訪問は、子の初回評価1回と子の辺の訪問の和である。
+    assert!(visits > 1, "subtree reuse must be exercised");
+    let (result, second) = run(
+        &mut protocol,
+        &format!("position startpos moves {mv}\ngo nodes 5\n"),
+    );
+    result.unwrap();
+    assert_eq!(
+        stats_field(stats_root(&second), "reused")
+            .parse::<u64>()
+            .unwrap(),
+        visits - 1
+    );
+    assert_eq!(stats_field(stats_root(&second), "simulations"), "5");
+}
+
+fn without_stats_and_timing(output: &str) -> Vec<Vec<String>> {
+    output
+        .lines()
+        .filter(|line| !line.starts_with("info string movestats "))
+        .map(|line| {
+            let mut words = line.split_whitespace();
+            let mut result = Vec::new();
+            while let Some(word) = words.next() {
+                if line.starts_with("info depth ") && matches!(word, "time" | "nps") {
+                    words.next().unwrap();
+                } else {
+                    result.push(word.to_owned());
+                }
+            }
+            result
+        })
+        .collect()
+}
+
+#[test]
+fn verbose_movestats_preserves_search_output_and_following_search() {
+    let mut sessions = Vec::new();
+    for enabled in [false, true] {
+        let mut protocol = verbose_protocol();
+        let (result, first) = run(
+            &mut protocol,
+            &format!(
+                "setoption name VerboseMoveStats value {enabled}\nposition startpos\ngo nodes 5\n"
+            ),
+        );
+        result.unwrap();
+        assert_eq!(first.contains("movestats"), enabled);
+        let mv = stats_bestmove(&first);
+        let (result, second) = run(
+            &mut protocol,
+            &format!("position startpos moves {mv}\ngo nodes 5\n"),
+        );
+        result.unwrap();
+        assert_eq!(second.contains("movestats"), enabled);
+        sessions.push((
+            mv.to_owned(),
+            without_stats_and_timing(&first),
+            without_stats_and_timing(&second),
+        ));
+    }
+    assert_eq!(sessions[0], sessions[1]);
+}
+
+// 既存の保留結果の試験と同様、完了イベントを明示的に消費して遷移を確定させる。
+fn complete_stats_search(
+    protocol: &mut UsiProtocol,
+    active: &mut Option<crate::protocol::usi::ActiveSearch>,
+    output: &mut Vec<u8>,
+) {
+    use crate::protocol::usi::ActiveSearch;
+    let Some(ActiveSearch::Running { handle, .. }) = active.as_ref() else {
+        panic!("search must be running")
+    };
+    let event = handle
+        .events()
+        .recv_timeout(std::time::Duration::from_secs(5))
+        .unwrap();
+    assert!(matches!(event, crate::search::SearchEvent::Finished { .. }));
+    protocol.handle_search_event(active, event, output).unwrap();
+}
+
+#[test]
+fn verbose_movestats_running_stop_and_infinite_stop_emit_once() {
+    for args in [vec!["nodes", "4294967295"], vec!["infinite"]] {
+        let mut protocol = verbose_protocol();
+        let mut output = Vec::new();
+        let mut active = protocol.start_go(&args, &mut output).unwrap();
+        assert!(matches!(
+            active,
+            Some(crate::protocol::usi::ActiveSearch::Running { .. })
+        ));
+        protocol
+            .handle_searching_line(
+                &mut active,
+                &mut std::collections::VecDeque::new(),
+                "stop",
+                &mut output,
+            )
+            .unwrap();
+        assert!(active.is_none());
+        let output = String::from_utf8(output).unwrap();
+        assert_stats_order(&output, &Game::new(Rules::JCSA));
+        assert!(output.contains("info string stop external\n"));
+        let root = stats_root(&output);
+        assert_eq!(stats_field(root, "soft-ms"), "-");
+        assert_eq!(stats_field(root, "hard-ms"), "-");
+    }
+}
+
+#[test]
+fn verbose_movestats_completed_ponder_emits_before_release_once() {
+    use crate::protocol::usi::ActiveSearch;
+    for command in ["ponderhit", "stop", "gameover win", "quit", "eof"] {
+        let mut protocol = verbose_protocol();
+        let mut output = Vec::new();
+        let mut active = protocol
+            .start_go(&["ponder", "nodes", "5"], &mut output)
+            .unwrap();
+        complete_stats_search(&mut protocol, &mut active, &mut output);
+        assert!(matches!(active, Some(ActiveSearch::AwaitingStop { .. })));
+        let held = String::from_utf8(output.clone()).unwrap();
+        stats_root(&held);
+        assert_eq!(
+            stats_moves(&held).len(),
+            Game::new(Rules::JCSA).legal_moves().len()
+        );
+        assert!(!held.contains("bestmove "));
+        assert!(!held.contains("info string stop "));
+        let before = output.len();
+        if command == "eof" {
+            protocol.discard_search(&mut active).unwrap();
+        } else {
+            protocol
+                .handle_searching_line(
+                    &mut active,
+                    &mut std::collections::VecDeque::new(),
+                    command,
+                    &mut output,
+                )
+                .unwrap();
+        }
+        assert!(active.is_none());
+        if matches!(command, "ponderhit" | "stop") {
+            assert_stats_order(
+                std::str::from_utf8(&output).unwrap(),
+                &Game::new(Rules::JCSA),
+            );
+        } else {
+            assert_eq!(output.len(), before);
+        }
+    }
+}
+
+#[test]
+fn verbose_movestats_running_ponderhit_and_clock_budget() {
+    let mut protocol = verbose_protocol();
+    let mut output = Vec::new();
+    // 先読み中は時計を使わず、的中してから1 msの予算が有効になる。
+    let mut active = protocol
+        .start_go(
+            &["ponder", "btime", "0", "wtime", "0", "byoyomi", "31"],
+            &mut output,
+        )
+        .unwrap();
+    protocol
+        .handle_searching_line(
+            &mut active,
+            &mut std::collections::VecDeque::new(),
+            "ponderhit",
+            &mut output,
+        )
+        .unwrap();
+    assert!(matches!(
+        active,
+        Some(crate::protocol::usi::ActiveSearch::Running { .. })
+    ));
+    complete_stats_search(&mut protocol, &mut active, &mut output);
+    assert!(active.is_none());
+    let output = String::from_utf8(output).unwrap();
+    assert_stats_order(&output, &Game::new(Rules::JCSA));
+    let root = stats_root(&output);
+    assert_eq!(stats_field(root, "soft-ms").parse::<u64>().unwrap(), 1);
+    assert_eq!(stats_field(root, "hard-ms").parse::<u64>().unwrap(), 1);
+}
+
+#[test]
+fn verbose_movestats_discard_running_search_emits_nothing() {
+    for tail in ["gameover win\n", "quit\n", ""] {
+        let mut protocol = verbose_protocol();
+        let (result, output) = run(&mut protocol, &format!("go infinite\n{tail}"));
+        result.unwrap();
+        assert!(!output.contains("movestats"), "{output}");
+        assert!(!output.contains("bestmove"), "{output}");
+        assert!(!output.contains("info depth"), "{output}");
+    }
+}

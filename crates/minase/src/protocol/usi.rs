@@ -590,6 +590,7 @@ impl UsiProtocol {
     ///
     /// `go infinite`の完了は、USIの規定どおり`stop`を受けるまで
     /// `bestmove`を保留する。
+    /// MCTSの統計は探索器の回収と最後のinfoの後、結果の出力または保留の前に出す。
     fn handle_search_event(
         &mut self,
         active: &mut Option<ActiveSearch>,
@@ -646,6 +647,7 @@ impl UsiProtocol {
                     &pv,
                     partial_score,
                 )?;
+                self.write_move_stats(output, &context.position, elapsed)?;
                 let ponder_move = validated_ponder_move(self.engine()?.game(), best_move, &pv);
                 if context.infinite || context.ponder {
                     *active = Some(ActiveSearch::AwaitingStop {
@@ -708,6 +710,8 @@ impl UsiProtocol {
     /// 探索の完了を待ち切って`bestmove`を出力する。
     ///
     /// 完了までの進捗イベントも順に`info`行として出力する。
+    /// 実行中のMCTSは最後のinfoと探索器の回収後に統計を出す。
+    /// 保留中の結果では統計を出し終えているので、stop行とbestmoveだけを出す。
     fn finish_search(
         &mut self,
         active: &mut Option<ActiveSearch>,
@@ -740,7 +744,7 @@ impl UsiProtocol {
                 if request_stop {
                     handle.request_stop();
                 }
-                let (best_move, ponder_move, score, depth, stop_reason) = loop {
+                let (best_move, ponder_move, score, depth, stop_reason, elapsed) = loop {
                     let event = handle
                         .events()
                         .recv()
@@ -787,11 +791,13 @@ impl UsiProtocol {
                                 score,
                                 depth,
                                 stop_reason,
+                                elapsed,
                             );
                         }
                     }
                 };
                 self.searcher = Some(join_search(handle)?);
+                self.write_move_stats(output, &context.position, elapsed)?;
                 write_bestmove(
                     output,
                     &context.position,
@@ -802,6 +808,26 @@ impl UsiProtocol {
                 )
             }
         }
+    }
+
+    /// 回収済みMCTSの統計を最後のinfoの後、stop行の前に出す。
+    ///
+    /// 各欄は[`search::mcts::move_stats::lines`]に従う。無効時とαβ探索では出さない。
+    /// 保留結果の解放と探索の破棄では呼ばず、stop行とbestmoveの隣接を保つ。
+    fn write_move_stats(
+        &self,
+        output: &mut dyn Write,
+        position: &Position,
+        elapsed: Duration,
+    ) -> io::Result<()> {
+        if let Some(Searcher::Mcts(engine)) = &self.searcher
+            && let Some(lines) = engine.move_stats(position, elapsed)
+        {
+            for line in lines {
+                writeln!(output, "info string {line}")?;
+            }
+        }
+        Ok(())
     }
 
     /// 根の手番に対応する引き分けの評価値を返す。
@@ -825,7 +851,7 @@ impl UsiProtocol {
         depth >= 1 && score <= -self.resign_value && !search::in_repetition_band(score)
     }
 
-    /// `bestmove`を出力せずに探索を破棄する。`gameover`・`quit`と入力断で使う。
+    /// `bestmove`と根の統計を出力せずに探索を破棄する。`gameover`・`quit`と入力断で使う。
     fn discard_search(&mut self, active: &mut Option<ActiveSearch>) -> io::Result<()> {
         let Some(search) = active.take() else {
             return Ok(());
@@ -853,7 +879,9 @@ impl UsiProtocol {
     /// ```
     ///
     /// 上の探索オプションはαβ探索の場合である。MCTSは`Threads`の上限を1とし、
-    /// `NnBackend`、`NnCacheDir`、`NnBatchSize`、`PolicyTemperature`を続ける。空の文字列は`<empty>`と表記する。
+    /// `NnModel`、`NnBackend`、`NnCacheDir`、`NnBatchSize`、`PolicyTemperature`、
+    /// `VerboseMoveStats`を続ける。最後のオプションはcheck型で既定値はfalseである。
+    /// 空の文字列は`<empty>`と表記する。
     /// αβ探索の`tuning`ビルドだけ係数表の順に`option name Tune_<名前> type spin default <既定値> min <最小> max <最大>`を続け、
     /// 最後に`usiok`を出す。オプション名と範囲の変更は互換性を壊す変更として扱う。
     /// 時間予算が値に依存しないため`USI_Ponder`は宣言しない。
@@ -873,6 +901,11 @@ impl UsiProtocol {
             .options()
         {
             match option.kind {
+                SearchOptionKind::Check { default } => writeln!(
+                    output,
+                    "option name {} type check default {default}",
+                    option.name
+                )?,
                 SearchOptionKind::Spin { default, min, max } => writeln!(
                     output,
                     "option name {} type spin default {default} min {min} max {max}",
@@ -948,6 +981,8 @@ impl UsiProtocol {
     /// `NnBackend`は大小文字を区別せず`tensorrt`、`cuda`、`cpu`を受理する。
     /// `NnCacheDir`または1〜1,024の`NnBatchSize`も含め、推論の設定が変わると次の`isready`で推論器を作り直す。
     /// `PolicyTemperature`は方策の温度の100倍を表す10〜1,000の整数で、変更すると木を捨てる。
+    /// MCTSだけが宣言する`VerboseMoveStats`は大小文字を区別せずtrueとfalseを受理し、
+    /// 有効なら探索終了時に根の統計を出す。変更しても探索木を保つ。
     /// `ResignValue`はASCII数字だけの1〜99,999、`ByoyomiMargin`はASCII数字だけの0〜60,000 msである。
     /// この2値は先頭ゼロを許すが、符号、小数点、指数表記を許さない。
     /// `DrawValueBlack`と`DrawValueWhite`は先頭の`-`を1つ許すASCII数字の列で、絶対値が28,999以下である。
@@ -968,6 +1003,7 @@ impl UsiProtocol {
     /// | `NnCacheDir` | `NnCacheDir requires a value`を返す。 | 文字列として受理する。 |
     /// | `NnBatchSize` | `NnBatchSize requires a value`を返す。 | `NnBatchSize must be an integer from 1 to 1024`を返す。 |
     /// | `PolicyTemperature` | `PolicyTemperature requires a value`を返す。 | `PolicyTemperature must be an integer from 10 to 1000`を返す。 |
+    /// | `VerboseMoveStats` | `VerboseMoveStats requires a value`を返す。 | `VerboseMoveStats must be true or false`を返す。 |
     /// | `ResignValue` | `missing ResignValue value`を返す。 | `invalid ResignValue value`を返す。 |
     /// | `ByoyomiMargin` | `missing ByoyomiMargin value`を返す。 | `invalid ByoyomiMargin value`を返す。 |
     /// | `DrawValueBlack` | `missing DrawValueBlack value`を返す。 | `invalid DrawValueBlack value`を返す。 |
@@ -1043,6 +1079,18 @@ impl UsiProtocol {
                 return write_error(output, &format!("{name} requires a value"));
             };
             let value = match option.kind {
+                SearchOptionKind::Check { .. } => {
+                    match value.to_ascii_lowercase().parse::<bool>() {
+                        Ok(value) => SearchOptionValue::Check(value),
+                        Err(_) => {
+                            let error = search::SetOptionError::InvalidCheckValue {
+                                name,
+                                value: value.to_owned(),
+                            };
+                            return write_error(output, &error.to_string());
+                        }
+                    }
+                }
                 SearchOptionKind::Spin { min, max, .. } => {
                     let Some(value) = parse_spin(value, min, max) else {
                         return write_error(

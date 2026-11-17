@@ -77,6 +77,8 @@ pub struct Engine {
     evaluator: Option<Box<dyn Evaluator + Send>>,
     driver: Option<Box<Driver>>,
     config: Config,
+    verbose_move_stats: bool,
+    budget: Option<TimeBudget>,
 }
 
 impl Engine {
@@ -93,6 +95,8 @@ impl Engine {
             evaluator: None,
             driver: None,
             config,
+            verbose_move_stats: false,
+            budget: None,
         }
     }
 
@@ -151,6 +155,10 @@ impl Engine {
                     max: 1000,
                 },
             },
+            SearchOption {
+                name: "VerboseMoveStats",
+                kind: SearchOptionKind::Check { default: false },
+            },
         ]
     }
 
@@ -182,6 +190,9 @@ impl Engine {
                     self.clear();
                     self.config.search.capacity_bytes = capacity_bytes;
                 }
+            }
+            ("VerboseMoveStats", SearchOptionValue::Check(value)) => {
+                self.verbose_move_stats = value;
             }
             ("Threads", SearchOptionValue::Spin(_)) => {}
             ("NnModel", SearchOptionValue::String(value)) => {
@@ -327,8 +338,37 @@ impl Engine {
         Ok(())
     }
 
+    /// 有効な場合だけ、正常終了した探索の根の統計を返す。
+    ///
+    /// 各欄の定義は[`super::move_stats::lines`]を参照する。
+    /// `elapsed`には完了イベントの値を渡し、出力待ちの時間を含めない。
+    /// 先読みではsoftとhardをponderhitから測るため、elapsedの起点とは異なる。
+    /// USIは探索器の回収後、最後のinfoとstop行の間に1回だけ出す。
+    /// 保留結果の解放時と、gameover・quit・入力断による破棄時には呼ばない。
+    pub(crate) fn move_stats(
+        &self,
+        root_position: &minase_core::Position,
+        elapsed: Duration,
+    ) -> Option<Vec<String>> {
+        if !self.verbose_move_stats {
+            return None;
+        }
+        let driver = self
+            .driver
+            .as_ref()
+            .expect("a finished search has a driver");
+        Some(super::move_stats::lines(
+            root_position,
+            driver.tree(),
+            driver.simulations(),
+            elapsed,
+            self.budget.map(|budget| (budget.soft, budget.hard)),
+        ))
+    }
+
     pub(in crate::search) fn clear(&mut self) {
         self.driver = None;
+        self.budget = None;
     }
 
     #[allow(clippy::result_large_err)]
@@ -363,6 +403,8 @@ impl Engine {
                 error: StartError::Mcts(error),
             });
         }
+        // runも同じlimitsにtime_budgetを適用する。表示用の保持は探索を変更しない。
+        self.budget = time_budget(&limits);
         Ok(SearchHandle::spawn(
             clock,
             ponder,

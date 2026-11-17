@@ -27,6 +27,11 @@ pub struct SearchOption {
 /// 探索オプションの値の種類。
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub enum SearchOptionKind {
+    /// 真偽値。
+    Check {
+        /// 既定値。
+        default: bool,
+    },
     /// 範囲を持つ非負の整数。
     Spin {
         /// 既定値。
@@ -53,6 +58,8 @@ pub enum SearchOptionKind {
 /// プロトコル層が解析した探索オプションの値。
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub enum SearchOptionValue {
+    /// 真偽値オプションの値。
+    Check(bool),
     /// 整数オプションの値。
     Spin(usize),
     /// 文字列オプションの値。
@@ -64,6 +71,7 @@ pub enum SearchOptionValue {
 impl fmt::Display for SearchOptionValue {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            Self::Check(value) => value.fmt(formatter),
             Self::Spin(value) => value.fmt(formatter),
             Self::String(value) | Self::Combo(value) => value.fmt(formatter),
         }
@@ -74,6 +82,7 @@ impl SearchOption {
     /// プロトコルを通さない設定も、宣言された種類と範囲で検査する。
     pub(super) fn validate(&self, value: &SearchOptionValue) -> Result<(), SetOptionError> {
         match (&self.kind, value) {
+            (SearchOptionKind::Check { .. }, SearchOptionValue::Check(_)) => {}
             (SearchOptionKind::Spin { min, max, .. }, SearchOptionValue::Spin(value)) => {
                 if !(min..=max).contains(&value) {
                     return Err(SetOptionError::OutOfRange {
@@ -103,6 +112,13 @@ impl SearchOption {
 /// 探索オプションを適用できない理由。
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub enum SetOptionError {
+    /// 真偽値として解釈できないプロトコルの入力。
+    InvalidCheckValue {
+        /// オプションの宣言名。
+        name: &'static str,
+        /// 指定された値。
+        value: String,
+    },
     /// 探索方式が宣言していない名前。
     UnknownOption {
         /// 指定された名前。
@@ -133,6 +149,9 @@ pub enum SetOptionError {
 impl fmt::Display for SetOptionError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            Self::InvalidCheckValue { name, .. } => {
+                write!(formatter, "{name} must be true or false")
+            }
             Self::UnknownOption { name } => write!(formatter, "unknown search option {name}"),
             Self::OutOfRange { name, min, max, .. } => {
                 write!(formatter, "{name} must be an integer from {min} to {max}")
@@ -149,9 +168,10 @@ impl std::error::Error for SetOptionError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
             Self::TranspositionTable(error) => Some(error),
-            Self::UnknownOption { .. } | Self::OutOfRange { .. } | Self::InvalidValue { .. } => {
-                None
-            }
+            Self::InvalidCheckValue { .. }
+            | Self::UnknownOption { .. }
+            | Self::OutOfRange { .. }
+            | Self::InvalidValue { .. } => None,
         }
     }
 }
@@ -472,6 +492,16 @@ mod tests {
         let mut searcher = Searcher::mcts().unwrap();
         for (name, value) in [
             ("Threads", SearchOptionValue::Combo("1".to_owned())),
+            ("Threads", SearchOptionValue::Check(true)),
+            ("VerboseMoveStats", SearchOptionValue::Spin(1)),
+            (
+                "VerboseMoveStats",
+                SearchOptionValue::String("true".to_owned()),
+            ),
+            (
+                "VerboseMoveStats",
+                SearchOptionValue::Combo("true".to_owned()),
+            ),
             ("NnBackend", SearchOptionValue::Spin(1)),
             ("NnCacheDir", SearchOptionValue::Combo("/cache".to_owned())),
         ] {
