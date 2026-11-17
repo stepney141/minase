@@ -240,12 +240,13 @@ def _read_selected(
 
 def read_replay_buffer(
     paths: Sequence[str | Path], latest_paths: Sequence[str | Path], seed: int,
-    *, rank: int, world_size: int, batch_size: int, micro_batch_size: int, replay_threads: int,
+    *, samples: str | int, rank: int, world_size: int, batch_size: int, micro_batch_size: int, replay_threads: int,
 ) -> tuple[Dataset, list[FileInfo], NDArray[np.int64], NDArray[np.int64]]:
     """担当する局面、全ファイル情報、抽出列、および保持した訓練局面の通し番号を返す。
 
     latest_pathsはpathsの末尾と文字列で一致する必要がある。
-    その訓練局面数Lと同じ数を、全訓練局面の通し番号[0,T)から重複なく抽出する。
+    samplesがlatestなら最新の訓練局面数Lを、正の整数なら指定数を、
+    全訓練局面の通し番号[0,T)から重複なく抽出する。指定数はT以下とする。
     計数は再生なしで行い、再生はGILを解放してファイルごとに並列に1回行う。
     抽出列の端数を捨て、ミクロバッチの番号をworld_sizeで割った余りがrankの局面を保持する。
     ランク0は、端数を除いた抽出列の訓練診断標本と、最新の検証集合も保持する。
@@ -253,6 +254,8 @@ def read_replay_buffer(
     配列は重複を除いてファイル順に保持し、抽出数がbatch_size未満なら再生前にエラーにする。
     正規化後のパス、または基本シードと対局番号の組が重複すればValueErrorとする。
     """
+    if samples != "latest" and (type(samples) is not int or samples <= 0):
+        raise ValueError("samples must be 'latest' or a positive integer")
     if not paths:
         raise ValueError("at least one MNSD file is required")
     if not latest_paths or [str(path) for path in paths[-len(latest_paths):]] != [str(path) for path in latest_paths]:
@@ -270,12 +273,14 @@ def read_replay_buffer(
                 if key in seen_games:
                     raise ValueError(f"{info.path}: duplicate game (seed={key[0]}, game={key[1]})")
                 seen_games.add(key)
-        count = sum(info.training_count for info in infos[latest_start:])
+        # latestは、AobaZero 5eb9441のlearn/yss_dcnn.cppのADJUSTと、Gumbel dlshogi 5538f7bの
+        # 直近1サイクルを1周学ぶ既定に倣い、新規訓練局面と同じ数だけ抽出する。
+        count = sum(info.training_count for info in infos[latest_start:]) if samples == "latest" else samples
         total = sum(info.training_count for info in infos)
+        if count > total:
+            raise ValueError(f"sample count {count} must not exceed replay buffer training count {total}")
         if count < batch_size:
             raise ValueError("sample count must be at least batch_size for one full update")
-        # AobaZero 5eb9441のlearn/yss_dcnn.cppのADJUSTと、Gumbel dlshogi 5538f7bの
-        # 直近1サイクルを1周学ぶ既定に倣い、新規訓練局面と同じ数だけ抽出する。
         selected = sample_training_indices(total, count, seed)
         used = selected[:len(selected) // batch_size * batch_size]
         ordered = np.unique(used.reshape(-1, micro_batch_size)[rank::world_size])

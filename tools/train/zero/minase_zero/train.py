@@ -11,8 +11,9 @@ checkpoint.ptは--checkpoint-steps回の更新ごとと最後の更新の後に�
 再開ではリストのファイルを読まない。
 --latest-dataは最新サイクルの生成ファイルの列で、読み込んだ配列の末尾とパスの文字列も順も一致させる。
 リプレイバッファのファイルを指定順に並べ、各ファイルの訓練局面だけに0からT−1の通し番号を振る。
-最新サイクルの訓練局面数Lを抽出数Sとし、Lは1以上とする。
-抽出はdata.sample_training_indicesの部分的なFisher–Yates法に従い、Generator(PCG64(seed))でT個の局面からL個を重複なく選ぶ。
+--samplesは必須で、latestなら最新サイクルの訓練局面数Lを抽出数Sとし、正の整数なら指定値をSとする。
+Sは1以上T以下とし、Tを超えたら再生前にエラーにする。
+抽出はdata.sample_training_indicesの部分的なFisher–Yates法に従い、Generator(PCG64(seed))でT個の局面からS個を重複なく選ぶ。
 列sが抽出結果と更新順を同時に定める。
 sample_sha256は列sをリトルエンディアンのint64で並べたバイト列のSHA-256である。
 計数はMNSDの項目フラグを読んで再生なしで行い、その後、全ファイルを並列に1回再生して、各ランクが担当するミクロバッチに含まれる局面を、通し番号の重複を除いて保持する。
@@ -45,10 +46,12 @@ DDPのbroadcast_buffersは既定のTrueとし、ランク0の統計をほかの�
 全ランクが分散プロセス群を解放してから、ランク0だけが最終診断とONNX出力を行う。
 診断はDDPを通さないZeroNetで行い、バッチの大きさにはmを使う。
 再開は完了した更新の回数kから先頭のkB個を飛ばす。
-保存したファイルの列を読み直して抽出を作り直し、各ファイルの大きさ、訓練局面数、検証局面数、latest_data、L、T、およびsample_sha256を照合する。
+保存したsamplesの指定値とファイルの列から抽出を作り直し、各ファイルの大きさ、訓練局面数、検証局面数、latest_data、S、T、およびsample_sha256を照合する。
+再開では--samplesを受け付けず、保存したconfigにsamplesがなければエラーにする。
+--initでは前の抽出設定を使わないため、samplesの記録がないチェックポイントも読める。
 ファイルのSHA-256は初回に来歴として計算し、再開時は計算し直さない。
 data_order_sha256は、初期値を32バイトの0とし、更新のたびに「直前の値の32バイト」と「その更新に使った抽出前の通し番号sの部分列をリトルエンディアンのint64で並べたバイト列」をつないだSHA-256で置き換えた値の16進表記である。
-同じリプレイバッファ・シード・Bなら、ランク数と中断の有無にかかわらず同じ値になる。
+同じリプレイバッファ・抽出数・シード・Bなら、ランク数と中断の有無にかかわらず同じ値になる。
 
 学習率はlr * min(1, (optimizer_steps+1)/250)とし、最初の250更新で線形に上げる。
 optimizer_stepsはランダム初期化からの累計更新数であり、更新の前の値を使う。
@@ -69,8 +72,9 @@ trainのsummary.jsonの欄は次のとおりである。
 | config | ネットの大きさと、新しいサイクルに指定した設定。出力先と再生スレッド数は含めない。 |
 | lr | 基準の学習率。configにも記録する。 |
 | provenance | 学習器と環境定義のコミット、実行環境、初期重みと教師ファイルの来歴、および開始時のworld_size。 |
-| latest_data | 最新サイクルの生成ファイルの列。以下の抽出の4欄とともにconfigにも記録する。 |
-| sample_count | 端数を含む抽出列の長さS=L。 |
+| latest_data | 最新サイクルの生成ファイルの列。以下の抽出の5欄とともにconfigにも記録する。 |
+| samples | --samplesの指定値。文字列latestまたは正の整数としてconfigにも記録する。 |
+| sample_count | 端数を含む抽出列の長さS。samplesがlatestならL、整数ならその指定値。 |
 | replay_buffer_training_count | リプレイバッファ全体の抽出前の訓練局面数T。 |
 | file_training_counts | ファイルごとの抽出前の訓練局面数。dataの順に並ぶ。 |
 | sample_sha256 | 抽出した通し番号を更新順に並べた列sのSHA-256。 |
@@ -599,6 +603,7 @@ def _counts(
 def _sampling_metadata(config: dict, infos: list[FileInfo], selected: NDArray[np.int64]) -> dict:
     return {
         "latest_data": config["latest_data"],
+        "samples": config["samples"],
         "sample_count": len(selected),
         "replay_buffer_training_count": sum(info.training_count for info in infos),
         "file_training_counts": [info.training_count for info in infos],
@@ -626,6 +631,7 @@ def _read_training_data(
 ) -> tuple[Dataset, list[FileInfo], NDArray[np.int64], NDArray[np.int64]]:
     return read_replay_buffer(
         config["data"], config["latest_data"], config["seed"],
+        samples=config["samples"],
         rank=fabric.global_rank, world_size=fabric.world_size,
         batch_size=config["batch_size"], micro_batch_size=config["micro_batch_size"],
         replay_threads=replay_threads,
@@ -691,6 +697,8 @@ def resume(out_dir: Path, device_name: str, replay_threads: int, lr: float) -> N
     if state["optimizer"] is None:
         raise ValueError("resume requires a training checkpoint")
     config = state["config"]
+    if "samples" not in config:
+        raise ValueError("resume requires samples in checkpoint config")
     if lr != config["lr"]:
         raise ValueError(f"resume lr {lr} differs from checkpoint lr {config['lr']}")
     with training_fabric(device_name, config["precision"]) as fabric:
@@ -862,7 +870,7 @@ def _finish(state: dict, data: Dataset, network: ZeroNet, out_dir: Path, device:
         "cycle": state["cycle"], "config": config, "provenance": state["provenance"],
         "lr": config["lr"],
         "training_count": state["training_count"], "validation_count": state["validation_count"],
-        **{key: state[key] for key in ("latest_data", "sample_count", "replay_buffer_training_count",
+        **{key: state[key] for key in ("latest_data", "samples", "sample_count", "replay_buffer_training_count",
                                       "file_training_counts", "sample_sha256")},
         "completed_steps": state["completed_steps"], "total_steps": state["total_steps"],
         "positions_seen": state["positions_seen"],

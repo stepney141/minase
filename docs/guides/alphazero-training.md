@@ -561,6 +561,7 @@ NASの記録はコミットのハッシュを参照するので、記録に現�
 | `--init <FILE>` | 前のサイクルの`train/checkpoint.pt`（サイクル1は`cycle-0000/checkpoint.pt`） | すべての更新を終えたチェックポイント。サイクル1では初期ネットのチェックポイント。 |
 | `--data-list <FILE>` | `<cycles-dir>/cycle-NNNN/train-data.json` | リプレイバッファのファイルのパスを並べたUTF-8のJSONの配列。パスは古いサイクルから、各生成の`training_files`の順に並べる。実行器が作ってNASに置き、借りた機械へ送る。 |
 | `--latest-data <FILE...>` | 最新のサイクルのファイル | `--data-list`の配列の末尾とパスの文字列も順も一致させる。 |
+| `--samples <latest\|N>` | `latest` | リプレイバッファから重複なく抽出する局面の数。`latest`なら最新サイクルの訓練局面数、正の整数ならその数（リプレイバッファの訓練局面数以下）。実行器は常に`latest`を渡す。 |
 | `--out-dir <DIR>` | `<cycles-dir>/cycle-NNNN/train` | 存在しないか空のディレクトリ。 |
 | `--cycle <N>` | サイクル番号 | 0以上。 |
 | `--seed <N>` | `--train-seed-base`＋サイクル番号 | 抽出と更新順の乱数シード。uint64。 |

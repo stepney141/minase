@@ -58,7 +58,7 @@ def compare_gradients(checkpoint: Path, paths: list[Path], micro_batch_size: int
     if not math.isfinite(value_lambda) or not 0 <= value_lambda <= 1:
         raise ValueError("value_lambda must be between 0 and 1")
     data, _, selected, retained = read_replay_buffer(
-        paths, paths, seed, rank=0, world_size=1,
+        paths, paths, seed, samples="latest", rank=0, world_size=1,
         batch_size=micro_batch_size, micro_batch_size=micro_batch_size, replay_threads=1,
     )
     indices = np.flatnonzero(~data.validation)[np.searchsorted(retained, selected[:micro_batch_size])]

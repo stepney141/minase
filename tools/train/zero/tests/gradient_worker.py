@@ -23,7 +23,7 @@ def main():
         model, optimizer = fabric.setup(compiled, optimizer, _reapply_compile=False)
         data, _, selected, retained = read_replay_buffer(
             ["fixtures/zero-selfplay-small.mnsd"], ["fixtures/zero-selfplay-small.mnsd"], 42,
-            rank=fabric.global_rank, world_size=fabric.world_size,
+            samples="latest", rank=fabric.global_rank, world_size=fabric.world_size,
             batch_size=16, micro_batch_size=4, replay_threads=1,
         )
         training_rows = np.flatnonzero(~data.validation)

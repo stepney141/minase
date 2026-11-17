@@ -790,7 +790,7 @@ class ResumeTests(RunnerCase):
             "uv", "run", "--frozen", "--project", "/content/src/tools/train/zero",
             "torchrun", "--standalone", "--nproc-per-node", "1", "-m", "minase_zero", "train", "--init", "cycles/cycle-0002/train/checkpoint.pt",
             "--data-list", "cycles/cycle-0003/train-data.json", "--latest-data", *latest,
-            "--out-dir", "cycles/cycle-0003/train", "--cycle", "3", "--seed", "126",
+            "--out-dir", "cycles/cycle-0003/train", "--samples", "latest", "--cycle", "3", "--seed", "126",
             "--batch-size", "256", "--lr", "0.01", "--momentum", "0.9", "--weight-decay", "0.0001",
             "--clip-grad-norm", "10", "--value-lambda", "0.333", "--precision", "bf16",
             "--checkpoint-steps", "200",

@@ -7,10 +7,12 @@ import select
 import signal
 import subprocess
 import sys
+import tempfile
 import unittest
 from unittest.mock import patch
 
-from tests.cli import kill_training, run_command
+from minase_zero.__main__ import _parse
+from tests.cli import kill_training, run_command, train_arguments
 
 
 WORKER = """
@@ -28,6 +30,39 @@ print(json.dumps([worker.pid for worker in workers] +
                  [int(worker.stdout.readline()) for worker in workers]), flush=True)
 signal.pause()
 """
+
+
+class SamplesArgumentTests(unittest.TestCase):
+    def setUp(self):
+        directory = tempfile.TemporaryDirectory()
+        self.addCleanup(directory.cleanup)
+        root = Path(directory.name)
+        self.arguments = train_arguments(root / "initial.pt", root / "train")
+
+    def test_samples_accepts_latest_or_positive_integer(self):
+        for value, expected in (("latest", "latest"), ("1", 1), ("90429193", 90429193)):
+            with self.subTest(value=value):
+                args = self.arguments.copy()
+                args[args.index("--samples") + 1] = value
+                self.assertEqual(_parse(args).samples, expected)
+
+    def test_samples_is_required_and_rejects_invalid_values(self):
+        for value in (None, "0", "-1", "1.5", "all", "", "LATEST"):
+            with self.subTest(value=value), self.assertRaisesRegex(ValueError, "samples"):
+                args = self.arguments.copy()
+                index = args.index("--samples")
+                if value is None:
+                    del args[index:index + 2]
+                else:
+                    args[index + 1] = value
+                _parse(args)
+
+    def test_resume_rejects_samples(self):
+        arguments = ["train", "--resume", "train", "--device", "cpu", "--replay-threads", "1", "--lr", "0.01"]
+        self.assertNotIn("samples", vars(_parse(arguments)))
+        for value in ("latest", "100"):
+            with self.subTest(value=value), self.assertRaisesRegex(ValueError, "samples"):
+                _parse([*arguments, "--samples", value])
 
 
 class CliProcessTests(unittest.TestCase):

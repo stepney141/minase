@@ -157,7 +157,7 @@ class DataTests(unittest.TestCase):
             with self.subTest(paths=paths):
                 with self.assertRaises(ValueError):
                     read_replay_buffer(paths, paths, 42,
-                        rank=0, world_size=1, batch_size=1, micro_batch_size=1, replay_threads=1,
+                        samples="latest", rank=0, world_size=1, batch_size=1, micro_batch_size=1, replay_threads=1,
                     )
 
     def test_copied_games_are_rejected(self) -> None:
@@ -165,7 +165,7 @@ class DataTests(unittest.TestCase):
         shutil.copyfile(FIXTURE, copy)
         with self.assertRaises(ValueError):
             read_replay_buffer([FIXTURE, copy], [copy], 42,
-                rank=0, world_size=1, batch_size=1, micro_batch_size=1, replay_threads=1,
+                samples="latest", rank=0, world_size=1, batch_size=1, micro_batch_size=1, replay_threads=1,
             )
 
     def test_same_seed_disjoint_games_preserve_input_and_candidate_order(self) -> None:
@@ -173,7 +173,7 @@ class DataTests(unittest.TestCase):
         write_small(first, [single_game(9, 0, 0, 123, (12345, 53190))], "lishogi")
         write_small(second, [single_game(3, 1, 0, 456, (65535,))], "lishogi")
         data, infos, _, _ = read_replay_buffer([first, second], [first, second], 42,
-            rank=0, world_size=1, batch_size=1, micro_batch_size=1, replay_threads=1,
+            samples="latest", rank=0, world_size=1, batch_size=1, micro_batch_size=1, replay_threads=1,
         )
         self.assertEqual([info.path for info in infos], [first, second])
         np.testing.assert_array_equal(data.games, [9, 3])
@@ -187,7 +187,7 @@ class DataTests(unittest.TestCase):
         # 方策の仕様表: 先手の王将の右・右前、後手の歩兵の前。移動元は0、0、131。
         np.testing.assert_array_equal(data.policy_labels, [3168, 1584, 12])
         reversed_data, _, _, _ = read_replay_buffer([second, first], [second, first], 42,
-            rank=0, world_size=1, batch_size=1, micro_batch_size=1, replay_threads=1,
+            samples="latest", rank=0, world_size=1, batch_size=1, micro_batch_size=1, replay_threads=1,
         )
         np.testing.assert_array_equal(reversed_data.games, [3, 9])
         np.testing.assert_array_equal(reversed_data.policy_offsets, [0, 1, 3])
@@ -211,7 +211,7 @@ class DataTests(unittest.TestCase):
         struct.pack_into("<Q", changed, 128, 42)
         second.write_bytes(changed)
         data, infos, _, _ = read_replay_buffer([first, second], [first, second], 42,
-            rank=0, world_size=1, batch_size=1, micro_batch_size=1, replay_threads=1,
+            samples="latest", rank=0, world_size=1, batch_size=1, micro_batch_size=1, replay_threads=1,
         )
         self.assertEqual([info.header.seed for info in infos], [20261038, 42])
         np.testing.assert_array_equal(data.games, [1, 1])
@@ -226,7 +226,7 @@ class DataTests(unittest.TestCase):
         self.assertEqual(info.game_numbers, (1,))
         with self.assertRaises(ValueError):
             read_replay_buffer([first, second], [second], 42,
-                rank=0, world_size=1, batch_size=1, micro_batch_size=1, replay_threads=1,
+                samples="latest", rank=0, world_size=1, batch_size=1, micro_batch_size=1, replay_threads=1,
             )
 
     def test_empty_files_and_empty_replay_buffer(self) -> None:
@@ -243,10 +243,10 @@ class DataTests(unittest.TestCase):
         self.assertEqual(info.validation_count, 0)
         with self.assertRaises(ValueError):
             read_replay_buffer([path], [path], 42,
-                rank=0, world_size=1, batch_size=1, micro_batch_size=1, replay_threads=1,
+                samples="latest", rank=0, world_size=1, batch_size=1, micro_batch_size=1, replay_threads=1,
             )
         with self.assertRaises(ValueError):
-            read_replay_buffer([], [], 42, rank=0, world_size=1, batch_size=1, micro_batch_size=1, replay_threads=1)
+            read_replay_buffer([], [], 42, samples="latest", rank=0, world_size=1, batch_size=1, micro_batch_size=1, replay_threads=1)
 
     def test_equivalent_rule_name_is_accepted_and_other_rules_rejected(self) -> None:
         path = self.directory / "rules.mnsd"
