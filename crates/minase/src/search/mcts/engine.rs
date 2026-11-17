@@ -458,6 +458,24 @@ pub(crate) fn run(
     hit_ns: &AtomicU64,
     stop: &AtomicBool,
 ) -> Result<StopReason, SearchJoinError> {
+    let result = run_inner(driver, evaluator, config, limits, clock, hit_ns, stop);
+    #[cfg(feature = "invariants")]
+    if result.is_ok() {
+        driver.assert_finished();
+    }
+    result
+}
+
+#[allow(clippy::too_many_arguments)]
+fn run_inner(
+    driver: &mut Driver,
+    evaluator: &mut dyn Evaluator,
+    config: &SearchConfig,
+    limits: SearchLimits,
+    clock: &dyn SearchClock,
+    hit_ns: &AtomicU64,
+    stop: &AtomicBool,
+) -> Result<StopReason, SearchJoinError> {
     let budget = time_budget(&limits);
     let rule = SelectionRule::Puct(&config.puct);
     let mut logits = Vec::new();

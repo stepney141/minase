@@ -216,6 +216,27 @@ impl Driver {
         &self.tree
     }
 
+    /// 木の整合性と、葉および根の評価待ちが残っていないことを検査する。
+    ///
+    /// # Panics
+    /// 木の不変条件に違反するか、未完了の選択または根の評価待ちが残れば、
+    /// 違反の値を含む診断でパニックする。途中の木の検査には`Tree::validate`を使う。
+    #[cfg(feature = "invariants")]
+    pub fn assert_finished(&self) {
+        self.tree
+            .validate()
+            .unwrap_or_else(|error| panic!("{error}"));
+        assert_eq!(
+            self.tree.pending_count(),
+            0,
+            "MCTS search finished with pending selections"
+        );
+        assert!(
+            !self.root_pending,
+            "MCTS search finished with root_pending=true"
+        );
+    }
+
     /// この探索で完了したシミュレーション数。根の評価を1回目とする。
     pub fn simulations(&self) -> u64 {
         self.simulations

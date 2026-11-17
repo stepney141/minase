@@ -2103,3 +2103,52 @@ fn sibling_replays_do_not_share_repetition_history() {
         assert!(before.same_state(driver.snapshot.game().unwrap()));
     }
 }
+
+#[test]
+#[should_panic(expected = "pending selections")]
+fn finished_check_rejects_pending_leaf_accepted_by_validate() {
+    let mut driver = Driver::new(initial(), CAPACITY, DrawValue::SelfPlay).unwrap();
+    advance(&mut driver, &mut UniformEvaluator);
+    assert!(matches!(
+        driver
+            .select_leaf(SelectionRule::Puct(&PuctConfig::default()))
+            .unwrap(),
+        Step::Evaluate(_)
+    ));
+    assert_eq!(driver.tree.validate(), Ok(()));
+    driver.assert_finished();
+}
+
+#[test]
+#[should_panic(expected = "root_pending=true")]
+fn finished_check_rejects_pending_root_accepted_by_validate() {
+    let mut driver = Driver::new(initial(), CAPACITY, DrawValue::SelfPlay).unwrap();
+    assert!(matches!(
+        driver
+            .select_leaf(SelectionRule::Puct(&PuctConfig::default()))
+            .unwrap(),
+        Step::Evaluate(_)
+    ));
+    assert_eq!(driver.tree.validate(), Ok(()));
+    driver.assert_finished();
+}
+
+#[test]
+#[should_panic(expected = "MCTS condition 1")]
+fn run_checks_tree_before_successful_return() {
+    use crate::search::clock::MonotonicClock;
+    use crate::search::mcts::engine::{SearchConfig, run};
+    use std::sync::atomic::{AtomicBool, AtomicU64};
+    let mut driver = Driver::new(initial(), CAPACITY, DrawValue::SelfPlay).unwrap();
+    driver.tree.corrupt_unvisited_edge_for_test();
+    run(
+        &mut driver,
+        &mut UniformEvaluator,
+        &SearchConfig::default(),
+        nodes(1),
+        &MonotonicClock::new(),
+        &AtomicU64::new(0),
+        &AtomicBool::new(false),
+    )
+    .unwrap();
+}

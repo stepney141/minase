@@ -4,6 +4,13 @@
 //! 確定した勝敗の順序は[`crate::search::MATE`]と[`crate::search::REPETITION_WIN`]に従う。
 //! 確定までの手数は節点から数えるので、木を付け替えても変化しない。
 
+#[cfg(feature = "invariants")]
+mod validate;
+#[cfg(feature = "invariants")]
+pub use validate::TreeViolation;
+#[cfg(test)]
+mod tests;
+
 use std::cmp::Ordering;
 use std::fmt;
 use std::mem::size_of;
@@ -188,8 +195,14 @@ impl Node {
     }
 
     fn refresh_proof(&mut self) {
+        if let Some(proof) = self.proof_from_children() {
+            self.state = NodeState::Proven(proof);
+        }
+    }
+
+    fn proof_from_children(&self) -> Option<Proof> {
         if self.edges.is_empty() {
-            return;
+            return None;
         }
         let mut best_win: Option<Proof> = None;
         let mut best_loss: Option<Proof> = None;
@@ -213,11 +226,13 @@ impl Node {
             }
         }
         if let Some(proof) = best_win {
-            self.state = NodeState::Proven(proof);
+            Some(proof)
         } else if all_losses {
             let mut proof = best_loss.expect("すべての辺に負けの確定がある");
             proof.approximate |= approximate_loss;
-            self.state = NodeState::Proven(proof);
+            Some(proof)
+        } else {
+            None
         }
     }
 
@@ -493,6 +508,8 @@ impl Tree {
             || self.pending.iter().any(|pending| pending.path == path);
         if result.is_err() || collision {
             if virtual_loss {
+                #[cfg(feature = "invariants")]
+                assert_virtual_loss_on_path(&self.root, &path);
                 remove_virtual_loss(&mut self.root, &path);
             }
             return result.map(|_| Selection {
@@ -637,6 +654,8 @@ impl Tree {
         let index = self.pending_index(path)?;
         let pending = self.pending.swap_remove(index);
         if pending.virtual_loss {
+            #[cfg(feature = "invariants")]
+            assert_virtual_loss_on_path(&self.root, path);
             remove_virtual_loss(&mut self.root, path);
         }
         if let Some((&edge_index, parent_path)) = path.split_last() {
@@ -687,6 +706,8 @@ impl Tree {
     /// # Errors
     /// 未完了の選択、たどれない手順、または再利用できない状態なら、元の木を保って拒否する。
     pub fn reroot(&mut self, moves: &[Move]) -> Result<(), TreeError> {
+        #[cfg(feature = "invariants")]
+        self.validate().unwrap_or_else(|error| panic!("{error}"));
         if !self.pending.is_empty() {
             return Err(TreeError::PendingSimulation);
         }
@@ -716,6 +737,8 @@ impl Tree {
             self.root = child;
         }
         self.used_bytes = bytes;
+        #[cfg(feature = "invariants")]
+        self.validate().unwrap_or_else(|error| panic!("{error}"));
         Ok(())
     }
 
@@ -729,6 +752,10 @@ impl Tree {
     fn finish(&mut self, path: &[usize], value: f32) -> Result<(), TreeError> {
         let index = self.pending_index(path)?;
         let pending = self.pending.swap_remove(index);
+        #[cfg(feature = "invariants")]
+        if pending.virtual_loss {
+            assert_virtual_loss_on_path(&self.root, path);
+        }
         backup(&mut self.root, path, f64::from(value), pending.virtual_loss);
         Ok(())
     }
@@ -784,6 +811,24 @@ fn descend(
     match edge.child.as_deref_mut() {
         Some(child) => descend(child, rule, path),
         None => Ok(LeafKind::New),
+    }
+}
+
+/// 減算前に経路上の全辺の仮想損失を検査する。根から出る辺の深さを1とする。
+#[cfg(feature = "invariants")]
+fn assert_virtual_loss_on_path(root: &Node, path: &[usize]) {
+    let mut node = root;
+    for (offset, &index) in path.iter().enumerate() {
+        let edge = &node.edges[index];
+        let depth = offset + 1;
+        assert!(
+            edge.virtual_loss > 0,
+            "MCTS virtual loss underflow: path={path:?}, depth={depth}, edge={index}, virtual_loss={}",
+            edge.virtual_loss
+        );
+        if depth < path.len() {
+            node = edge.child.as_deref().expect("選択済みの経路");
+        }
     }
 }
 

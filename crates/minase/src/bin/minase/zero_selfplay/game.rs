@@ -310,6 +310,8 @@ impl Search {
         rng: &mut XorShift64,
         threshold: f64,
     ) -> Result<Decision, Error> {
+        #[cfg(feature = "invariants")]
+        self.driver.assert_finished();
         let root = self.driver.tree().root();
         let action = self.gumbel.action(root, 1.0)?;
         let value = selected_value(root, action)?;
