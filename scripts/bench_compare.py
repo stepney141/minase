@@ -12,16 +12,17 @@
 コミットは`git archive`で`target/bench-cache/<完全ハッシュ>/src`へ展開し、
 通常のrelease設定でビルドする。参照の局面別出力は1回実行の結果を同じ
 ディレクトリへ保存して再利用する。候補は作業ツリーをビルドする。
-benchをUSIの独自コマンドへ移したコミット以後だけを対象とする（docs/adr/run-engine-diagnostics-as-usi-commands-and-keep-experiment-tools-as-subcommands.md）。
-標準入力へbenchとquitを送り、終了コード0と終端行を確認してから解析する。
+benchをUSIの独自コマンドへ移したコミット以後だけを対象とする（docs/adr/run-engine-diagnostics-as-usi-commands-on-the-prepared-session.md）。
+標準入力へRuleSet、EvalFile、isready、bench、quitの順に送り、終了コード0と終端行を確認してから解析する。
 
 使い方:
     scripts/bench_compare.py --reference <参照コミット> --baseline <基準コミット>
-        --parent <親コミット> [--depth 5] [--repetitions 3] [--rounds 3]
+        --parent <親コミット> --eval-file <ネット> [--depth 5] [--repetitions 3] [--rounds 3]
         [--threads 1] [--json <出力パス>]
 """
 
 import argparse
+import hashlib
 import json
 import re
 import statistics
@@ -67,10 +68,12 @@ def build_worktree(root):
     return root / "target" / "release" / "minase"
 
 
-def run_bench(binary, depth, threads, repetitions):
+def run_bench(binary, depth, threads, repetitions, eval_file):
     result = subprocess.run(
         [str(binary), "--protocol", "usi"],
-        input=f"bench depth {depth} threads {threads} repetitions {repetitions}\nquit\n",
+        input=("setoption name RuleSet value JCSA\n"
+               f"setoption name EvalFile value {eval_file}\nisready\n"
+               f"bench depth {depth} threads {threads} repetitions {repetitions}\nquit\n"),
         check=True, capture_output=True, text=True,
     )
     return result.stdout
@@ -116,10 +119,10 @@ def parse_median(output):
     raise SystemExit("bench output contains no median line")
 
 
-def positions_of(binary, depth, threads, cache_file=None):
+def positions_of(binary, depth, threads, eval_file, cache_file=None):
     if cache_file is not None and cache_file.exists():
         return parse_positions(bench_output(cache_file.read_text()))
-    output = run_bench(binary, depth, threads, 1)
+    output = run_bench(binary, depth, threads, 1, eval_file)
     positions = parse_positions(bench_output(output))
     if cache_file is not None:
         cache_file.write_text(output)
@@ -148,12 +151,12 @@ def ratio(numerator, denominator):
     return numerator / denominator
 
 
-def measure_rounds(binaries, depth, threads, repetitions, rounds):
+def measure_rounds(binaries, depth, threads, repetitions, rounds, eval_file):
     """全バイナリを交互に`rounds`回測り、ラベルごとの回別中央値を返す。"""
     samples = {label: [] for label in binaries}
     for _ in range(rounds):
         for label, binary in binaries.items():
-            output = run_bench(binary, depth, threads, repetitions)
+            output = run_bench(binary, depth, threads, repetitions, eval_file)
             samples[label].append(parse_median(bench_output(output)))
     return samples
 
@@ -194,7 +197,10 @@ def main():
     parser.add_argument("--rounds", type=int, default=3, help="交互測定の回数")
     parser.add_argument("--threads", type=int, default=1)
     parser.add_argument("--json", type=Path, help="結果をJSONで保存するパス")
+    parser.add_argument("--eval-file", type=lambda value: Path(value).resolve(), required=True)
     arguments = parser.parse_args()
+    with arguments.eval_file.open("rb") as stream:
+        network_sha256 = hashlib.file_digest(stream, "sha256").hexdigest()
 
     root = Path(run(["git", "rev-parse", "--show-toplevel"]).strip())
     commits = {
@@ -211,16 +217,16 @@ def main():
 
     reference_cache = (
         binaries["reference"].parents[2]
-        / f"bench-depth{arguments.depth}-threads{arguments.threads}.txt"
+        / f"bench-depth{arguments.depth}-threads{arguments.threads}-{network_sha256}.txt"
     )
     reference_positions = positions_of(
-        binaries["reference"], arguments.depth, arguments.threads, reference_cache
+        binaries["reference"], arguments.depth, arguments.threads, arguments.eval_file, reference_cache
     )
-    candidate_positions = positions_of(binaries["candidate"], arguments.depth, arguments.threads)
+    candidate_positions = positions_of(binaries["candidate"], arguments.depth, arguments.threads, arguments.eval_file)
     mismatches = compare_positions(reference_positions, candidate_positions)
 
     samples = measure_rounds(
-        binaries, arguments.depth, arguments.threads, arguments.repetitions, arguments.rounds
+        binaries, arguments.depth, arguments.threads, arguments.repetitions, arguments.rounds, arguments.eval_file
     )
     speed = summarize(samples)
     parent_width = speed["parent"]["nps_width"]

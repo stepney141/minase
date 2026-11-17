@@ -271,6 +271,8 @@ fn history_carry_survives_handle_round_trips_and_ages_once_per_go() {
                 .collect();
             let handle = start_search_with_clock(
                 crate::search::alphabeta::Engine {
+                    eval_file: String::new(),
+                    network: None,
                     transposition_table: Some(table),
                     histories,
                     threads,

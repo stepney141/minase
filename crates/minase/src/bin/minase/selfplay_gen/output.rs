@@ -7,7 +7,7 @@
 //! 同じ機械で同じバイナリと生成条件を使う限り、組み直した教師ファイルは中断の有無に
 //! よらず同じバイト列になる。
 //! この方式を採った理由は
-//! `docs/adr/commit-nnue-teacher-files-in-fixed-game-chunks-and-reassemble-them-into-one-file.md`
+//! `docs/adr/commit-nnue-teacher-files-in-fixed-game-chunks-and-check-the-network-file-on-resume.md`
 //! にある。
 //!
 //! # 出力先のファイル
@@ -35,7 +35,7 @@
 //! |---|---|
 //! | `rules` | 規則セットの名前。 |
 //! | `generation_commit` | 起動時に`git rev-parse HEAD`で求めた生成コミット。 |
-//! | `network_checksum` | MNSDヘッダに書く、ネットの重みの本体のSHA-256の16進表記。 |
+//! | `network_checksum` | MNSDヘッダに書く、`--eval-file`で読んだネットのファイル全体のSHA-256の16進表記。 |
 //! | `seed` | 基本シード。 |
 //! | `games` | 総対局数G。開始局面一覧を使う場合は一覧の行数。 |
 //! | `chunk_games` | 塊の局数M。 |

@@ -16,8 +16,14 @@
 
 ## 状態
 
-状態は起案である。2026年11月15日に起案し、まだ着手していない。
-次の一手は、利用者の承認を得て、masterから切ったブランチでフェーズ1を始めることである。
+> 本書は完了時点で凍結した記録であり、以後の変更を反映しない。現行の仕様はコードのdocコメントに、設計判断は[docs/adr/](../../adr/README.md)にある。
+
+状態は完了（採用）である。2026年11月15日に起案し、2026年11月17日に着手して、同じ日に完了した。
+αβ探索のNNUEのネットは実行ファイルに埋め込まず、USIのオプション`EvalFile`で指定した外部のファイルから`isready`で読むようになり、ネットを使うすべての入口がネットのファイルを明示して受け取る。
+同じネットを渡した深さ5の`bench`は、ネットを埋め込んだmasterと15局面すべてで一致した（[benchの一致](../../measurements/nnue-external-network-file/nnue-external-network-file-bench-equivalence.md)）。
+性能コアに固定した5回の交互の測定では、ブランチの平均がmasterより0.62%速く、差はmasterの5回の幅（0.82%）より小さく、探索の区間の命令数も一致した（[benchの速さ](../../measurements/nnue-external-network-file/nnue-external-network-file-bench-speed.md)）。
+[対局の実行器での記録と照合](../../measurements/nnue-external-network-file/nnue-external-network-file-manifest.md)、[教師生成](../../measurements/nnue-external-network-file/nnue-external-network-file-teacher-generation.md)、および[CECP](../../measurements/nnue-external-network-file/nnue-external-network-file-cecp.md)の確認の結果は、それぞれの測定記録にある。
+masterにあった`crates/minase/nets/nnue.bin`と同じバイト列のファイルを、NASの`/mnt/synology_nas/minase/nnue/nets/987f060d545c09f0a42b4c668ea8b24cbf83c1770d11d663a94e4b82601274cd.bin`に置いた。
 
 ## 目的
 
@@ -38,7 +44,7 @@ HalfKP_vmは、盤（12×12の144升）を左右に鏡映して自玉を右半�
 2026年11月15日に利用者は、NNUEに関わる実装をすべて直してからP型の世代反復を回し、その後にHalfKP_vmの世代反復を行うと決めた。
 いまの連続生成スクリプトは、世代ごとのネットをgitにコミットし、時間単位で借りる計算機（以下、生成機）でそのコミットからエンジンをビルドして教師を作るので、HalfKP_vmのような大きなネットの世代反復を回せない。
 
-第3は、[tatara化とHalfKP_vmの設計書](nnue-tatara-framework-and-halfkp-vm.md)が使う部品を先に揃えることである。
+第3は、[tatara化とHalfKP_vmの設計書](../nnue-tatara-framework-and-halfkp-vm.md)が使う部品を先に揃えることである。
 その部品は、大きさによらずネットを外部のファイルで渡す経路、ネットを1つの値で特定するチェックサム、およびネットをgitに入れずに世代を回す連続生成スクリプトである。
 HalfKP_vmの入力特徴集合と出力部（第1層より後ろの層）の実装、P型とHalfKP_vmをtataraに倣った同じ枠組みに載せる変更、および重みのファイルの形式の変更は、本書の後に別の設計書で扱う。
 
@@ -66,19 +72,19 @@ HalfKP_vmの入力特徴集合と出力部（第1層より後ろの層）の実�
 
 NNUEの次の2つの設計書は、本書の完了を前提とする。
 
-- [tatara化とHalfKP_vmの設計書](nnue-tatara-framework-and-halfkp-vm.md)は、本書の完了を前提とし、P型とHalfKP_vmをtataraに倣った同じ枠組みに載せ、重みのファイルの形式をtataraの形式に揃える（2026年11月15日の利用者の決定）。
-- P型の[世代反復の設計書](nnue-generation-iteration.md)は、本書とtatara化の完了を前提とし、2026年11月15日に外部のネットを使う形へ書き直してある。同書のフェーズ1は、連続生成スクリプトに学習だけのために機械を借りる処理を足すので本書と同じファイルを変えるが、本書の完了後に行う。
+- [tatara化とHalfKP_vmの設計書](../nnue-tatara-framework-and-halfkp-vm.md)は、本書の完了を前提とし、P型とHalfKP_vmをtataraに倣った同じ枠組みに載せ、重みのファイルの形式をtataraの形式に揃える（2026年11月15日の利用者の決定）。
+- P型の[世代反復の設計書](../nnue-generation-iteration.md)は、本書とtatara化の完了を前提とし、2026年11月15日に外部のネットを使う形へ書き直してある。同書のフェーズ1は、連続生成スクリプトに学習だけのために機械を借りる処理を足すので本書と同じファイルを変えるが、本書の完了後に行う。
 
 本書の変更は、次の設計書の手順にも及ぶ。
 どれも本書の完了を待つ必要はないが、本書の後に着手するなら、次のとおりに手順を合わせる。
 
-- [PUCTの係数のSPSA](mcts-puct-spsa.md)は、本書と同じく`minase spsa`を変える。後からmasterへ入れる側が、先に入った変更に合わせる。本書の後は、PV-MCTSのネットと勝率尺度を`minase spsa`の`--option NnModel=<パス>`と`--option NnCpPerLogit=<値>`で渡す。
-- AlphaZero型探索の[2回目の実行](alphazero-rl-2.md)と[学習レシピを先行実装に揃える設計書](archived/zero-recipe-precedents.md)では、強さを測る相手のαβ探索がネットを埋め込んだコミット`45d5db54`に固定されているので、その対局は本書の影響を受けない。PV-MCTSのネットの検査（`tools/train/zero/minase_zero/runner.py`）は、本書を含む版のエンジンを使うときに限り`NnCpPerLogit`を送る。定例の測定に固定したコミットが本書より前なら、エンジンがこのオプションを宣言しないので送らない。マージの前に行うαβ探索の`bench`の一致の確認では、`RuleSet`、`EvalFile`、および`isready`の後に`bench`を送る。
-- [AlphaZero型探索の統括計画](alphazero.md)の到達の判定は、その時点のmasterのαβ探索を相手にするので、本書の後は、比べるNNUEのネットのファイルを決めて`EvalFile`で渡し、そのSHA-256を判定の記録に書く。
-- [PV-MCTSのデバッグ道具](archived/mcts-debugging-tools.md)は、PV-MCTSで起動したエンジンの`bench`を、ネットを使わない試験用の評価器による固定局面のPV-MCTSの探索にする。後からmasterへ入れる側が、先に入った変更に合わせる。同書が先に入れば、本書はPV-MCTSのエンジンの`bench`を拒否せずに残し、本書が先に入れば、同書が拒否をPV-MCTSの探索に置き換える。
-- [合法手生成の高速化（第3期）](movegen-speedup-3.md)、[詰み探索](mate-search.md)、および[探索の強化の段階](strength-stages.md)のように、αβ探索の`bench`や対局で結果と速さを確かめる設計書では、本書の完了後は、`bench`の前にオプション`RuleSet`と`EvalFile`を設定して`isready`を送り、対局の実行器には`--candidate-option EvalFile=<パス>`と`--baseline-option EvalFile=<パス>`を渡す。
+- [PUCTの係数のSPSA](../mcts-puct-spsa.md)は、本書と同じく`minase spsa`を変える。後からmasterへ入れる側が、先に入った変更に合わせる。本書の後は、PV-MCTSのネットと勝率尺度を`minase spsa`の`--option NnModel=<パス>`と`--option NnCpPerLogit=<値>`で渡す。
+- AlphaZero型探索の[2回目の実行](../alphazero-rl-2.md)と[学習レシピを先行実装に揃える設計書](zero-recipe-precedents.md)では、強さを測る相手のαβ探索がネットを埋め込んだコミット`45d5db54`に固定されているので、その対局は本書の影響を受けない。PV-MCTSのネットの検査（`tools/train/zero/minase_zero/runner.py`）は、エンジンの版によらず`NnCpPerLogit`を送る。このオプションを宣言しない本書より前の版のminaseは、宣言していない名前の`setoption`を無視する。対局の実行器はエンジンが宣言しないオプションを送る前に拒否するので、定例の測定に固定したコミットが本書より前なら、その対局にはこのオプションを渡さない。マージの前に行うαβ探索の`bench`の一致の確認では、`RuleSet`、`EvalFile`、および`isready`の後に`bench`を送る。
+- [AlphaZero型探索の統括計画](../alphazero.md)の到達の判定は、その時点のmasterのαβ探索を相手にするので、本書の後は、比べるNNUEのネットのファイルを決めて`EvalFile`で渡し、そのSHA-256を判定の記録に書く。
+- [PV-MCTSのデバッグ道具](mcts-debugging-tools.md)は本書より先にmasterへ入り、PV-MCTSで起動したエンジンの`bench`を、ネットを使わない試験用の評価器による固定局面のPV-MCTSの探索にした。本書はこの`bench`を変えない。
+- [合法手生成の高速化（第3期）](../movegen-speedup-3.md)、[詰み探索](../mate-search.md)、および[探索の強化の段階](../strength-stages.md)のように、αβ探索の`bench`や対局で結果と速さを確かめる設計書では、本書の完了後は、`bench`の前にオプション`RuleSet`と`EvalFile`を設定して`isready`を送り、対局の実行器には`--candidate-option EvalFile=<パス>`と`--baseline-option EvalFile=<パス>`を渡す。
 
-開発用GUIは、いまも規則セットの指定の変更（[起動引数と診断ツールをUSIへ移す計画](archived/cli-to-usi.md)）に追従しておらず、本書の変更の後も`EvalFile`を送るまでエンジンを起動できない。
+開発用GUIは、いまも規則セットの指定の変更（[起動引数と診断ツールをUSIへ移す計画](cli-to-usi.md)）に追従しておらず、本書の変更の後も`EvalFile`を送るまでエンジンを起動できない。
 lishogi Botはcrates.ioのminase 2.6.0を固定しているので、本書の変更を含む版をリリースするまで影響を受けない。
 
 ## 設計判断
@@ -92,12 +98,12 @@ lishogi Botはcrates.ioのminase 2.6.0を固定しているので、本書の変
 | 失敗時の動作 | 未設定、読み取りの失敗、復号の検証の失敗では、原因とパスを含むエラーの行を出し、`readyok`を返さずに終了コード1で止まる。成功したら`readyok`の直前に`info string network_sha256 <64桁の16進数>`を出す。 | 読み込みに失敗しても埋め込みのネットや前のネットで続ける案は、CLAUDE.mdのフォールバックの禁止に反する。 |
 | ネットの識別子 | `isready`で読み込んだファイル全体のバイト列のSHA-256を、ネットの唯一の識別子とする。この値を、エンジンの報告、対局の実行器の記録、および教師ファイルの`network_checksum`に共通に使う。PV-MCTSの`NnModel`がONNXのファイルに使う定義と同じである。理由は各論の「ネットの識別子」の節にある。 | いまの重みのファイルの形式MNUE（minaseのNNUEの重みの形式、版5）のヘッダにあるチェックサムは本体（192バイト目以降）だけを覆うので、評価値の換算に使うヘッダの勝率尺度や規則セットの名前が違っても、本体が同じなら区別できない。MNUEのチェックサムの範囲をヘッダまで広げて版を上げる案は、HalfKP_vmの設計書で重みの形式をtataraの形式（チェックサムを持たない）へ揃えるので、すぐに捨てる変更になる。ファイル全体のSHA-256とMNUEのチェックサムを両方とも識別子として記録する案は、同じネットに2つの識別子を持たせ、照合を重ねる。2026年10月13日に利用者は、同じ対象にチェックサムの照合を重ねないと決めている。 |
 | 測定でのネットの固定 | コードはコミットで、ネットは実行記録（対局の実行器の`manifest.json`）のチェックサムで固定する。ネットだけを比べる測定では、候補と基準に同じコミットを指定し、`--candidate-option EvalFile=<パス>`と`--baseline-option EvalFile=<パス>`で別々のファイルを渡す。 | ネットのチェックサムを書いた小さなファイルをgitに置き、ネットを変えるたびにコミットする案は、対局の実行器の記録とgitの2か所に同じ事実を持たせる。対局の実行器にネット専用の引数を足す案は、ハーネス（規約の語で、対局の実行器を指す）に機能比較のスイッチを足さないという規約（`CONTRIBUTING.md`）に触れ、既存の追加オプションの仕組みで足りる。 |
-| CECP | `feature option="EvalFile -file "`を宣言し、`option EvalFile=<パス>`で受け取る。`new`の処理と探索の開始の共通の入口で、未準備ならネットを読み、失敗ならエラーを出して終了コード1で止まる。対局の実行器は、CECPのエンジンにも`--candidate-option`と`--baseline-option`を`option <名前>=<値>`として`new`の前に送り、初期化の最後に`ping`を送って`pong`を待つ。 | CECPだけ起動引数`--eval-file`で受け取る案は、起動引数をプロトコルの開始前に要る情報に限るという[ADR](../adr/keep-protocol-search-method-and-io-log-as-startup-arguments.md)に反する。CECPには`isready`がないので、`new`だけで準備する案は、`setboard`から`go`へ進む経路で未準備のまま探索に入る。初期化で`pong`を待たない案は、ネットを読む時間が最初の着手の消費時間に入る。 |
-| PV-MCTSの勝率尺度 | PV-MCTSは、探索値（[MultiPV](archived/multipv.md)の2本目以降の読み筋の探索値を含む）をセンチポーンで出すときと、引き分けの値をセンチポーンから勝率へ換算するときに勝率尺度を使い、いまは埋め込みのNNUEのヘッダから読んでいる。これをUSIのオプション`NnCpPerLogit`（型string、既定値なし）で受け取り、正の有限の実数であることを`isready`で検査する。 | PV-MCTSにも`EvalFile`を要求する案は、1つの実数のために約500 MBのネットを読ませ、PV-MCTSの実行条件を2つのネットに依存させる。定数にする案は、学習で決まる値を手で固定する。 |
+| CECP | `feature option="EvalFile -file "`を宣言し、`option EvalFile=<パス>`で受け取る。`new`の処理と探索の開始の共通の入口で、未準備ならネットを読み、失敗ならエラーを出して終了コード1で止まる。対局の実行器は、CECPのエンジンにも`--candidate-option`と`--baseline-option`を`option <名前>=<値>`として`new`の前に送り、初期化の最後に`ping`を送って`pong`を待つ。 | CECPだけ起動引数`--eval-file`で受け取る案は、起動引数をプロトコルの開始前に要る情報に限るという[ADR](../../adr/keep-protocol-search-method-and-io-log-as-startup-arguments.md)に反する。CECPには`isready`がないので、`new`だけで準備する案は、`setboard`から`go`へ進む経路で未準備のまま探索に入る。初期化で`pong`を待たない案は、ネットを読む時間が最初の着手の消費時間に入る。 |
+| PV-MCTSの勝率尺度 | PV-MCTSは、探索値（[MultiPV](multipv.md)の2本目以降の読み筋の探索値を含む）をセンチポーンで出すときと、引き分けの値をセンチポーンから勝率へ換算するときに勝率尺度を使い、いまは埋め込みのNNUEのヘッダから読んでいる。これをUSIのオプション`NnCpPerLogit`（型string、既定値なし）で受け取り、正の有限の実数であることを`isready`で検査する。 | PV-MCTSにも`EvalFile`を要求する案は、1つの実数のために約500 MBのネットを読ませ、PV-MCTSの実行条件を2つのネットに依存させる。定数にする案は、学習で決まる値を手で固定する。 |
 | サブコマンドでのネットの指定 | ネットで評価するサブコマンド（`data selfplay generate`、`data lishogi games`、`data lishogi openings`）は、必須の引数`--eval-file <パス>`を取る。対局の実行器`match run`は、起動時に自分のプロセスに埋め込んだネットを検査する処理をやめる。`minase spsa`の調整の実行は、調整する係数のオプション`Tune_<名前>`と別に、繰り返し指定できる固定のUSIオプション`--option <名前>=<値>`を取る。ネットを使わないサブコマンド（`data selfplay inspect`、`match report`、`spsa params`、`spsa apply`など）はネットを要求しない。 | サブコマンドはプロトコルではないので、起動引数のADRの対象ではない。SPSAの固定のオプションを`--eval-file`に限る案は、PV-MCTSの係数を調整するときに`NnModel`と`NnCpPerLogit`も渡す必要があり、同じ仕組みを2度作ることになる。 |
-| `bench`と評価の内訳の表示 | どちらもUSIの独自の命令であり、`isready`で準備したネットを使う。`isready`の前に受けたらエラーを返す。`bench`はαβ探索だけの命令とし、PV-MCTSで起動したエンジンでは拒否する。 | `bench`だけ別にネットを指定する案は、同じセッションの中にネットの指定の経路を2つ作る。PV-MCTSのエンジンは本書の変更の後にNNUEを持たなくなるので、いまのようにPV-MCTSのエンジンでαβ探索の`bench`を実行することはできない。 |
+| `bench`と評価の内訳の表示 | どちらもUSIの独自の命令であり、αβ探索では`isready`で準備したネットを使う。`isready`の前に受けたらエラーを返す。PV-MCTSで起動したエンジンの`bench`は、ネットを使わない試験用の評価器で探索するので、ネットの準備を要求しない。 | `bench`だけ別にネットを指定する案は、同じセッションの中にネットの指定の経路を2つ作る。 |
 | 保管と配布 | ネットはgitに入れない。開発中のネットは、PV-MCTSのONNXのネットと同じNAS（ネットワークに接続した記憶装置）に、チェックサムの16進数をファイル名にして置く。リリースでは、採用したネットをGitHubのリリースに添付し、チェックサムをリリースノートに書く。いまの`nnue.bin`はgitの管理から外し、履歴は書き換えない。 | ネットのチェックサムを書いた小さなファイルをgitに置く案は、上の「測定でのネットの固定」の理由で採らない。GitHubのリリースの添付は1ファイル2 GiB未満を受け付ける。 |
-| テストの固定ネット | `nnue-epoch0.bin`などの小さな固定ネットは、テストの資材としてgitに残し、テストは`include_bytes!`（ビルドのときにファイルを埋め込むRustのマクロ）で読むか、一時ファイルに書いて`EvalFile`で渡す。 | テストで本番のネットを読む案は、学習で変わる値にテストを依存させる（[固定ネットの教訓](../lessons/search-tests-use-a-fixed-net.md)）。テスト用の埋め込みは本番の読み込みの代わりに使わないので、フォールバックには当たらない。 |
+| テストの固定ネット | `nnue-epoch0.bin`などの小さな固定ネットは、テストの資材としてgitに残し、テストは`include_bytes!`（ビルドのときにファイルを埋め込むRustのマクロ）で読むか、一時ファイルに書いて`EvalFile`で渡す。 | テストで本番のネットを読む案は、学習で変わる値にテストを依存させる（[固定ネットの教訓](../../lessons/search-tests-use-a-fixed-net.md)）。テスト用の埋め込みは本番の読み込みの代わりに使わないので、フォールバックには当たらない。 |
 | 教師ファイルの形式 | MNSD（minaseの教師ファイルの形式）の配置と版3は変えず、ヘッダの`network_checksum`に入れる値だけを、ネットのファイル全体のSHA-256にする。 | MNSDの版を上げる案は、欄の配置が変わらないのに既存の教師ファイルを読めなくする。既存の教師ファイルの値はMNUEの本体のチェックサムであり、同じネットでもファイル全体のSHA-256とは一致しないので、再開の照合で取り違えることはない。 |
 
 ## 各論
@@ -145,12 +151,13 @@ CECPでは、相手の着手を受けたエンジンは、自分の手番にな�
 
 対局の実行器は、いまCECPのエンジンへの追加のオプションを拒否し（`harness/player.rs`）、初期化の命令を送るだけで応答を待たない（`harness/engine/process.rs`）。
 本書の変更の後は、CECPのエンジンにも追加のオプションを`option <名前>=<値>`として`new`の前に送り、初期化の最後に`ping`を送って対応する`pong`を受けてから対局へ進む。
-オプションの名前は、エンジンが`feature option`で宣言した名前と照合し、宣言にない名前は送る前に拒否する。
+オプションの名前は、エンジンが`feature option`で宣言した名前と照合し、宣言にない名前は送る前に、測定全体を止めるエラーとして拒否する。
+対局の実行器は、CECPのエンジンも、対局を始める前に同じ初期化の列で`pong`まで1回起動し（事前の起動）、宣言にない名前や`EvalFile`の誤りを最初の対局より前に見つける。
 CECPでminaseを動かす`scripts/hachu_replay.py`は、ネットのパスを自分の引数で受け取り、`option RuleSet`の後、`new`の前に`option EvalFile=<パス>`を送る。
 
 ### 対局の実行器とSPSA
 
-対局の実行器は、いまも候補と基準に別々のUSIオプションを`isready`の前に送り、エンジンが報告した`network_sha256`を`manifest.json`に記録して、局ごとの開始と再開のときに照合している（[ADR](../adr/record-and-verify-the-network-checksum-reported-by-match-engines.md)）。
+対局の実行器は、いまも候補と基準に別々のUSIオプションを`isready`の前に送り、エンジンが報告した`network_sha256`を`manifest.json`に記録して、局ごとの開始と再開のときに照合している（[ADR](../../adr/archive/record-and-verify-the-network-checksum-reported-by-match-engines.md)）。
 本書の変更の後は、αβ探索のエンジンもチェックサムを報告するので、この記録と照合がαβ探索にもそのまま効く。
 USIの経路で対局の実行器のコードを変えるのは、起動時に自分の埋め込みのネットを検査する処理（`crates/minase/src/bin/minase/match_runner/mod.rs`の`main`）を削ることだけである。
 
@@ -179,7 +186,7 @@ USIの経路で対局の実行器のコードを変えるのは、起動時に�
 ### そのほかのスクリプト
 
 速度比較の`scripts/bench_compare.py`は、ネットのパスを引数で受け取り、`RuleSet`、`EvalFile`、および`isready`の後に`bench`を送る。
-宣言していない名前の`setoption`をminaseは黙って無視するので（[USIの拡張の手引き](../guides/usi-extensions.md)）、この命令列は、ネットを埋め込んだ旧版のminaseにもそのまま使える。
+宣言していない名前の`setoption`をminaseは黙って無視するので（[USIの拡張の手引き](../../guides/usi-extensions.md)）、この命令列は、ネットを埋め込んだ旧版のminaseにもそのまま使える。
 結果のキャッシュの名前には、深さとスレッド数に加えてネットのチェックサムを入れる。
 生成機でのSPSA（`scripts/vast-spsa/launch.py`、`remote.py`、`bench.py`）は、教師生成と同じくネットを転送し、調整の前の速さの測定でも同じ命令列で`bench`を送り、`minase spsa`に`--option EvalFile=<パス>`を渡す。
 USIでminaseを起動する調査のスクリプト（`byoyomi_game_profile.py`、`lishogi_byoyomi_usage/`の`paired_depth_probe.py`と`signal_probe.py`、`mate_report_check.py`、`movetime_deadline/deadline_probe.py`）は、ネットのパスを引数で受け取り、`EvalFile`を送る。
@@ -190,7 +197,7 @@ PV-MCTSのネットの検査（`tools/train/zero/minase_zero/runner.py`）は、
 
 `crates/minase/nets/nnue.bin`はgitの管理から外す。
 `crates/minase/Cargo.toml`の`include`は`nets/`を含んだままにし、テストの固定ネットだけがパッケージに入る。
-[リリースの手引き](../guides/release.md)には、採用したネットをGitHubのリリースに添付し、チェックサムをリリースノートに書く段を加える。
+[リリースの手引き](../../guides/release.md)には、採用したネットをGitHubのリリースに添付し、チェックサムをリリースノートに書く段を加える。
 `crates/minase/README.md`の導入の手順には、ネットを取得して`EvalFile`で指定する段を加える。
 `EvalFile`を必須にする変更はUSIオプションの互換を壊すので、コミットのtypeに`!`を付け、本文に`BREAKING CHANGE:`のフッターを書く。
 リリースの版の番号は、リリースのときに利用者が決める。
@@ -198,10 +205,10 @@ PV-MCTSのネットの検査（`tools/train/zero/minase_zero/runner.py`）は、
 ## 実装フェーズ
 
 実装はcodexへ委任し、Claudeはフェーズごとに検証してコミットする。
-フェーズの境界ごとに`cargo fmt`、`cargo clippy`、`cargo test`、`--features search-stats,tuning`を付けた検査（[テストの手引き](../guides/testing-minase-rules.md)）、および変更したPythonのテストを通す。
+フェーズの境界ごとに`cargo fmt`、`cargo clippy`、`cargo test`、`--features search-stats,tuning`を付けた検査（[テストの手引き](../../guides/testing-minase-rules.md)）、および変更したPythonのテストを通す。
 
 1. エンジンのプロトコルと、エンジンを子プロセスとして動かす道具を変える。エンジンが`EvalFile`を必須にした時点で、子プロセスへ`EvalFile`を送れない道具は新しいエンジンを動かせなくなるので、両方を同じフェーズで変える。`eval::weights()`と埋め込みは、教師生成と棋譜の取り込みのためにこのフェーズでは残す。
-   - エンジンには、αβ探索の`EvalFile`、`isready`での準備とチェックサムの報告、`bench`と評価の内訳の表示での準備の要求、PV-MCTSのエンジンでの`bench`の拒否、CECPの`option EvalFile`、およびPV-MCTSの`NnCpPerLogit`を入れ、起動時の検査を削除する。
+   - エンジンには、αβ探索の`EvalFile`、`isready`での準備とチェックサムの報告、αβ探索の`bench`と評価の内訳の表示での準備の要求、CECPの`option EvalFile`、およびPV-MCTSの`NnCpPerLogit`を入れ、起動時の検査を削除する。
    - 道具には、対局の実行器のCECPへの追加のオプションと`ping`による同期、および`minase spsa`の`--option`とチェックサムの記録と照合を入れ、`match run`と`minase spsa`の起動時のネットの検査を削除する。
    - 完了条件は、次の4点をテストで確かめることである。第1に、未設定、存在しないパス、および壊れたファイルのそれぞれで、USIとCECPが文書どおりのエラーで止まり、正しいネットでは準備に成功すること。第2に、CECPで`setboard`から`go`へ進む経路と、`EvalFile`を変えた後に相手の着手を受けて探索する経路が、どちらも準備を経ること。第3に、`EvalFile`を要求してチェックサムを報告する模擬のエンジンを使ったSPSAのテストで、固定のオプションが`Tune_*`と一緒に送られ、別のネットでの再開が拒否されること。第4に、CECPとUSIの対局の結合テストが通ること。
 2. 教師生成と棋譜の取り込みのサブコマンドに`--eval-file`を入れ、`eval::weights()`、`EMBEDDED`、および`nnue.bin`を削除する。`nnue.bin`は削除の前にNASへ写す。本番のネットを読んでいたテストは固定ネットへ移す。完了条件は、教師生成の再開が別のネットで拒否されることをテストで確かめることである。
@@ -213,7 +220,7 @@ PV-MCTSのネットの検査（`tools/train/zero/minase_zero/runner.py`）は、
 完了の前に次を確かめる。
 
 - 探索が変わらないことを確かめる。masterのコミット（ネットを埋め込んだもの）と本書のブランチの先頭のコミット（NASへ写した同じ`nnue.bin`を`EvalFile`で渡したもの）に、`setoption name RuleSet value JCSA`、`setoption name EvalFile value <NASのnnue.bin>`、`isready`、`bench depth 5`を送り、各局面の最善手、評価値、およびノード数が完全に一致することを確かめる。深さ5は、USIの拡張の手引きの例と、世代反復の`bench`の確認で使っている深さである。評価と探索の手順を変えないので、自己対局の勝敗から逐次検定で採否を決める棋力測定（SPRT）は行わない。
-- 速さが変わらないことを確かめる。同じ2つのコミットを、`scripts/bench_compare.py`で性能コアへ固定し、`--rounds 5`で交互に5回ずつ測る。回数と交互の測り方は[速度の比べ方の教訓](../lessons/alternate-speed-rounds-against-parent.md)に従う。本書のブランチの5回の平均とmasterの5回の平均の差が、masterの5回の値の幅（最大値と最小値の差）より小さいことを確かめる。教訓と同じく、比べる元のコミットであるmasterの値の幅を測定のばらつきの目安とし、幅を超えて遅ければ原因を調べる。
+- 速さが変わらないことを確かめる。同じ2つのコミットを、`scripts/bench_compare.py`で性能コアへ固定し、`--rounds 5`で交互に5回ずつ測る。回数と交互の測り方は[速度の比べ方の教訓](../../lessons/alternate-speed-rounds-against-parent.md)に従う。本書のブランチの5回の平均とmasterの5回の平均の差が、masterの5回の値の幅（最大値と最小値の差）より小さいことを確かめる。教訓と同じく、比べる元のコミットであるmasterの値の幅を測定のばらつきの目安とし、幅を超えて遅ければ原因を調べる。
 - 対局の実行器がαβ探索のネットを記録し照合することを確かめる。同じコミットを候補と基準に指定し、同じネットを渡した2ペア（同じ開始局面で先後を入れ替えて指す2局の組を1ペアとする）を、決まったペア数を指す実行の型`elo --pairs 2`で実行して、`manifest.json`の両側に`network_sha256`が記録されることを確かめる。続けて、基準のネットのファイルを別のネットに差し替えて再開し、照合の不一致で止まることを確かめる。
 - 教師生成が動くことを確かめる。`data selfplay generate`を2局で実行し、出力の`config.json`とMNSDのヘッダのチェックサムが渡したネットのチェックサムと一致すること、および別のネットで再開すると止まることを確かめる。
 - CECPが動くことを確かめる。`scripts/hachu_replay.py`で1局を再生できることと、`option EvalFile`を送らない場合は`new`でエラーになることを確かめる。CECPの探索の開始の準備は、フェーズ1のテストで確かめる。
@@ -225,16 +232,16 @@ PV-MCTSのネットの検査（`tools/train/zero/minase_zero/runner.py`）は、
 - 「検証」の節の確認をすべて満たしている。
 - ネットを使うすべての入口（USI、CECP、および「設計判断」の表に挙げたサブコマンド）が、ネットのファイルを明示して受け取り、未指定と失敗で止まる。
 - `crates/minase/nets/nnue.bin`がgitの管理から外れ、crates.ioのパッケージに含まれない。
-- 仕様を、`EvalFile`と`NnCpPerLogit`の宣言、ネットの識別子、およびサブコマンドの引数のdocコメントと、次の手引きへ移している：[USIの拡張](../guides/usi-extensions.md)、[測定](../guides/sprt.md)、[SPSA](../guides/spsa.md)、[NNUEの学習](../guides/nnue-training.md)、[PSTの学習](../guides/pst-training.md)、[NNUEの評価関数](../guides/evaluation-nnue.md)、[ファイル形式](../guides/file-formats.md)、[デバッグ](../guides/debugging.md)、[テスト](../guides/testing-minase-rules.md)、[PV-MCTSのネットの検査](../guides/alphazero-network-check.md)、[AlphaZero型探索の学習](../guides/alphazero-training.md)、および[リリース](../guides/release.md)。
+- 仕様を、`EvalFile`と`NnCpPerLogit`の宣言、ネットの識別子、およびサブコマンドの引数のdocコメントと、次の手引きへ移している：[USIの拡張](../../guides/usi-extensions.md)、[測定](../../guides/sprt.md)、[SPSA](../../guides/spsa.md)、[NNUEの学習](../../guides/nnue-training.md)、[PSTの学習](../../guides/pst-training.md)、[NNUEの評価関数](../../guides/evaluation-nnue.md)、[ファイル形式](../../guides/file-formats.md)、[デバッグ](../../guides/debugging.md)、[テスト](../../guides/testing-minase-rules.md)、[PV-MCTSのネットの検査](../../guides/alphazero-network-check.md)、[AlphaZero型探索の学習](../../guides/alphazero-training.md)、および[リリース](../../guides/release.md)。
 - 設計判断を新しいADRへ移している。次のADRの記述は、置き換えるか補うADRを書き、置き換えた旧版は`docs/adr/archive/`へ移す。
-  - [探索が使う評価関数をNNUEの1つにするADR](../adr/use-nnue-as-the-only-search-evaluation.md)の、ネットを埋め込む決定。
-  - [教師ファイルを決まった局数の塊で確定するADR](../adr/commit-nnue-teacher-files-in-fixed-game-chunks-and-reassemble-them-into-one-file.md)の、ネットが埋め込まれているので生成コミットがネットを決めるという前提。
-  - [ネットのチェックサムを記録して照合するADR](../adr/record-and-verify-the-network-checksum-reported-by-match-engines.md)の、SPSAとαβ探索を記録の対象から外す扱い。
-  - [コミットを別々のエンジンのプロセスとして比べるADR](../adr/compare-commits-as-separate-engine-processes.md)の、測定の対象をコミットで固定する記述。
-  - [診断をUSIの命令にするADR](../adr/run-engine-diagnostics-as-usi-commands-and-keep-experiment-tools-as-subcommands.md)の、`bench`には`isready`が要らないという決定。
-  - [NNUEを入力特徴集合と出力部の型で表すADR](../adr/parameterize-the-nnue-by-feature-set-and-head-types.md)の、埋め込んだネットを起動時に検証するという記述。
-  - [学習の後に線形の経路を補正しないADR](../adr/do-not-correct-the-nnue-linear-path-after-training.md)の、世代のネットをコミットして次の世代の初期値にするという記述。
-- [世代反復の設計書](nnue-generation-iteration.md)の手順を、外部のネットを使う形に書き直している。
+  - [探索が使う評価関数をNNUEの1つにするADR](../../adr/archive/use-nnue-as-the-only-search-evaluation.md)の、ネットを埋め込む決定。
+  - [教師ファイルを決まった局数の塊で確定するADR](../../adr/archive/commit-nnue-teacher-files-in-fixed-game-chunks-and-reassemble-them-into-one-file.md)の、ネットが埋め込まれているので生成コミットがネットを決めるという前提。
+  - [ネットのチェックサムを記録して照合するADR](../../adr/archive/record-and-verify-the-network-checksum-reported-by-match-engines.md)の、SPSAとαβ探索を記録の対象から外す扱い。
+  - [コミットを別々のエンジンのプロセスとして比べるADR](../../adr/archive/compare-commits-as-separate-engine-processes.md)の、測定の対象をコミットで固定する記述。
+  - [診断をUSIの命令にするADR](../../adr/archive/run-engine-diagnostics-as-usi-commands-and-keep-experiment-tools-as-subcommands.md)の、`bench`には`isready`が要らないという決定。
+  - [NNUEを入力特徴集合と出力部の型で表すADR](../../adr/archive/parameterize-the-nnue-by-feature-set-and-head-types.md)の、埋め込んだネットを起動時に検証するという記述。
+  - [学習の後に線形の経路を補正しないADR](../../adr/archive/do-not-correct-the-nnue-linear-path-after-training.md)の、世代のネットをコミットして次の世代の初期値にするという記述。
+- [世代反復の設計書](../nnue-generation-iteration.md)の手順を、外部のネットを使う形に書き直している。
 
 ## 参考資料
 

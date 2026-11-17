@@ -69,7 +69,7 @@ pub struct PlayerConfig {
     pub hash_mb: Option<u64>,
     /// 規則オプションへ渡す、対局ハーネスの`--rules`入力原文。
     pub rules_source: String,
-    /// USIの握手後、`isready`より前に送るオプションの名前と値。
+    /// 握手後、USIでは`isready`、CECPでは`new`より前に送るオプションの名前と値。
     /// 同名の重複も含めて列順に送る。
     pub options: Vec<(String, String)>,
     /// 事前の起動で記録したネットのSHA-256。局ごとの初期化で報告値と照合する。
@@ -155,12 +155,6 @@ pub fn resolve_player(
         return Err(io::Error::new(
             io::ErrorKind::InvalidInput,
             "startup arguments require a commit: engine",
-        ));
-    }
-    if matches!(spec.kind, PlayerKind::Cecp { .. }) && !options.is_empty() {
-        return Err(io::Error::new(
-            io::ErrorKind::InvalidInput,
-            "CECP engine does not support USI setoption settings",
         ));
     }
     if matches!(spec.kind, PlayerKind::Random) && !options.is_empty() {
@@ -265,9 +259,7 @@ pub fn resolve_player(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::harness::engine::{EngineDefaults, probe_engine_defaults};
     use crate::harness::limit::parse_search_limit;
-    use std::time::Duration;
 
     #[test]
     fn startup_arguments_reject_non_commit_players_before_resolution() {
@@ -374,15 +366,6 @@ mod tests {
                 assert_eq!(player.protocol, Protocol::Cecp, "{text}");
                 assert_eq!(player.path, PathBuf::from("engine"), "{text}");
                 assert_eq!(player.args, ["--option", "value"], "{text}");
-                assert_eq!(
-                    probe_engine_defaults(&player, true, Duration::from_secs(1)).unwrap(),
-                    EngineDefaults {
-                        threads: None,
-                        hash_mb: Some(256),
-                        network_sha256: None,
-                    },
-                    "{text}"
-                );
             } else {
                 let error = result.err().unwrap_or_else(|| panic!("{text}: accepted"));
                 assert_eq!(error.kind(), io::ErrorKind::InvalidInput, "{text}");
@@ -430,19 +413,18 @@ mod tests {
         }
     }
 
-    // [`resolve_player`]の契約に従い、randomとCECPの追加USI設定は起動前に拒否する。
+    // [`resolve_player`]の契約に従い、randomの追加USI設定は起動前に拒否する。
     #[test]
-    fn random_and_cecp_resolution_reject_nonempty_usi_options() {
-        for spec in ["random", "cecp:engine-that-does-not-exist"] {
-            let result = resolve_player(
-                parse_player_spec(spec).unwrap(),
-                parse_search_limit("depth=1").unwrap(),
-                None,
-                "R1",
-                vec![("Tune_First".to_owned(), "17".to_owned())],
-                None,
-            );
-            assert_eq!(result.err().unwrap().kind(), io::ErrorKind::InvalidInput);
-        }
+    fn random_resolution_rejects_nonempty_usi_options() {
+        let spec = "random";
+        let result = resolve_player(
+            parse_player_spec(spec).unwrap(),
+            parse_search_limit("depth=1").unwrap(),
+            None,
+            "R1",
+            vec![("Tune_First".to_owned(), "17".to_owned())],
+            None,
+        );
+        assert_eq!(result.err().unwrap().kind(), io::ErrorKind::InvalidInput);
     }
 }

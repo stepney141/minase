@@ -37,6 +37,7 @@ CPUとTensorRTのFP16を、それぞれバッチの大きさ1、7、および256
 ```bash
 run() {  # 実行プロバイダ、バッチの大きさ、出力のパス
   { printf 'usi\nsetoption name RuleSet value lishogi\nsetoption name NnModel value %s\n' '<ネット.onnx>'
+    printf 'setoption name NnCpPerLogit value 1072.6529541015625\n'
     printf 'setoption name NnBackend value %s\nsetoption name NnBatchSize value %s\n' "$1" "$2"
     [ "$1" = tensorrt ] && printf 'setoption name NnCacheDir value %s\n' '<キャッシュの親ディレクトリ>'
     printf 'isready\nnn-eval out %s\nquit\n' "$3"
@@ -47,7 +48,9 @@ for b in 1 7 256; do
 done
 ```
 
-`RuleSet`は照合の内容に関係しないが、`isready`が要求するので送る。
+`RuleSet`と、探索値の換算に使う勝率尺度`NnCpPerLogit`は照合の内容に関係しないが、`isready`が要求するので送る。
+勝率尺度の値1072.6529541015625は、αβ探索でいま標準としているネットのヘッダにある値であり、AlphaZero型探索の学習でも同じ値を使う。
+`NnCpPerLogit`を宣言しない古い版のminaseは、この`setoption`を無視する。
 成功した`nn-eval`は最後に`info string end`を出すので、上の例はこの行の有無で成否を判定している。
 出力には、推論にかかった秒数が`info string NN inference`の行で出る。
 10ブロック128チャネルのネットでは、TensorRTの初回の実行でエンジンの作成に7〜10秒かかり、2回目以降はキャッシュからの読み込みが0.4秒ほどで終わる。

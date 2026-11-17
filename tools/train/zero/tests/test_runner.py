@@ -177,7 +177,7 @@ class RunnerCase(unittest.TestCase):
         self.reference = self.directory / "trial.json"
         write_json(self.reference, {"games": 20, "training_positions": 2000})
         self.options = Options(
-            root=self.root, machine="colab", vast_instance=None, session="test-session",
+            root=self.root, nn_cp_per_logit=850.5, machine="colab", vast_instance=None, session="test-session",
             generation_commit=GENERATION_COMMIT,
             cycles_dir=Path("cycles"), base_cycles_dir=Path("cycles"), branch_from=0,
             trainer_commit=TRAINER_COMMIT, first_cycle=1, last_cycle=1,
@@ -1453,6 +1453,8 @@ class CycleTests(RunnerCase):
                 "cpu": "Test CPU", "nproc": 32, "cpus_available": 18,
                 "kind": "vast", "vast_instance": 12345,
             })
+            self.assertEqual(row["nn_cp_per_logit"], 850.5)
+            self.assertEqual(interval["nn_cp_per_logit"], 850.5)
             self.assertEqual(row["interval"], interval)
             self.assertEqual(interval["machine_kind"], "vast")
             self.assertEqual(interval["vast_instance"], 12345)
@@ -1637,6 +1639,7 @@ if engine:
                 for backend, label in (("cpu", "cpu"), ("tensorrt", "trt")):
                     commands = ["usi", "setoption name RuleSet value lishogi",
                                 f"setoption name NnModel value {path}/train/model.onnx",
+                                "setoption name NnCpPerLogit value 850.5",
                                 f"setoption name NnBackend value {backend}",
                                 f"setoption name NnBatchSize value {batch}"]
                     if backend == "tensorrt":
@@ -2256,11 +2259,20 @@ class ArgumentTests(RunnerCase):
                 "--cycle-minutes", "40", "--cycle-cu", "2", "--target-positions", "1000000",
                 "--chunks", "20", "--simulations", "32", "--threads-per-gpu", "6", "--games-per-thread", "4",
                 "--replay-buffer-games", "1500000", "--batch-size", "256", "--lr", "0.01",
-                "--momentum", "0.9",
+                "--momentum", "0.9", "--nn-cp-per-logit", "850.5",
                 "--weight-decay", "0.0001", "--clip-grad-norm", "10", "--value-lambda", "0.333",
                 "--precision", "bf16", "--checkpoint-steps", "200", "--train-seed-base", "123",
                 "--minase", str(self.options.minase), "--poll-seconds", "60",
                 "--cycle1-reference-summary", str(self.reference)]
+
+    def test_cp_per_logit_rejects_nonpositive_and_nonfinite_values(self):
+        for value in ("0", "-1", "nan", "inf"):
+            args = self.arguments()
+            args[args.index("--nn-cp-per-logit") + 1] = value
+            with self.subTest(value=value), self.assertRaises(ValueError):
+                parsed = vars(_parse(args))
+                parsed.pop("command")
+                Options(**parsed)
 
     def test_colab_arguments_other_than_reference_are_required(self):
         args = self.arguments()

@@ -109,6 +109,8 @@ fn search_apis_use_the_supplied_nnue() {
     zero_correction_histories(&mut histories);
     let handle = start_search_with_clock(
         crate::search::alphabeta::Engine {
+            eval_file: String::new(),
+            network: None,
             transposition_table: Some(small_tt()),
             histories,
             threads: DEFAULT_THREADS,
@@ -322,6 +324,8 @@ fn dropping_search_handle_requests_stop_and_joins_the_thread() {
         finished.store(true, AtomicOrdering::Release);
         Ok(crate::search::Searcher::AlphaBeta(
             crate::search::alphabeta::Engine {
+                eval_file: String::new(),
+                network: None,
                 transposition_table: Some(small_tt()),
                 histories: crate::search::HistoryTables::new(DEFAULT_THREADS),
                 threads: DEFAULT_THREADS,

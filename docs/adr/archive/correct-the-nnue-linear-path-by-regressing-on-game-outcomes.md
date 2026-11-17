@@ -2,7 +2,7 @@
 
 ## ステータス
 
-置き換え済み。決定日は2026年11月3日。[NNUEの線形の経路を、学習の後に対局結果で補正しない](../do-not-correct-the-nnue-linear-path-after-training.md)によって置き換えられた。
+置き換え済み。決定日は2026年11月3日。[NNUEの線形の経路を、学習の後に対局結果で補正しない](do-not-correct-the-nnue-linear-path-after-training.md)によって置き換えられた。
 
 ## コンテキスト
 

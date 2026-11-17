@@ -1004,3 +1004,70 @@ fn rejected_openings_resume_and_concurrency_preserve_bytes_and_statistics() {
         4
     );
 }
+
+/// 同じファイルは再開でき、本体が同じでも勝率尺度が違えば再開を拒否する。
+#[test]
+fn resume_compares_entire_external_network_files() {
+    use minase::eval::nnue::read_network_file;
+    let temporary = TemporaryDirectory::new();
+    let path = temporary.0.join("network.bin");
+    let mut bytes = fs::read(concat!(env!("CARGO_MANIFEST_DIR"), "/nets/nnue-epoch0.bin")).unwrap();
+    fs::write(&path, &bytes).unwrap();
+    let first = read_network_file(&path).unwrap();
+    let directory = temporary.0.join("output");
+    let (openings, openings_checksum) = opening_fixture(&temporary.0, "network", &[60; 2]);
+    let make_conditions = |checksum| {
+        GenerationConditions::new(
+            Rules::LISHOGI,
+            COMMIT.into(),
+            checksum,
+            7,
+            nz_u32(2),
+            nz_u32(1),
+            nz_u32(100),
+            0,
+            nz_u16(64),
+            nz_usize(1),
+            Some(openings_checksum.clone()),
+            false,
+        )
+        .unwrap()
+    };
+    let original = make_conditions(*first.sha256());
+    run(&directory, &original, first.network(), Some(&openings), 2);
+    let saved = fs::read(directory.join("teacher.mnsd")).unwrap();
+    assert_eq!(
+        Reader::new(saved.as_slice()).unwrap().header().game_count(),
+        2
+    );
+    let same = read_network_file(&path).unwrap();
+    let resumed = run(
+        &directory,
+        &make_conditions(*same.sha256()),
+        same.network(),
+        Some(&openings),
+        1,
+    );
+    assert_eq!(resumed.chunks_reused, 2);
+    assert_eq!(fs::read(directory.join("teacher.mnsd")).unwrap(), saved);
+
+    // MNUE版5のヘッダの勝率尺度だけを変え、重み本体は保つ。
+    bytes[108..112].copy_from_slice(&(first.network().cp_per_logit() * 2.0).to_le_bytes());
+    fs::write(&path, &bytes).unwrap();
+    let second = read_network_file(&path).unwrap();
+    assert_eq!(first.network().checksum(), second.network().checksum());
+    let error = generate_to_directory(
+        &directory,
+        &make_conditions(*second.sha256()),
+        second.network(),
+        Some(&openings),
+        nz_usize(1),
+    )
+    .err()
+    .expect("a different network must reject resume");
+    assert!(matches!(
+        error.get_ref().unwrap().downcast_ref::<OutputError>().unwrap(),
+        OutputError::ConfigMismatch(fields) if fields == &["network_checksum"]
+    ));
+    assert_eq!(fs::read(directory.join("teacher.mnsd")).unwrap(), saved);
+}

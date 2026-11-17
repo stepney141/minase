@@ -51,7 +51,7 @@ fn tuning_usi_contract_in_isolated_process() {
         }
         Err(error) => panic!("invalid child scenario: {error}"),
     };
-    let mut protocol = UsiProtocol::new();
+    let mut protocol = test_protocol();
     let rules = canonical_rules_text(&rule_codes(&[RuleCode::R1]));
     assert_eq!(
         run(
@@ -426,7 +426,7 @@ fn tuning_usi_contract_in_isolated_process() {
         return;
     }
     if scenario == "mcts bench rejected" {
-        let engine = crate::search::mcts::Engine::new(crate::search::mcts::Config::new(600.0));
+        let engine = crate::search::mcts::Engine::new();
         let mut mcts = UsiProtocol::with_searcher(Searcher::Mcts(engine));
         for command in ["bench depth", "bench nodes 0", "bench batch 1025"] {
             let output = run(&mut mcts, &format!("{command}\n"));
@@ -442,7 +442,7 @@ fn tuning_usi_contract_in_isolated_process() {
         return;
     }
     if scenario == "mcts bench" {
-        let engine = crate::search::mcts::Engine::new(crate::search::mcts::Config::new(600.0));
+        let engine = crate::search::mcts::Engine::new();
         let mut mcts = UsiProtocol::with_searcher(Searcher::Mcts(engine));
         let output = run(&mut mcts, "bench nodes 4 batch 2\n");
         assert!(TUNING_LOCKED.load(Ordering::Relaxed));
@@ -466,7 +466,7 @@ fn tuning_usi_contract_in_isolated_process() {
         );
         assert_eq!(params::delta_margin(), 200);
     }
-    let mut protocol = UsiProtocol::new();
+    let mut protocol = test_protocol();
     assert_eq!(
         run(&mut protocol, "setoption name Tune_DeltaMargin value 300\n"),
         "info string error: tuning parameters cannot change after go\n"

@@ -5,7 +5,7 @@
 NNUE（efficiently updatable neural network）は、着手で変わった入力だけを足し引きして第1層の出力を更新できるように作った、小型のニューラルネットワークである。
 minaseの探索は2026年10月12日からNNUEだけを使う。
 それまで既定だった評価関数は、駒と升ごとの点数の表PST（piece-square table）と、2駒の組の関係を補うFactorization Machineの補正項FMの和である。
-PSTとFMの評価関数は、比較用のコードとしてソースに残っている（[探索が使う評価関数をNNUEの1つにし、PSTとFMのコードは比較用に残す](../adr/use-nnue-as-the-only-search-evaluation.md)）。
+PSTとFMの評価関数は、比較用のコードとしてソースに残っている（[探索が使う評価関数をNNUEの1つにし、PSTとFMのコードは比較用に残す](../adr/use-an-nnue-read-from-evalfile-as-the-only-search-evaluation.md)）。
 NNUEは置き換え前のPSTと同じ式の線形の経路を持つので、PSTの式と学習を説明した[PSTとFMによる評価関数と学習の目的関数](evaluation-pst-fm.md)を先に読むと理解しやすい。
 本書の式は、仕様の正である`crates/minase/src/eval/nnue/`と`crates/minase-trainer/src/nnue/`のdocコメントに合わせて記す。
 方式を選んだ理由は、各節で示すADR（設計判断の記録）にある。
@@ -40,8 +40,10 @@ minaseのNNUEは、線形の経路と非線形の経路の和として評価値�
 この線形の出力は、自玉の位置、駒、および升の組ごとの点数を、盤上の駒数で8区分した表から引いて足し合わせたものである。[線形の出力の計算](https://github.com/official-stockfish/Stockfish/blob/17a6c8f1eb0da45c2ca405321919519bf4e211ba/src/nnue/nnue_feature_transformer.h#L233-L236)
 minaseの構成はStockfishの方式に近いが、線形の経路の入力を王駒の位置で条件付けない点が異なる。
 
-学習した実数の重みは、整数へ丸めて（量子化して）重みファイル `crates/minase/nets/nnue.bin` に保存し、エンジンは整数演算だけで評価する。
-重みファイルはバイナリへ埋め込まれ、エンジンは起動時に1回だけ検証して、失敗すれば停止する。
+学習した実数の重みは、整数へ丸めて（量子化して）重みファイル（学習器の出力では `nnue.bin`）に保存し、エンジンは整数演算だけで評価する。
+重みファイルは実行ファイルに埋め込まず、gitにも入れない。
+エンジンは、USIのオプション`EvalFile`で指定したファイルを`isready`で1回だけ読んで検証し、ファイル全体のSHA-256を`info string network_sha256`の行で報告する。
+`EvalFile`が未設定の場合、ファイルを読めない場合、または検証に通らない場合は停止する（[外部ファイル化のADR](../adr/use-an-nnue-read-from-evalfile-as-the-only-search-evaluation.md)）。
 推論のRust実装は `crates/minase/src/eval/nnue/` にあり、学習器は `crates/minase-trainer` の実行ファイル `minase-trainer` のサブコマンド `nnue train` である。
 
 局面 $`p`$ に対する最終的な評価値 $`E(p)`$ は、後で定める線形の経路の整数評価 $`E_{\mathrm{lin}}(p)`$ と非線形の経路の整数評価 $`E_{\mathrm{nl}}(p)`$ から、次の式で計算する。
@@ -102,7 +104,7 @@ P型は王駒の位置で特徴を条件付けないので、どの着手でも�
 チェスと将棋のNNUEは、自玉の位置で特徴を条件付けたHalfKPなどの入力を使うことが多い。
 minaseは、自陣の王駒の位置を8区分に分けるHalfKP-hm-b8をP型と同じデータと設定で学習して対局で比べ、P型に負けたので採らなかった（[NNUEの入力特徴集合に王の位置で条件付けないP型を使う](../adr/use-p-type-input-features-for-the-nnue.md)）。
 HalfKP-hm-b8の実装は比較用にコードに残っており、`crates/minase/src/eval/nnue/feature_set.rs`の`HalfKpHmB8`のdocコメントが番号の付け方を定める。
-入力特徴集合と出力部を型引数で差し替えられるようにした理由は、[NNUEを入力特徴集合と出力部の型引数で組み立てる](../adr/parameterize-the-nnue-by-feature-set-and-head-types.md)にある。
+入力特徴集合と出力部を型引数で差し替えられるようにした理由は、[NNUEを入力特徴集合と出力部の型引数で組み立てる](../adr/parameterize-the-nnue-by-types-and-reject-mismatched-network-files-on-load.md)にある。
 
 ## 累算器と差分更新
 
@@ -459,7 +461,9 @@ AdamWの係数は $`\beta_1 = 0.9`$、$`\beta_2 = 0.999`$、$`\epsilon = 10^{-8}
 
 ### 採用したネットの学習
 
-本書の構成の `nnue.bin` は、2026年11月4日に学習した幅256のP型のネットであり、先読み教師を使わずに学んだものである。
+本書の構成のネットは、2026年11月4日に学習した幅256のP型のネットであり、先読み教師を使わずに学んだものである。
+このネットは、2026年11月17日までmasterが`crates/minase/nets/nnue.bin`として埋め込んでいたものであり、いまは同じバイト列をNASの`/mnt/synology_nas/minase/nnue/nets/987f060d545c09f0a42b4c668ea8b24cbf83c1770d11d663a94e4b82601274cd.bin`に置いている。
+探索の変更を測るときや、`bench`で探索の結果を比べるときは、特に理由がなければこのネットを`EvalFile`で渡す。
 このネットは、二値交差エントロピーの損失、学習のたびに推定した教師の勝率尺度、第1層と出力部の重み減衰 $`10^{-4}`$、`cosine:3:0.1`のエポック単位の学習率の予定、および早期終了という、2026年11月14日より前の学習器の形で学んだ。
 学習データは、初代のNNUEを埋め込んだmaster `31c2a46`のエンジンが1局面2万ノードで生成した30ファイルであり（[学習率スケジュールの学習の記録](../measurements/nnue-lr-schedule/nnue-lr-schedule-training.md)）、訓練は79,458,082局面、検証は4,153,303局面だった。
 教師の勝率尺度 $`K_g`$ は1,039.6だった。
@@ -493,7 +497,7 @@ GPUの学習器を設計した理由は、[NNUEの学習器をRustのホスト�
 ## 参考資料
 
 - [PSTとFMによる評価関数と学習の目的関数](evaluation-pst-fm.md)
-- [探索が使う評価関数をNNUEの1つにし、PSTとFMのコードは比較用に残す](../adr/use-nnue-as-the-only-search-evaluation.md)
+- [探索が使う評価関数をNNUEの1つにし、PSTとFMのコードは比較用に残す](../adr/use-an-nnue-read-from-evalfile-as-the-only-search-evaluation.md)
 - [NNUEの入力特徴集合に王の位置で条件付けないP型を使う](../adr/use-p-type-input-features-for-the-nnue.md)
 - [NNUEを、探索用駒価値で初期化した線形の経路と、要素積と2段の隠れ層を持つ非線形の経路で組み立てる](../adr/compose-the-nnue-of-a-piece-value-initialized-linear-path-and-pairwise-products-with-two-hidden-layers.md)
 - [P型のNNUEは左右鏡映の対で第1層の重みを半幅だけ回して共有する](../adr/share-p-type-mirror-weights-by-half-width-rotation.md)

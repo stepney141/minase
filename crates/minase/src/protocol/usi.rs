@@ -5,14 +5,16 @@
 //! | コマンド | 応答と処理 |
 //! | --- | --- |
 //! | `usi` | `UsiProtocol::write_handshake`の握手列を返す。 |
-//! | `isready` | 規則の指定を確認して探索器を準備し、MCTSではネットのSHA-256を通知してから`readyok`を返す。規則やネットが未設定、または準備に失敗した場合はエラーを通知してセッションを終了する。 |
+//! | `isready` | 規則の指定を確認して探索器を準備し、ネットのファイル全体のSHA-256を通知してから`readyok`を返す。規則やネットが未設定、または準備に失敗した場合はエラーを通知してセッションを終了する。 |
+//! | `setoption name EvalFile value <パス>` | αβ探索のネットを指定する。同じパスでもネットと探索履歴を破棄し、読み込みは`isready`で行う。 |
+//! | `setoption name NnCpPerLogit value <尺度>` | MCTSの勝率尺度を指定する。有限の正数であることを`isready`で検査する。 |
 //! | `setoption` | `UsiProtocol::handle_setoption`で設定を検査する。 |
 //! | `usinewgame` | [`EngineCommand::NewGame`]を適用する。 |
 //! | `position` | `UsiProtocol::handle_position`で局面を同期する。 |
 //! | `gameover` | [`EngineCommand::EndGame`]を適用する。 |
 //! | `moves`、`state` | `handle_moves`と`handle_state`の独自照会を処理する。 |
 //! | `perft <深さ> [divide]` | 現局の着手規則で経路を数え、各行に`info string`を付けて終端行`end`まで出力する。 |
-//! | `bench` | 規則や準備を要求せず、起動した探索方式で固定局面を測る。αβ探索は`[depth <N>] [threads <N>] [repetitions <N>]`、`--search mcts`は`[nodes <N>] [batch <N>]`を受け付け、ハッシュの評価器でPV-MCTSを固定回数探索する。 |
+//! | `bench` | 起動した探索方式で固定局面を測る。αβ探索は`isready`でのネットの準備を要求する。αβ探索は`[depth <N>] [threads <N>] [repetitions <N>]`、`--search mcts`は`[nodes <N>] [batch <N>]`を受け付け、ハッシュの評価器でPV-MCTSを固定回数探索する。 |
 //! | `nn-fixture out <パス>` | 規則や準備を要求せず、288局面のJSON Linesを書き出し、報告と終端行を返す。 |
 //! | `nn-eval out <パス>` | MCTSの準備済み推論器で288局面を評価してJSONを書き出し、所要時間と終端行を返す。 |
 //! | `random-play [games <N>] [seed <S>] [game <K>] [max-ply <N>] [verify-all] [verbose]` | 最後に受理した規則で独立した対局を検査し、結果と終端行を返す。 |
@@ -1001,6 +1003,8 @@ impl UsiProtocol {
     /// `USI_Hash`は1〜65,536 MiBで置換表を確保または作り直し、history表を空にする。
     /// `Threads`は1〜256で、変更時はhistory表をその数で作り直し、置換表は保つ。
     /// MCTSでは`USI_Hash`は探索木の容量MiBを表し、変更すると木を捨てる。`Threads`は1だけを受理する。
+    /// `EvalFile`はαβ探索のネットのパスで、同じパスでもネット、置換表、history表を破棄する。
+    /// `NnCpPerLogit`はMCTSの勝率尺度で、変更時は探索木を破棄する。両者の内容は`isready`で検査する。
     /// `NnModel`はONNXのパスで、変更するとネット、推論器、および探索木を捨てる。
     /// 次の`isready`が成功するまで`go`、`eval`、`nn-eval`を拒否する。同値の再設定では状態を保つ。
     /// `NnBackend`は大小文字を区別せず`tensorrt`、`cuda`、`cpu`を受理する。
@@ -1024,6 +1028,8 @@ impl UsiProtocol {
     /// | `USI_Variant` | `USI_Variant requires a value`を返す。 | `unsupported USI_Variant value '<値>'`を返す。 |
     /// | `USI_Hash` | `USI_Hash requires a value`を返す。 | `USI_Hash must be an integer from 1 to 65536`を返す。 |
     /// | `Threads` | `Threads requires a value`を返す。 | `Threads must be an integer from 1 to <上限>`を返す。上限はαβ探索で256、MCTSで1。 |
+    /// | `EvalFile` | `EvalFile requires a value`を返す。 | 文字列として受理し、`isready`で検査する。 |
+    /// | `NnCpPerLogit` | `NnCpPerLogit requires a value`を返す。 | 文字列として受理し、`isready`で有限の正数か検査する。 |
     /// | `NnModel` | `NnModel requires a value`を返す。 | 文字列として受理し、`isready`で検査する。 |
     /// | `NnBackend` | `NnBackend requires a value`を返す。 | `invalid NnBackend value '<値>'`を返す。 |
     /// | `NnCacheDir` | `NnCacheDir requires a value`を返す。 | 文字列として受理する。 |
@@ -1479,7 +1485,12 @@ impl UsiProtocol {
         let engine = self.engine()?;
         let lines = match command {
             "d" => diagnostic_position(engine),
-            "eval" => diagnostic_evaluation(self.engine()?.game().position()),
+            "eval" => self
+                .searcher
+                .as_ref()
+                .and_then(Searcher::nnue)
+                .ok_or_else(|| "eval requires isready".to_owned())
+                .and_then(|network| diagnostic_evaluation(engine.game().position(), network)),
             "tt" => self
                 .searcher
                 .as_ref()
@@ -2254,10 +2265,9 @@ fn diagnostic_position(engine: &Engine) -> Result<Vec<String>, String> {
 /// 升ごとの線形寄与は720で割り、0.1 cpへ丸めて表示する。
 /// 線形評価の整数除算と表示時の丸めがあるため、表示した寄与の和は評価値と一致するとは限らない。
 /// 非線形出力は別行で示し、合計評価の±28,999 cpへの切り詰めも注記する。
-fn diagnostic_evaluation(position: &Position) -> Result<Vec<String>, String> {
+fn diagnostic_evaluation(position: &Position, weights: &nnue::Nnue) -> Result<Vec<String>, String> {
     position.validate().map_err(|error| error.to_string())?;
-    let weights = nnue::weights().map_err(|error| error.to_string())?;
-    let detail = nnue::breakdown(&weights, position);
+    let detail = nnue::breakdown(weights, position);
     let mut lines = vec![
         format!("evaluation {}", detail.score),
         format!("q {}", detail.q),
@@ -2478,6 +2488,32 @@ mod tests {
         complete
     }
 
+    const TEST_NETWORK: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/nets/nnue-epoch0.bin");
+
+    fn ready_response() -> String {
+        use sha2::{Digest, Sha256};
+        format!(
+            "info string network_sha256 {:x}\nreadyok\n",
+            Sha256::digest(std::fs::read(TEST_NETWORK).unwrap())
+        )
+    }
+
+    // 規則の未設定を検査する試験にも使うため、ネットだけを探索器で準備する。
+    pub(super) fn test_protocol() -> UsiProtocol {
+        let mut searcher = Searcher::alpha_beta();
+        searcher
+            .set_option("USI_Hash", SearchOptionValue::Spin(1))
+            .unwrap();
+        searcher
+            .set_option(
+                "EvalFile",
+                SearchOptionValue::String(TEST_NETWORK.to_owned()),
+            )
+            .unwrap();
+        searcher.prepare().unwrap();
+        UsiProtocol::with_searcher(searcher)
+    }
+
     fn run(protocol: &mut UsiProtocol, input: &str) -> String {
         let (sender, receiver) = std::sync::mpsc::channel();
         for line in input.lines() {
@@ -2490,7 +2526,7 @@ mod tests {
     }
 
     fn session(codes: &[RuleCode], input: &str) -> String {
-        let mut protocol = UsiProtocol::new();
+        let mut protocol = test_protocol();
         let rules_text = canonical_rules_text(&rule_codes(codes));
         assert_eq!(
             run(
@@ -2503,7 +2539,7 @@ mod tests {
     }
 
     fn lishogi_session(input: &str) -> String {
-        let mut protocol = UsiProtocol::new();
+        let mut protocol = test_protocol();
         let rules_text = canonical_rules_text(&parse_rule_set("lishogi").unwrap());
         assert_eq!(
             run(
@@ -2594,7 +2630,7 @@ mod tests {
     fn isready_without_ruleset_fails_with_typed_source() {
         use std::error::Error;
         for channel in [false, true] {
-            let mut protocol = UsiProtocol::new();
+            let mut protocol = test_protocol();
             let mut output = Vec::new();
             let result = if channel {
                 let (sender, receiver) = std::sync::mpsc::channel();
@@ -2631,7 +2667,7 @@ mod tests {
             "perft 1",
             "random-play",
         ] {
-            let mut protocol = UsiProtocol::new();
+            let mut protocol = test_protocol();
             assert_eq!(
                 run(&mut protocol, &format!("{command}\n")),
                 "info string error: required option RuleSet is not set\n",
@@ -2642,7 +2678,7 @@ mod tests {
                     &mut protocol,
                     "setoption name RuleSet value JCSA\nsetoption name USI_Hash value 1\nisready\n"
                 ),
-                "readyok\n"
+                ready_response()
             );
         }
     }
@@ -2665,7 +2701,7 @@ mod tests {
                 "conflicting rule codes: L0 and L1",
             ),
         ] {
-            let mut protocol = UsiProtocol::new();
+            let mut protocol = test_protocol();
             assert_eq!(
                 run(&mut protocol, &format!("{command}\nstate\n")),
                 format!(
@@ -2677,7 +2713,7 @@ mod tests {
 
     #[test]
     fn article_33_first_ruleset_sets_current_rules_and_later_values_wait_for_next_game() {
-        let mut protocol = UsiProtocol::new();
+        let mut protocol = test_protocol();
         let output = run(
             &mut protocol,
             concat!(
@@ -2696,7 +2732,7 @@ mod tests {
 
     #[test]
     fn independent_options_are_validated_and_applied_before_ruleset() {
-        let mut protocol = UsiProtocol::new();
+        let mut protocol = test_protocol();
         assert_eq!(
             run(
                 &mut protocol,
@@ -2725,7 +2761,7 @@ mod tests {
                 &mut protocol,
                 "setoption name RuleSet value JCSA\nisready\n"
             ),
-            "readyok\n"
+            ready_response()
         );
         let searcher = protocol.searcher.as_ref().unwrap();
         assert_eq!(searcher.threads().get(), 2);
@@ -2743,7 +2779,7 @@ mod tests {
     fn handshake_declares_ruleset_before_variant_and_ends_with_usiok() {
         // [`UsiProtocol::write_handshake`]の固定宣言を検査する。
         // USI_Hashの宣言位置は規範文書に明記されていないため、存在だけを確認する。
-        let output = run(&mut UsiProtocol::new(), "usi\nquit\n");
+        let output = run(&mut test_protocol(), "usi\nquit\n");
         let lines: Vec<_> = output.lines().collect();
 
         assert!(lines[0].starts_with("id name minase "));
@@ -2766,6 +2802,7 @@ mod tests {
         );
         // [`UsiProtocol::write_handshake`]に従い、Threadsの宣言はdefaultを探索層の既定値から表示する。
         assert!(lines.contains(&"option name Threads type spin default 1 min 1 max 256"));
+        assert_eq!(lines[6], "option name EvalFile type string default <empty>");
         // [`UsiProtocol::write_handshake`]のResignValue宣言を検査する。
         assert_eq!(
             lines
@@ -2791,7 +2828,7 @@ mod tests {
     /// chu-shogi.md第31条R1の引き分け値は、両手番とも既定値0、範囲±28,999で宣言する。
     #[test]
     fn draw_value_r1_handshake_declares_defaults_and_bounds() {
-        let mut protocol = UsiProtocol::new();
+        let mut protocol = test_protocol();
         let rules_text = canonical_rules_text(&rule_codes(&[RuleCode::R1]));
         assert_eq!(
             run(
@@ -2917,7 +2954,7 @@ mod tests {
     #[test]
     fn draw_value_r1_clears_tables_only_when_an_accepted_value_changes() {
         for name in ["DrawValueBlack", "DrawValueWhite"] {
-            let mut protocol = UsiProtocol::new();
+            let mut protocol = test_protocol();
             let rules_text = canonical_rules_text(&rule_codes(&[RuleCode::R1]));
             assert_eq!(
                 run(
@@ -3008,7 +3045,7 @@ mod tests {
     /// chu-shogi.md第31条R1の引き分け値は、根の手番に対応するオプションを選ぶ。
     #[test]
     fn draw_value_r1_selects_the_root_side_option() {
-        let mut protocol = UsiProtocol::new();
+        let mut protocol = test_protocol();
         let rules_text = canonical_rules_text(&rule_codes(&[RuleCode::R1]));
         assert_eq!(
             run(
@@ -3042,7 +3079,7 @@ mod tests {
     /// chu-shogi.md第31条R1の既定値0では、新規対局を挟んだ同じ探索の最善手と最終評価値が一致する。
     #[test]
     fn draw_value_r1_default_search_is_deterministic_across_new_games() {
-        let mut protocol = UsiProtocol::new();
+        let mut protocol = test_protocol();
         let rules_text = canonical_rules_text(&rule_codes(&[RuleCode::R1]));
         assert_eq!(
             run(
@@ -3078,7 +3115,7 @@ mod tests {
     // [`UsiProtocol::handle_setoption`]のByoyomiMarginの単位と受理範囲を検査する。
     #[test]
     fn byoyomi_margin_accepts_bounds_and_rejects_invalid_values_without_changing_it() {
-        let mut protocol = UsiProtocol::new();
+        let mut protocol = test_protocol();
         let rules_text = canonical_rules_text(&rule_codes(&[RuleCode::R1]));
         assert_eq!(
             run(
@@ -3137,7 +3174,7 @@ mod tests {
         // 不正値には固定エラーを返す。正当値は無応答である。
         assert_eq!(parse_spin("1", 1, 256), Some(1));
         assert_eq!(parse_spin("256", 1, 256), Some(256));
-        let mut protocol = UsiProtocol::new();
+        let mut protocol = test_protocol();
         let rules_text = canonical_rules_text(&rule_codes(&[RuleCode::R1]));
         assert_eq!(
             run(
@@ -3188,7 +3225,7 @@ mod tests {
 
     /// SFENで局面を同期し、各テストの探索用に小さい置換表を確保する。
     fn resignation_engine(sfen: &str) -> UsiProtocol {
-        let mut protocol = UsiProtocol::new();
+        let mut protocol = test_protocol();
         let rules_text = canonical_rules_text(&parse_rule_set("lishogi").unwrap());
         assert_eq!(
             run(
@@ -3824,6 +3861,10 @@ mod tests {
         // 対局開始直後の手が置換表の確保を待たないよう、isreadyで既定容量の
         // [`UsiProtocol::handle_idle_line`]のisready分岐に従い、探索前に置換表を作る。
         let mut protocol = UsiProtocol::new();
+        run(
+            &mut protocol,
+            &format!("setoption name EvalFile value {TEST_NETWORK}\n"),
+        );
         let rules_text = canonical_rules_text(&rule_codes(&[RuleCode::R1]));
         assert_eq!(
             run(
@@ -3843,9 +3884,9 @@ mod tests {
         );
         let output = run(&mut protocol, "isready\nstate\n");
         let lines: Vec<_> = output.lines().collect();
-        assert_eq!(lines[0], "readyok");
+        assert!(output.starts_with(&ready_response()));
         // モジュールdocのコマンド表に従い、isreadyは対局状態を変えない。
-        assert_eq!(before.lines().collect::<Vec<_>>(), [lines[1]]);
+        assert_eq!(before.lines().collect::<Vec<_>>(), [lines[2]]);
         assert!(
             protocol
                 .searcher
@@ -3903,7 +3944,7 @@ mod tests {
     #[test]
     fn article_33_presets_expand_to_code_lists() {
         // [`UsiProtocol::handle_setoption`]と[`EngineCommand::SetRules`]の契約、およびchu-shogi.md第33条第5項と第6項に従う。
-        let mut protocol = UsiProtocol::new();
+        let mut protocol = test_protocol();
         let rules_text = canonical_rules_text(&rule_codes(&[RuleCode::R1]));
         assert_eq!(
             run(
@@ -3932,7 +3973,7 @@ mod tests {
     #[test]
     fn ruleset_changes_latch_until_the_next_game() {
         // [`crate::protocol::engine`]の表に従い、対局中のSetPositionは現局の規則で再構成する。
-        let mut protocol = UsiProtocol::new();
+        let mut protocol = test_protocol();
         let rules_text = canonical_rules_text(&rule_codes(&[RuleCode::R1]));
         assert_eq!(
             run(
@@ -4078,7 +4119,7 @@ mod tests {
             prelude.push(command);
         }
         for (name, rules, prelude, command) in cases {
-            let mut full_protocol = UsiProtocol::new();
+            let mut full_protocol = test_protocol();
             let rules_text = canonical_rules_text(&rule_codes(&rules));
             assert_eq!(
                 run(
@@ -4087,7 +4128,7 @@ mod tests {
                 ),
                 ""
             );
-            let mut incremental_protocol = UsiProtocol::new();
+            let mut incremental_protocol = test_protocol();
             let rules_text = canonical_rules_text(&rule_codes(&rules));
             assert_eq!(
                 run(
@@ -4220,7 +4261,7 @@ mod tests {
     #[test]
     fn position_tracks_absolute_ply_from_sfen_and_moves() {
         // [`Engine::ply`]と[`ClockLimits::ply`]に従い、SFENの基底手数と適用した手数の和を時計へ渡す。
-        let mut protocol = UsiProtocol::new();
+        let mut protocol = test_protocol();
         let rules_text = canonical_rules_text(&rule_codes(&[RuleCode::R1]));
         assert_eq!(
             run(
@@ -4349,7 +4390,7 @@ mod tests {
     #[test]
     fn go_infinite_withholds_bestmove_until_stop() {
         // [`ActiveSearch`]に従い、go infiniteではstopまでbestmoveを保留する。
-        let mut protocol = UsiProtocol::new();
+        let mut protocol = test_protocol();
         let rules_text = canonical_rules_text(&rule_codes(&[RuleCode::R1]));
         assert_eq!(
             run(
@@ -4539,7 +4580,7 @@ mod tests {
     #[test]
     fn royal_capture_finishes_silently_and_state_reports_the_verdict() {
         // モジュールdocの契約に従い、USIは自発的な終局裁定を出力しない。
-        let mut protocol = UsiProtocol::new();
+        let mut protocol = test_protocol();
         let rules_text = canonical_rules_text(&rule_codes(&[RuleCode::R1, RuleCode::E2]));
         assert_eq!(
             run(
@@ -4587,7 +4628,7 @@ mod tests {
     #[test]
     fn diagnostics_frame_success_and_reject_uncommitted_positions() {
         for command in ["d", "eval", "tt"] {
-            let mut protocol = UsiProtocol::new();
+            let mut protocol = test_protocol();
             let rules_text = canonical_rules_text(&parse_rule_set("L0,P0,R1,E2").unwrap());
             assert_eq!(
                 run(
@@ -4625,7 +4666,11 @@ mod tests {
             assert!(!output.contains("error"));
             assert_eq!(protocol.engine().unwrap().game().position(), &before);
         }
-        let output = session(&[RuleCode::R1], "position startpos\ntt\n");
+        let mut protocol = UsiProtocol::new();
+        let output = run(
+            &mut protocol,
+            "setoption name RuleSet value JCSA\nposition startpos\ntt\n",
+        );
         assert_eq!(output.lines().count(), 1);
         assert!(output.starts_with("info string error: "));
     }
@@ -4657,7 +4702,7 @@ mod tests {
     /// [`diagnostic_position`]の契約: 成り権保留と先獅子を含む拡張SFENがキーまで往復する。
     #[test]
     fn diagnostic_sfen_round_trips_all_position_state() {
-        let mut protocol = UsiProtocol::new();
+        let mut protocol = test_protocol();
         let rules_text = canonical_rules_text(&parse_rule_set("L1,L2,P1,R1,E2").unwrap());
         assert_eq!(
             run(
@@ -4788,8 +4833,11 @@ mod tests {
     /// [`diagnostic_evaluation`]の契約: 表示評価は全計算と一致し、盤面の各行と注記を表示する。
     #[test]
     fn diagnostic_evaluation_matches_full_evaluation_and_formats_rows() {
-        let weights = nnue::weights().unwrap();
-        let mut protocol = UsiProtocol::new();
+        let weights = nnue::read_network_file(std::path::Path::new(TEST_NETWORK))
+            .unwrap()
+            .network()
+            .clone();
+        let mut protocol = test_protocol();
         let rules_text = canonical_rules_text(&parse_rule_set("L0,P0,R1,E2").unwrap());
         assert_eq!(
             run(
@@ -4819,7 +4867,7 @@ mod tests {
     /// [`diagnostic_table`]の契約: 空項目と全合法手を列挙し、終局後は現局面だけを表示する。
     #[test]
     fn diagnostic_table_lists_legal_children_and_no_finished_children() {
-        let mut protocol = UsiProtocol::new();
+        let mut protocol = test_protocol();
         let rules_text = canonical_rules_text(&parse_rule_set("L0,P0,R1,E2").unwrap());
         assert_eq!(
             run(
@@ -4999,7 +5047,7 @@ mod tests {
             format!("{STATE_ERROR}\n")
         );
 
-        let mut protocol = UsiProtocol::new();
+        let mut protocol = test_protocol();
         let rules_text = canonical_rules_text(&rule_codes(&[RuleCode::R1, RuleCode::E2]));
         assert_eq!(
             run(
@@ -5099,7 +5147,7 @@ mod tests {
         let (lines, output) = std::sync::mpsc::channel();
         std::thread::scope(|scope| {
             let worker = scope.spawn(move || {
-                let mut protocol = UsiProtocol::new();
+                let mut protocol = test_protocol();
                 let rules_text = canonical_rules_text(&rule_codes(&[RuleCode::R1]));
                 assert_eq!(
                     run(
@@ -5214,7 +5262,9 @@ mod tests {
             let best = receive_line(lines);
             let result = format!("{final_pv}{best}");
             let ponder = assert_bestmove_matches_final_pv(&result);
-            assert_eq!(receive_line(lines), "readyok\n");
+            let checksum = receive_line(lines);
+            let ready = receive_line(lines);
+            assert_eq!(format!("{checksum}{ready}"), ready_response());
             // 外形でも予想手の合法性を確認する。
             if let Some((best_move, ponder_move)) = ponder {
                 commands
@@ -5236,7 +5286,7 @@ mod tests {
     #[test]
     fn ponder_held_results_release_once_or_are_discarded() {
         for command in ["ponderhit", "stop", "gameover win", "quit", "eof"] {
-            let mut protocol = UsiProtocol::new();
+            let mut protocol = test_protocol();
             let rules_text = canonical_rules_text(&rule_codes(&[RuleCode::R1]));
             assert_eq!(
                 run(
@@ -5348,7 +5398,7 @@ mod tests {
                 Ok(line.len())
             }
         }
-        let mut protocol = UsiProtocol::new();
+        let mut protocol = test_protocol();
         let rules_text = canonical_rules_text(&rule_codes(&[RuleCode::R1]));
         assert_eq!(
             run(
@@ -5378,7 +5428,7 @@ mod tests {
             )
             .unwrap();
         let output: String = input.output.try_iter().collect();
-        assert_eq!(output, "readyok\n");
+        assert_eq!(output, ready_response());
         let mut output = Vec::new();
         protocol
             .run(
@@ -5487,7 +5537,7 @@ mod tests {
     // 理由は`docs/adr/apply-position-by-token-difference.md`にある。
     #[test]
     fn ponder_last_move_replacement_matches_replay_and_is_atomic() {
-        let mut protocol = UsiProtocol::new();
+        let mut protocol = test_protocol();
         let rules_text = canonical_rules_text(&rule_codes(&[RuleCode::R2, RuleCode::E2]));
         assert_eq!(
             run(
@@ -5507,7 +5557,7 @@ mod tests {
         assert!(bestmoves(&output).is_empty());
         // 反復禁止の履歴も、末尾の交換とその後の延長を通じて全再生と一致する。
         let base = "12/12/12/8k3/12/12/12/12/3K8/12/12/12 b - 41";
-        let mut protocol = UsiProtocol::new();
+        let mut protocol = test_protocol();
         let rules_text = canonical_rules_text(&rule_codes(&[RuleCode::R2, RuleCode::E2]));
         assert_eq!(
             run(

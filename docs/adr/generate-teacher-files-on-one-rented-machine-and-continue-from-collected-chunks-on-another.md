@@ -7,7 +7,7 @@
 ## コンテキスト
 
 NNUEの教師は、生成器`minase data selfplay generate`が自己対局から作る。
-生成器は、7,500局の教師ファイル1つを250局ずつの塊に分けて確定させ、確定済みの塊と生成条件の`config.json`を別の機械の出力先へ写せば、同じコマンドで続きを生成できる（[ADR](commit-nnue-teacher-files-in-fixed-game-chunks-and-reassemble-them-into-one-file.md)）。
+生成器は、7,500局の教師ファイル1つを250局ずつの塊に分けて確定させ、確定済みの塊と生成条件の`config.json`を別の機械の出力先へ写せば、同じコマンドで続きを生成できる（[ADR](archive/commit-nnue-teacher-files-in-fixed-game-chunks-and-reassemble-them-into-one-file.md)）。
 教師生成は、計算機を時間単位で借りられる市場vast.aiで、生成から学習までを順に動かす連続生成スクリプト`scripts/vast/generation_chain.py`が、止められない借り方（オンデマンド）の機械を1台借りて行ってきた。
 vast.aiの中断可能インスタンスは、入札で安く借りる代わりに、より高い入札が入るといつでも止められる。
 止まったときに続きを別の機械で生成する仕組みがなければ、中断可能インスタンスでの生成は、止まるたびに教師ファイルを作り直すことになる。

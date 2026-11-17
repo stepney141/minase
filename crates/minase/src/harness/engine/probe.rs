@@ -32,7 +32,8 @@ impl std::error::Error for EngineProbeError {
 
 /// 1エンジンを事前起動し、実際のプロトコル応答から既定資源とネットのSHA-256を得る。
 /// 握手後は対局開始時と同じ設定を送り、`readyok`まで待つ。
-/// `random`とCECPは事前起動せず、ネットのSHA-256は`None`とする。
+/// CECPは対局と同じ初期化列を`pong`まで実行し、ネットのSHA-256は`None`とする。
+/// `random`は事前起動しない。
 ///
 /// `validate_options`が真なら、追加のUSIオプションを同じ応答の宣言と名前を完全一致で照合する。
 /// 再開では保存時に検査済みの列を使い、この照合を繰り返さず送信する。
@@ -51,6 +52,7 @@ pub fn probe_engine_defaults(
         });
     }
     if player.protocol == Protocol::Cecp {
+        EngineProcess::start(player, 0, timeout).map_err(io::Error::other)?;
         return Ok(EngineDefaults {
             threads: None,
             hash_mb: Some(CECP_MEMORY_MB),

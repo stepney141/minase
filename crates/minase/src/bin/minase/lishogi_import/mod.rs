@@ -42,6 +42,8 @@ use std::{
 };
 
 fn run(common: &Common, generation: Option<(NonZeroU64, bool)>) -> io::Result<()> {
+    let network = minase::eval::nnue::read_network_file(&common.eval_file).map_err(data_error)?;
+    let nnue = network.network();
     let openings = generation.is_none();
     let mut report = Report::new(common.nodes.get());
     let mut seen = HashSet::new();
@@ -81,12 +83,11 @@ fn run(common: &Common, generation: Option<(NonZeroU64, bool)>) -> io::Result<()
         let output = create(&common.output)?;
         created.push(common.output.clone());
         let (mut text_output, mut writer) = if let Some((seed, _)) = generation {
-            let nnue = minase::eval::weights().map_err(data_error)?;
             // MNSDの規則セット名は selfplay_gen と同じく規則コードの列挙で書く。
             let header = Header::new(
                 minase_core::Rules::JCSA.to_string(),
                 commit.clone(),
-                *nnue.checksum(),
+                *network.sha256(),
                 TeacherKind::AlphaBeta,
                 u64::from(common.nodes.get()),
                 seed.get(),
@@ -106,7 +107,7 @@ fn run(common: &Common, generation: Option<(NonZeroU64, bool)>) -> io::Result<()
                         scope.spawn(move || {
                             let mut table = TranspositionTable::new(common.hash_mb.get())
                                 .map_err(data_error)?;
-                            process_job(job, common, openings, &mut table)
+                            process_job(job, common, openings, nnue, &mut table)
                         })
                     })
                     .collect::<Vec<_>>();

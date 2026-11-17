@@ -751,6 +751,8 @@ fn start(
 ) -> SearchHandle {
     start_search_with_clock(
         crate::search::alphabeta::Engine {
+            eval_file: String::new(),
+            network: None,
             transposition_table: Some(tt),
             histories: crate::search::HistoryTables::new(threads),
             threads,
@@ -978,6 +980,8 @@ fn assert_pv_is_legal(root: &Position, pv: &[Move]) {
 fn start_ponder(limits: SearchLimits, threads: usize) -> SearchHandle {
     start_search_with_clock(
         crate::search::alphabeta::Engine {
+            eval_file: String::new(),
+            network: None,
             transposition_table: Some(small_tt()),
             histories: crate::search::HistoryTables::new(worker_count(threads)),
             threads: worker_count(threads),

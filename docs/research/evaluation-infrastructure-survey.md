@@ -2,7 +2,7 @@
 
 本書のminaseに関する記述は2026年9月22日時点のものである。
 土台Cにあたる升ごとの利き数の表は、段階9の開始時の版に比べて速度が0.816倍となって条件を満たさず、2026年9月23日に[升ごとの利き数の表を差分更新で持たず、利きに基づく評価特徴を入れない](../adr/omit-the-incremental-attack-count-table.md)で採らないことに決まった。
-その後、評価関数は2026年10月12日に[探索が使う評価関数をNNUEの1つにし、PSTとFMのコードは比較用に残す](../adr/use-nnue-as-the-only-search-evaluation.md)でNNUEへ置き換わり、静的評価は2026年10月21日の[置換表のエントリを16バイトの2語の原子値に保ち、補正前の静的評価と探索値なしの記録を持たせる](../adr/store-static-evals-and-eval-only-records-in-two-word-tt-entries.md)で置換表に保存するようになった。
+その後、評価関数は2026年10月12日に[探索が使う評価関数をNNUEの1つにし、PSTとFMのコードは比較用に残す](../adr/archive/use-nnue-as-the-only-search-evaluation.md)でNNUEへ置き換わり、静的評価は2026年10月21日の[置換表のエントリを16バイトの2語の原子値に保ち、補正前の静的評価と探索値なしの記録を持たせる](../adr/store-static-evals-and-eval-only-records-in-two-word-tt-entries.md)で置換表に保存するようになった。
 
 ## 結論
 

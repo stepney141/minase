@@ -109,7 +109,7 @@ PSTは駒の種類と升ごとの値の表による評価、FMはFactorization M
 - 2026年8月9日 [日本中将棋連盟式の千日手（R0）を実装せず、既定の反復規則をR1にする](do-not-implement-r0-repetition.md)
 - 2026年8月10日 [次局の規則を、対局開始前に受理した最初の局面設定で確定する](commit-pending-rules-on-first-position.md)
 - 2026年8月11日 [エンジンの異常は起こした側の負けとし、手数上限に達したペアは破棄する](score-engine-faults-as-losses-and-discard-max-ply-pairs.md)
-- 2026年8月11日 [棋力測定はコミットからビルドした別プロセスのエンジン同士で行う](compare-commits-as-separate-engine-processes.md)
+- 2026年8月11日 [棋力測定はコミットからビルドした別プロセスのエンジン同士で行う](archive/compare-commits-as-separate-engine-processes.md)（置き換え済み）
 - 2026年8月14日 [USI経路では探索の手を対局へ適用せず、局面の同期に失敗した後は着手を返さない](keep-searched-moves-out-of-the-usi-game.md)
 - 2026年8月14日 [探索の起動と停止を対局状態機械に入れず、プロトコルの各モジュールが直接呼ぶ](call-search-from-protocol-modules.md)
 - 2026年8月15日 [テストの期待値を規範文書から導き、現在の実装から導かない](derive-test-expectations-from-normative-documents.md)
@@ -226,11 +226,11 @@ PSTは駒の種類と升ごとの値の表による評価、FMはFactorization M
 - 2026年10月12日 [NNUEの学習器は第1層の勾配をホストで作る逆索引から固定の順で足し、アトミック加算を使わない](backpropagate-the-first-layer-through-a-reverse-index.md)
 - 2026年10月12日 [NNUEの学習器をRustのホストとNVRTCで実行時にコンパイルするCUDA C++のカーネルで書く](write-trainer-kernels-in-cuda-cpp-via-nvrtc.md)
 - 2026年10月12日 [NNUEは探索値だけの先読み教師と二値交差エントロピーで学ぶ](archive/train-the-nnue-on-search-value-lookahead-teachers.md)（置き換え済み）
-- 2026年10月12日 [NNUEを入力特徴集合と出力部の型引数で組み立てる](parameterize-the-nnue-by-feature-set-and-head-types.md)
+- 2026年10月12日 [NNUEを入力特徴集合と出力部の型引数で組み立てる](archive/parameterize-the-nnue-by-feature-set-and-head-types.md)（置き換え済み）
 - 2026年10月12日 [P型のNNUEは左右鏡映の対で第1層の重みを半幅だけ回して共有する](share-p-type-mirror-weights-by-half-width-rotation.md)
 - 2026年10月12日 [`unsafe`は学習器のクレートだけに許し、エンジンとライブラリでは禁じ続ける](archive/allow-unsafe-only-in-the-trainer-crate.md)（置き換え済み）
 - 2026年10月12日 [学習器のAdamWはPyTorchと同じバイアス補正つきの式にする](use-pytorch-adamw-with-bias-correction.md)
-- 2026年10月12日 [探索が使う評価関数をNNUEの1つにし、PSTとFMのコードは比較用に残す](use-nnue-as-the-only-search-evaluation.md)
+- 2026年10月12日 [探索が使う評価関数をNNUEの1つにし、PSTとFMのコードは比較用に残す](archive/use-nnue-as-the-only-search-evaluation.md)（置き換え済み）
 - 2026年10月13日 [PST、FM、および同時学習の学習器はCPUで動かし、測定なしにGPUのカーネルを書かない](train-pst-and-fm-on-the-cpu.md)
 - 2026年10月13日 [Pythonの学習器は一度だけ照合した後に撤去し、Rustの学習器だけを正とする](retire-the-python-trainer-after-a-one-time-cross-check.md)
 - 2026年10月13日 [学習器は評価関数ごとに独立したパイプラインを持ち、データの読み込みと汎用の部品だけを共有する](split-training-pipelines-by-evaluation-function.md)
@@ -361,7 +361,7 @@ PSTは駒の種類と升ごとの値の表による評価、FMはFactorization M
 - 2026年11月5日 [ビルドのLLVMインライン閾値を1000へ上げる](raise-the-llvm-inline-threshold-to-1000.md)
 - 2026年11月5日 [探索内の反復検出は、対局履歴のビットフィルタを通してから線形走査で行う](filter-the-game-history-before-the-repetition-scan.md)
 - 2026年11月5日 [歩兵と仲人の移動元は到達升の集合のシフトで選び、効果が小さいと見込まれたほかの生成とSEEの高速化は実装しない](shift-pawn-origins-and-skip-other-low-yield-movegen-and-see-speedups.md)
-- 2026年11月7日 [NNUEの線形の経路を、学習の後に対局結果で補正しない](do-not-correct-the-nnue-linear-path-after-training.md)
+- 2026年11月7日 [NNUEの線形の経路を、学習の後に対局結果で補正しない](archive/do-not-correct-the-nnue-linear-path-after-training.md)（置き換え済み）
 - 2026年11月7日 [NNUEの線形の経路の学習率を0.03に保ち、第1層と同じ学習率にそろえない](keep-the-nnue-linear-path-learning-rate-at-0-03.md)
 - 2026年11月7日 [NNUEの世代反復では、各世代のネットをその世代の教師だけで学ぶ](train-each-nnue-generation-only-on-its-own-teachers.md)
 - 2026年11月8日 [MCTSは、新しい節点の手番側が相手の最後の王駒を取れるなら、反復の近似より前に1手の勝ちに確定させる](prove-mcts-nodes-whose-side-to-move-can-capture-the-last-royal.md)
@@ -382,14 +382,14 @@ PSTは駒の種類と升ごとの値の表による評価、FMはFactorization M
 - 2026年11月12日 [標準規則の千日手をR1に置き換えた規則セットをJCSAと名づける](name-the-standard-rule-set-jcsa.md)
 - 2026年11月12日 [規則セットは起動後のプロトコルで必ず指定させ、エンジンは既定値を持たない](require-the-rule-set-through-the-protocol-and-keep-no-default.md)
 - 2026年11月12日 [AlphaZero型探索のネットはUSIのオプション`NnModel`のファイルで指定し、`isready`で読み込む](select-zero-networks-by-the-usi-option-nnmodel.md)
-- 2026年11月12日 [対局ハーネスは、エンジンが`isready`で返すネットのチェックサムを実行条件に記録し、対局の開始時と再開時に照合する](record-and-verify-the-network-checksum-reported-by-match-engines.md)
-- 2026年11月12日 [エンジンの実装を検証する診断はUSIの独自コマンドにし、実験の管理とデータの生産はサブコマンドに残す](run-engine-diagnostics-as-usi-commands-and-keep-experiment-tools-as-subcommands.md)
+- 2026年11月12日 [対局ハーネスは、エンジンが`isready`で返すネットのチェックサムを実行条件に記録し、対局の開始時と再開時に照合する](archive/record-and-verify-the-network-checksum-reported-by-match-engines.md)（置き換え済み）
+- 2026年11月12日 [エンジンの実装を検証する診断はUSIの独自コマンドにし、実験の管理とデータの生産はサブコマンドに残す](archive/run-engine-diagnostics-as-usi-commands-and-keep-experiment-tools-as-subcommands.md)（置き換え済み）
 - 2026年11月12日 [プロトコルの種類、探索方式、入出力の記録は起動引数に残し、ONNX Runtimeの場所は環境変数に残す](keep-protocol-search-method-and-io-log-as-startup-arguments.md)
 - 2026年11月13日 [AlphaZero型探索の実行環境は、借りる機械では導入スクリプトで導入し、作業機の開発用のコンテナは同じスクリプトから作る](install-the-zero-toolchain-with-setup-sh-on-rented-machines-and-build-the-workstation-image-from-it.md)
 - 2026年11月13日 [対局用MCTSは、成りの保留をネットの入力に入れないまま、全部の規則コードで探索する](search-all-rule-codes-in-mcts-without-encoding-deferred-promotion.md)
 - 2026年11月13日 [評価関数を学ぶための自己対局と、学んだネットの判定の対局を、規則セットlishogiで行う](play-self-play-and-judge-trained-networks-under-the-lishogi-rule-set.md)
 - 2026年11月14日 [AlphaZero型探索のネットの強さは、コミットを固定したαβ探索との対局を主に、深さ3のHaChuとの対局を副に測る](measure-zero-networks-against-a-pinned-alphabeta-search-first-and-depth-3-hachu-second.md)
-- 2026年11月14日 [NNUEの教師ファイルは、対局数で決めた塊ごとに確定させ、全塊がそろったら1つのファイルへ組み直す](commit-nnue-teacher-files-in-fixed-game-chunks-and-reassemble-them-into-one-file.md)
+- 2026年11月14日 [NNUEの教師ファイルは、対局数で決めた塊ごとに確定させ、全塊がそろったら1つのファイルへ組み直す](archive/commit-nnue-teacher-files-in-fixed-game-chunks-and-reassemble-them-into-one-file.md)（置き換え済み）
 - 2026年11月14日 [NNUEの教師ファイルは、作業機の制御スクリプトが借りた1台に生成させ、止まったら回収済みの塊から別の機械で続ける](generate-teacher-files-on-one-rented-machine-and-continue-from-collected-chunks-on-another.md)
 - 2026年11月14日 [NNUEの教師生成に使う機械は、vast.aiの中断可能インスタンスを、その時点の最低入札額で借りる](rent-interruptible-instances-at-the-minimum-bid-for-teacher-generation.md)
 - 2026年11月14日 [NNUEの世代反復の1世代の教師を、局面数ではなく教師ファイルの本数で定め、70本とする](archive/size-each-nnue-generation-at-70-teacher-files.md)（置き換え済み）
@@ -425,3 +425,11 @@ PSTは駒の種類と升ごとの値の表による評価、FMはFactorization M
 - 2026年11月17日 [上位N手の読み筋を出すUSIオプション`MultiPV`は、USIの層が宣言して保持し、値が2以上のときだけ`info`行に順位を付ける](declare-multipv-in-the-usi-layer-and-rank-info-lines-only-when-it-is-two-or-more.md)
 - 2026年11月17日 [αβ探索のMultiPVは、各深さで根の探索をN回繰り返して選んだ手を除いていき、全N本を読み終えた反復だけを結果にする](search-alphabeta-multipv-by-repeating-the-root-search-and-keep-only-complete-iterations.md)
 - 2026年11月17日 [PV-MCTSのMultiPVは、探索を変えずに、終了時の根の辺を最善手と同じ比較規則で並べて上位N本を出し、2本目以降の未訪問の辺には評価値を付けない](rank-pv-mcts-root-edges-by-the-best-move-rule-for-multipv-and-leave-unvisited-edges-unscored.md)
+- 2026年11月17日 [探索が使う評価関数を、USIのオプションEvalFileで指定した外部のファイルのNNUEの1つにし、PSTとFMのコードは比較用に残す](use-an-nnue-read-from-evalfile-as-the-only-search-evaluation.md)
+- 2026年11月17日 [NNUEのネットを、読み込んだファイル全体のSHA-256で識別する](identify-nnue-networks-by-the-sha256-of-the-whole-file.md)
+- 2026年11月17日 [NNUEの教師ファイルは、対局数で決めた塊ごとに確定させ、全塊がそろったら1つのファイルへ組み直し、再開ではネットのファイル全体のSHA-256も照合する](commit-nnue-teacher-files-in-fixed-game-chunks-and-check-the-network-file-on-resume.md)
+- 2026年11月17日 [対局ハーネスと係数調整は、エンジンがisreadyで返すネットのチェックサムを実行条件に記録し、対局の開始時と再開時に照合する](record-and-verify-the-network-checksum-reported-by-match-and-spsa-engines.md)
+- 2026年11月17日 [棋力測定はコミットからビルドした別プロセスのエンジン同士で行い、ネットは追加のオプションで渡してチェックサムで固定する](compare-commits-as-separate-engine-processes-and-pin-networks-by-checksum.md)
+- 2026年11月17日 [エンジンの実装を検証する診断はUSIの独自コマンドにして準備済みのセッションで実行し、実験の管理とデータの生産はサブコマンドに残す](run-engine-diagnostics-as-usi-commands-on-the-prepared-session.md)
+- 2026年11月17日 [NNUEを入力特徴集合と出力部の型引数で組み立て、型の合わないネットのファイルは読み込みで拒否する](parameterize-the-nnue-by-types-and-reject-mismatched-network-files-on-load.md)
+- 2026年11月17日 [NNUEの世代反復では、線形の経路を学習の後に対局結果で補正せず、学習したネットをgitの外に置いてそのまま次の世代に使う](use-each-trained-nnue-uncorrected-and-outside-git-for-the-next-generation.md)

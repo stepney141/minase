@@ -4,13 +4,20 @@
 本書は、測定の実行者（人間およびエージェント）向けの運用規約と手順だけを記す。
 対局ハーネスと統計の仕様は、`crates/minase/src/harness/`、`crates/minase/src/bin/minase/match_runner/`、`crates/minase/src/bin/minase/match_report/`、および`crates/minase/src/stats.rs`のdocコメントにある。
 方式を選んだ理由と棄却した代案は[ADR](../adr/README.md)にある。
-本書の手順に関わる主なADRは、[コミット対コミットの測定](../adr/compare-commits-as-separate-engine-processes.md)、[ペンタノミアルGSPRT](../adr/judge-adoption-by-pentanomial-gsprt.md)、[段階ゲート](../adr/screen-at-stc-and-decide-at-ltc.md)、[H1の値](../adr/set-gsprt-h1-to-10-elo.md)、および[再開](../adr/resume-from-the-manifest-and-accept-rebuilt-tuning-commits.md)である。
+本書の手順に関わる主なADRは、[コミット対コミットの測定](../adr/compare-commits-as-separate-engine-processes-and-pin-networks-by-checksum.md)、[ペンタノミアルGSPRT](../adr/judge-adoption-by-pentanomial-gsprt.md)、[段階ゲート](../adr/screen-at-stc-and-decide-at-ltc.md)、[H1の値](../adr/set-gsprt-h1-to-10-elo.md)、および[再開](../adr/resume-from-the-manifest-and-accept-rebuilt-tuning-commits.md)である。
 
 ## 原則
 
 測定はfishtestと同じメタ的な構造に従う。
 テストは「旧エンジンのコミット」と「新エンジンのコミット」の2つで定義し、対局ハーネス`minase match run`は差分の内容（どの機能が追加されたか）を一切知らずに、勝敗だけから効果を判定する。
 したがって、探索、評価、時間管理など棋力に影響し得る変更は、機能ごとの比較スイッチをハーネスへ追加するのではなく、変更をコミットとして確定させたうえでコミット対コミットの対局にかける。
+
+NNUEのネットはコミットに含まれず、エンジンはオプション`EvalFile`で指定したファイルを読む。
+ハーネスは、候補と基準のそれぞれに`--candidate-option EvalFile=<パス>`と`--baseline-option EvalFile=<パス>`でネットを渡し、エンジンが報告したファイル全体のSHA-256を`manifest.json`に記録して固定する（[ADR](../adr/compare-commits-as-separate-engine-processes-and-pin-networks-by-checksum.md)）。
+探索や時間管理の変更を測るときは、両側に同じネットを渡す。
+特に理由がなければ、[NNUEの評価関数の手引き](evaluation-nnue.md#採用したネットの学習)にある、いまの標準のネットを使う。
+学習したネットどうしを比べるときは、両側に同じコミットを指定し、別々のネットを渡す。
+以下の標準コマンドの`<ネット>`は、NASに置いたネットのファイルの絶対パスである。
 
 ## 測定の種類と標準コマンド
 
@@ -37,6 +44,7 @@ STCの標準コマンドは次のとおりである。
 cargo run --release --bin minase -- match run \
   --run-dir data/matches/<測定名>-stc --seed <シード> \
   --candidate commit:<新コミット> --baseline commit:<旧コミット> \
+  --candidate-option EvalFile=<ネット> --baseline-option EvalFile=<ネット> \
   --rules JCSA --each time=10000+100 gsprt --max-pairs 3000
 ```
 
@@ -56,6 +64,7 @@ LTCの標準コマンドは次のとおりである。
 cargo run --release --bin minase -- match run \
   --run-dir data/matches/<測定名>-ltc --seed <シード> \
   --candidate commit:<新コミット> --baseline commit:<旧コミット> \
+  --candidate-option EvalFile=<ネット> --baseline-option EvalFile=<ネット> \
   --rules JCSA --each time=60000+200 gsprt
 ```
 
@@ -106,6 +115,7 @@ HaChuのような外部エンジンとの比較は、対等な時間制御のGSP
 cargo run --release --bin minase -- match run \
   --run-dir data/matches/<測定名> --seed <シード> \
   --candidate commit:<測定対象> --baseline "cecp:../hachu-debian/hachu" \
+  --candidate-option EvalFile=<ネット> \
   --rules L1,L3,P0,P5,P6,R2,E1,E2 --each time=60000+1000 gsprt
 ```
 
@@ -135,6 +145,7 @@ HaChuの既定の規則には、反復による引き分けも、駒が少なく
 cargo run --release --bin minase -- match run \
   --run-dir data/matches/<測定名> --seed <シード> \
   --candidate commit:<新> --baseline commit:<旧> \
+  --candidate-option EvalFile=<ネット> --baseline-option EvalFile=<ネット> \
   --rules JCSA --each depth=4 elo --pairs 200
 ```
 
@@ -286,8 +297,16 @@ minase本体は`--protocol`の指定が必須なので、この形式では必�
 USIオプションは`--candidate-option '名前=値'`と`--baseline-option '名前=値'`でそれぞれ繰り返し指定でき、最初の`=`で名前と値を分ける。
 名前と値に改行を含む指定と、同じ側で名前が重複する指定は拒否する。
 測定条件と資源管理が扱う`RuleSet`、`USI_Hash`、`ResignValue`、`Seed`、`Threads`は予約名であり、予約名と重複の照合ではASCIIの大小文字を区別しない。
-新規実行時にエンジンの宣言と照合し、`spin`は宣言範囲の整数、`combo`は選択肢、`check`は`true`か`false`、`string`は指定した文字列を受理する一方、未宣言の名前、未対応の型、`random`または`cecp:`への指定は拒否する。
+新規実行時にエンジンの宣言と照合し、`spin`は宣言範囲の整数、`combo`は選択肢、`check`は`true`か`false`、`string`は指定した文字列を受理する一方、未宣言の名前、未対応の型、および後述の`random`への指定は拒否する。
+`cecp:`のエンジンへの指定は、名前だけを`feature option`の宣言と照合する（後述）。
 受理した列は`manifest.json`に保存して再開時に復元し、`--resume`との同時指定は同じ値でも引数のエラーにする。
+
+αβ探索のminaseには、`--candidate-option EvalFile=<ネット>`と`--baseline-option EvalFile=<ネット>`でNNUEのネットを渡す。
+`EvalFile`を宣言する版のminaseは、指定がないと`isready`でエラーになって終了するので、ハーネスは対局を始める前に各エンジンを1回ずつ起動する段階（事前の起動）で止まる。
+エンジンが`isready`で返すネットのチェックサムは`manifest.json`のエンジンごとの欄`network_sha256`に記録され、再開時と各対局の開始時に照合される（[チェックサムの照合のADR](../adr/record-and-verify-the-network-checksum-reported-by-match-and-spsa-engines.md)）。
+ネットを実行ファイルに埋め込んでいた版（[外部ファイル化のADR](../adr/use-an-nnue-read-from-evalfile-as-the-only-search-evaluation.md)より前のコミット）は`EvalFile`を宣言しないので、その版を測る側には`EvalFile`を指定しない。
+ハーネスはエンジンが宣言しないオプションを送る前に拒否するからである。
+その側は埋め込んだネットで対局し、`manifest.json`の`network_sha256`の欄は`null`になる。
 
 ハーネス自体のスモークテストには`random`を指定する。
 この指定では同一ビルドの`minase dev usi-random`が起動され、合法手から一様ランダムに着手する校正用エンジンとして動く。
@@ -306,13 +325,20 @@ HaChuは1手固定時間を指定すると、指定値より短い時間で着�
 外部エンジンに1手固定時間を与える測定では、[外部エンジンの固定時間は時間切れ判定との余裕を本測定前に見積もる](../lessons/fixed-time-forfeit-margin.md)に従う。
 外部エンジンの規則はそのエンジンの側の設定に委ねられるため、`--rules`にはそのエンジンが実装する規則を指定する。
 握手で`feature option="RuleSet ..."`を宣言するCECPのエンジン（minase自身をCECPで動かす場合）には、ハーネスが`new`の前に`option RuleSet=<--rulesの値>`を送る。
+CECPのエンジンにも`--candidate-option`と`--baseline-option`を指定でき、ハーネスは`option RuleSet=`の後、`new`の前に`option <名前>=<値>`として送る。
+名前はエンジンが`feature option`で宣言した名前と照合し、宣言にない名前は送る前に測定全体をエラーで止める。
+CECPで動かすminaseには、`--candidate-option EvalFile=<ネット>`のようにネットを渡す。
+ハーネスは初期化の列の最後に`ping`を送り、対応する`pong`を受けてから対局へ進むので、ネットを読む時間は最初の着手の消費時間に入らない。
+CECPのエンジンも、対局を始める前に1回ずつ同じ初期化の列で起動するので、ネットの指定の誤りは最初の対局より前に見つかる。
 
 AlphaZero型探索のMCTSは、`--candidate-args '--search mcts'`で探索方式を選び、`--candidate-option 'NnModel=<ネットのファイル>'`でネットを指定する。
+あわせて、`--candidate-option 'NnCpPerLogit=<勝率尺度>'`で、探索値のセンチポーンへの換算と引き分けの値の勝率への換算に使う勝率尺度を指定する。
+`NnCpPerLogit`を宣言する版のminaseは、この指定がないと`isready`でエラーになって終了する。
 ネットのパスは`manifest.json`のオプションの欄に残る。
-ネットの内容は、エンジンが`isready`で返すチェックサムをハーネスが`manifest.json`のエンジンごとの欄`network_sha256`に記録し、再開時と各対局の開始時に照合する（理由は[チェックサムの照合のADR](../adr/record-and-verify-the-network-checksum-reported-by-match-engines.md)）。
+ネットの内容は、エンジンが`isready`で返すチェックサムをハーネスが`manifest.json`のエンジンごとの欄`network_sha256`に記録し、再開時と各対局の開始時に照合する（理由は[チェックサムの照合のADR](../adr/record-and-verify-the-network-checksum-reported-by-match-and-spsa-engines.md)）。
 同じパスのファイルを測定の途中で書き換えると、次の対局の開始時に測定がエラーで止まる。
 その局は反則負けにならず、それまでに終わったペアの記録は残るので、ファイルを元に戻して`--resume`で再開する。
-αβ探索のエンジンのようにチェックサムを返さないエンジンでは、欄は`null`になる。
+ネットを埋め込んでいた版のαβ探索のエンジンのようにチェックサムを返さないエンジンでは、欄は`null`になる。
 MCTSの推論にはONNX Runtimeが要るので、`tools/train/zero/setup.sh`で導入した環境の`tools/train/zero/env.sh`をbashで読み込んでから`minase match run`を起動する。
 推論の設定は`--candidate-option NnBatchSize=64`や`--baseline-option NnBackend=cuda`のように指定でき、指定がなければMCTSは既定のTensorRTで推論し、TensorRTのエンジン（ネットをGPU向けに最適化したもの）のキャッシュを`$XDG_CACHE_HOME/minase/tensorrt`に置く。
 `XDG_CACHE_HOME`が設定されていないとminaseは`isready`でエラーになって終了するので、測定の前に設定する。
@@ -412,7 +438,7 @@ cargo test --lib stats::tests::gsprt_monte_carlo_error_rates_match_documented_th
 測定は、終了した時点で直ちに`docs/measurements/<設計書名>/<測定名>.md`へ1測定1ファイルで記録し、設計書からは測定名でリンクする。
 `<設計書名>`はその測定を計画した設計書のファイル名から`.md`を除いたものであり、どの設計書も計画していない測定は`docs/measurements/adhoc/`に置く。
 置き場所の決め方と見出しの順序は、docs/plans/README.md の「測定記録」節が定める。
-記録には、シードを含むコマンドライン全体、両エンジンのコミットハッシュ、ペンタノミアル度数、LLRと判定、破棄ペア数と異常件数、および経過時間を含める。
+記録には、シードを含むコマンドライン全体、両エンジンのコミットハッシュ、両エンジンの`network_sha256`（`manifest.json`の値）、ペンタノミアル度数、LLRと判定、破棄ペア数と異常件数、および経過時間を含める。
 固定局数Eloの測定では、LLRと判定の代わりにEloと信頼区間を記録する。
 実行条件とエンジンバイナリのSHA-256は`manifest.json`、起動ごとのrunnerと測定機は`invocations.json`、確定済みの結果と異常分類は`pairs/`、再開を含む累計実行時間は`summary.json`を正とする。
 標準出力の`elapsed`は当該起動だけの経過時間であり、再開した測定の累計時間には`summary.json`の`active_wall_time_ns`を使う。

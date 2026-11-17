@@ -1,6 +1,6 @@
 //! 量子化した学習PSTの復号と、PST単独またはPST＋FMの整数評価。
 //! 探索からは呼ばれず、学習した評価関数の比較に使う。
-//! 理由は`docs/adr/use-nnue-as-the-only-search-evaluation.md`にある。
+//! 理由は`docs/adr/use-an-nnue-read-from-evalfile-as-the-only-search-evaluation.md`にある。
 
 pub(crate) mod accumulator;
 mod features;

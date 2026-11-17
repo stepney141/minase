@@ -31,7 +31,7 @@ NNUEの出力部の層積みへの統一の計画（後に取り下げた）と�
 
 ## 目的
 
-線形経路にPSTを移す方式は、[NNUEによるPST＋FMの完全代替](nnue-replacement.md)で、蒸留を使わずに旧評価関数の知識を取り込む手段として採用された（[ADR](../../adr/use-nnue-as-the-only-search-evaluation.md)、[構造のADR](../../adr/archive/compose-the-nnue-of-a-pst-path-and-a-direct-screlu-head.md)）。
+線形経路にPSTを移す方式は、[NNUEによるPST＋FMの完全代替](nnue-replacement.md)で、蒸留を使わずに旧評価関数の知識を取り込む手段として採用された（[ADR](../../adr/archive/use-nnue-as-the-only-search-evaluation.md)、[構造のADR](../../adr/archive/compose-the-nnue-of-a-pst-path-and-a-direct-screlu-head.md)）。
 2026年10月25日に、利用者は、前の世代の表を移す方式はNNUEの構成として筋が悪く、線形経路は初期化して学ぶべきだと決めた。
 初期値は、Fairy-Stockfishの学習器と同じく升によらない駒価値とすることも、同日に利用者が選んだ。
 採否を棋力の向上ではなく非劣性で判定することも、同日に利用者が決めた。

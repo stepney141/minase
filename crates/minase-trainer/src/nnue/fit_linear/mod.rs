@@ -24,7 +24,7 @@
 //! `D = corrected_loss − base_loss`とする。再標本化は行わず、判定対局ごとの損失をJSONへ残す。
 //! 方式を選んだ理由は`docs/adr/archive/correct-the-nnue-linear-path-by-regressing-on-game-outcomes.md`にある。
 //! 標準レシピv1では学習後の補正を行わず、この処理は偏りを調べる診断にだけ用いる。
-//! この決定は`docs/adr/do-not-correct-the-nnue-linear-path-after-training.md`にある。
+//! この決定は`docs/adr/use-each-trained-nnue-uncorrected-and-outside-git-for-the-next-generation.md`にある。
 
 mod error;
 mod solver;

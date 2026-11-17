@@ -35,11 +35,12 @@ fn mcts_handshake_declares_options_in_order_and_ignores_tuning_names() {
     result.unwrap();
     let lines: Vec<_> = output.lines().collect();
     assert_eq!(
-        &lines[4..10],
+        &lines[4..11],
         &[
             "option name USI_Hash type spin default 256 min 1 max 65536",
             "option name Threads type spin default 1 min 1 max 1",
             "option name NnModel type string default <empty>",
+            "option name NnCpPerLogit type string default <empty>",
             "option name NnBackend type combo default tensorrt var tensorrt var cuda var cpu",
             "option name NnCacheDir type string default <empty>",
             "option name NnBatchSize type spin default 256 min 1 max 1024",
@@ -198,12 +199,12 @@ fn readiness_requires_rules_then_model_and_preserves_read_failure_sources() {
             "required option NnModel is not set",
         ),
     ] {
-        let mut protocol = UsiProtocol::with_searcher(Searcher::mcts().unwrap());
+        let mut protocol = UsiProtocol::with_searcher(Searcher::mcts());
         let (result, output) = run(&mut protocol, input);
         assert!(result.is_err());
         assert_eq!(output, format!("info string error: {expected}\n"));
     }
-    let mut protocol = UsiProtocol::with_searcher(Searcher::mcts().unwrap());
+    let mut protocol = UsiProtocol::with_searcher(Searcher::mcts());
     let path = std::env::temp_dir().join(format!(
         "minase-missing-network-{}.onnx",
         std::process::id()
@@ -212,7 +213,7 @@ fn readiness_requires_rules_then_model_and_preserves_read_failure_sources() {
     let (result, output) = run(
         &mut protocol,
         &format!(
-            "setoption name RuleSet value JCSA\nsetoption name NnModel value {}\nisready\nusi\n",
+            "setoption name RuleSet value JCSA\nsetoption name NnModel value {}\nsetoption name NnCpPerLogit value 600\nisready\nusi\n",
             path.display()
         ),
     );
@@ -239,15 +240,15 @@ fn readiness_requires_rules_then_model_and_preserves_read_failure_sources() {
 
 #[test]
 fn model_option_is_mcts_only_and_requires_a_value() {
-    let mut protocol = UsiProtocol::new();
+    let mut protocol = super::test_protocol();
     let (result, output) = run(
         &mut protocol,
         "setoption name RuleSet value JCSA\nusi\nisready\n",
     );
     result.unwrap();
     assert!(!output.contains("NnModel"));
-    assert!(!output.contains("network_sha256"));
-    let mut protocol = UsiProtocol::with_searcher(Searcher::mcts().unwrap());
+    assert!(output.contains("network_sha256"));
+    let mut protocol = UsiProtocol::with_searcher(Searcher::mcts());
     let (result, output) = run(
         &mut protocol,
         "setoption name RuleSet value JCSA\nsetoption name NnModel\nsetoption name NnModel value\n",
@@ -296,7 +297,7 @@ fn model_change_rejects_go_and_eval_until_prepared_and_same_value_preserves_them
 
 #[test]
 fn eval_rejection_checks_game_state_before_preparation_and_keeps_session_open() {
-    let mut protocol = UsiProtocol::with_searcher(Searcher::mcts().unwrap());
+    let mut protocol = UsiProtocol::with_searcher(Searcher::mcts());
     let (result, output) = run(
         &mut protocol,
         "eval\nsetoption name RuleSet value JCSA\neval\nposition startpos\neval\nusi\n",
@@ -618,10 +619,10 @@ fn hachu_default_rules_search_from_position_to_go() {
 
 #[test]
 fn model_paths_join_value_words_with_one_space() {
-    let mut protocol = UsiProtocol::with_searcher(Searcher::mcts().unwrap());
+    let mut protocol = UsiProtocol::with_searcher(Searcher::mcts());
     let (result, output) = run(
         &mut protocol,
-        "setoption name RuleSet value JCSA\nsetoption name NnModel value /nonexistent   path\twith spaces.onnx\nisready\n",
+        "setoption name RuleSet value JCSA\nsetoption name NnModel value /nonexistent   path\twith spaces.onnx\nsetoption name NnCpPerLogit value 600\nisready\n",
     );
     let error = result.unwrap_err();
     let Some(PrepareError::Network(crate::nn::NnError::ReadNetwork { path, .. })) =

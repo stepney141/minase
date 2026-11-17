@@ -2,7 +2,7 @@
 """初形からUSI自己対局を行い、先手の指定手数までの時計と探索情報を記録する。
 
 使い方:
-    scripts/byoyomi_game_profile.py --engine target/release/minase --rules L0,P0,R1,E0 --hash 256 --time 3000+0 --byoyomi 300 --black-moves 3 --budget quadruple-soft --record /tmp/byoyomi.json
+    scripts/byoyomi_game_profile.py --engine target/release/minase --eval-file /path/to/network.bin --rules L0,P0,R1,E0 --hash 256 --time 3000+0 --byoyomi 300 --black-moves 3 --budget quadruple-soft --record /tmp/byoyomi.json
 """
 
 import argparse
@@ -159,12 +159,13 @@ class Engine:
         while self.receive(deadline) != response:
             pass
 
-    def initialize(self, rules: str, hash_mb: int) -> None:
-        """USIの握手、規則と置換表の設定、新規対局の開始を行う。"""
+    def initialize(self, rules: str, hash_mb: int, eval_file: Path) -> None:
+        """USIの握手、規則、ネット、置換表の設定、新規対局の開始を行う。"""
         self.send("usi")
         self.expect("usiok")
         self.send(f"setoption name RuleSet value {rules}")
         self.send(f"setoption name USI_Hash value {hash_mb}")
+        self.send(f"setoption name EvalFile value {eval_file.resolve()}")
         self.send("isready")
         self.expect("readyok")
         self.send("usinewgame")
@@ -256,7 +257,7 @@ def play(args: argparse.Namespace) -> dict[str, Any]:
                 engine = Engine(args.engine, args.response_timeout)
                 stack.callback(engine.close)
                 engines[side] = engine
-                engine.initialize(args.rules, args.hash)
+                engine.initialize(args.rules, args.hash, args.eval_file)
             while record["black_moves"] < args.black_moves:
                 side = budgets.COLORS[len(record["moves"]) % 2]
                 go = (
@@ -329,6 +330,7 @@ def main() -> int:
     """先手を主集計として表示し、要求された記録と集計をJSONへ保存する。"""
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--engine", type=Path, required=True)
+    parser.add_argument("--eval-file", type=Path, required=True)
     parser.add_argument("--rules", required=True)
     parser.add_argument("--hash", type=positive, required=True, help="各プロセスの置換表サイズ（MB）")
     parser.add_argument("--time", type=time_control, required=True)

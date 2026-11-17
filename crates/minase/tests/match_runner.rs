@@ -90,6 +90,14 @@ fn run_minase_candidate_match(candidate: &str) -> String {
     let run_dir = run_directory();
     let output = Command::new(env!("CARGO_BIN_EXE_minase"))
         .args(["match", "run"])
+        .args([
+            "--candidate-option",
+            concat!(
+                "EvalFile=",
+                env!("CARGO_MANIFEST_DIR"),
+                "/nets/nnue-epoch0.bin"
+            ),
+        ])
         .args(["--rules", "JCSA"])
         .arg("--run-dir")
         .arg(&run_dir)
@@ -1173,29 +1181,25 @@ fn usi_options_reject_unknown_names_invalid_values_and_unsupported_types() {
 }
 
 #[test]
-fn usi_options_reject_random_and_cecp_before_engine_start() {
+fn additional_options_reject_random_before_engine_start() {
     for side in ["candidate", "baseline"] {
-        for (spec, message) in [
-            ("random", "random engine"),
-            ("cecp:nonexistent-engine", "CECP engine"),
-        ] {
-            let dir = run_directory();
-            let output = Command::new(env!("CARGO_BIN_EXE_minase"))
-                .args(["match", "run", "--rules", "JCSA", "--run-dir"])
-                .arg(&dir)
-                .args([
-                    &format!("--{side}"),
-                    spec,
-                    &format!("--{side}-option"),
-                    "NnBatchSize=64",
-                ])
-                .args(["--concurrency", "1", "elo", "--pairs", "1"])
-                .output()
-                .unwrap();
-            assert!(!output.status.success());
-            assert!(String::from_utf8_lossy(&output.stderr).contains(message));
-            assert!(!dir.exists());
-        }
+        let (spec, message) = ("random", "random engine");
+        let dir = run_directory();
+        let output = Command::new(env!("CARGO_BIN_EXE_minase"))
+            .args(["match", "run", "--rules", "JCSA", "--run-dir"])
+            .arg(&dir)
+            .args([
+                &format!("--{side}"),
+                spec,
+                &format!("--{side}-option"),
+                "NnBatchSize=64",
+            ])
+            .args(["--concurrency", "1", "elo", "--pairs", "1"])
+            .output()
+            .unwrap();
+        assert!(!output.status.success());
+        assert!(String::from_utf8_lossy(&output.stderr).contains(message));
+        assert!(!dir.exists());
     }
 }
 

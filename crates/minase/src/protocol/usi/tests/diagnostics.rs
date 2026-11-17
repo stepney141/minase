@@ -22,7 +22,7 @@ fn assert_ended(output: &str) {
 
 #[test]
 fn perft_matches_moves_and_divide_sums_and_preserves_state() {
-    let mut protocol = UsiProtocol::new();
+    let mut protocol = test_protocol();
     assert_eq!(
         run(
             &mut protocol,
@@ -142,7 +142,7 @@ fn invalid_diagnostic_arguments_leave_the_session_running() {
 
 #[test]
 fn perft_requires_depth_and_rules() {
-    let mut protocol = UsiProtocol::new();
+    let mut protocol = test_protocol();
     assert_eq!(
         run(&mut protocol, "perft 1\n"),
         "info string error: required option RuleSet is not set\n"
@@ -172,7 +172,7 @@ fn perft_uses_active_move_rules_until_the_next_game() {
         ("L1,P0,R1,E2", "L1,P2,R1,E2"),
         ("L1,P2,R1,E2", "L1,P0,R1,E2"),
     ] {
-        let mut protocol = UsiProtocol::new();
+        let mut protocol = test_protocol();
         assert_eq!(
             run(
                 &mut protocol,
@@ -193,7 +193,7 @@ fn perft_uses_active_move_rules_until_the_next_game() {
 
 #[test]
 fn perft_counts_a_finished_game_without_adjudication() {
-    let mut protocol = UsiProtocol::new();
+    let mut protocol = test_protocol();
     run(
         &mut protocol,
         &format!(
@@ -209,7 +209,7 @@ fn perft_counts_a_finished_game_without_adjudication() {
 /// positionの4欄以上の形式で拡張状態を受け取り、拒否した状態では計数を始めない。
 #[test]
 fn parse_position_accepts_basic_and_extended_and_rejects_invalid_state() {
-    let mut protocol = UsiProtocol::new();
+    let mut protocol = test_protocol();
     run(&mut protocol, "setoption name RuleSet value JCSA\n");
     let initial = format!("{INITIAL_BOARD} - 1");
     for sfen in [
@@ -239,7 +239,7 @@ fn positions(output: &str) -> Vec<&str> {
 
 #[test]
 fn bench_needs_no_setup_and_is_reproducible() {
-    let mut protocol = UsiProtocol::new();
+    let mut protocol = test_protocol();
     let first = run(&mut protocol, "bench depth 1\n");
     assert_ended(&first);
     assert_eq!(
@@ -268,7 +268,7 @@ fn bench_needs_no_setup_and_is_reproducible() {
 
 #[test]
 fn bench_repetitions_report_runs_and_median() {
-    let output = run(&mut UsiProtocol::new(), "bench repetitions 2 depth 1\n");
+    let output = run(&mut test_protocol(), "bench repetitions 2 depth 1\n");
     assert_ended(&output);
     assert_eq!(
         output
@@ -304,7 +304,7 @@ fn bench_repetitions_report_runs_and_median() {
 #[test]
 fn bench_and_perft_preserve_game_settings_and_search_state() {
     for diagnostic in ["bench depth 1", "perft 1", "random-play max-ply 2 seed 7"] {
-        let mut protocol = UsiProtocol::new();
+        let mut protocol = test_protocol();
         run(
             &mut protocol,
             concat!(
@@ -408,7 +408,7 @@ fn diagnostics_flush_every_line() {
         "setoption name RuleSet value JCSA\nrandom-play max-ply 2 seed 7\n",
     ] {
         let mut output = FlushedLines::default();
-        UsiProtocol::new()
+        test_protocol()
             .run(&mut Cursor::new(input), &mut output)
             .unwrap();
         assert!(output.pending.is_empty());
@@ -417,8 +417,8 @@ fn diagnostics_flush_every_line() {
 }
 
 fn mcts_bench_protocol() -> UsiProtocol {
-    use crate::search::mcts::{Config, Engine};
-    UsiProtocol::with_searcher(Searcher::Mcts(Engine::new(Config::new(600.0))))
+    use crate::search::mcts::Engine;
+    UsiProtocol::with_searcher(Searcher::Mcts(Engine::new()))
 }
 
 fn without_timing(output: &str, fields: &[&str]) -> String {
@@ -575,10 +575,12 @@ fn mcts_bench_preserves_session_and_ignores_policy_temperature() {
 #[test]
 fn mcts_bench_preserves_next_search_and_tree_reuse() {
     use crate::nn::test_util::NonUniformEvaluator;
-    use crate::search::mcts::{Config, Engine};
+    use crate::search::mcts::Engine;
     let search = |with_bench| {
-        let engine =
-            Engine::with_evaluator(Some(Box::new(NonUniformEvaluator)), Config::new(600.0));
+        let engine = Engine::with_evaluator(
+            Some(Box::new(NonUniformEvaluator)),
+            crate::search::mcts::Config::new(600.0),
+        );
         let mut protocol = UsiProtocol::with_searcher(Searcher::Mcts(engine));
         let setup = run(
             &mut protocol,
@@ -633,7 +635,7 @@ fn mcts_bench_rejections_are_single_errors_without_end() {
             "{output}"
         );
     }
-    let mut alphabeta = UsiProtocol::new();
+    let mut alphabeta = test_protocol();
     for arg in ["nodes", "batch"] {
         assert_eq!(
             run(&mut alphabeta, &format!("bench {arg} 1\n")),

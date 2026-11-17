@@ -135,7 +135,8 @@ fn restore_player(
             source: NetworkError::Mismatch {
                 recorded: record.network_sha256.clone(),
                 received: defaults.network_sha256,
-            },
+            }
+            .into(),
         })
         .into());
     }

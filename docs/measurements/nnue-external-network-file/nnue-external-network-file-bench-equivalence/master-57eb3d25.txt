@@ -1,0 +1,15 @@
+info string position=initial depth=5 nodes=644 best=8i8h score=30
+info string position=game-2-ply-40 depth=5 nodes=1691 best=3i2h score=1258
+info string position=game-2-ply-60 depth=5 nodes=2132 best=3d4f score=8936
+info string position=game-3-ply-310 depth=5 nodes=4541 best=7k7i score=-4138
+info string position=game-3-ply-465 depth=5 nodes=1679 best=8g8i score=8363
+info string position=game-4-ply-164 depth=5 nodes=1329 best=3i4j3j score=-1784
+info string position=game-4-ply-246 depth=5 nodes=1334 best=5h7h score=-3298
+info string position=game-5-ply-170 depth=5 nodes=2996 best=2j2g score=4020
+info string position=game-5-ply-255 depth=5 nodes=1875 best=2b3c score=-8802
+info string position=game-6-ply-51 depth=5 nodes=3719 best=8b7b score=-1
+info string position=game-6-ply-77 depth=5 nodes=1993 best=6d6f score=66
+info string position=game-8-ply-183 depth=5 nodes=1862 best=9b8c score=-516
+info string position=game-8-ply-275 depth=5 nodes=1439 best=5e2e score=-1145
+info string position=game-10-ply-277 depth=5 nodes=1253 best=5b12i+ score=3039
+info string position=game-10-ply-416 depth=5 nodes=5128 best=4k11k score=-3673

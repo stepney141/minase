@@ -2,13 +2,14 @@
 """設定と出品を検査し、必要なファイルをすべて転送してSPSAを開始する。
 
 使い方:
-  python3 scripts/vast-spsa/launch.py <セッション名> <期限までの分数> --offer <出品ID>
-  python3 scripts/vast-spsa/launch.py <セッション名> <期限までの分数> --max-price <1時間あたりの米ドル>
+  python3 scripts/vast-spsa/launch.py <セッション名> <期限までの分数> --eval-file <ネット> --offer <出品ID>
+  python3 scripts/vast-spsa/launch.py <セッション名> <期限までの分数> --eval-file <ネット> --max-price <1時間あたりの米ドル>
       --min-cpu-cores <スレッド数> --min-cpu-ram <MB> --cpu <CPU名の一部>
       [--cpu <CPU名の一部> ...] --wait <分>
 
 測定機では、セッションを`data/vast-spsa/<セッション名>/`に置く。
-利用者が書く`session.toml`と`params`をlaunch.pyが検査して調整機へ送り、`precheck = true`なら利用者が書く`safety.params`も送る。
+利用者が書く`session.toml`と`params`をlaunch.pyが検査して調整機へ送り、--eval-fileのネットを/workspace/job/network.binへ転送する。
+`precheck = true`なら利用者が書く`safety.params`も送る。
 fetch.pyも同じ条件で設定とパラメーターファイルを検査し、`session.toml`から取得条件を読む。
 `incoming/`はfetch.pyが取得した本番の実行ディレクトリであり、sync_run.pyが内容を検査する。
 `run/`はsync_run.pyが`incoming/`から作る再開用の写しであり、fetch.pyが検査し、launch.pyが再開時に調整機へ送る。
@@ -145,10 +146,10 @@ def git_output(root: Path, *args: str) -> str:
 
 def start_offer(session: str, minutes: int, offer_id: int, offers_output: str,
                 root: Path, directory: Path, label: str, config: remote.Session,
-                temporary: Path, retry_unavailable: bool, wait_end: float | None) -> int | None:
+                temporary: Path, eval_file: Path, retry_unavailable: bool, wait_end: float | None) -> int | None:
     """1件の出品で作成と転送を行い、借りられない出品だけ再試行可能とする。
 
-    `source.bundle`、設定、パラメーター、remote.pyと再開用の記録をすべて転送してから、開始の印`/workspace/job/started`を作る。
+    `source.bundle`、`network.bin`、設定、パラメーター、remote.pyと再開用の記録をすべて転送してから、開始の印`/workspace/job/started`を作る。
     `onstart()`が作る起動行は、この印ができるまで待ち、印がある場合にだけremote.pyを起動する。
     """
     instance_id = None
@@ -216,6 +217,7 @@ def start_offer(session: str, minutes: int, offer_id: int, offers_output: str,
             common.ssh(host, port, f'mkdir -p /workspace/job/{session}-safety')
         common.scp(host, port, '/workspace/job/', temporary / 'source.bundle',
                    temporary / 'session.toml', directory / 'params', SCRIPT_DIR / 'remote.py')
+        common.scp(host, port, '/workspace/job/network.bin', eval_file)
         if (directory / 'safety.params').is_file():
             common.scp(host, port, '/workspace/job/', directory / 'safety.params')
         if (directory / 'run').is_dir():
@@ -230,8 +232,9 @@ def start_offer(session: str, minutes: int, offer_id: int, offers_output: str,
 
 def launch(session: str, minutes: int, offer_id: int | None, max_price: float | None,
            min_cpu_cores: int | None, min_cpu_ram: int | None, cpu_names: list[str] | None,
-           wait_minutes: int | None) -> None:
+           wait_minutes: int | None, eval_file: Path) -> None:
     """出品を指定または自動選択し、作成から転送完了までを管理する。"""
+    eval_file = eval_file.resolve(strict=True)
     automatic = offer_id is None
     if automatic:
         if (max_price is None or min_cpu_cores is None or min_cpu_ram is None
@@ -267,7 +270,7 @@ def launch(session: str, minutes: int, offer_id: int | None, max_price: float | 
             offers_output, offers = search_offers()
             check_offer(offers, str(offer_id))
             instance_id = start_offer(session, minutes, offer_id, offers_output, root,
-                                      directory, label, config, temporary, False, None)
+                                      directory, label, config, temporary, eval_file, False, None)
             assert instance_id is not None
             print(f'セッション {session} を開始しました。インスタンスID: {instance_id}')
             return
@@ -282,7 +285,7 @@ def launch(session: str, minutes: int, offer_id: int | None, max_price: float | 
                 if time.monotonic() >= wait_end:
                     raise ValueError(f'{wait_minutes}分の待機時間内に出品を作成できませんでした')
                 instance_id = start_offer(session, minutes, offer['id'], offers_output, root,
-                                          directory, label, config, temporary, True, wait_end)
+                                          directory, label, config, temporary, eval_file, True, wait_end)
                 if instance_id is not None:
                     print(f'セッション {session} を開始しました。インスタンスID: {instance_id}、'
                           f'出品ID: {offer["id"]}、cpu_name: {offer["cpu_name"]}、'
@@ -324,14 +327,15 @@ def cpu_name_part(value: str) -> str:
 def main() -> int:
     """起動引数と実行時エラーを処理する。"""
     parser = argparse.ArgumentParser(
-        usage=('launch.py <セッション名> <期限までの分数> --offer <出品ID>\n'
-               '       launch.py <セッション名> <期限までの分数> '
+        usage=('launch.py <セッション名> <期限までの分数> --eval-file <ネット> --offer <出品ID>\n'
+               '       launch.py <セッション名> <期限までの分数> --eval-file <ネット> '
                '--max-price <1時間あたりの米ドル> '
                '--min-cpu-cores <スレッド数> --min-cpu-ram <MB> --cpu <CPU名の一部> '
                '[--cpu <CPU名の一部> ...] --wait <分>'),
         add_help=False, allow_abbrev=False)
     parser.add_argument('session', metavar='セッション名')
     parser.add_argument('minutes', metavar='期限までの分数', type=positive_integer)
+    parser.add_argument('--eval-file', type=Path, required=True)
     choice = parser.add_mutually_exclusive_group(required=True)
     choice.add_argument('--offer', type=positive_integer)
     choice.add_argument('--max-price', type=positive_number)
@@ -351,7 +355,7 @@ def main() -> int:
         return 0 if error.code == 0 else 1
     try:
         launch(options.session, options.minutes, options.offer, options.max_price,
-               options.min_cpu_cores, options.min_cpu_ram, options.cpu, options.wait)
+               options.min_cpu_cores, options.min_cpu_ram, options.cpu, options.wait, options.eval_file)
     except FAILURES as error:
         return common.cli_error(error)
     return 0

@@ -27,7 +27,7 @@ NPZはNumPyの配列を名前つきで収めた無圧縮のZIPであり、コン
 | 形式 | 識別と版 | 書き手 | 読み手 | 仕様 |
 |---|---|---|---|---|
 | MNSD（教師データと検証用データ） | `MNSD`、版3 | `minase data selfplay generate`、`minase data zero-selfplay`、`minase data lishogi games`、`minase data lishogi validation`、`minase-trainer diag pst-compare` | 学習器、AlphaZero型探索の学習器（拡張モジュール`minase_mnsd_reader`）、診断、`minase data selfplay inspect`、`minase-trainer fm scale --data`、`nnue bench-step` | `crates/minase/src/training/records.rs` |
-| MNUE（NNUEの重み） | `MNUE`、版5 | `minase-trainer nnue train`、`nnue fit-linear` | エンジン、診断、`nnue train`（書き出した重みの検査）、`nnue fit-linear`（基点の重み） | `crates/minase/src/eval/nnue/format.rs` |
+| MNUE（NNUEの重み） | `MNUE`、版5 | `minase-trainer nnue train`、`nnue fit-linear` | エンジン（オプション`EvalFile`）、`minase data selfplay generate`と`data lishogi`（`--eval-file`）、診断、`nnue train`（書き出した重みの検査）、`nnue fit-linear`（基点の重み） | `crates/minase/src/eval/nnue/format.rs` |
 | MNPT（PSTの重みとFMの補正） | `MNPT`、版3 | `minase-trainer pst train`、`fm train`、`joint train`、`fm quarter`、`fm scale` | エンジン、学習器、診断 | `crates/minase/src/eval/pst/format.rs` |
 | PSTの浮動小数点の重み`pst-float.npz`（2配列） | NPZ、版なし | `minase-trainer pst train` | `joint train --pst-init`、`diag pst-compare` | `crates/minase-trainer/src/pst/npz.rs` |
 | FMの浮動小数点の重み`fm-float.npz`（3配列） | NPZ、版なし | `minase-trainer fm train` | `joint train --fm-init` | `crates/minase-trainer/src/fm/npz.rs` |
@@ -37,6 +37,9 @@ NPZはNumPyの配列を名前つきで収めた無圧縮のZIPであり、コン
 `minase data selfplay generate`と`minase data zero-selfplay`は、出力先のディレクトリに、MNSDのほか、再開のときに照合する生成条件`config.json`、対局番号を固定の局数ごとに区切った塊のMNSDと集計JSON、および排他ロック用の空ファイルを置く。
 `selfplay generate`は、全塊がそろうと塊を1つの教師ファイル`teacher.mnsd`へ組み直し、学習器にはこのファイルを渡す。
 出力先の構成と各ファイルの欄は、`crates/minase/src/bin/minase/selfplay_gen/output.rs`と`crates/minase/src/bin/minase/zero_selfplay/output.rs`のdocコメントにある。
+MNSDのヘッダの`network_checksum`は、教師の探索に使ったNNUEのネットの識別子であり、`--eval-file`で読んだMNUEのファイル全体のSHA-256である（[識別子のADR](../adr/identify-nnue-networks-by-the-sha256-of-the-whole-file.md)）。
+MNUEのヘッダにあるチェックサムは本体だけを対象とし、復号のときに本体の破損を見つける検査に使うので、識別子とは値が異なる。
+外部ファイル化より前に作った教師ファイルの`network_checksum`は、MNUEの本体のチェックサムである。
 MNSDは1局ごとに開始局面を1回だけ書き、以後は1手ごとに指した手、価値、印、および方策を並べる対局単位の形式であり、読み手は手順を再生して各局面を復元する。
 教師の分類と検証集合は、MNSDのヘッダと対局の由来から決まる。
 

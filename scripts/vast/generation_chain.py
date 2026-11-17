@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""教師の生成、検査、学習、補正、世代のコミットを順に実行する。
+"""教師の生成、検査、学習、補正、世代の記録を順に実行する。
 
 使い方: python3 scripts/vast/generation_chain.py run --help
 必須条件をすべて指定し、systemd-run --userの同じサービス内で実行する。
@@ -7,20 +7,21 @@
 --books-per-generationで1世代の本数を定め、番号0から指定本数の直前までを生成する。
 --replay-buffer-generations 1はその世代の本だけ、2は直前の世代の本も先に並べて学習に使う。
 第1世代の学習と各世代の診断、補正には、その世代の本だけを使う。
---fit yesでは--fit-tau、--fit-seed、--fit-threadsも指定し、補正したネットをコミットする。
---fit noではこれらの補正引数を指定せず、学習したネットをそのままコミットする。
+--fit yesでは--fit-tau、--fit-seed、--fit-threadsも指定し、補正したネットを保管する。
+--fit noではこれらの補正引数を指定せず、学習したネットをそのまま保管する。
 --superbatchesで学習の長さ、--validation-superbatchesで検証の間隔を指定する。
 --lr-scheduleの期間はsuperbatchで指定し、学び終えた最後のネットを使う。
 --train-place generatorは生成機で学習、診断、補正し、localは作業機で実行する。
-生成機の障害後はlocalを明示して再開する。コミットとbenchはどちらも作業機で行う。
+生成機の障害後はlocalを明示して再開する。ネットの保管とbenchはどちらも作業機で行う。
 作業機では--run-dirに接続先とgen-<N>/{received,teacher,logs,train,fit}を置く。
---worktreeにネットをコミットし、--ref-prefixで指定した<接頭辞>/gen-<N>で完了を表す。
+--repoの--refが指す--commitを全世代で使い、--gen0-networkを第0世代のネットとする。
+ネットは--network-storeへSHA-256の名前で保管し、gen-<N>/generation.jsonで完了を表す。
+生成機へはコードのバンドルとネットを別々に転送し、job.jsonにnetworkとnetwork_sha256を書く。
 生成機には同じディレクトリのgeneration_worker.pyを/workspace/job/へ送る。
 SIGTERMとSIGINTでは子プロセスだけを止め、同じ引数での再実行に備える。
 
 暫定最良世代に勝てなかった第N世代を37本から74本へ増量して学び直すときは、まずgen-<N>/のtrain、removal.json、fit（補正した場合）、train.log、fit.log、training-logsのうち存在するものをgen-<N>/books37/へ移す。
-参照<接頭辞>/gen-<N>が指すコミットを<接頭辞>/gen-<N>-books37として残す。
-次にgit update-ref -d <接頭辞>/gen-<N>で世代の参照を消し、ネットをコミットしたブランチの先頭を第N−1世代のコミットへ戻す。
+gen-<N>/generation.jsonもgen-<N>/books37/へ移し、NASのネットは残す。
 --books-per-generationを74、--first-generationと--last-generationをNにして再実行する。
 番号37〜73の本だけが生成され、74本で学び直す。
 """
@@ -45,7 +46,6 @@ from typing import Any
 import common
 
 REMOTE = '/workspace/job'
-NETWORK = 'crates/minase/nets/nnue.bin'
 
 
 def low_priority() -> None:
@@ -196,7 +196,7 @@ def select_offer(offers: list[dict[str, Any]], args: argparse.Namespace) -> dict
 
 
 class Chain:
-    """接続先を保持し、成果物とGit参照を根拠に世代反復を進める。"""
+    """接続先を保持し、成果物と世代の記録を根拠に世代反復を進める。"""
 
     def __init__(self, args: argparse.Namespace) -> None:
         self.args = args
@@ -210,32 +210,46 @@ class Chain:
         self.started = time.monotonic()
 
     def git(self, *args: str) -> str:
-        return self.children.run(['git', '-C', str(self.args.worktree), *args],
+        return self.children.run(['git', '-C', str(self.args.repo), *args],
                                  text=True, stdout=subprocess.PIPE).stdout.strip()
 
-    def reference(self, generation: int) -> str:
-        return f'{self.args.ref_prefix}/gen-{generation}'
+    def generation_record(self, generation: int) -> dict[str, Any] | None:
+        path = self.root / f'gen-{generation}/generation.json'
+        return json.loads(path.read_text()) if path.is_file() else None
 
-    def commit_for(self, generation: int) -> str | None:
-        try:
-            return self.git('rev-parse', '--verify', '--quiet', self.reference(generation) + '^{commit}')
-        except subprocess.CalledProcessError as error:
-            if error.returncode == 1:
-                return None
-            raise
+    def previous_network(self, generation: int) -> dict[str, Any]:
+        record = self.generation_record(generation - 1)
+        if record is None:
+            raise ChainStop(f'第{generation - 1}世代の記録がありません')
+        return record
 
-    def previous_commit(self, generation: int) -> str:
-        commit = self.commit_for(generation - 1)
-        if commit is None:
-            raise ChainStop(f'第{generation - 1}世代のコミット参照がありません')
-        return commit
+    def store_network(self, network: Path, checksum: str) -> Path:
+        """ネットをSHA-256の名前で保管し、完成したファイルだけを公開する。"""
+        self.args.network_store.mkdir(parents=True, exist_ok=True)
+        destination = self.args.network_store / f'{checksum}.bin'
+        if not destination.exists():
+            temporary = destination.with_suffix('.bin.tmp')
+            shutil.copyfile(network, temporary)
+            temporary.replace(destination)
+        return destination
 
-    def checksum(self, commit: str) -> str:
-        data = self.children.run(['git', '-C', str(self.args.worktree), 'show', f'{commit}:{NETWORK}'],
-                                 stdout=subprocess.PIPE).stdout
-        if len(data) < 176 or data[:4] != b'MNUE':
-            raise ChainStop(f'コミット{commit}にMNUEのヘッダがありません')
-        return data[144:176].hex()
+    def record_generation(self, generation: int, network: Path, checksum: str) -> None:
+        path = self.root / f'gen-{generation}/generation.json'
+        path.parent.mkdir(parents=True, exist_ok=True)
+        temporary = path.with_suffix('.json.tmp')
+        temporary.write_text(json.dumps({'generation': generation, 'commit': self.args.commit,
+                                        'network_path': str(network), 'network_sha256': checksum}) + '\n')
+        temporary.replace(path)
+
+    def initialize_generation_zero(self) -> None:
+        checksum = common.file_sha256(self.args.gen0_network)
+        record = self.generation_record(0)
+        if record is not None:
+            if record['network_sha256'] != checksum or record['commit'] != self.args.commit:
+                raise ChainStop('第0世代のネットまたはコミットが記録と一致しません')
+            return
+        network = self.store_network(self.args.gen0_network, checksum)
+        self.record_generation(0, network, checksum)
 
     def book_paths(self, generation: int) -> list[Path]:
         return sorted((self.root / f'gen-{generation}/teacher').glob('book-*.mnsd'), key=book_number)
@@ -293,7 +307,11 @@ class Chain:
         if self.address is None:
             raise ChainStop('転送する生成機がありません')
         try:
-            common.scp(*self.address, destination, source)
+            host, port = self.address
+            remaining = int((self.root / 'deadline').read_text()) - time.time()
+            seconds = common.transfer_seconds(source.stat().st_size, remaining)
+            self.children.run(['scp', '-r', *common.ssh_options(port, '-P'), str(source),
+                               f'root@[{host}]:{destination}'], timeout=seconds)
         except (OSError, subprocess.SubprocessError) as error:
             raise TransportFailure('生成機への転送に失敗しました') from error
 
@@ -385,13 +403,13 @@ class Chain:
         self.concurrency = self.cpu_count()
         self.ssh(f'touch {REMOTE}/started', 60)
 
-    def send_bundle(self, generation: int) -> str:
-        destination = f'{REMOTE}/bundles/gen-{generation - 1}.bundle'
+    def send_bundle(self) -> str:
+        destination = f'{REMOTE}/bundles/{self.args.commit}.bundle'
         if not self.remote_exists(destination):
             self.ssh(f'mkdir -p {REMOTE}/bundles', 60)
             with tempfile.TemporaryDirectory() as temporary:
                 path = Path(temporary) / 'source.bundle'
-                self.git('bundle', 'create', str(path), self.reference(generation - 1))
+                self.git('bundle', 'create', str(path), self.args.ref)
                 self.upload(path, destination + '.tmp')
             self.ssh(f'mv {destination}.tmp {destination}', 60)
         return destination
@@ -401,8 +419,15 @@ class Chain:
             raise ChainStop(f'第{generation}世代の本の番号がbooks-per-generation以上です')
         if self.concurrency is None:
             raise ChainStop('生成機の同時対局数がありません')
+        record = self.previous_network(generation)
+        network = f'{REMOTE}/networks/{record["network_sha256"]}.bin'
+        if not self.remote_exists(network):
+            self.ssh(f'mkdir -p {REMOTE}/networks', 60)
+            self.upload(Path(record['network_path']), network + '.tmp')
+            self.ssh(f'mv {network}.tmp {network}', 60)
         job = {'generation': generation, 'commit': commit, 'bundle': bundle,
-               'reference': self.reference(generation - 1),
+               'reference': self.args.ref, 'network': network,
+               'network_sha256': record['network_sha256'],
                'generation_seed': self.seed(generation, 0), 'book_step': self.args.seed_book_step,
                'target_books': self.args.books_per_generation,
                'skip_books': sorted(books), 'concurrency': self.concurrency}
@@ -495,7 +520,7 @@ class Chain:
         while True:
             try:
                 if bundle is None:
-                    bundle = self.send_bundle(generation)
+                    bundle = self.send_bundle()
                 if sent != tuple(sorted(books.items())):
                     self.send_job(generation, commit, bundle, books)
                     sent = tuple(sorted(books.items()))
@@ -527,8 +552,8 @@ class Chain:
         """リプレイバッファに含める直前の世代の本を検査し、世代順と番号順で学習入力を返す。"""
         previous = []
         if self.args.replay_buffer_generations == 2 and generation >= 2:
-            commit = self.previous_commit(generation - 1)
-            if not self.books(generation - 1, commit, self.checksum(commit)):
+            record = self.previous_network(generation - 1)
+            if not self.books(generation - 1, self.args.commit, record['network_sha256']):
                 raise ChainStop(f'第{generation - 1}世代の教師がありません')
             previous = self.book_paths(generation - 1)
         return previous + self.book_paths(generation)
@@ -538,16 +563,13 @@ class Chain:
         return self.root / f'gen-{generation}' / stage / 'nnue.bin'
 
     def training_base(self, generation: int) -> Path:
-        """次の学習が、前の世代で実際にコミットしたネットを引き継ぐことを確かめる。"""
-        base = self.root / 'base.bin' if generation == 1 else self.network_path(generation - 1)
+        """前の世代の記録と一致するネットを、次の学習の初期値として返す。"""
+        base = (self.root / 'base.bin' if generation == 1 else
+                Path(self.previous_network(generation)['network_path']))
         if not base.is_file():
             raise ChainStop(f'学習の初期値がありません: {base}')
-        if generation >= 2:
-            commit = self.previous_commit(generation)
-            data = self.children.run(['git', '-C', str(self.args.worktree), 'show', f'{commit}:{NETWORK}'],
-                                     stdout=subprocess.PIPE).stdout
-            if base.read_bytes() != data:
-                raise ChainStop(f'学習の初期値が第{generation - 1}世代のコミットのネットと一致しません: {base}')
+        if generation >= 2 and common.file_sha256(base) != self.previous_network(generation)['network_sha256']:
+            raise ChainStop(f'学習の初期値が第{generation - 1}世代の記録と一致しません: {base}')
         return base
 
     def training_commands(self, trainer: Path, training_books: list[Path], current_books: list[Path], base: Path,
@@ -635,7 +657,7 @@ class Chain:
                 raise ChainStop(f'第{generation}世代の学習待ちが上限時間に達しました。ログ: {logs}。{resume}')
             try:
                 if not prepared:
-                    bundle = self.send_bundle(generation)
+                    bundle = self.send_bundle()
                     self.send_job(generation, commit, bundle, books)
                     self.upload(Path(__file__).with_name('generation_worker.py'), REMOTE + '/generation_worker.py.tmp')
                     self.ssh(f'mv {REMOTE}/generation_worker.py.tmp {REMOTE}/generation_worker.py', 60)
@@ -709,14 +731,14 @@ class Chain:
             if (train / 'latest.npz').is_file():
                 command.extend(['--resume', str(train)])
             with (directory / 'train.log').open('a') as log:
-                self.children.run(command, cwd=args.worktree, stdout=log, stderr=subprocess.STDOUT,
+                self.children.run(command, cwd=args.repo, stdout=log, stderr=subprocess.STDOUT,
                                   preexec_fn=low_priority)
         result = json.loads(summary.read_text())
         if result['status'] != 'candidate':
             raise ChainStop(f'第{generation}世代の学習結果がcandidateではありません: {result["status"]}')
         removal = directory / 'removal.json'
         if not removal.is_file():
-            self.children.run(commands['removal'], cwd=args.worktree, preexec_fn=low_priority)
+            self.children.run(commands['removal'], cwd=args.repo, preexec_fn=low_priority)
         return result
 
     def fit(self, generation: int) -> dict[str, Any]:
@@ -728,11 +750,11 @@ class Chain:
             # fit-linearは空でない出力先を拒否し、完了時にsummary.jsonを書くため、未完了の出力を消す。
             if fit.exists():
                 shutil.rmtree(fit)
-            base = self.root / 'base.bin' if generation == 1 else self.network_path(generation - 1)
+            base = self.training_base(generation)
             books = self.book_paths(generation)
             command = self.training_commands(args.trainer_bin, books, books, base, directory)['fit']
             with (directory / 'fit.log').open('a') as log:
-                self.children.run(command, cwd=args.worktree, stdout=log, stderr=subprocess.STDOUT,
+                self.children.run(command, cwd=args.repo, stdout=log, stderr=subprocess.STDOUT,
                                   preexec_fn=low_priority)
         result = json.loads(summary.read_text())
         try:
@@ -744,35 +766,22 @@ class Chain:
                             '継続には利用者の判断が必要です')
         return result
 
-    def commit_generation(self, generation: int, summary: dict[str, Any], books: dict[int, int], d: float | None) -> None:
-        network = self.network_path(generation)
-        data = self.children.run(['git', '-C', str(self.args.worktree), 'show', f'HEAD:{NETWORK}'],
-                                 stdout=subprocess.PIPE).stdout
-        if data != network.read_bytes():
-            shutil.copyfile(network, self.args.worktree / NETWORK)
-            try:
-                self.children.run(['cargo', 'build', '--release', '--locked', '--bin', 'minase'], cwd=self.args.worktree,
-                                  preexec_fn=low_priority)
-                result = self.children.run(
-                    [str(self.args.worktree / 'target/release/minase'), '--protocol', 'usi'],
-                    input=f'bench depth {self.args.bench_depth}\nquit\n', text=True,
-                    stdout=subprocess.PIPE, cwd=self.args.worktree)
-                lines = result.stdout.splitlines()
-                if 'info string end' not in lines:
-                    raise ChainStop('benchの出力に終端の行がありません')
-                for line in lines:
-                    print(line.removeprefix('info string '))
-            except BaseException:
-                self.git('checkout', 'HEAD', '--', NETWORK)
-                raise
-            self.git('add', '--', NETWORK)
-            body = f'教師{len(books)}本、{sum(books.values())}局面、{summary["completed_superbatches"]} superbatch（{summary["completed_steps"]}回の更新）'
-            if self.args.fit == 'yes':
-                body += f'、D={d:.6f}'
-            self.git('commit', '-m', f'feat(eval): embed the NNUE of generation {generation}',
-                     '-m', body + '。',
-                     '-m', 'Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>', '--', NETWORK)
-        self.git('update-ref', self.reference(generation), 'HEAD')
+    def complete_generation(self, generation: int) -> None:
+        source = self.network_path(generation)
+        checksum = common.file_sha256(source)
+        network = self.store_network(source, checksum)
+        result = self.children.run(
+            [str(self.args.minase_bin), '--protocol', 'usi'],
+            input=('setoption name RuleSet value lishogi\n'
+                   f'setoption name EvalFile value {network}\nisready\n'
+                   f'bench depth {self.args.bench_depth}\nquit\n'),
+            text=True, stdout=subprocess.PIPE, cwd=self.args.repo)
+        lines = result.stdout.splitlines()
+        for line in lines:
+            print(line.removeprefix('info string '))
+        if 'info string end' not in lines:
+            raise ChainStop('benchの出力に終端の行がありません')
+        self.record_generation(generation, network, checksum)
 
     def destroy(self) -> bool:
         if self.instance_id is None:
@@ -813,8 +822,8 @@ class Chain:
         if self.current is None or self.address is None:
             return
         try:
-            commit = self.previous_commit(self.current)
-            checksum = self.checksum(commit)
+            commit = self.args.commit
+            checksum = self.previous_network(self.current)['network_sha256']
             books = self.books(self.current, commit, checksum)
             # 学習開始後に教師を増やすと、再開時の入力が変わる。
             if len(books) >= self.args.books_per_generation:
@@ -832,21 +841,23 @@ class Chain:
         path = self.root / 'instance-id'
         if path.is_file():
             self.instance_id = int(path.read_text())
-        gen0 = self.git('rev-parse', '--verify', '--end-of-options', self.args.gen0_commit + '^{commit}')
-        self.git('update-ref', self.reference(0), gen0)
+        commit = self.git('rev-parse', '--verify', '--end-of-options', self.args.ref + '^{commit}')
+        if commit != self.args.commit:
+            raise ChainStop('--refが--commitを指していません')
+        self.initialize_generation_zero()
         for generation in range(self.args.first_generation):
-            if self.commit_for(generation) is None:
-                raise ChainStop(f'開始世代より前の第{generation}世代のコミット参照がありません')
+            if self.generation_record(generation) is None:
+                raise ChainStop(f'開始世代より前の第{generation}世代の記録がありません')
         pending = [generation for generation in range(self.args.first_generation, self.args.last_generation + 1)
-                   if self.commit_for(generation) is None]
+                   if self.generation_record(generation) is None]
         if pending:
             needs_generation = any(len(self.book_paths(generation)) < self.args.books_per_generation
                                    for generation in pending)
             self.prepare_machine(pending, needs_generation)
         for generation in pending:
             self.current = generation
-            commit = self.previous_commit(generation)
-            checksum = self.checksum(commit)
+            commit = self.args.commit
+            checksum = self.previous_network(generation)['network_sha256']
             books = self.books(generation, commit, checksum)
             self.generate(generation, commit, checksum, books)
             self.calibrate(generation)
@@ -858,9 +869,10 @@ class Chain:
                 if not self.stop_machine():
                     raise ChainStop(f'生成機 {self.instance_id} の停止も削除も確認できません。'
                                     '管理画面で停止と課金状態を確認してください')
-            summary = self.train(generation)
-            d = self.fit(generation)['decision']['d'] if self.args.fit == 'yes' else None
-            self.commit_generation(generation, summary, books, d)
+            self.train(generation)
+            if self.args.fit == 'yes':
+                self.fit(generation)
+            self.complete_generation(generation)
         self.manage_remote = False
         if not self.destroy():
             raise ChainStop(f'世代の作成は終了しましたが、生成機 {self.instance_id} の削除が未確認です。'
@@ -916,11 +928,11 @@ def arguments(argv: list[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     sub = parser.add_subparsers(dest='command', required=True)
     run = sub.add_parser('run', help='世代の生成と学習を開始または再開する', argument_default=argparse.SUPPRESS)
-    for name in ('run-dir', 'worktree'):
+    for name in ('run-dir', 'repo', 'gen0-network', 'network-store'):
         run.add_argument('--' + name, required=True, type=absolute_path, help='配置先の絶対パス')
     for name in ('minase-bin', 'trainer-bin'):
         run.add_argument('--' + name, required=True, type=lambda value: Path(value).resolve(), help='固定した実行ファイルのパス')
-    for name in ('gen0-commit', 'ref-prefix', 'feature-set', 'head', 'device', 'image', 'cpu-pattern'):
+    for name in ('ref', 'commit', 'feature-set', 'head', 'device', 'image', 'cpu-pattern'):
         run.add_argument('--' + name, required=True, help='実行条件を明示する')
     for name in ('first-generation', 'last-generation', 'books-per-generation', 'games', 'nodes',
                  'max-ply', 'hash-mb', 'chunk-games', 'calibration-books', 'width', 'batch',
@@ -949,13 +961,8 @@ def arguments(argv: list[str]) -> argparse.Namespace:
     run.add_argument('--train-place', required=True, choices=('generator', 'local'),
                      help='学習・診断・補正をgeneratorでは生成機、localでは作業機で行う。障害後の作業機での再開はlocalを指定する')
     args = parser.parse_args(argv)
-    prefix = args.ref_prefix
-    if (not prefix.startswith('refs/') or prefix.endswith('/')
-            or any(not part or part.startswith('.') or part.endswith('.lock') for part in prefix.split('/'))
-            or '..' in prefix or '@{' in prefix
-            or any(character.isspace() for character in prefix)
-            or re.search(r'[\x00-\x20\x7f~^:?*\[\\]', prefix)):
-        parser.error('ref-prefixはrefs/で始まり、末尾に/のない有効なGit参照の接頭辞にしてください')
+    if re.fullmatch(r'[0-9a-fA-F]{40}', args.commit) is None:
+        parser.error('commitは40桁の16進数にしてください')
     for name in ('fit_tau', 'fit_seed', 'fit_threads'):
         if args.fit == 'yes' and not hasattr(args, name):
             parser.error('--fit yesには--' + name.replace('_', '-') + 'が必要です')

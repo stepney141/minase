@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """同じ局面で2つのエンジンの完了深さと途中結果を比べる診断。
 
-使い方: paired_depth_probe.py <実行ディレクトリ> <基準のエンジン> <候補のエンジン> <go引数> [局面数]
+使い方: paired_depth_probe.py <実行ディレクトリ> <基準のエンジン> <候補のエンジン> <ネット> <go引数> [局面数]
 実行ディレクトリの対局記録から手数0〜200の局面を一様に選び、各エンジンへ
 `position startpos moves ...`と指定の`go`引数（例: "btime 40000 wtime 40000 byoyomi 300"）
 を与え、最後の`info depth`の深さ、`info string partial`の有無、および
@@ -33,13 +33,14 @@ def positions(run_dir, count, seed=1):
 
 
 class Engine:
-    def __init__(self, path):
+    def __init__(self, path, eval_file):
         self.proc = subprocess.Popen(
             [path, "--protocol", "usi"],
             stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True, bufsize=1,
         )
         self.send("usi"); self.wait("usiok")
         self.send("setoption name RuleSet value JCSA")
+        self.send(f"setoption name EvalFile value {pathlib.Path(eval_file).resolve()}")
         self.send("isready"); self.wait("readyok")
 
     def send(self, line):
@@ -70,9 +71,9 @@ class Engine:
         return depth, partial, partial and best != last_pv_head
 
 
-def main(run_dir, baseline, candidate, go, count=200):
+def main(run_dir, baseline, candidate, eval_file, go, count=200):
     picked = positions(run_dir, int(count))
-    engines = {"baseline": Engine(baseline), "candidate": Engine(candidate)}
+    engines = {"baseline": Engine(baseline, eval_file), "candidate": Engine(candidate, eval_file)}
     rows = []
     for moves in picked:
         row = {}

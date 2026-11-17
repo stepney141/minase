@@ -2,16 +2,16 @@
 
 ## ステータス
 
-承認済み。決定日は2026年10月12日。
+置き換え済み。決定日は2026年10月12日。[探索が使う評価関数を、USIのオプションEvalFileで指定した外部のファイルのNNUEの1つにし、PSTとFMのコードは比較用に残す](../use-an-nnue-read-from-evalfile-as-the-only-search-evaluation.md)によって置き換えられた。
 
 ## コンテキスト
 
 2026年10月12日まで、探索が使う既定の評価関数はPST＋FMであり、表せるのは駒ごとの独立な点数と2駒の関係までだった。
-既定の評価関数が置き換わってきた経緯は、[評価関数の設計書](../plans/archived/evaluation.md)から続く凍結した設計書にある。
+既定の評価関数が置き換わってきた経緯は、[評価関数の設計書](../../plans/archived/evaluation.md)から続く凍結した設計書にある。
 FMの補正は、入力の線形和を二乗する活性化を持つ隠れ層と線形の項の組合せとして書けるので、浅いNNUEがPST＋FMに勝てないという証拠はなかった。
-[NNUEによるPST＋FMの完全代替](../plans/archived/nnue-replacement.md)は、現行のPSTを線形の経路として内包する幅128のNNUEを学習した。
-このNNUEは、基準のPST＋FM（コミット`8d0e382`）に対する段階ゲートで、[STC](../measurements/nnue-replacement/nnue-replacement-stc.md)が104有効ペアのペンタノミアル度数[0, 0, 24, 0, 80]で`H1`となった。
-[LTC](../measurements/nnue-replacement/nnue-replacement-ltc.md)も104有効ペアの[0, 0, 17, 0, 87]で`H1`となり、異常は0件だった。
+[NNUEによるPST＋FMの完全代替](../../plans/archived/nnue-replacement.md)は、現行のPSTを線形の経路として内包する幅128のNNUEを学習した。
+このNNUEは、基準のPST＋FM（コミット`8d0e382`）に対する段階ゲートで、[STC](../../measurements/nnue-replacement/nnue-replacement-stc.md)が104有効ペアのペンタノミアル度数[0, 0, 24, 0, 80]で`H1`となった。
+[LTC](../../measurements/nnue-replacement/nnue-replacement-ltc.md)も104有効ペアの[0, 0, 17, 0, 87]で`H1`となり、異常は0件だった。
 PSTとFMのコードは、最初の手書きの駒得評価v0と同じく、学習した評価関数を比べる基準としての役割を持っていた。
 
 ## 決定
@@ -24,8 +24,8 @@ PST単独、PST＋FM、および駒得評価v0のコードは、`eval/pst/`と`h
 
 PSTとFMのコードを削除する案は、学習した評価関数の比較の基準を失うので採らなかった。
 現行のPST＋FMをNNUEへ蒸留する案は採らなかった。
-線形の経路をPSTで初期化し、PST＋FMのエンジンが生成した教師で学べば現行の知識は取り込める一方、蒸留はネットを現行の評価へ縛るからである（[アーキテクチャの考察](../proposals/archived/nnue-architecture-discussion.md)）。
-v0、PST、NNUEを実行時に切り替える案は、[評価関数の設計書](../plans/archived/evaluation.md)が採らなかった方式であり、本決定でも採らなかった。
+線形の経路をPSTで初期化し、PST＋FMのエンジンが生成した教師で学べば現行の知識は取り込める一方、蒸留はネットを現行の評価へ縛るからである（[アーキテクチャの考察](../../proposals/archived/nnue-architecture-discussion.md)）。
+v0、PST、NNUEを実行時に切り替える案は、[評価関数の設計書](../../plans/archived/evaluation.md)が採らなかった方式であり、本決定でも採らなかった。
 どのコミットでも探索が使う評価関数を1つに保ち、評価関数の比較はコミット対コミットの対局で行うからである。
 
 ## 結果
@@ -34,5 +34,5 @@ NNUEの型は、駒価値、歩兵価値、最大成り益、学習時の勝率�
 探索はこのうち駒価値、歩兵価値、および最大成り益を使い、勝率尺度Kはエンジンの実行時には使われず学習器だけが読む。
 重みファイルを更新するたびに、gitの履歴がそのファイルの大きさだけ増える。
 幅128の重みファイルは、入力特徴集合によって約3.6 MBから約28 MBになる。
-入力特徴集合の選択は、[NNUEの入力特徴集合に王の位置で条件付けないP型を使う](use-p-type-input-features-for-the-nnue.md)が扱う。
+入力特徴集合の選択は、[NNUEの入力特徴集合に王の位置で条件付けないP型を使う](../use-p-type-input-features-for-the-nnue.md)が扱う。
 比較用のコードを残すことは、未使用のコードを温存しないというプロジェクトの方針の例外であり、エンジンの開発者が2026年10月9日に決めた。

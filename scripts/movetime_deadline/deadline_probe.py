@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """同じエンジンと局面で2つのgo引数の完了深さと途中結果を比べる。
 
+使い方: deadline_probe.py <実行ディレクトリ> <エンジン> <ネット> <go A> <go B> [局面数] [出力先]
 局面数は既定200、抽出のシードは1とする。
-第6引数に出力先を指定すると、1始まりの局面番号、手数、および
+第7引数に出力先を指定すると、1始まりの局面番号、手数、および
 A・Bのdepth、partial、changedを局面ごとにJSON Linesで書く。
 """
 
@@ -28,11 +29,12 @@ def close_engine(engine):
 def main():
     parser = argparse.ArgumentParser(
         description=__doc__,
-        usage=("%(prog)s <実行ディレクトリ> <エンジンのパス> <go引数A> "
+        usage=("%(prog)s <実行ディレクトリ> <エンジンのパス> <ネット> <go引数A> "
                "<go引数B> [局面数 [JSON Lines出力先]]"),
     )
     parser.add_argument("run_dir")
     parser.add_argument("engine_path")
+    parser.add_argument("eval_file")
     parser.add_argument("go_a")
     parser.add_argument("go_b")
     parser.add_argument("count", nargs="?", type=int, default=200)
@@ -49,7 +51,7 @@ def main():
             output = stack.enter_context(open(args.jsonl, "w", encoding="utf-8"))
         engines = {}
         for name in ("A", "B"):
-            engine = paired_depth_probe.Engine(args.engine_path)
+            engine = paired_depth_probe.Engine(args.engine_path, args.eval_file)
             stack.callback(close_engine, engine)
             engines[name] = engine
 

@@ -55,6 +55,21 @@ git tag -f -a v2.1.0 -m "minase v2.1.0"
 git push origin master minase-core-v0.2.0 v2.1.0
 ```
 
+エンジンのリリースでは、タグをpushした後に、そのタグのGitHubのリリースを作り、採用したNNUEのネットのファイルを添付する。
+エンジンはネットを実行ファイルに埋め込まず、オプション`EvalFile`で指定したファイルから読むので、利用者はこの添付ファイルを取得して指定する（[外部ファイル化のADR](../adr/use-an-nnue-read-from-evalfile-as-the-only-search-evaluation.md)）。
+採用したネットは、その版の棋力を測ったときに渡したネットであり、NAS（`/mnt/synology_nas/minase/nnue/nets/`）に`<ファイル全体のSHA-256の16進数>.bin`の名前で置いてある。
+リリースノートには、git-cliffが変更履歴に書いた今回の節と、添付したネットのSHA-256を書く。
+GitHubのリリースには、1ファイルあたり2 GiB未満のファイルを添付できる。
+
+```console
+sha256sum /mnt/synology_nas/minase/nnue/nets/<SHA-256>.bin
+gh release create v2.1.0 --title "minase v2.1.0" --notes-file <リリースノートのファイル> \
+  /mnt/synology_nas/minase/nnue/nets/<SHA-256>.bin
+```
+
+crates.ioへ公開するパッケージには、テストの固定ネットだけが入り、本番のネットは入らない。
+公開の前に`cargo package -p minase --list`で、`nets/`の下にテストの固定ネットだけがあることを確かめる。
+
 最後に、crates.io へ公開する。公開は取り消せないので、タグとpushを確認してから手で実行する。エンジンの依存はcrates.io上のライブラリの版数で解決されるので、ライブラリを先に公開する。
 
 ```console

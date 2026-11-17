@@ -78,9 +78,9 @@ pub(super) fn process_job(
     job: &Job,
     common: &Common,
     openings: bool,
+    nnue: &minase::eval::Nnue,
     table: &mut TranspositionTable,
 ) -> io::Result<Processed> {
-    let nnue = minase::eval::weights().map_err(data_error)?;
     let limits = SearchLimits::new(None, Some(u64::from(common.nodes.get())), None, None)
         .map_err(data_error)?;
     let mut records = Vec::new();
@@ -102,7 +102,7 @@ pub(super) fn process_job(
         table.clear();
         histories.clear();
         let result = search(
-            &nnue,
+            nnue,
             &snapshot,
             &limits,
             DEFAULT_THREADS,

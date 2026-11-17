@@ -83,7 +83,7 @@ fn mcts_initialization_error_reaches_process_exit_without_readyok() {
         .write_all(b"not an ONNX model")
         .unwrap();
     let output = session(&format!(
-        "setoption name RuleSet value JCSA\nsetoption name NnModel value {}\nsetoption name NnCacheDir value <empty>\nisready\nusi\n",
+        "setoption name RuleSet value JCSA\nsetoption name NnModel value {}\nsetoption name NnCacheDir value <empty>\nsetoption name NnCpPerLogit value 600\nisready\nusi\n",
         path.0.display()
     ));
     assert_eq!(output.status.code(), Some(1));

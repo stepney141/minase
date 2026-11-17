@@ -6,7 +6,7 @@
 
 ## コンテキスト
 
-別プロセスのエンジン同士の対局では、不正着手、クラッシュ、応答の停止、および時間切れが起こり得る（[コミット対コミットの測定](compare-commits-as-separate-engine-processes.md)）。
+別プロセスのエンジン同士の対局では、不正着手、クラッシュ、応答の停止、および時間切れが起こり得る（[コミット対コミットの測定](archive/compare-commits-as-separate-engine-processes.md)）。
 CECPのエンジンは、審判層が合法とした相手の着手を`Illegal move`で拒否することもある。
 fastchessとfishtestは、こうした異常を起こしたエンジンの負けとして数える（[対局ハーネスのバイナリ対戦化](../plans/archived/match-harness.md#fishtestとの構造対応)）。
 一方、1局の手数には上限があり、上限に達した局は規則上の決着を持たない。

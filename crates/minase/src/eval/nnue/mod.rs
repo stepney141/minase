@@ -14,7 +14,9 @@
 
 pub(crate) mod accumulator;
 pub mod feature_set;
+mod file;
 mod format;
+pub use file::{NetworkFile, NetworkFileError, read_network_file};
 pub mod head;
 mod stats;
 #[cfg(test)]
@@ -27,7 +29,6 @@ use head::{Head, PairwiseL16L32};
 use minase_core::{Color, Move, PieceCode, PieceKind, Position};
 pub use stats::AccumulatorStats;
 use std::marker::PhantomData;
-use std::sync::{Arc, OnceLock};
 
 /// 静的評価の絶対値の上限。単位はセンチポーンである。
 /// [`crate::search::MATE_THRESHOLD`]未満に保ち、詰み帯と区別するとともに置換表の`i16`へ収まる範囲に制限する。
@@ -171,20 +172,6 @@ pub fn evaluate_for_diagnostics<F: FeatureSet, H: Head>(
     perspective: Color,
 ) -> i32 {
     nnue.evaluate_accumulator(&nnue.refresh_accumulator(position), perspective)
-}
-
-static EMBEDDED: &[u8] = include_bytes!("../../../nets/nnue.bin");
-static WEIGHTS: OnceLock<Result<Arc<Nnue>, Error>> = OnceLock::new();
-
-/// 埋め込んだ`nets/nnue.bin`を初回呼び出しで1回だけ[`Nnue::decode`]で検証する。
-/// 以後は同じ結果を返し、成功時は同じネットを共有する`Arc`、失敗時は同じ`Error`の複製を返す。
-/// 呼び手は起動時の失敗を検出して停止する。
-/// 埋め込む理由は`docs/adr/use-nnue-as-the-only-search-evaluation.md`にある。
-pub fn weights() -> Result<Arc<Nnue>, Error> {
-    match WEIGHTS.get_or_init(|| Nnue::decode(EMBEDDED).map(Arc::new)) {
-        Ok(nnue) => Ok(Arc::clone(nnue)),
-        Err(error) => Err(error.clone()),
-    }
 }
 
 /// USIの評価の内訳表示に使う、線形の特徴別寄与と非線形の出力。

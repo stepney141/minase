@@ -7,7 +7,7 @@
 ## コンテキスト
 
 αβ探索では、探索の結果を変えないはずの変更を、USIの独自コマンド`bench`の局面ごとのノード数が2つのコミットで一致することで確かめる。
-PV-MCTSには同じ役割の道具がなく、`--search mcts`で起動したminaseの`bench`も、診断をUSIの独自コマンドにした時点（[診断のコマンドのADR](run-engine-diagnostics-as-usi-commands-and-keep-experiment-tools-as-subcommands.md)）から変わらずαβ探索を測っていた。
+PV-MCTSには同じ役割の道具がなく、`--search mcts`で起動したminaseの`bench`も、診断をUSIの独自コマンドにした時点（[診断のコマンドのADR](archive/run-engine-diagnostics-as-usi-commands-and-keep-experiment-tools-as-subcommands.md)）から変わらずαβ探索を測っていた。
 手を選ぶ式PUCTの係数の調整（[mcts-puct-spsa.md](../plans/mcts-puct-spsa.md)）と、上位N手の読み筋を出すMultiPV（[multipv.md](../plans/archived/multipv.md)）のように、PV-MCTSのコードに触れる計画が控えている。
 
 同じコマンドの名前で、起動した探索を測る形は、先行エンジンに共通する。

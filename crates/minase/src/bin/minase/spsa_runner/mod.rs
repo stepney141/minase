@@ -41,7 +41,6 @@ fn execute(arguments: Arguments) -> Result<(), Box<dyn std::error::Error>> {
         }
         return Ok(());
     }
-    minase::eval::weights()?;
     let (store, saved, player) = match (&arguments.run_dir, &arguments.resume) {
         (Some(path), None) => {
             let (manifest, player) = new_session(&arguments)?;
@@ -49,7 +48,21 @@ fn execute(arguments: Arguments) -> Result<(), Box<dyn std::error::Error>> {
         }
         (None, Some(path)) => {
             let (store, saved) = Store::resume(path)?;
-            let player = restore_engine(&store.manifest)?;
+            let mut player = restore_engine(&store.manifest)?;
+            player.options = store.manifest.options.clone();
+            let defaults = probe_engine_defaults(
+                &player,
+                false,
+                Duration::from_secs(store.manifest.response_timeout_secs),
+            )?;
+            if defaults.network_sha256 != store.manifest.network_sha256 {
+                return Err(NetworkError::Mismatch {
+                    recorded: store.manifest.network_sha256.clone(),
+                    received: defaults.network_sha256,
+                }
+                .into());
+            }
+            player.network_sha256 = store.manifest.network_sha256.clone();
             (store, saved, player)
         }
         _ => unreachable!("clap requires exactly one operation"),
@@ -69,12 +82,15 @@ fn execute(arguments: Arguments) -> Result<(), Box<dyn std::error::Error>> {
         |values, stop| {
             let configure = |integers: &[i32]| {
                 let mut configured = player.clone();
-                configured.options = settings
-                    .parameters
-                    .iter()
-                    .zip(integers)
-                    .map(|(p, value)| (format!("Tune_{}", p.name), value.to_string()))
-                    .collect();
+                configured.options = manifest.options.clone();
+                configured.options.extend(
+                    settings
+                        .parameters
+                        .iter()
+                        .zip(integers)
+                        .map(|(p, value)| (format!("Tune_{}", p.name), value.to_string())),
+                );
+                configured.network_sha256 = manifest.network_sha256.clone();
                 configured
             };
             run_pair(
@@ -134,12 +150,14 @@ fn new_session(
     let codes = parse_rule_set(&rules_source)?;
     Rules::from_codes(&codes)?;
     let each = arguments.each.expect("required each");
-    let player = resolve_engine(
+    let mut player = resolve_engine(
         arguments.engine.clone().expect("required engine"),
         each,
         &rules_source,
     )?;
     let timeout = Duration::from_secs(arguments.response_timeout);
+    player.options = arguments.options.clone();
+    player.network_sha256 = probe_engine_defaults(&player, true, timeout)?.network_sha256;
     let parameters = parse_parameters(
         &fs::read_to_string(arguments.params.as_ref().expect("required params"))?,
         &declarations(&probe_usi_options(&player.path, &player.args, timeout)?)?,
@@ -157,6 +175,8 @@ fn new_session(
     };
     validate_settings(&settings)?;
     let manifest = Manifest {
+        options: player.options.clone(),
+        network_sha256: player.network_sha256.clone(),
         engine: player.identity.clone(),
         engine_sha256: sha256_file(&player.path)?,
         settings,
@@ -170,6 +190,11 @@ fn new_session(
 }
 
 pub(super) fn main(arguments: Arguments) {
+    if let Err(error) = arguments.validate_options() {
+        super::subcommand_command(&["spsa"])
+            .error(clap::error::ErrorKind::ValueValidation, error)
+            .exit();
+    }
     if let Err(error) = execute(arguments) {
         eprintln!("error: {error}");
         std::process::exit(1);

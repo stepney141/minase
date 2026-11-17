@@ -3,6 +3,8 @@
 
 使い方: python3 /workspace/job/generation_worker.py {run,cpu-info,stop} または train <世代>
 generation_chain.pyが本ファイルとworker.jsonを/workspace/job/へ配置する。
+job.jsonのnetworkとnetwork_sha256は必須であり、networkを生成器の--eval-fileへ渡す。
+ネットはコードのバンドルとは別にnetworks/へ転送され、チェックサムは回収時に照合される。
 job.jsonを作業の入力とし、teacher/に本、logs/に公開ログ、work/に再開用の出力と追記ログを置く。
 本ごとのwork/の内容は公開まで残し、同じ出力先と生成条件で中断後の処理を続ける。
 学習はtraining/gen-<世代>/job.jsonを読み、同じディレクトリに成果物とログを置く。
@@ -171,13 +173,14 @@ def generate_book(root: Path, job: dict[str, Any], number: int, prepared: str | 
     output = directory / 'teacher.mnsd'
     try:
         with log_path.open('a') as log:
-            if 'chunk_games' not in job:
-                raise ValueError('生成のジョブにchunk_gamesがありません')
+            for key in ('chunk_games', 'network', 'network_sha256'):
+                if key not in job:
+                    raise ValueError(f'生成のジョブに{key}がありません')
             repository = root / 'minase'
             if prepared != job['commit']:
                 repository = prepare_commit(root, job, log)
             command = [str(repository / 'target/release/minase'), 'data', 'selfplay', 'generate',
-                       '--output-dir', str(directory),
+                       '--eval-file', job['network'], '--output-dir', str(directory),
                        '--seed', str(job['generation_seed'] + job['book_step'] * number)]
             for key in ('games', 'nodes', 'random_moves', 'concurrency', 'max_ply', 'hash_mb', 'chunk_games'):
                 command.extend(['--' + key.replace('_', '-'), str(job[key])])
@@ -300,8 +303,9 @@ def run_worker(root: Path) -> int:
             path = root / 'job.json'
             if path.is_file():
                 job = json.loads(path.read_text())
-                if 'reference' not in job:
-                    raise ValueError('生成のジョブにreferenceがありません')
+                for key in ('reference', 'network', 'network_sha256'):
+                    if key not in job:
+                        raise ValueError(f'生成のジョブに{key}がありません')
                 number = next_book(job, root)
                 if number is not None:
                     prepared = generate_book(root, job, number, prepared)

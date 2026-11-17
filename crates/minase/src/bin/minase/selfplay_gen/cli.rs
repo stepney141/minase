@@ -28,6 +28,9 @@ pub(super) enum Operation {
 /// `generate`サブコマンドの引数。
 #[derive(clap::Args)]
 pub(super) struct GenerateArguments {
+    /// 評価に使うNNUEネットのファイル。
+    #[arg(long)]
+    pub(super) eval_file: PathBuf,
     /// 塊と組み直した教師を置く出力先ディレクトリ。
     #[arg(long, required = true)]
     pub(super) output_dir: PathBuf,
@@ -126,6 +129,8 @@ mod tests {
             let mut input = vec![
                 "selfplay_gen",
                 "generate",
+                "--eval-file",
+                "unused-network.bin",
                 "--output-dir",
                 "unused",
                 "--chunk-games",
@@ -153,6 +158,8 @@ mod tests {
         let base = [
             "selfplay_gen",
             "generate",
+            "--eval-file",
+            "unused-network.bin",
             "--output-dir",
             "unused",
             "--chunk-games",
@@ -169,6 +176,8 @@ mod tests {
             Arguments::try_parse_from([
                 "selfplay_gen",
                 "generate",
+                "--eval-file",
+                "unused-network.bin",
                 "--output",
                 "unused.mnsd",
                 "--chunk-games",
@@ -186,6 +195,8 @@ mod tests {
             Arguments::try_parse_from([
                 "selfplay_gen",
                 "generate",
+                "--eval-file",
+                "unused-network.bin",
                 "--output-dir",
                 "unused",
                 "--chunk-games",

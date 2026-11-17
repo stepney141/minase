@@ -114,6 +114,11 @@ fn usi_session_records_handshake_search_and_exact_stdout() {
     let commands = [
         "setoption name RuleSet value JCSA",
         "usi",
+        concat!(
+            "setoption name EvalFile value ",
+            env!("CARGO_MANIFEST_DIR"),
+            "/nets/nnue-epoch0.bin"
+        ),
         "isready",
         "position startpos",
         "go depth 1",
@@ -182,8 +187,12 @@ fn existing_log_is_preserved_and_startup_fails() {
 #[test]
 fn logging_preserves_stdout_byte_for_byte() {
     let log = TemporaryLog::new();
-    let input =
-        b"setoption name RuleSet value JCSA\nusi\nisready\nposition startpos\nmoves\nstate\nquit\n";
+    let input = concat!(
+        "setoption name RuleSet value JCSA\nsetoption name EvalFile value ",
+        env!("CARGO_MANIFEST_DIR"),
+        "/nets/nnue-epoch0.bin\nusi\nisready\nposition startpos\nmoves\nstate\nquit\n"
+    )
+    .as_bytes();
     let plain = run("usi", None, input);
     let logged = run("usi", Some(&log.0), input);
     assert_eq!(logged.stdout, plain.stdout);

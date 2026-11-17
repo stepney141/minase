@@ -1210,6 +1210,8 @@ fn movetime_search_respects_the_hard_limit_and_returns_a_legal_move() {
     let clock = Arc::new(ManualClock::new(Duration::from_millis(30)));
     let handle = start_search_with_clock(
         crate::search::alphabeta::Engine {
+            eval_file: String::new(),
+            network: None,
             transposition_table: Some(small_tt()),
             histories: crate::search::HistoryTables::new(DEFAULT_THREADS),
             threads: DEFAULT_THREADS,

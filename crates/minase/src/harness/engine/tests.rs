@@ -877,7 +877,7 @@ fn cecp_initialization_sends_ruleset_only_when_declared() {
             "nopost".to_owned(),
             "force".to_owned(),
             "sd 1".to_owned(),
-            "ping 19".to_owned(),
+            "ping 0".to_owned(),
         ];
         if supported {
             expected.insert(0, "option RuleSet=lIsHoGi".to_owned());
@@ -890,9 +890,10 @@ print(json.loads({features:?}), flush=True)
 for expected in json.loads({expected:?}):
     received = sys.stdin.readline().strip()
     assert received == expected, (expected, received)
-print('pong 19', flush=True)
+print('pong 0', flush=True)
 for line in sys.stdin:
-    pass
+    if line.strip() == 'ping 19':
+        print('pong 19', flush=True)
 "#,
             features = serde_json::to_string(features).unwrap(),
             expected = serde_json::to_string(&expected).unwrap()
@@ -906,5 +907,94 @@ for line in sys.stdin:
         process
             .receive_until(|line| line.trim() == "pong 19")
             .unwrap();
+    }
+}
+
+// 外部ネットの契約: featureの名前を照合し、固定オプションをnewより前に送り、初期化のpongを消費する。
+#[test]
+fn cecp_options_preflight_and_initialization_synchronize_before_returning() {
+    let mut config = fake(Vec::new(), "depth=1");
+    config.protocol = Protocol::Cecp;
+    config.options = vec![
+        ("EvalFile".to_owned(), "/net with spaces.bin".to_owned()),
+        ("Other Name".to_owned(), "value=2".to_owned()),
+    ];
+    config.args = vec!["-u".to_owned(), "-c".to_owned(), r#"
+import sys
+assert sys.stdin.readline().strip() == 'xboard'
+assert sys.stdin.readline().strip() == 'protover 2'
+print('feature option="EvalFile -file " option="Other Name -string " done=1', flush=True)
+for expected in ['option EvalFile=/net with spaces.bin', 'option Other Name=value=2', 'memory 256', 'new', 'variant chu', 'easy', 'nopost', 'force', 'sd 1', 'ping 0']:
+    assert sys.stdin.readline().strip() == expected
+print('initialization complete\npong 0', flush=True)
+for line in sys.stdin:
+    if line.strip() == 'ping 0':
+        print('second ping', flush=True)
+"#.to_owned()];
+    let defaults =
+        crate::harness::probe_engine_defaults(&config, true, Duration::from_secs(5)).unwrap();
+    assert_eq!(defaults.hash_mb, Some(256));
+    assert_eq!(defaults.network_sha256, None);
+    let mut process = EngineProcess::start(&config, 0, Duration::from_secs(5)).unwrap();
+    process.send("ping 0").unwrap();
+    // 初期化のpongが残っていれば、この先頭行の検査が失敗する。
+    assert_eq!(process.receive_until(|_| true).unwrap(), "second ping");
+}
+
+#[test]
+fn cecp_undeclared_options_abort_preflight_and_match_instead_of_forfeiting() {
+    let mut config = fake(Vec::new(), "depth=1");
+    config.protocol = Protocol::Cecp;
+    config.options = vec![("EvalFile".to_owned(), "network.bin".to_owned())];
+    config.args = vec![
+        "-u".to_owned(),
+        "-c".to_owned(),
+        r#"
+import sys
+for line in sys.stdin:
+    if line.strip() == 'protover 2':
+        print('feature done=1', flush=True)
+    elif line.startswith('option '):
+        raise AssertionError('undeclared option was sent')
+"#
+        .to_owned(),
+    ];
+    let error =
+        crate::harness::probe_engine_defaults(&config, true, Duration::from_secs(5)).unwrap_err();
+    assert_eq!(error.to_string(), "CECP option 'EvalFile' is not declared");
+    let error = crate::harness::run_pair(
+        minase_core::Rules::JCSA,
+        "JCSA",
+        1,
+        1,
+        10,
+        &config,
+        &config,
+        Duration::from_secs(5),
+        false,
+        &std::sync::atomic::AtomicBool::new(false),
+    )
+    .err()
+    .unwrap();
+    assert!(
+        error
+            .to_string()
+            .contains("CECP option 'EvalFile' is not declared")
+    );
+}
+
+#[test]
+fn cecp_preflight_rejects_eof_and_missing_initialization_pong() {
+    for script in [
+        "import sys\nfor line in sys.stdin:\n if line.strip() == 'protover 2': print('feature done=1', flush=True)\n if line.strip() == 'new': sys.exit(1)",
+        "import sys\nfor line in sys.stdin:\n if line.strip() == 'protover 2': print('feature done=1', flush=True)",
+    ] {
+        let mut config = fake(Vec::new(), "depth=1");
+        config.protocol = Protocol::Cecp;
+        config.args = vec!["-u".to_owned(), "-c".to_owned(), script.to_owned()];
+        assert!(
+            crate::harness::probe_engine_defaults(&config, true, Duration::from_millis(100))
+                .is_err()
+        );
     }
 }

@@ -240,15 +240,18 @@ mod tests {
             (None, Some(128), Some(256), Some(128)),
         ] {
             let player = |hash_mb| {
-                resolve_player(
-                    parse_player_spec("cecp:engine").unwrap(),
+                let mut player = resolve_player(
+                    parse_player_spec("cecp:python3").unwrap(),
                     parse_search_limit("depth=1").unwrap(),
                     hash_mb,
                     "JCSA",
                     Vec::new(),
                     None,
                 )
-                .unwrap()
+                .unwrap();
+                player.args = vec!["-u".to_owned(), "-c".to_owned(),
+                    "import sys\nfor line in sys.stdin:\n if line.strip() == 'protover 2': print('feature done=1', flush=True)\n if line.startswith('ping '): print('pong ' + line.split()[1], flush=True)".to_owned()];
+                player
             };
             let manifest = run_manifest(
                 &player(candidate_hash),
