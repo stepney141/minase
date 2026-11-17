@@ -145,7 +145,7 @@
 | NNUEの教師生成を中断の後に再開できるようにする | [plans/archived/resumable-nnue-teacher-generation.md](plans/archived/resumable-nnue-teacher-generation.md) | 完了（採用） | 2026年11月14日 |
 | 中断可能な計算機での教師生成 | [plans/archived/interruptible-teacher-generation.md](plans/archived/interruptible-teacher-generation.md) | 完了（採用） | 2026年11月14日 |
 | 複数の読み筋を同時に示すMultiPV | [plans/archived/multipv.md](plans/archived/multipv.md) | 完了（採用） | 2026年11月17日 |
-| NNUEのネットを埋め込まず、USIのオプションEvalFileで外部のファイルから読む | [plans/nnue-external-network-file.md](plans/nnue-external-network-file.md) | 起案 | |
+| NNUEのネットを埋め込まず、USIのオプションEvalFileで外部のファイルから読む | [plans/nnue-external-network-file.md](plans/nnue-external-network-file.md) | 進行中 | |
 | NNUEをtataraに倣った枠組みへ載せ替え、HalfKP_vm（256x2-32-32）を加える | [plans/nnue-tatara-framework-and-halfkp-vm.md](plans/nnue-tatara-framework-and-halfkp-vm.md) | 起案 | |
 | PV-MCTSのデバッグ道具（根の統計の表示、探索木の不変条件の検査、PV-MCTSのbench） | [plans/archived/mcts-debugging-tools.md](plans/archived/mcts-debugging-tools.md) | 完了（採用） | 2026年11月17日 |
 
@@ -170,7 +170,7 @@ HalfKP_vmの世代反復は、P型の世代反復で評価関数の癖をつか�
 
 | 設計書 | 内容 | 状態と次の判断 | 前提 |
 |---|---|---|---|
-| [ネットの外部ファイル化](plans/nnue-external-network-file.md) | ネットを実行ファイルに埋め込まず、USIのオプション`EvalFile`で外部のファイルから読む。埋め込みのままでは、HalfKP_vmのネット（約500 MB）をgitに置けず、大きなネットの世代反復を回せないからである。 | 起案の段階で、利用者の承認を待っている。 | なし |
+| [ネットの外部ファイル化](plans/nnue-external-network-file.md) | ネットを実行ファイルに埋め込まず、USIのオプション`EvalFile`で外部のファイルから読む。埋め込みのままでは、HalfKP_vmのネット（約500 MB）をgitに置けず、大きなネットの世代反復を回せないからである。 | 進行中である。2026年11月17日に着手し、フェーズ1のエンジンのプロトコルと対局の実行器の変更を進めている。 | なし |
 | [tatara化とHalfKP_vm](plans/nnue-tatara-framework-and-halfkp-vm.md) | NNUEを将棋の学習器tataraに倣った枠組みへ載せ替え、HalfKP_vm（256x2-32-32）をエンジン、学習器、および教師生成でいつでも使える状態にする。 | 起案の段階で、利用者の承認を待っている。 | 外部ファイル化の完了 |
 | [P型の世代反復](plans/nnue-generation-iteration.md) | 標準レシピv2で、第n世代に約n億局面の教師を使い、v0から最大第5世代までP型の世代反復を行う。教師の生成と学習に借りる計算機の費用は、約280米ドルと見込む。 | 起案の段階である。計算機を借りるので、前提の完了の後に利用者の着手の指示を待つ。 | 外部ファイル化とtatara化の完了 |
 | [先読みなしの教師での間引きの比較](plans/nnue-subsample-no-lookahead.md) | 同じ局面数を少数の対局から採る学習と多数の対局から採る学習を比べ、対局数が多いほど良いという効果が、後続の局面の探索値を混ぜない現行の教師でも残るかを確かめる。 | 起案の段階である。世代反復の結果を見て、続けるかを決める。 | なし |

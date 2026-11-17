@@ -16,8 +16,9 @@
 
 ## 状態
 
-状態は起案である。2026年11月15日に起案し、まだ着手していない。
-次の一手は、利用者の承認を得て、masterから切ったブランチでフェーズ1を始めることである。
+状態は進行中である。2026年11月15日に起案し、2026年11月17日に着手した。
+完了したフェーズはまだない。
+次の一手は、フェーズ1のエンジンのプロトコルと対局の実行器の変更である。
 
 ## 目的
 
@@ -75,7 +76,7 @@ NNUEの次の2つの設計書は、本書の完了を前提とする。
 - [PUCTの係数のSPSA](mcts-puct-spsa.md)は、本書と同じく`minase spsa`を変える。後からmasterへ入れる側が、先に入った変更に合わせる。本書の後は、PV-MCTSのネットと勝率尺度を`minase spsa`の`--option NnModel=<パス>`と`--option NnCpPerLogit=<値>`で渡す。
 - AlphaZero型探索の[2回目の実行](alphazero-rl-2.md)と[学習レシピを先行実装に揃える設計書](archived/zero-recipe-precedents.md)では、強さを測る相手のαβ探索がネットを埋め込んだコミット`45d5db54`に固定されているので、その対局は本書の影響を受けない。PV-MCTSのネットの検査（`tools/train/zero/minase_zero/runner.py`）は、本書を含む版のエンジンを使うときに限り`NnCpPerLogit`を送る。定例の測定に固定したコミットが本書より前なら、エンジンがこのオプションを宣言しないので送らない。マージの前に行うαβ探索の`bench`の一致の確認では、`RuleSet`、`EvalFile`、および`isready`の後に`bench`を送る。
 - [AlphaZero型探索の統括計画](alphazero.md)の到達の判定は、その時点のmasterのαβ探索を相手にするので、本書の後は、比べるNNUEのネットのファイルを決めて`EvalFile`で渡し、そのSHA-256を判定の記録に書く。
-- [PV-MCTSのデバッグ道具](archived/mcts-debugging-tools.md)は、PV-MCTSで起動したエンジンの`bench`を、ネットを使わない試験用の評価器による固定局面のPV-MCTSの探索にする。後からmasterへ入れる側が、先に入った変更に合わせる。同書が先に入れば、本書はPV-MCTSのエンジンの`bench`を拒否せずに残し、本書が先に入れば、同書が拒否をPV-MCTSの探索に置き換える。
+- [PV-MCTSのデバッグ道具](archived/mcts-debugging-tools.md)は本書より先にmasterへ入り、PV-MCTSで起動したエンジンの`bench`を、ネットを使わない試験用の評価器による固定局面のPV-MCTSの探索にした。本書はこの`bench`を変えない。
 - [合法手生成の高速化（第3期）](movegen-speedup-3.md)、[詰み探索](mate-search.md)、および[探索の強化の段階](strength-stages.md)のように、αβ探索の`bench`や対局で結果と速さを確かめる設計書では、本書の完了後は、`bench`の前にオプション`RuleSet`と`EvalFile`を設定して`isready`を送り、対局の実行器には`--candidate-option EvalFile=<パス>`と`--baseline-option EvalFile=<パス>`を渡す。
 
 開発用GUIは、いまも規則セットの指定の変更（[起動引数と診断ツールをUSIへ移す計画](archived/cli-to-usi.md)）に追従しておらず、本書の変更の後も`EvalFile`を送るまでエンジンを起動できない。
@@ -95,7 +96,7 @@ lishogi Botはcrates.ioのminase 2.6.0を固定しているので、本書の変
 | CECP | `feature option="EvalFile -file "`を宣言し、`option EvalFile=<パス>`で受け取る。`new`の処理と探索の開始の共通の入口で、未準備ならネットを読み、失敗ならエラーを出して終了コード1で止まる。対局の実行器は、CECPのエンジンにも`--candidate-option`と`--baseline-option`を`option <名前>=<値>`として`new`の前に送り、初期化の最後に`ping`を送って`pong`を待つ。 | CECPだけ起動引数`--eval-file`で受け取る案は、起動引数をプロトコルの開始前に要る情報に限るという[ADR](../adr/keep-protocol-search-method-and-io-log-as-startup-arguments.md)に反する。CECPには`isready`がないので、`new`だけで準備する案は、`setboard`から`go`へ進む経路で未準備のまま探索に入る。初期化で`pong`を待たない案は、ネットを読む時間が最初の着手の消費時間に入る。 |
 | PV-MCTSの勝率尺度 | PV-MCTSは、探索値（[MultiPV](archived/multipv.md)の2本目以降の読み筋の探索値を含む）をセンチポーンで出すときと、引き分けの値をセンチポーンから勝率へ換算するときに勝率尺度を使い、いまは埋め込みのNNUEのヘッダから読んでいる。これをUSIのオプション`NnCpPerLogit`（型string、既定値なし）で受け取り、正の有限の実数であることを`isready`で検査する。 | PV-MCTSにも`EvalFile`を要求する案は、1つの実数のために約500 MBのネットを読ませ、PV-MCTSの実行条件を2つのネットに依存させる。定数にする案は、学習で決まる値を手で固定する。 |
 | サブコマンドでのネットの指定 | ネットで評価するサブコマンド（`data selfplay generate`、`data lishogi games`、`data lishogi openings`）は、必須の引数`--eval-file <パス>`を取る。対局の実行器`match run`は、起動時に自分のプロセスに埋め込んだネットを検査する処理をやめる。`minase spsa`の調整の実行は、調整する係数のオプション`Tune_<名前>`と別に、繰り返し指定できる固定のUSIオプション`--option <名前>=<値>`を取る。ネットを使わないサブコマンド（`data selfplay inspect`、`match report`、`spsa params`、`spsa apply`など）はネットを要求しない。 | サブコマンドはプロトコルではないので、起動引数のADRの対象ではない。SPSAの固定のオプションを`--eval-file`に限る案は、PV-MCTSの係数を調整するときに`NnModel`と`NnCpPerLogit`も渡す必要があり、同じ仕組みを2度作ることになる。 |
-| `bench`と評価の内訳の表示 | どちらもUSIの独自の命令であり、`isready`で準備したネットを使う。`isready`の前に受けたらエラーを返す。`bench`はαβ探索だけの命令とし、PV-MCTSで起動したエンジンでは拒否する。 | `bench`だけ別にネットを指定する案は、同じセッションの中にネットの指定の経路を2つ作る。PV-MCTSのエンジンは本書の変更の後にNNUEを持たなくなるので、いまのようにPV-MCTSのエンジンでαβ探索の`bench`を実行することはできない。 |
+| `bench`と評価の内訳の表示 | どちらもUSIの独自の命令であり、αβ探索では`isready`で準備したネットを使う。`isready`の前に受けたらエラーを返す。PV-MCTSで起動したエンジンの`bench`は、ネットを使わない試験用の評価器で探索するので、ネットの準備を要求しない。 | `bench`だけ別にネットを指定する案は、同じセッションの中にネットの指定の経路を2つ作る。 |
 | 保管と配布 | ネットはgitに入れない。開発中のネットは、PV-MCTSのONNXのネットと同じNAS（ネットワークに接続した記憶装置）に、チェックサムの16進数をファイル名にして置く。リリースでは、採用したネットをGitHubのリリースに添付し、チェックサムをリリースノートに書く。いまの`nnue.bin`はgitの管理から外し、履歴は書き換えない。 | ネットのチェックサムを書いた小さなファイルをgitに置く案は、上の「測定でのネットの固定」の理由で採らない。GitHubのリリースの添付は1ファイル2 GiB未満を受け付ける。 |
 | テストの固定ネット | `nnue-epoch0.bin`などの小さな固定ネットは、テストの資材としてgitに残し、テストは`include_bytes!`（ビルドのときにファイルを埋め込むRustのマクロ）で読むか、一時ファイルに書いて`EvalFile`で渡す。 | テストで本番のネットを読む案は、学習で変わる値にテストを依存させる（[固定ネットの教訓](../lessons/search-tests-use-a-fixed-net.md)）。テスト用の埋め込みは本番の読み込みの代わりに使わないので、フォールバックには当たらない。 |
 | 教師ファイルの形式 | MNSD（minaseの教師ファイルの形式）の配置と版3は変えず、ヘッダの`network_checksum`に入れる値だけを、ネットのファイル全体のSHA-256にする。 | MNSDの版を上げる案は、欄の配置が変わらないのに既存の教師ファイルを読めなくする。既存の教師ファイルの値はMNUEの本体のチェックサムであり、同じネットでもファイル全体のSHA-256とは一致しないので、再開の照合で取り違えることはない。 |
@@ -201,7 +202,7 @@ PV-MCTSのネットの検査（`tools/train/zero/minase_zero/runner.py`）は、
 フェーズの境界ごとに`cargo fmt`、`cargo clippy`、`cargo test`、`--features search-stats,tuning`を付けた検査（[テストの手引き](../guides/testing-minase-rules.md)）、および変更したPythonのテストを通す。
 
 1. エンジンのプロトコルと、エンジンを子プロセスとして動かす道具を変える。エンジンが`EvalFile`を必須にした時点で、子プロセスへ`EvalFile`を送れない道具は新しいエンジンを動かせなくなるので、両方を同じフェーズで変える。`eval::weights()`と埋め込みは、教師生成と棋譜の取り込みのためにこのフェーズでは残す。
-   - エンジンには、αβ探索の`EvalFile`、`isready`での準備とチェックサムの報告、`bench`と評価の内訳の表示での準備の要求、PV-MCTSのエンジンでの`bench`の拒否、CECPの`option EvalFile`、およびPV-MCTSの`NnCpPerLogit`を入れ、起動時の検査を削除する。
+   - エンジンには、αβ探索の`EvalFile`、`isready`での準備とチェックサムの報告、αβ探索の`bench`と評価の内訳の表示での準備の要求、CECPの`option EvalFile`、およびPV-MCTSの`NnCpPerLogit`を入れ、起動時の検査を削除する。
    - 道具には、対局の実行器のCECPへの追加のオプションと`ping`による同期、および`minase spsa`の`--option`とチェックサムの記録と照合を入れ、`match run`と`minase spsa`の起動時のネットの検査を削除する。
    - 完了条件は、次の4点をテストで確かめることである。第1に、未設定、存在しないパス、および壊れたファイルのそれぞれで、USIとCECPが文書どおりのエラーで止まり、正しいネットでは準備に成功すること。第2に、CECPで`setboard`から`go`へ進む経路と、`EvalFile`を変えた後に相手の着手を受けて探索する経路が、どちらも準備を経ること。第3に、`EvalFile`を要求してチェックサムを報告する模擬のエンジンを使ったSPSAのテストで、固定のオプションが`Tune_*`と一緒に送られ、別のネットでの再開が拒否されること。第4に、CECPとUSIの対局の結合テストが通ること。
 2. 教師生成と棋譜の取り込みのサブコマンドに`--eval-file`を入れ、`eval::weights()`、`EMBEDDED`、および`nnue.bin`を削除する。`nnue.bin`は削除の前にNASへ写す。本番のネットを読んでいたテストは固定ネットへ移す。完了条件は、教師生成の再開が別のネットで拒否されることをテストで確かめることである。
