@@ -1,10 +1,4 @@
-use super::{Forward, check_batch, head, logit};
-use crate::nnue::{
-    data::BatchSlot,
-    model::{Error, Model, Result},
-};
-
-/// [`validation_forward`]で集める統計量。
+/// LayerStackのCPUとCUDAが集める検証統計。
 /// 非線形出力はセンチポーン単位である。
 #[derive(Clone, Debug, PartialEq)]
 pub struct Validation {
@@ -124,54 +118,4 @@ impl Validation {
             self.pairwise_positive as f64,
         ]
     }
-}
-
-/// 検証用の勝率の差の2乗、勝敗一致数、非線形出力と飽和数を集める。
-/// 符号0は勝ち予測に含めず、引き分けを一致率の分母から除く。
-pub fn validation_forward(
-    model: &Model,
-    batch: &BatchSlot,
-    f: &Forward,
-    targets: &[f32],
-) -> Result<Validation> {
-    check_batch(model, batch)?;
-    let n = batch.len();
-    let h = model.shape().width();
-    f.check_shape(n, h)?;
-    if targets.len() != n
-        || targets
-            .iter()
-            .any(|&v| !v.is_finite() || !(0.0..=1.0).contains(&v))
-    {
-        return Err(Error::Invalid("validation inputs"));
-    }
-    let mut sums = [0.0; 12];
-    for (b, &target) in targets.iter().enumerate() {
-        let x = logit(model, batch, f, b);
-        let difference = 1.0 / (1.0 + (-x).exp()) - target;
-        sums[0] += f64::from(difference * difference);
-        if batch.outcomes()[b] != 1 {
-            sums[1] += u8::from((x > 0.0) == (batch.outcomes()[b] == 2)) as f64;
-            sums[2] += 1.0;
-        }
-        let acc = &f.acc[b * 2 * h..(b + 1) * 2 * h];
-        let output = head(model, acc);
-        sums[7] += output.z.iter().filter(|&&x| x <= 0.0).count() as f64;
-        sums[8] += output.z.iter().filter(|&&x| x >= 1.0).count() as f64;
-        sums[9] += output.a.iter().filter(|&&x| x <= 0.0).count() as f64;
-        sums[10] += output.a.iter().filter(|&&x| x >= 1.0).count() as f64;
-        for view in 0..2 {
-            for i in 0..h / 2 {
-                let (left, right) = super::head::factors(i, h);
-                sums[11] +=
-                    u8::from(acc[view * h + left] > 0.0 && acc[view * h + right] > 0.0) as f64;
-            }
-        }
-        let cp = f64::from(output.value) * f64::from(model.shape().cp_per_logit());
-        sums[3] += cp;
-        sums[4] += cp * cp;
-    }
-    sums[5] = f.acc.iter().filter(|&&x| x <= 0.0).count() as f64;
-    sums[6] = f.acc.iter().filter(|&&x| x >= 1.0).count() as f64;
-    Ok(Validation::from_sums(&sums, n, h))
 }

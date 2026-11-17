@@ -4,8 +4,6 @@
 mod checkpoint;
 pub(crate) mod diagnostics;
 mod export;
-// 学習ループへの接続はフェーズ3cで行う。
-#[allow(dead_code)]
 pub(crate) mod gpu;
 mod model;
 mod optimizer;
@@ -102,3 +100,8 @@ pub type Result<T> = std::result::Result<T, Error>;
 
 #[cfg(test)]
 mod tests;
+
+pub mod commands;
+pub mod trainer;
+
+mod bench;

@@ -1,8 +1,7 @@
 use super::{Device, Error, Result, device::pinned_zeros, require_len};
 use crate::nnue::data::{
-    BatchSlot, CANONICAL_ROWS, FEATURE_COLUMNS, InputFeatureSet, MAX_BATCH_SIZE, max_segment_count,
+    BatchSlot, FEATURE_COLUMNS, InputFeatureSet, MAX_BATCH_SIZE, max_segment_count,
 };
-use crate::nnue::model::Shape;
 use cudarc::driver::{
     CudaEvent, CudaSlice, DeviceRepr, PinnedHostSlice, ValidAsZeroBits, sys::CUevent_flags,
 };
@@ -97,22 +96,15 @@ pub struct HostBuffer {
     capacity: usize,
     record_indices: PinnedHostSlice<u64>,
     features: PinnedHostSlice<u32>,
-    linear_features: PinnedHostSlice<u32>,
-    piece_counts: PinnedHostSlice<u8>,
     teacher_scores: PinnedHostSlice<f32>,
     teacher_classes: PinnedHostSlice<u32>,
     outcomes: PinnedHostSlice<u8>,
     first_segment_starts: PinnedHostSlice<u32>,
     first_segment_offsets: PinnedHostSlice<u32>,
     first_entries: PinnedHostSlice<u32>,
-    linear_segment_starts: PinnedHostSlice<u32>,
-    linear_segment_offsets: PinnedHostSlice<u32>,
-    linear_entries: PinnedHostSlice<u32>,
     len: usize,
     first_len: usize,
-    linear_len: usize,
     first_segments: usize,
-    linear_segments: usize,
     transfer_done: CudaEvent,
 }
 impl HostBuffer {
@@ -124,8 +116,6 @@ impl HostBuffer {
             capacity,
             record_indices: pinned_zeros(device, capacity)?,
             features: pinned_zeros(device, entries)?,
-            linear_features: pinned_zeros(device, capacity * FEATURE_COLUMNS)?,
-            piece_counts: pinned_zeros(device, capacity)?,
             teacher_scores: pinned_zeros(device, capacity)?,
             teacher_classes: pinned_zeros(device, capacity)?,
             outcomes: pinned_zeros(device, capacity)?,
@@ -135,17 +125,9 @@ impl HostBuffer {
                 max_segment_count(set.first_layer_rows(), entries) + 1,
             )?,
             first_entries: pinned_zeros(device, entries)?,
-            linear_segment_starts: pinned_zeros(device, CANONICAL_ROWS + 1)?,
-            linear_segment_offsets: pinned_zeros(
-                device,
-                max_segment_count(CANONICAL_ROWS, capacity * FEATURE_COLUMNS) + 1,
-            )?,
-            linear_entries: pinned_zeros(device, entries)?,
             len: 0,
             first_len: 0,
-            linear_len: 0,
             first_segments: 0,
-            linear_segments: 0,
             transfer_done: device.context.new_event(None)?,
         })
     }
@@ -158,8 +140,6 @@ impl HostBuffer {
         self.transfer_done.synchronize()?;
         copy(&mut self.record_indices, batch.record_indices())?;
         copy(&mut self.features, batch.features())?;
-        copy(&mut self.linear_features, batch.linear_features())?;
-        copy(&mut self.piece_counts, batch.piece_counts())?;
         copy(&mut self.teacher_scores, batch.teacher_scores())?;
         copy(&mut self.teacher_classes, batch.teacher_classes())?;
         copy(&mut self.outcomes, batch.outcomes())?;
@@ -175,37 +155,21 @@ impl HostBuffer {
             &mut self.first_entries,
             batch.first_layer_inverse().entries(),
         )?;
-        copy(
-            &mut self.linear_segment_starts,
-            batch.linear_inverse().segment_starts(),
-        )?;
-        copy(
-            &mut self.linear_segment_offsets,
-            batch.linear_inverse().segment_offsets(),
-        )?;
-        copy(&mut self.linear_entries, batch.linear_inverse().entries())?;
         self.len = batch.len();
         self.first_len = batch.first_layer_inverse().entries().len();
-        self.linear_len = batch.linear_inverse().entries().len();
         self.first_segments = batch.first_layer_inverse().segment_count();
-        self.linear_segments = batch.linear_inverse().segment_count();
         Ok(())
     }
 
     fn transfer_bytes(&self) -> usize {
         self.record_indices.len() * size_of::<u64>()
-            + self.piece_counts.len() * size_of::<u8>()
             + self.teacher_scores.len() * size_of::<f32>()
             + self.outcomes.len() * size_of::<u8>()
             + (self.features.len()
-                + self.linear_features.len()
                 + self.teacher_classes.len()
                 + self.first_segment_starts.len()
                 + self.first_segment_offsets.len()
-                + self.first_entries.len()
-                + self.linear_segment_starts.len()
-                + self.linear_segment_offsets.len()
-                + self.linear_entries.len())
+                + self.first_entries.len())
                 * size_of::<u32>()
     }
 }
@@ -218,33 +182,23 @@ fn copy<T: Copy + ValidAsZeroBits>(dst: &mut PinnedHostSlice<T>, src: &[T]) -> R
 pub(in crate::nnue) struct DeviceInput {
     pub record_indices: CudaSlice<u64>,
     pub features: CudaSlice<u32>,
-    pub linear_features: CudaSlice<u32>,
-    pub piece_counts: CudaSlice<u8>,
     pub teacher_scores: CudaSlice<f32>,
     pub teacher_classes: CudaSlice<u32>,
     pub outcomes: CudaSlice<u8>,
     pub first_segment_starts: CudaSlice<u32>,
     pub first_segment_offsets: CudaSlice<u32>,
     pub first_entries: CudaSlice<u32>,
-    pub linear_segment_starts: CudaSlice<u32>,
-    pub linear_segment_offsets: CudaSlice<u32>,
-    pub linear_entries: CudaSlice<u32>,
     pub len: usize,
     pub first_len: usize,
-    pub linear_len: usize,
     pub first_segments: usize,
-    pub linear_segments: usize,
     backward_done: CudaEvent,
 }
 // Allocation and accounting share the same input array lengths.
 struct InputLengths {
     capacity: usize,
     entries: usize,
-    linear_features: usize,
     first_starts: usize,
     first_offsets: usize,
-    linear_starts: usize,
-    linear_offsets: usize,
 }
 impl InputLengths {
     fn new(set: InputFeatureSet, capacity: usize) -> Self {
@@ -252,23 +206,14 @@ impl InputLengths {
         Self {
             capacity,
             entries,
-            linear_features: capacity * FEATURE_COLUMNS,
             first_starts: set.first_layer_rows() + 1,
             first_offsets: max_segment_count(set.first_layer_rows(), entries) + 1,
-            linear_starts: CANONICAL_ROWS + 1,
-            linear_offsets: max_segment_count(CANONICAL_ROWS, capacity * FEATURE_COLUMNS) + 1,
         }
     }
     fn bytes(&self) -> usize {
-        // record_indices:u64; counts/outcomes:u8; scores/classes:32 bits;
-        // features and both inverse-entry arrays use entries elements.
-        18 * self.capacity
-            + 4 * (3 * self.entries
-                + self.linear_features
-                + self.first_starts
-                + self.first_offsets
-                + self.linear_starts
-                + self.linear_offsets)
+        // record_indices:u64; outcomes:u8; scores/classes:32 bits;
+        // features and the inverse-entry array use entries elements.
+        17 * self.capacity + 4 * (2 * self.entries + self.first_starts + self.first_offsets)
     }
 }
 pub(in crate::nnue) fn device_bytes(set: InputFeatureSet, capacity: usize) -> Result<usize> {
@@ -285,22 +230,15 @@ impl DeviceInput {
         Ok(Self {
             record_indices: s.alloc_zeros(capacity)?,
             features: s.alloc_zeros(lengths.entries)?,
-            linear_features: s.alloc_zeros(lengths.linear_features)?,
-            piece_counts: s.alloc_zeros(capacity)?,
             teacher_scores: s.alloc_zeros(capacity)?,
             teacher_classes: s.alloc_zeros(capacity)?,
             outcomes: s.alloc_zeros(capacity)?,
             first_segment_starts: s.alloc_zeros(lengths.first_starts)?,
             first_segment_offsets: s.alloc_zeros(lengths.first_offsets)?,
             first_entries: s.alloc_zeros(lengths.entries)?,
-            linear_segment_starts: s.alloc_zeros(lengths.linear_starts)?,
-            linear_segment_offsets: s.alloc_zeros(lengths.linear_offsets)?,
-            linear_entries: s.alloc_zeros(lengths.entries)?,
             len: 0,
             first_len: 0,
-            linear_len: 0,
             first_segments: 0,
-            linear_segments: 0,
             backward_done: device.context.new_event(None)?,
         })
     }
@@ -424,9 +362,6 @@ impl HostRing {
         self.transfer_bytes
     }
 
-    pub(super) fn validate_device(&self, device: &Device, shape: Shape) -> Result<()> {
-        self.validate_streams(device, shape.feature_set())
-    }
     pub(in crate::nnue) fn validate_streams(
         &self,
         device: &Device,
@@ -472,8 +407,6 @@ fn transfer_buffer(
     let send = |src: &PinnedHostSlice<u32>, dst: &mut CudaSlice<u32>| transfer(device, src, dst);
     transfer(device, &host.record_indices, &mut input.record_indices)?;
     send(&host.features, &mut input.features)?;
-    send(&host.linear_features, &mut input.linear_features)?;
-    transfer(device, &host.piece_counts, &mut input.piece_counts)?;
     transfer(device, &host.teacher_scores, &mut input.teacher_scores)?;
     send(&host.teacher_classes, &mut input.teacher_classes)?;
     transfer(device, &host.outcomes, &mut input.outcomes)?;
@@ -483,20 +416,9 @@ fn transfer_buffer(
         &mut input.first_segment_offsets,
     )?;
     send(&host.first_entries, &mut input.first_entries)?;
-    send(
-        &host.linear_segment_starts,
-        &mut input.linear_segment_starts,
-    )?;
-    send(
-        &host.linear_segment_offsets,
-        &mut input.linear_segment_offsets,
-    )?;
-    send(&host.linear_entries, &mut input.linear_entries)?;
     input.len = host.len;
     input.first_len = host.first_len;
-    input.linear_len = host.linear_len;
     input.first_segments = host.first_segments;
-    input.linear_segments = host.linear_segments;
     timing.end.record(&device.transfer)?;
     host.transfer_done.record(&device.transfer)?;
     device.compute.wait(&host.transfer_done)?;
@@ -522,7 +444,8 @@ mod tests {
     #[ignore = "requires a CUDA GPU"]
     fn gpu_workers_fill_and_reuse_three_owned_host_buffers() {
         let device = Device::new(0).unwrap();
-        for set in [InputFeatureSet::P, InputFeatureSet::HalfKpHmB8] {
+        {
+            let set = InputFeatureSet::P;
             let mut ring = HostRing::new(&device, set, 3).unwrap();
             let bytes = ring.transfer_bytes();
             let buffers = ring.take_host_buffers().unwrap();
@@ -537,7 +460,7 @@ mod tests {
             std::thread::scope(|scope| {
                 scope.spawn(move || {
                     for iteration in 0..8 {
-                        let batch = super::super::equivalence::synthetic_batch(
+                        let batch = crate::nnue::data::synthetic::synthetic_batch(
                             set,
                             1 + iteration % 3,
                             71 + iteration as u64,
@@ -587,7 +510,8 @@ mod tests {
     #[ignore = "requires a CUDA GPU"]
     fn gpu_transfer_timing_survives_reused_input_and_host_slots() {
         let device = Device::new(0).unwrap();
-        let batch = super::super::equivalence::synthetic_batch(InputFeatureSet::P, 3, 71).unwrap();
+        let batch =
+            crate::nnue::data::synthetic::synthetic_batch(InputFeatureSet::P, 3, 71).unwrap();
         let mut ring = HostRing::new(&device, InputFeatureSet::P, 3).unwrap();
         let mut timings = Vec::new();
         for _ in 0..5 {
@@ -608,17 +532,18 @@ mod tests {
     #[ignore = "requires a CUDA GPU"]
     fn gpu_ring_transfers_all_arrays_and_reuses_three_host_two_device_slots() {
         let device = Device::new(0).unwrap();
-        for set in [InputFeatureSet::P, InputFeatureSet::HalfKpHmB8] {
+        {
+            let set = InputFeatureSet::P;
             let mut ring = HostRing::new(&device, set, 100).unwrap();
             // 2面を同時に保持し、完了を記録してからだけ次の面へ進める。
             for iteration in 0..4 {
-                let a = super::super::equivalence::synthetic_batch(
+                let a = crate::nnue::data::synthetic::synthetic_batch(
                     set,
                     100 - iteration,
                     iteration as u64,
                 )
                 .unwrap();
-                let b = super::super::equivalence::synthetic_batch(
+                let b = crate::nnue::data::synthetic::synthetic_batch(
                     set,
                     1 + iteration,
                     42 + iteration as u64,
@@ -631,12 +556,10 @@ mod tests {
                     let i = ring.input(&ticket).unwrap();
                     assert_eq!(i.len, batch.len());
                     assert_eq!(i.first_len, batch.first_layer_inverse().entries().len());
-                    assert_eq!(i.linear_len, batch.linear_inverse().entries().len());
                     assert_eq!(
                         i.first_segments,
                         batch.first_layer_inverse().segment_count()
                     );
-                    assert_eq!(i.linear_segments, batch.linear_inverse().segment_count());
                     macro_rules! matches {
                         ($field:ident, $expected:expr) => {
                             let expected = $expected;
@@ -649,8 +572,6 @@ mod tests {
                     }
                     matches!(record_indices, batch.record_indices());
                     matches!(features, batch.features());
-                    matches!(linear_features, batch.linear_features());
-                    matches!(piece_counts, batch.piece_counts());
                     matches!(teacher_scores, batch.teacher_scores());
                     matches!(teacher_classes, batch.teacher_classes());
                     matches!(outcomes, batch.outcomes());
@@ -663,15 +584,6 @@ mod tests {
                         batch.first_layer_inverse().segment_offsets()
                     );
                     matches!(first_entries, batch.first_layer_inverse().entries());
-                    matches!(
-                        linear_segment_starts,
-                        batch.linear_inverse().segment_starts()
-                    );
-                    matches!(
-                        linear_segment_offsets,
-                        batch.linear_inverse().segment_offsets()
-                    );
-                    matches!(linear_entries, batch.linear_inverse().entries());
                     ring.finish(ticket).unwrap();
                 }
             }

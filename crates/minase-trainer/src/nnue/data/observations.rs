@@ -1,14 +1,12 @@
 use crate::data::Dataset;
-use minase::eval::features::FEATURE_COUNT;
 
-use super::features::{base_features, canonical_row, input_features};
+use super::features::{base_features, canonical_row};
 use super::{CANONICAL_ROWS, InputFeatureSet, Result, SENTINEL};
 
-/// 訓練集合だけから求めた観測回数と、HalfKPの仮想行の観測マスク。
+/// 訓練集合だけから求めた特徴の観測回数。
 pub struct Observations {
     canonical_counts: Vec<u64>,
     input_counts: Vec<u64>,
-    virtual_observed: Option<Vec<bool>>,
 }
 
 impl Observations {
@@ -41,31 +39,15 @@ impl Observations {
                     canonical_counts[canonical_row(base) as usize] += 1;
                 }
             }
-            let inputs = input_features(&position, &bases, feature_set, position.side_to_move());
-            for (&base, &input) in bases.iter().flatten().zip(inputs.iter().flatten()) {
+            for &base in bases.iter().flatten() {
                 if base != SENTINEL {
-                    let feature = match feature_set {
-                        InputFeatureSet::P => base,
-                        InputFeatureSet::HalfKpHmB8 => input,
-                    };
-                    input_counts[feature as usize] += 1;
+                    input_counts[base as usize] += 1;
                 }
             }
         }
-        let virtual_observed = match feature_set {
-            InputFeatureSet::P => None,
-            InputFeatureSet::HalfKpHmB8 => {
-                let mut mask = vec![false; FEATURE_COUNT + 1];
-                for (feature, &count) in input_counts.iter().enumerate() {
-                    mask[feature % FEATURE_COUNT] |= count != 0;
-                }
-                Some(mask)
-            }
-        };
         Ok(Self {
             canonical_counts,
             input_counts,
-            virtual_observed,
         })
     }
 
@@ -79,7 +61,7 @@ impl Observations {
         &self.input_counts
     }
 
-    /// P型の第1層と両型の線形経路で使う正準行のマスクを返す。埋め草はfalse。
+    /// P型の第1層で使う正準行のマスクを返す。埋め草はfalse。
     pub fn canonical_mask(&self) -> Vec<bool> {
         self.canonical_counts
             .iter()
@@ -94,10 +76,5 @@ impl Observations {
             .map(|&count| count != 0)
             .chain(std::iter::once(false))
             .collect()
-    }
-
-    /// HalfKPの8区分の論理和を取った13,681行のマスク。埋め草はfalse、P型はNone。
-    pub fn virtual_mask(&self) -> Option<&[bool]> {
-        self.virtual_observed.as_deref()
     }
 }

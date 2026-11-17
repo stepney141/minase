@@ -17,3 +17,5 @@ pub use observations::Observations;
 
 /// NNUEの特徴、観測回数またはバッチの構築結果。
 pub type Result<T> = std::result::Result<T, Error>;
+
+pub(crate) mod synthetic;

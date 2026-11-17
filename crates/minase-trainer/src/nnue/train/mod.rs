@@ -18,7 +18,7 @@
 //! | config.json | 引数、照合用の設定と入力、前処理、デバイス名、再開履歴。 |
 //! | training.jsonl | 学習前の検証と、完了したsuperbatchごとの[`SuperbatchRecord`]。 |
 //! | latest.npz | 確定した重み、最適化器の状態、superbatch数、更新数、累積時間。 |
-//! | nnue.bin | 予定の更新を終えたlatest.npzを量子化したMNUE版5。 |
+//! | nnue.bin | 予定の更新を終えたlatest.npzを量子化したtatara形式。 |
 //! | summary.json | 予定と完了のsuperbatch数と更新数、停止理由、検証と量子化の結果。 |
 //!
 //! 新規実行の出力先は存在しないか空でなければならない。
@@ -27,54 +27,58 @@
 //! この場合は`nnue.bin`を書かず、確定済みの`latest.npz`があれば残して再開に用いる。
 //! 学習前の検証も完了していなければ、チェックポイントは作らない。
 
-use crate::nn::atomic_write;
 mod args;
-mod backend;
-mod base;
+pub(crate) mod backend;
 mod pipeline;
 mod record;
-mod spill_calibration;
 mod store;
 mod subsample;
-use store::Store;
-#[cfg(test)]
-mod tests;
-
 use crate::{
     data::{Dataset, epoch_permutation},
-    nnue::{
-        data::{BatchSlot, InputFeatureSet, build_batches, build_targets},
-        export::{self, QuantizationReport, RemovalSignReport},
-        model::{Checkpoint, Masks, Model, Parameter, Progress, Shape},
-        reference::{AdamW, Validation},
-    },
+    nnue::data::{BatchSlot, InputFeatureSet, build_batches, build_targets},
 };
 pub use args::Args;
-use backend::Backend;
-use minase::eval::features::FEATURE_COUNT;
-pub use record::{LinearMovement, Saturation, SuperbatchRecord};
-use record::{
-    append_resume, append_superbatch, configuration, linear_movement, reconcile_log,
-    validate_statistics, write_json,
-};
-use serde::Serialize;
+pub(crate) use backend::{TrainerBackend, Validation};
+pub use record::SuperbatchRecord;
+use record::{append_resume, append_superbatch, configuration, reconcile_log, write_json};
+use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::{
     fmt,
     sync::Arc,
     time::{Duration, Instant, SystemTime},
 };
+use store::Store;
 
-/// 学習を継続できない引数、保存状態、または終了時の検査結果。
+/// 学習ループの確定済み進捗。構造固有の配列を含まない。
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Progress {
+    /// 保存を確定したsuperbatch数。
+    pub completed_superbatches: u64,
+    /// 保存を確定した更新数。
+    pub completed_steps: u64,
+    /// 再開前を含む累積秒数。
+    pub elapsed_seconds: f64,
+    /// 再開時に照合する設定、入力と前処理。
+    pub config: crate::nn::checkpoint::Configuration,
+}
+impl Progress {
+    pub(crate) fn validate(&self) -> Result<()> {
+        if !self.elapsed_seconds.is_finite() || self.elapsed_seconds < 0.0 {
+            return Err(Error::Invalid("invalid checkpoint elapsed time").into());
+        }
+        Ok(())
+    }
+}
+
+/// 学習を継続できない引数または停止条件。
 #[derive(Debug)]
 pub enum Error {
     /// 引数または保存状態が契約に違反する。
     Invalid(&'static str),
-    /// 予定した更新回数に達する前に時間の上限に達した。
+    /// 予定した更新回数に達する前に時間上限へ達した。
     Incomplete,
-    /// 勝率尺度（1ロジットあたりのcp）を`cp_per_logit`とする。
-    /// 量子化した推論の平均絶対誤差が`cp_per_logit / 40`を超えた。
-    QuantizationError,
 }
 impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -83,21 +87,12 @@ impl fmt::Display for Error {
             Self::Incomplete => f.write_str(
                 "time limit reached before completing the planned training; resume to continue",
             ),
-            Self::QuantizationError => {
-                f.write_str("quantization_error: mean absolute error exceeds cp_per_logit / 40")
-            }
         }
     }
 }
 impl std::error::Error for Error {}
-/// 原因の型を保持する、学習の結果。
+/// 原因の型を保持する学習の処理結果。
 pub type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
-
-/// 第1層の正規分布の標準偏差を、基底特徴数Dに対してsqrt(1/(3D))とする。
-/// HalfKPも乱数を置く仮想行の基底特徴数を使い、P型と初期値を揃える。
-fn initial_standard_deviation() -> f32 {
-    (1.0 / (3.0 * FEATURE_COUNT as f32)).sqrt()
-}
 
 /// 学習を停止した理由。
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
@@ -122,7 +117,7 @@ impl fmt::Display for StopReason {
 /// candidateだけが終了コード0であり、それ以外は1で終了する。
 #[derive(Debug, Serialize)]
 pub struct Summary {
-    /// candidate、quantization_error、incomplete、errorのいずれか。
+    /// candidate、incomplete、errorのいずれか。
     pub status: &'static str,
     /// 失敗または未完了の理由。
     pub reason: Option<String>,
@@ -143,9 +138,7 @@ pub struct Summary {
     /// 再開前を含む累積秒数。
     pub elapsed_seconds: f64,
     /// 量子化誤差の検査結果。
-    pub quantization: Option<QuantizationReport>,
-    /// 量子化検査と同じ標本の駒除去差分の符号反転。
-    pub removal_sign: Option<RemovalSignReport>,
+    pub quantization: Option<Value>,
 }
 
 /// 完了を優先し、予定に達していない場合だけ時間の上限を判定する。
@@ -165,15 +158,14 @@ enum Epoch<'a> {
     Spill(crate::data::EpochReader<'a>),
 }
 
-struct Session {
+struct Session<B> {
     args: Args,
     workers: usize,
     dataset: Arc<Store>,
     selection: subsample::Selection,
-    base: base::Base,
     teacher_cp_per_logit: Vec<f64>,
-    checkpoint: Checkpoint,
-    backend: Backend,
+    progress: Progress,
+    backend: B,
     started: Instant,
     previous_elapsed: f64,
     last_validation: Option<(u64, f64)>,
@@ -181,72 +173,34 @@ struct Session {
     gpu_total_bytes: Option<usize>,
 }
 
-impl Session {
-    /// 初期値と前処理を再計算し、照合を通った保存状態から再開する。
-    ///
-    /// 再開では`--resume`と`--output-dir`が正規化後に同じディレクトリを指すことを要求する。
-    /// 変更できる引数は`--superbatches`、`--validation-superbatches`、`--time-limit-hours`、`--threads`、`--bucket-positions`、`--scratch-dir`である。
-    /// `--batches-per-superbatch`と`--lr-schedule`を含むほかの学習設定は変更できない。
-    /// 入力は正規化したパスと識別情報を、前処理は教師の勝率尺度の値と出所も含めて照合し、デバイス名も一致を要求する。
-    ///
-    /// 保存済みのsuperbatch数をk、更新回数をtとし、`t = k × batches_per_superbatch`を要求する。
-    /// `--superbatches`がkより小さければエラーとし、等しければ追加の更新をせず、保存済みの重みを書き出す。
-    /// ただし、kで未検証なら書き出す前に最終検証を行い、時間内に終わらなければ`incomplete`とする。
-    /// 1周の更新回数をU、バッチの局面数をmとすると、更新を再開する周は`floor(t/U)+1`番目である。
-    /// その周の順列を同じシードで作り直し、`(t mod U) × m`局面を読み飛ばして続きから学ぶ。
-    /// `--buckets`が2以上の場合も一時ファイルを作り直して同じ位置まで読み飛ばす。
-    /// 進捗を`epoch`や`best`で表す旧形式のNNUEチェックポイントは読み替えずに拒否する。
-    ///
-    /// `training.jsonl`は保存済みのkまで照合し、未確定の末尾の行を捨てる。
-    /// 再開の照合を通った後、更新や書き出しを始める前に、既存の`nnue.bin`と`summary.json`を削除する。
-    /// 学習前の検証はログから引き継ぎ、再実行しない。
-    fn new(args: Args) -> Result<Self> {
+impl<B: TrainerBackend> Session<B> {
+    fn new(
+        args: Args,
+        architecture: Value,
+        initialize: impl FnOnce(&Args, Progress) -> Result<(B, Progress)>,
+    ) -> Result<Self> {
         let started = Instant::now();
         let resumed_at = SystemTime::now();
         args.validate()?;
         let workers = args.workers()?;
-        let base = base::read(&args.base)?;
-        let initial = base.initial_linear();
-
         let mut dataset = Store::open(&args, workers)?;
         if dataset.training_count() == 0 || dataset.validation_count() == 0 {
             return Err(
                 Error::Invalid("training and validation sets must both be nonempty").into(),
             );
         }
-        dataset.check_rules(&base.rule_set)?;
-        let calibration =
-            dataset.calibration(args.teacher_cp_per_logit.as_ref(), base.cp_per_logit)?;
-        let teacher_cp_per_logit = calibration.target_values();
-        let observations = dataset.observations(args.feature_set)?;
-        let model = Model::initialize(
-            Shape::new(args.feature_set, args.width, base.cp_per_logit, args.head)?,
-            &initial,
-            Masks::from_observations(args.feature_set, &observations)?,
-            args.seed,
-            initial_standard_deviation(),
-        )?;
+        dataset.check_rules(args.parsed_rules()?)?;
         let selection = subsample::Selection::new(&mut dataset, args.train_subsample)?;
         let mut dataset_info = store::DatasetInfo::from(&dataset);
         dataset_info.subsample = selection.summary.as_ref();
-        let mut config = configuration(
-            &args,
-            workers,
-            dataset_info,
-            &observations,
-            &calibration,
-            &model,
-        )?;
-        let mut checkpoint = Checkpoint {
-            lambda: args.training.lambda,
-            optimizer: AdamW::new(model.shape(), args.training.optimizer())?,
-            model,
-            progress: Progress {
-                completed_superbatches: 0,
-                elapsed_seconds: 0.0,
-                seed: args.seed,
-                config: crate::nn::checkpoint::Configuration::from_document(&config.document)?,
-            },
+        let teacher_cp_per_logit = vec![args.teacher_cp_per_logit; dataset_info.classes.len()];
+        let mut config = configuration(&args, workers, dataset_info, architecture)?;
+        let expected = crate::nn::checkpoint::Configuration::from_document(&config)?;
+        let initial_progress = Progress {
+            completed_superbatches: 0,
+            completed_steps: 0,
+            elapsed_seconds: 0.0,
+            config: expected.clone(),
         };
         let mut last_validation = None;
         let saved_config = if let Some(resume) = &args.resume {
@@ -260,37 +214,7 @@ impl Session {
             if saved.get("resumes").and_then(Value::as_array).is_none() {
                 return Err(Error::Invalid("configuration resumes must be an array").into());
             }
-            let restored = Checkpoint::read(resume.join("latest.npz"))?;
-            crate::nn::checkpoint::Configuration::from_document(&saved)?.check(
-                &crate::nn::checkpoint::Configuration::from_document(&config.document)?,
-            )?;
-            restored.check_config(&crate::nn::checkpoint::Configuration::from_document(
-                &config.document,
-            )?)?;
-            if restored.model.shape() != checkpoint.model.shape()
-                || restored.model.masks() != checkpoint.model.masks()
-                || restored.model.initial_linear() != checkpoint.model.initial_linear()
-                || restored.model.initial_virtual() != checkpoint.model.initial_virtual()
-                || restored.optimizer.config() != args.training.optimizer()
-                || restored.lambda != args.training.lambda
-                || restored.progress.seed != args.seed
-                || restored.progress.completed_superbatches > args.superbatches.get()
-                || restored
-                    .progress
-                    .completed_superbatches
-                    .checked_mul(args.batches_per_superbatch.get())
-                    != Some(restored.optimizer.step())
-            {
-                return Err(Error::Invalid(
-                    "checkpoint state differs from recomputed initialization or progress",
-                )
-                .into());
-            }
-            checkpoint = restored;
-            last_validation = Some(reconcile_log(
-                &resume.join("training.jsonl"),
-                checkpoint.progress.completed_superbatches,
-            )?);
+            crate::nn::checkpoint::Configuration::from_document(&saved)?.check(&expected)?;
             Some(saved)
         } else {
             if args.output_dir.exists() && std::fs::read_dir(&args.output_dir)?.next().is_some() {
@@ -301,13 +225,20 @@ impl Session {
             }
             None
         };
-        let backend = Backend::new(
-            args.device,
-            &checkpoint.model,
-            &checkpoint.optimizer,
-            args.batch,
-            workers,
-        )?;
+        let (backend, progress) = initialize(&args, initial_progress)?;
+        progress.validate()?;
+        progress.config.check(&expected)?;
+        if progress.completed_superbatches > args.superbatches.get()
+            || progress
+                .completed_superbatches
+                .checked_mul(args.batches_per_superbatch.get())
+                != Some(progress.completed_steps)
+            || backend.step() != progress.completed_steps
+        {
+            return Err(
+                Error::Invalid("checkpoint progress differs from requested updates").into(),
+            );
+        }
         let name = backend.name();
         if let Some(saved) = &saved_config {
             if saved.get("device_name") != Some(&json!(name)) {
@@ -317,23 +248,28 @@ impl Session {
             }
         } else {
             std::fs::create_dir_all(&args.output_dir)?;
-            config.document["device_name"] = json!(name);
+            config["device_name"] = json!(name);
             let memory = backend.memory()?;
-            config.document["gpu_memory_used_bytes"] = json!(memory.map(|(used, _)| used));
-            config.document["gpu_memory_total_bytes"] = json!(memory.map(|(_, total)| total));
-            config.document["preprocessing_seconds"] = json!(started.elapsed().as_secs_f64());
-            write_json(&args.output_dir.join("config.json"), &config.document)?;
+            config["gpu_memory_used_bytes"] = json!(memory.map(|(used, _)| used));
+            config["gpu_memory_total_bytes"] = json!(memory.map(|(_, total)| total));
+            config["preprocessing_seconds"] = json!(started.elapsed().as_secs_f64());
+            write_json(&args.output_dir.join("config.json"), &config)?;
         }
-        let previous_elapsed = checkpoint.progress.elapsed_seconds;
+        if let Some(resume) = &args.resume {
+            last_validation = Some(reconcile_log(
+                &resume.join("training.jsonl"),
+                progress.completed_superbatches,
+            )?);
+        }
+        let previous_elapsed = progress.elapsed_seconds;
         let memory = backend.memory()?;
         let mut session = Self {
             args,
             workers,
             dataset: Arc::new(dataset),
             selection,
-            base,
             teacher_cp_per_logit,
-            checkpoint,
+            progress,
             backend,
             started,
             previous_elapsed,
@@ -354,16 +290,15 @@ impl Session {
                 &mut saved,
                 &session.args,
                 session.workers,
-                session.checkpoint.progress.completed_superbatches,
+                session.progress.completed_superbatches,
                 resumed_at,
             )?;
         }
         if session.last_validation.is_none() && !session.expired() {
             let validation_started = Instant::now();
-            let model = session.checkpoint.model.clone();
-            if let Some(validation) = session.validate(&model)? {
+            if let Some(validation) = session.validate()? {
                 session.last_validation = Some((0, validation.loss()));
-                session.checkpoint.progress.elapsed_seconds = session.elapsed();
+                session.progress.elapsed_seconds = session.elapsed();
                 let record = session.superbatch_record(
                     Some((&validation, validation_started.elapsed().as_secs_f64())),
                     None,
@@ -390,11 +325,10 @@ impl Session {
     fn log_path(&self) -> std::path::PathBuf {
         self.args.output_dir.join("training.jsonl")
     }
-    fn save_latest(&self) -> Result<()> {
-        Ok(atomic_write(
-            &self.args.output_dir.join("latest.npz"),
-            &self.checkpoint.encode()?,
-        )?)
+    fn save_latest(&mut self) -> Result<()> {
+        self.backend.flush_pending_loss()?;
+        self.backend
+            .save_checkpoint(&self.args.output_dir.join("latest.npz"), &self.progress)
     }
     fn memory(&mut self) -> Result<()> {
         if let Some((used, total)) = self.backend.memory()? {
@@ -404,20 +338,22 @@ impl Session {
         Ok(())
     }
 
-    fn validate(&mut self, model: &Model) -> Result<Option<Validation>> {
-        StoreValidation {
+    fn validate(&mut self) -> Result<Option<Validation>> {
+        self.backend.flush_pending_loss()?;
+        let request = StoreValidation {
             store: &self.dataset,
-            feature_set: self.args.feature_set,
+            feature_set: self.backend.feature_set(),
             teacher_cp_per_logit: &self.teacher_cp_per_logit,
             batch: self.args.batch,
             deadline: self.deadline(),
-        }
-        .evaluate(
-            &self.backend,
-            model,
+        };
+        let validation = request.evaluate(
+            &mut self.backend,
             &mut self.gpu_used_bytes,
             &mut self.gpu_total_bytes,
-        )
+        )?;
+        self.memory()?;
+        Ok(validation)
     }
 
     /// 各周の読み手を維持し、superbatchごとに確定する。
@@ -433,8 +369,8 @@ impl Session {
     }
 
     fn advance<'a>(&mut self, dataset: &'a Store, epoch: &mut Option<Epoch<'a>>) -> Result<bool> {
-        self.checkpoint.progress.elapsed_seconds = self.elapsed();
-        if stop_reason(&self.checkpoint.progress, &self.args).is_some() {
+        self.progress.elapsed_seconds = self.elapsed();
+        if stop_reason(&self.progress, &self.args).is_some() {
             return Ok(false);
         }
         self.memory()?;
@@ -479,7 +415,7 @@ impl Session {
                 });
             }
             let options = pipeline::BatchOptions {
-                feature_set: self.args.feature_set,
+                feature_set: self.backend.feature_set(),
                 batch: self.args.batch,
                 schedule: self.args.lr_schedule,
                 batches_per_superbatch: self.args.batches_per_superbatch,
@@ -526,28 +462,17 @@ impl Session {
         }
         self.gpu_used_bytes = self.gpu_used_bytes.max(training.gpu_used_bytes);
         self.gpu_total_bytes = training.gpu_total_bytes;
-        let (parameters, optimizer) = self.backend.snapshot()?;
-        parameters.validate()?;
-        let mut candidate = Checkpoint {
-            model: self.checkpoint.model.clone(),
-            optimizer,
-            lambda: self.checkpoint.lambda,
-            progress: self.checkpoint.progress.clone(),
-        };
-        for parameter in Parameter::ALL {
-            candidate
-                .model
-                .parameter_mut(parameter)
-                .copy_from_slice(&parameters[parameter]);
-        }
-        candidate.progress.completed_superbatches += 1;
+        self.backend.flush_pending_loss()?;
+        let mut candidate = self.progress.clone();
+        candidate.completed_superbatches += 1;
+        candidate.completed_steps = self.backend.step();
         let training_seconds = training_started.elapsed().as_secs_f64();
-        let k = candidate.progress.completed_superbatches;
+        let k = candidate.completed_superbatches;
         let validation = if k.is_multiple_of(self.args.validation_superbatches.get())
             || k == self.args.superbatches.get()
         {
             let started = Instant::now();
-            let Some(validation) = self.validate(&candidate.model)? else {
+            let Some(validation) = self.validate()? else {
                 return Ok(false);
             };
             Some((validation, started.elapsed().as_secs_f64()))
@@ -557,8 +482,8 @@ impl Session {
         if self.expired() {
             return Ok(false);
         }
-        candidate.progress.elapsed_seconds = self.elapsed();
-        let previous = std::mem::replace(&mut self.checkpoint, candidate);
+        candidate.elapsed_seconds = self.elapsed();
+        let previous = std::mem::replace(&mut self.progress, candidate);
         let saved = (|| {
             let record = self.superbatch_record(
                 validation.as_ref().map(|(v, seconds)| (v, *seconds)),
@@ -568,7 +493,7 @@ impl Session {
             self.save_latest()
         })();
         if let Err(error) = saved {
-            self.checkpoint = previous;
+            self.progress = previous;
             return Err(error);
         }
         if let Some((validation, _)) = &validation {
@@ -580,68 +505,56 @@ impl Session {
         };
         eprintln!(
             "superbatch {k}: updates={} train_loss={:.9} validation_loss={validation_loss}",
-            self.checkpoint.optimizer.step(),
+            self.progress.completed_steps,
             training.loss / training.positions as f64,
         );
         Ok(true)
     }
 
     fn superbatch_record(
-        &self,
+        &mut self,
         validation: Option<(&Validation, f64)>,
         training: Option<(&pipeline::Training, f64)>,
     ) -> Result<SuperbatchRecord> {
-        let mut record = SuperbatchRecord {
+        Ok(SuperbatchRecord {
             device: self.args.device,
-            superbatch: self.checkpoint.progress.completed_superbatches,
-            epochs: self.checkpoint.optimizer.step() as f64 / self.steps_per_epoch() as f64,
+            superbatch: self.progress.completed_superbatches,
+            epochs: self.progress.completed_steps as f64 / self.steps_per_epoch() as f64,
             train_loss: training.map(|(t, _)| t.loss / t.positions as f64),
-            validation_loss: None,
-            sign_accuracy: None,
-            samples: None,
-            decisive_samples: None,
-            nonlinear_std_cp: None,
-            saturation: None,
-            hidden1_saturation: None,
-            hidden2_saturation: None,
-            pairwise_both_positive: None,
-            validation_seconds: None,
-            first_layer_at_limit: self.checkpoint.model.first_layer_at_limit()?,
-            linear_movement: linear_movement(&self.checkpoint.model),
+            validation_loss: validation.map(|(v, _)| v.loss()),
+            statistics: self.backend.statistics(validation.map(|(v, _)| v))?,
+            validation_seconds: validation.map(|(_, seconds)| seconds),
             training_seconds: training.map(|(_, seconds)| seconds),
             training_positions_per_second: training
                 .map(|(t, seconds)| t.positions as f64 / seconds),
             update_seconds: training.map(|(t, _)| t.compute_seconds / t.steps as f64),
             gpu_memory_used_bytes: self.gpu_used_bytes,
             gpu_memory_total_bytes: self.gpu_total_bytes,
-            elapsed_seconds: self.checkpoint.progress.elapsed_seconds,
+            elapsed_seconds: self.progress.elapsed_seconds,
             steps: training.map_or(0, |(t, _)| t.steps),
-            total_steps: self.checkpoint.optimizer.step(),
+            total_steps: self.progress.completed_steps,
             lr_multiplier_first: training.and_then(|(t, _)| t.first_multiplier),
             lr_multiplier_last: training.and_then(|(t, _)| t.last_multiplier),
-        };
-        if let Some((validation, seconds)) = validation {
-            record.set_validation(validation, seconds);
-        }
-        Ok(record)
+        })
     }
 
     fn finish(mut self) -> Result<Summary> {
-        self.checkpoint.progress.elapsed_seconds = self.elapsed();
-        let mut stopped_by = stop_reason(&self.checkpoint.progress, &self.args).ok_or(
-            Error::Invalid("training stopped without a stopping condition"),
-        )?;
-        let completed = self.checkpoint.progress.completed_superbatches;
+        self.backend.flush_pending_loss()?;
+        self.progress.elapsed_seconds = self.elapsed();
+        let mut stopped_by = stop_reason(&self.progress, &self.args).ok_or(Error::Invalid(
+            "training stopped without a stopping condition",
+        ))?;
+        let completed = self.progress.completed_superbatches;
         // Nを保存済みkまで短縮した再開では、kの検証がまだ行われていないことがある。
         if stopped_by == StopReason::Completed
             && self.last_validation.map(|(k, _)| k) != Some(completed)
         {
             let started = Instant::now();
-            let model = self.checkpoint.model.clone();
-            if let Some(validation) = self.validate(&model)? {
+            if let Some(validation) = self.validate()? {
                 record::complete_final_validation(
                     &self.log_path(),
                     &validation,
+                    self.backend.statistics(Some(&validation))?,
                     started.elapsed().as_secs_f64(),
                     self.elapsed(),
                 )?;
@@ -650,7 +563,7 @@ impl Session {
                 stopped_by = StopReason::TimeLimit;
             }
         }
-        self.checkpoint.progress.elapsed_seconds = self.elapsed();
+        self.progress.elapsed_seconds = self.elapsed();
         // 未確定の更新は採用せず、費やした時間だけを保存する。
         if self.last_validation.is_some() {
             self.save_latest()?;
@@ -660,61 +573,42 @@ impl Session {
             reason: None,
             stopped_by,
             planned_superbatches: self.args.superbatches.get(),
-            completed_superbatches: self.checkpoint.progress.completed_superbatches,
+            completed_superbatches: self.progress.completed_superbatches,
             planned_steps: self.args.planned_steps()?,
-            completed_steps: self.checkpoint.optimizer.step(),
-            epochs: self.checkpoint.optimizer.step() as f64 / self.steps_per_epoch() as f64,
+            completed_steps: self.progress.completed_steps,
+            epochs: self.progress.completed_steps as f64 / self.steps_per_epoch() as f64,
             final_validation_loss: self.last_validation.map(|(_, loss)| loss),
-            elapsed_seconds: self.checkpoint.progress.elapsed_seconds,
+            elapsed_seconds: self.progress.elapsed_seconds,
             quantization: None,
-            removal_sign: None,
         };
         if stopped_by == StopReason::TimeLimit {
             summary.status = "incomplete";
             eprintln!(
                 "superbatches: {completed}; updates: {}; stopped_by: {stopped_by}; status: incomplete",
-                self.checkpoint.optimizer.step()
+                self.progress.completed_steps
             );
             summary.reason = Some(Error::Incomplete.to_string());
             write_json(&self.args.output_dir.join("summary.json"), &summary)?;
             return Err(Error::Incomplete.into());
         }
-        let checkpoint = Checkpoint::read(self.args.output_dir.join("latest.npz"))?;
-        let source = match self.dataset.as_ref() {
-            Store::Memory(dataset) => export::ValidationSource::Memory(dataset),
-            Store::Spill(store) => export::ValidationSource::Spill(store),
-        };
-        let exported = export::write_completed(
-            source,
-            &checkpoint,
-            &self.args.output_dir,
-            &self.base.piece_values,
-            &self.base.rule_set,
-            self.args.validation_sample,
-        );
-        let (quantization, removal_sign) = match exported {
-            Ok(report) => report,
+        let samples = self
+            .dataset
+            .validation_sample(self.args.validation_sample, self.args.seed)?;
+        match self
+            .backend
+            .export(&self.args.output_dir.join("nnue.bin"), &samples)
+        {
+            Ok(report) => {
+                summary.status = "candidate";
+                summary.quantization = Some(report);
+            }
             Err(error) => {
                 summary.reason = Some(error.to_string());
                 write_json(&self.args.output_dir.join("summary.json"), &summary)?;
-                return Err(error.into());
+                return Err(error);
             }
-        };
-        let passed = quantization.passed;
-        summary.status = if passed {
-            "candidate"
-        } else {
-            "quantization_error"
-        };
-        summary.quantization = Some(quantization);
-        summary.removal_sign = Some(removal_sign);
-        if !passed {
-            summary.reason = Some(Error::QuantizationError.to_string());
         }
         write_json(&self.args.output_dir.join("summary.json"), &summary)?;
-        if !passed {
-            return Err(Error::QuantizationError.into());
-        }
         Ok(summary)
     }
 }
@@ -731,8 +625,7 @@ impl StoreValidation<'_> {
     /// 各バッチの前後で期限を確認し、時間切れなら未完了として返す。
     fn evaluate(
         &self,
-        backend: &Backend,
-        model: &Model,
+        backend: &mut impl TrainerBackend,
         gpu_used_bytes: &mut Option<usize>,
         gpu_total_bytes: &mut Option<usize>,
     ) -> Result<Option<Validation>> {
@@ -745,12 +638,11 @@ impl StoreValidation<'_> {
                 batch: self.batch,
                 deadline: self.deadline,
             }
-            .evaluate(backend, model, gpu_used_bytes, gpu_total_bytes),
+            .evaluate(backend, gpu_used_bytes, gpu_total_bytes),
             Store::Spill(store) => {
                 if Instant::now() >= self.deadline {
                     return Ok(None);
                 }
-                let mut evaluator = backend.evaluator(model, self.batch)?;
                 if let Some((used, total)) = backend.memory()? {
                     *gpu_used_bytes = (*gpu_used_bytes).max(Some(used));
                     *gpu_total_bytes = Some(total);
@@ -764,7 +656,7 @@ impl StoreValidation<'_> {
                             self.teacher_cp_per_logit,
                             store.teacher_lambdas(),
                         )?;
-                        evaluator.validate(&batch, &values)
+                        backend.validate_step(&batch, &values)
                     },
                     || Instant::now() >= self.deadline,
                 )
@@ -788,15 +680,13 @@ impl ValidationSet<'_> {
     /// 時間切れなら`None`を返し、呼び手は検証結果を記録しない。
     fn evaluate(
         &self,
-        backend: &Backend,
-        model: &Model,
+        backend: &mut impl TrainerBackend,
         gpu_used_bytes: &mut Option<usize>,
         gpu_total_bytes: &mut Option<usize>,
     ) -> Result<Option<Validation>> {
         if Instant::now() >= self.deadline {
             return Ok(None);
         }
-        let mut evaluator = backend.evaluator(model, self.batch)?;
         if let Some((used, total)) = backend.memory()? {
             *gpu_used_bytes = (*gpu_used_bytes).max(Some(used));
             *gpu_total_bytes = Some(total);
@@ -810,7 +700,7 @@ impl ValidationSet<'_> {
                     self.teacher_cp_per_logit,
                     self.dataset.teacher_lambdas(),
                 )?;
-                evaluator.validate(&batch, &values)
+                backend.validate_step(&batch, &values)
             },
             || Instant::now() >= self.deadline,
         )
@@ -831,25 +721,9 @@ fn validate_batches<T>(
             return Ok(None);
         }
         let statistics = evaluate(batch)?;
-        validate_statistics(&statistics)?;
+        statistics.validate()?;
         if let Some(total) = &mut total {
-            total.loss_sum += statistics.loss_sum;
-            total.correct += statistics.correct;
-            total.decisive += statistics.decisive;
-            total.nonlinear_sum += statistics.nonlinear_sum;
-            total.nonlinear_square_sum += statistics.nonlinear_square_sum;
-            total.lower += statistics.lower;
-            total.upper += statistics.upper;
-            total.positions += statistics.positions;
-            total.activations += statistics.activations;
-            total.hidden1_lower += statistics.hidden1_lower;
-            total.hidden2_lower += statistics.hidden2_lower;
-            total.pairwise_positive += statistics.pairwise_positive;
-            total.pairwise_products += statistics.pairwise_products;
-            total.hidden1_upper += statistics.hidden1_upper;
-            total.hidden2_upper += statistics.hidden2_upper;
-            total.hidden1_activations += statistics.hidden1_activations;
-            total.hidden2_activations += statistics.hidden2_activations;
+            total.append(statistics);
         } else {
             total = Some(statistics);
         }
@@ -859,24 +733,80 @@ fn validate_batches<T>(
         }
     }
     let total = total.ok_or(Error::Invalid("empty validation set"))?;
-    validate_statistics(&total)?;
+    total.validate()?;
     Ok(Some(total))
 }
 
 /// 指定デバイスで初期検証、予定回数の更新、最終の重みの書き出しを行う。
 /// 学習ループ中のエラーでは、最後に確定したsuperbatch数と更新回数を報告する。
-pub fn run(args: Args) -> Result<Summary> {
-    let mut session = Session::new(args)?;
+pub(crate) fn run_with<B: TrainerBackend>(
+    args: Args,
+    architecture: Value,
+    initialize: impl FnOnce(&Args, Progress) -> Result<(B, Progress)>,
+) -> Result<Summary> {
+    let mut session = Session::new(args, architecture, initialize)?;
     if let Err(error) = session.train() {
         write_json(
             &session.args.output_dir.join("summary.json"),
             &json!({
                 "status": "error", "reason": error.to_string(),
-                "completed_superbatches": session.checkpoint.progress.completed_superbatches,
-                "completed_steps": session.checkpoint.optimizer.step(), "elapsed_seconds": session.elapsed(),
+                "completed_superbatches": session.progress.completed_superbatches,
+                "completed_steps": session.progress.completed_steps, "elapsed_seconds": session.elapsed(),
             }),
         )?;
         return Err(error);
     }
     session.finish()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn validation_aggregates_weighted_losses_and_checks_the_final_deadline() {
+        let total = validate_batches(
+            [2, 1],
+            |n| {
+                Ok(Validation {
+                    loss_sum: n as f64 * 0.25,
+                    positions: n,
+                    sums: Default::default(),
+                })
+            },
+            || false,
+        )
+        .unwrap()
+        .unwrap();
+        assert_eq!(total.positions, 3);
+        assert_eq!(total.loss(), 0.25);
+        let expired = std::cell::Cell::new(false);
+        assert!(
+            validate_batches(
+                [1],
+                |_| {
+                    expired.set(true);
+                    Ok(Validation {
+                        loss_sum: 0.0,
+                        positions: 1,
+                        sums: Default::default(),
+                    })
+                },
+                || expired.get()
+            )
+            .unwrap()
+            .is_none()
+        );
+        assert!(
+            validate_batches(
+                [1],
+                |_| Ok(Validation {
+                    loss_sum: f64::NAN,
+                    positions: 1,
+                    sums: Default::default()
+                }),
+                || false
+            )
+            .is_err()
+        );
+    }
 }

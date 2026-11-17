@@ -38,6 +38,7 @@ struct Metadata {
     architecture: String,
     feature_set: String,
     rules: String,
+    progress: crate::nnue::train::Progress,
 }
 
 /// P型LayerStackの全パラメータ、最適化器の状態、および再開条件。
@@ -49,9 +50,17 @@ pub struct Checkpoint {
     pub optimizer: AdamW,
     /// 再開時に照合する設定。
     pub settings: Settings,
+    /// 確定した学習進捗と入力の照合情報。
+    pub progress: crate::nnue::train::Progress,
 }
 impl Checkpoint {
     fn validate(&self) -> Result<()> {
+        if !self.progress.elapsed_seconds.is_finite()
+            || self.progress.elapsed_seconds < 0.0
+            || self.progress.completed_steps != self.optimizer.step
+        {
+            return Err(Error::Invalid("checkpoint progress"));
+        }
         self.parameters.validate()?;
         self.optimizer.validate()?;
         self.settings.validate()?;
@@ -72,6 +81,7 @@ impl Checkpoint {
                 architecture: "LayerStack".into(),
                 feature_set: "P".into(),
                 rules: s.rules.to_string(),
+                progress: self.progress.clone(),
             },
         )?;
         w.scalar("width", H as u64);
@@ -150,6 +160,7 @@ impl Checkpoint {
         let v = read("v")?;
         r.finish()?;
         let checkpoint = Self {
+            progress: meta.progress,
             parameters,
             optimizer: AdamW { m, v, step, config },
             settings: Settings {

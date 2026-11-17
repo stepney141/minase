@@ -9,20 +9,14 @@ use std::{
     sync::atomic::{AtomicU64, Ordering},
 };
 
-use minase::{
-    eval::{
-        features::{FEATURE_COUNT, feature_index, lion_feature_index},
-        nnue::feature_set::{FeatureSet, HalfKpHmB8},
-    },
-    training::records::{HEADER_LEN, Header},
-};
+use minase::training::records::{HEADER_LEN, Header};
 use minase_core::{Color, PieceCode, PieceKind, Position, PositionBuilder, Square};
 use minase_trainer::{
     data::{Dataset, Error, Lookahead},
     nnue::data::{
-        BatchSlot, CANONICAL_ROWS, FEATURE_COLUMNS, InputFeatureSet, Observations,
-        PackedOccurrence, REVERSE_INDEX_SEGMENT_LEN, ReverseIndex, SENTINEL, build_batches,
-        build_targets, decode_p_feature,
+        BatchSlot, FEATURE_COLUMNS, InputFeatureSet, Observations, PackedOccurrence,
+        REVERSE_INDEX_SEGMENT_LEN, ReverseIndex, SENTINEL, build_batches, build_targets,
+        decode_p_feature,
     },
 };
 
@@ -516,7 +510,8 @@ fn observation_counts_match_python_canonical_half_without_doubling() {
     );
 
     let dataset = Dataset::open(&[path], None, std::num::NonZeroUsize::new(1).unwrap()).unwrap();
-    for set in [InputFeatureSet::P, InputFeatureSet::HalfKpHmB8] {
+    {
+        let set = InputFeatureSet::P;
         let observed = Observations::compute(&dataset, set).unwrap();
         assert_eq!(observed.canonical_counts().len(), 6841);
         // 白歩の手番視点は(29*144 + 10*12 + 8)=4304、正準行は2151。
@@ -529,68 +524,12 @@ fn observation_counts_match_python_canonical_half_without_doubling() {
         assert_eq!(observed.canonical_mask().iter().filter(|&&v| v).count(), 1);
         assert!(!observed.canonical_mask()[6840]);
         assert!(!observed.input_mask()[set.dimensions()]);
-        if let Some(mask) = observed.virtual_mask() {
-            assert!(mask[4304] && mask[10964]);
-            assert_eq!(mask.iter().filter(|&&v| v).count(), 2);
-            assert!(!mask[FEATURE_COUNT]);
-        } else {
-            assert_eq!(set, InputFeatureSet::P);
-        }
     }
 }
 
-#[test]
-fn halfkp_virtual_observations_are_the_union_of_buckets() {
-    let fixture = Fixture::new();
-    let mut records = Vec::new();
-    for rank in [0, 1] {
-        let mut builder = PositionBuilder::new(Color::Black);
-        builder
-            .put(
-                sq(8, rank),
-                PieceCode::new(Color::Black, PieceKind::King).unwrap(),
-            )
-            .unwrap();
-        builder
-            .put(
-                sq(3, 4),
-                PieceCode::new(Color::Black, PieceKind::Pawn).unwrap(),
-            )
-            .unwrap();
-        records.push(sample(
-            &builder.finish().unwrap(),
-            1,
-            u16::from(rank),
-            1,
-            Outcome::Win,
-        ));
-    }
-    let path = fixture.write("data.bin", 11, 1, 200, &records);
-    let observed = Observations::compute(
-        &Dataset::open(&[path], None, std::num::NonZeroUsize::new(1).unwrap()).unwrap(),
-        InputFeatureSet::HalfKpHmB8,
-    )
-    .unwrap();
-    let base = 29 * 144 + 4 * 12 + 3;
-    assert_eq!(observed.input_counts()[3 * FEATURE_COUNT + base], 1);
-    assert_eq!(observed.input_counts()[6 * FEATURE_COUNT + base], 1);
-    let mask = observed.virtual_mask().unwrap();
-    assert!(mask[base]);
-    for (base, &seen) in mask[..FEATURE_COUNT].iter().enumerate() {
-        assert_eq!(
-            seen,
-            (0..8).any(|bucket| observed.input_counts()[bucket * FEATURE_COUNT + base] != 0)
-        );
-    }
-}
-
-fn verify_inverse(slot: &BatchSlot, inverse: &ReverseIndex, linear: bool) {
-    let (features, views, rows) = if linear {
-        (slot.linear_features(), 1, CANONICAL_ROWS)
-    } else {
-        (slot.features(), 2, slot.feature_set().first_layer_rows())
-    };
-    let p_encoded = !linear && slot.feature_set() == InputFeatureSet::P;
+fn verify_inverse(slot: &BatchSlot, inverse: &ReverseIndex) {
+    let (features, views, rows) = (slot.features(), 2, slot.feature_set().first_layer_rows());
+    let p_encoded = true;
     assert_eq!(inverse.starts().len(), rows + 1);
     assert_eq!(inverse.starts()[0], 0);
     assert_eq!(inverse.starts()[rows] as usize, inverse.entries().len());
@@ -668,14 +607,13 @@ fn inverse_segments_preserve_hot_rows_across_fixed_length_boundaries() {
     assert_eq!(REVERSE_INDEX_SEGMENT_LEN, 128);
     for count in [127, 128, 129, 256, 257] {
         let indices = vec![0; count];
-        for set in [InputFeatureSet::P, InputFeatureSet::HalfKpHmB8] {
+        {
+            let set = InputFeatureSet::P;
             let batches = build_batches(&dataset, set, &[&indices]).unwrap();
             assert_eq!(batches, build_batches(&dataset, set, &[&indices]).unwrap());
             let batch = &batches[0];
-            verify_inverse(batch, batch.first_layer_inverse(), false);
-            verify_inverse(batch, batch.linear_inverse(), true);
-            // 歩1枚なので線形は1行、第1層は色の異なる2視点で2行が発火する。
-            assert_eq!(batch.linear_inverse().segment_count(), count.div_ceil(128));
+            verify_inverse(batch, batch.first_layer_inverse());
+            // 歩1枚なので第1層は色の異なる2視点で2行が発火する。
             assert_eq!(
                 batch.first_layer_inverse().segment_count(),
                 2 * count.div_ceil(128)
@@ -697,17 +635,15 @@ fn batches_preserve_order_metadata_and_inverse_occurrences() {
 
     let dataset = Dataset::open(&[path], None, std::num::NonZeroUsize::new(1).unwrap()).unwrap();
     let batches: &[&[u64]] = &[&[2, 0, 1, 0], &[1, 0], &[2]];
-    for set in [InputFeatureSet::P, InputFeatureSet::HalfKpHmB8] {
+    {
+        let set = InputFeatureSet::P;
         let slots = build_batches(&dataset, set, batches).unwrap();
         assert_eq!(slots, build_batches(&dataset, set, batches).unwrap());
         for (slot, &indices) in slots.iter().zip(batches) {
             assert_eq!(slot.record_indices(), indices);
             assert_eq!(slot.features().len(), slot.len() * 2 * 145);
-            assert_eq!(slot.linear_features().len(), slot.len() * 145);
-            verify_inverse(slot, slot.first_layer_inverse(), false);
-            verify_inverse(slot, slot.linear_inverse(), true);
+            verify_inverse(slot, slot.first_layer_inverse());
         }
-        assert_eq!(slots[0].piece_counts(), [0, 92, 1, 92]);
         assert_eq!(slots[0].teacher_scores(), [0.0, 101.0, -12.0, 101.0]);
         assert_eq!(slots[0].outcomes(), [1, 2, 0, 2]);
         assert_eq!(slots[0].teacher_classes(), [0, 0, 0, 0]);
@@ -720,7 +656,6 @@ fn batches_preserve_order_metadata_and_inverse_occurrences() {
                 .all(|&v| v == 0)
         );
         assert!(slots[2].first_layer_inverse().entries().is_empty());
-        assert!(slots[2].linear_inverse().entries().is_empty());
     }
     assert!(matches!(
         build_batches(&dataset, InputFeatureSet::P, &[&[]]),
@@ -752,8 +687,6 @@ fn p_batch_columns_match_known_python_numbers_and_lion_slot() {
     assert_eq!(slot.features()[145 + 20], 10963);
     assert_eq!(slot.features()[144], 13625);
     assert_eq!(slot.features()[145 + 144], 13589);
-    assert_eq!(slot.linear_features()[20], 2151);
-    assert_eq!(slot.linear_features()[144], 6812);
     for (offset, expected) in [(20, 4304), (165, 10964), (144, 13629), (289, 13593)] {
         assert_eq!(decode_p_feature(slot.features()[offset]).unwrap(), expected);
     }
@@ -761,80 +694,8 @@ fn p_batch_columns_match_known_python_numbers_and_lion_slot() {
         if column != 20 {
             assert_eq!(slot.features()[column], SENTINEL);
             assert_eq!(slot.features()[145 + column], SENTINEL);
-            assert_eq!(slot.linear_features()[column], SENTINEL);
         }
     }
-    assert_eq!(slot.piece_counts(), [1]);
-}
-
-#[test]
-fn halfkp_batch_indices_match_feature_set_for_both_perspectives() {
-    let fixture = Fixture::new();
-    let mut positions = vec![single_pawn(true)];
-    // 全区分・左右両側・両手番と、王不在時の太子を通る。
-    for side in Color::ALL {
-        for royal in [PieceKind::King, PieceKind::CrownPrince] {
-            for rank in 0..3 {
-                for file in 0..12 {
-                    let mut builder = PositionBuilder::new(side);
-                    let piece = if royal == PieceKind::CrownPrince {
-                        PieceCode::new_promoted(side, royal).unwrap()
-                    } else {
-                        PieceCode::new(side, royal).unwrap()
-                    };
-                    let absolute_rank = if side == Color::Black {
-                        rank
-                    } else {
-                        11 - rank
-                    };
-                    builder.put(sq(file, absolute_rank), piece).unwrap();
-                    builder
-                        .put(
-                            sq(0, 6),
-                            PieceCode::new(side.opposite(), PieceKind::Pawn).unwrap(),
-                        )
-                        .unwrap();
-                    let mut position = builder.finish().unwrap();
-                    position.set_lion_capture(Some(sq(11, 6))).unwrap();
-                    positions.push(position);
-                }
-            }
-        }
-    }
-    let records: Vec<_> = positions
-        .iter()
-        .enumerate()
-        .map(|(i, position)| sample(position, 1, i as u16, 0, Outcome::Draw))
-        .collect();
-    let path = fixture.write("data.bin", 11, 1, 200, &records);
-
-    let dataset = Dataset::open(&[path], None, std::num::NonZeroUsize::new(1).unwrap()).unwrap();
-    let indices: Vec<_> = (0..positions.len() as u64).collect();
-    let slots = build_batches(&dataset, InputFeatureSet::HalfKpHmB8, &[&indices]).unwrap();
-    for (batch, position) in positions.iter().enumerate() {
-        for (view, side) in [position.side_to_move(), position.side_to_move().opposite()]
-            .into_iter()
-            .enumerate()
-        {
-            let context = HalfKpHmB8::context(position, side);
-            let offset = (batch * 2 + view) * FEATURE_COLUMNS;
-            for square in Square::all() {
-                let expected = match position.piece_at(square) {
-                    Some(piece) => {
-                        HalfKpHmB8::index(context, feature_index(side, piece, square)) as u32
-                    }
-                    None => SENTINEL,
-                };
-                assert_eq!(slots[0].features()[offset + square.dense_index()], expected);
-            }
-            let expected = HalfKpHmB8::index(
-                context,
-                lion_feature_index(side, position.lion_capture_square().unwrap()),
-            );
-            assert_eq!(slots[0].features()[offset + 144], expected as u32);
-        }
-    }
-    verify_inverse(&slots[0], slots[0].first_layer_inverse(), false);
 }
 
 #[test]

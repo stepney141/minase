@@ -105,7 +105,7 @@ pub fn export(w: &Parameters, scale: Scale) -> Result<Vec<u8>> {
 }
 
 /// 標本で測った量子化誤差と、実数計算における活性化の飽和率。合否閾値を持たない。
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, serde::Serialize)]
 pub struct QuantizationReport {
     /// 局面と視点の組の数。
     pub samples: usize,

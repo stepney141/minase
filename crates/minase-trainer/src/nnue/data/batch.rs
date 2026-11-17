@@ -1,8 +1,8 @@
 use crate::data::{Outcome, Sample};
 use minase_core::{Color, Position};
 
-use super::features::{base_features, canonical_row, input_features};
-use super::{CANONICAL_ROWS, Error, FEATURE_COLUMNS, InputFeatureSet, Result, SENTINEL};
+use super::features::{base_features, input_features};
+use super::{Error, FEATURE_COLUMNS, InputFeatureSet, Result, SENTINEL};
 use crate::data::{Dataset, build_targets_from_arrays, outcome_code};
 
 /// バッチの教師値を[`build_targets_from_arrays`]の混合式で構築する。
@@ -208,23 +208,20 @@ impl ReverseIndex {
 
 /// CPUで構築し、そのまま転送できる1バッチの面。配列はいずれも連続したVec。
 ///
-/// 局面数をBとすると、`features`は`[B, 2, 145]`、`linear_features`は`[B, 145]`。
+/// 局面数をBとすると、`features`は`[B, 2, 145]`。
 /// 局面、視点（手番側0、相手側1）、元の盤面のdense升の順で行優先に並ぶ。
 /// 列144は先獅子である。残る局面ごとの配列はすべて`[B]`。
-/// 第1層と線形の逆索引は各々[行数＋1]の開始位置と、発火数個のu32を持つ。
+/// 第1層の逆索引は[行数＋1]の開始位置と、発火数個のu32を持つ。
 /// 後退用の区分表もワーカーが構築し、行・逆索引要素とも昇順を保つ。
 #[derive(Debug, PartialEq)]
 pub struct BatchSlot {
     feature_set: InputFeatureSet,
     record_indices: Vec<u64>,
     features: Vec<u32>,
-    linear_features: Vec<u32>,
-    piece_counts: Vec<u8>,
     teacher_scores: Vec<f32>,
     teacher_classes: Vec<u32>,
     outcomes: Vec<u8>,
     first_layer_inverse: ReverseIndex,
-    linear_inverse: ReverseIndex,
 }
 
 impl BatchSlot {
@@ -244,17 +241,9 @@ impl BatchSlot {
     pub fn record_indices(&self) -> &[u64] {
         &self.record_indices
     }
-    /// 両視点の特徴`[B, 2, 145]`。P型は正準行×2＋回転、HalfKPは入力特徴番号。
+    /// 両視点の特徴`[B, 2, 145]`。P型は正準行×2＋回転。
     pub fn features(&self) -> &[u32] {
         &self.features
-    }
-    /// 手番側の線形経路の正準行番号`[B, 145]`を返す。
-    pub fn linear_features(&self) -> &[u32] {
-        &self.linear_features
-    }
-    /// 先獅子の枠を含まない盤上総駒数`[B]`を返す。
-    pub fn piece_counts(&self) -> &[u8] {
-        &self.piece_counts
     }
     /// 先読み後の教師探索値`[B]`を返す。単位はセンチポーン。
     pub fn teacher_scores(&self) -> &[f32] {
@@ -271,10 +260,6 @@ impl BatchSlot {
     /// 両視点の第1層用逆索引を返す。
     pub fn first_layer_inverse(&self) -> &ReverseIndex {
         &self.first_layer_inverse
-    }
-    /// 手番側の線形経路用逆索引を返す。
-    pub fn linear_inverse(&self) -> &ReverseIndex {
-        &self.linear_inverse
     }
 
     fn build(dataset: &Dataset, feature_set: InputFeatureSet, indices: &[u64]) -> Result<Self> {
@@ -394,29 +379,14 @@ impl BatchSlot {
             });
         }
         let mut features = Vec::with_capacity(indices.len() * 2 * FEATURE_COLUMNS);
-        let mut linear_features = Vec::with_capacity(indices.len() * FEATURE_COLUMNS);
-        let mut piece_counts = Vec::with_capacity(indices.len());
         let mut teacher_scores = Vec::with_capacity(indices.len());
         let mut teacher_classes = Vec::with_capacity(indices.len());
         let mut outcomes = Vec::with_capacity(indices.len());
         for sample in samples {
             let sample = sample?;
             let bases = base_features(&sample.position, sample.perspective);
-            let inputs = input_features(&sample.position, &bases, feature_set, sample.perspective);
+            let inputs = input_features(&bases);
             features.extend(inputs.into_iter().flatten());
-            linear_features.extend(bases[0].iter().map(|&base| {
-                if base == SENTINEL {
-                    SENTINEL
-                } else {
-                    canonical_row(base)
-                }
-            }));
-            piece_counts.push(
-                bases[0][..144]
-                    .iter()
-                    .filter(|&&base| base != SENTINEL)
-                    .count() as u8,
-            );
             teacher_scores.push(sample.score);
             teacher_classes.push(sample.class);
             outcomes.push(outcome_code(sample.outcome));
@@ -427,18 +397,14 @@ impl BatchSlot {
             2,
             feature_set == InputFeatureSet::P,
         )?;
-        let linear_inverse = ReverseIndex::build(&linear_features, CANONICAL_ROWS, 1, false)?;
         Ok(Self {
             feature_set,
             record_indices: indices.to_vec(),
             features,
-            linear_features,
-            piece_counts,
             teacher_scores,
             teacher_classes,
             outcomes,
             first_layer_inverse,
-            linear_inverse,
         })
     }
 }

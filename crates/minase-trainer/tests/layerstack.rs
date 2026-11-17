@@ -29,6 +29,10 @@ fn cpu_batch_uses_existing_teacher_mixture_and_scale_ratio() {
     assert_eq!(optimizer.step, 1);
     assert!(weights[Parameter::L3Bias][0] > 0.25);
     let checkpoint = minase_trainer::nnue::layerstack::Checkpoint {
+        progress: minase_trainer::nnue::train::Progress {
+            completed_steps: optimizer.step,
+            ..progress()
+        },
         parameters: weights,
         optimizer,
         settings: minase_trainer::nnue::layerstack::Settings {
@@ -48,7 +52,7 @@ fn cpu_batch_uses_existing_teacher_mixture_and_scale_ratio() {
 }
 
 #[test]
-fn packed_p_batches_match_position_features_and_reject_other_feature_sets() {
+fn packed_p_batches_match_position_features() {
     let positions = minase_core::test_util::bench_positions();
     let weights = Parameters::initialize(12, Scale::new(679.03).unwrap());
     for side in Color::ALL {
@@ -65,8 +69,17 @@ fn packed_p_batches_match_position_features_and_reject_other_feature_sets() {
             );
         }
     }
-    let batch =
-        BatchSlot::from_evaluation_positions(InputFeatureSet::HalfKpHmB8, &positions, Color::Black)
-            .unwrap();
-    assert!(Features::from_batch(&batch).is_err());
+}
+
+fn progress() -> minase_trainer::nnue::train::Progress {
+    minase_trainer::nnue::train::Progress {
+        completed_superbatches: 0,
+        completed_steps: 0,
+        elapsed_seconds: 0.0,
+        config: minase_trainer::nn::checkpoint::Configuration {
+            settings: serde_json::json!({}),
+            inputs: serde_json::json!({}),
+            preprocessing: serde_json::json!({}),
+        },
+    }
 }

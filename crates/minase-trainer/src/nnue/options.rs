@@ -2,8 +2,8 @@
 
 use crate::nn::AdamWGroup;
 use crate::nnue::{
-    model::{Error, Result},
-    reference::AdamWConfig,
+    layerstack::OptimizerConfig,
+    layerstack::{Error, Result},
 };
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
@@ -15,23 +15,17 @@ pub enum DeviceKind {
     /// CUDAを使用する。使用できなければエラーにする。
     #[default]
     Cuda,
-    /// 標準ライブラリのスレッドでCPU参照計算を実行する。
+    /// CPU参照計算を実行する。
     Cpu,
 }
 
 /// 学習、照合、計測で共用する最適化と教師の係数。
 #[derive(Clone, Copy, Debug, PartialEq, clap::Args, Serialize)]
 pub struct TrainingOptions {
-    /// 線形経路の学習率を正の有限値で指定する。
-    #[arg(long, default_value_t = 0.03)]
-    pub lr_linear: f64,
-    /// 線形経路の重み減衰を非負の有限値で指定する。
-    #[arg(long, default_value_t = 0.0)]
-    pub weight_decay_linear: f64,
-    /// 第1層と仮想行の学習率を正の有限値で指定する。
+    /// 第1層の重みとPSQTの学習率を正の有限値で指定する。
     #[arg(long, default_value_t = 1e-3)]
     pub lr_ft: f64,
-    /// 第1層と仮想行の重み減衰を非負の有限値で指定する。
+    /// 第1層の重みとPSQTの重み減衰を非負の有限値で指定する。
     #[arg(long, default_value_t = 0.0)]
     pub weight_decay_ft: f64,
     /// 出力部の学習率を正の有限値で指定する。
@@ -48,10 +42,8 @@ pub struct TrainingOptions {
 impl TrainingOptions {
     /// 教師の混合比を明示し、最適化器の初期係数を設定する。
     pub fn new(lambda: f64) -> Self {
-        let config = AdamWConfig::default();
+        let config = OptimizerConfig::default();
         Self {
-            lr_linear: config.linear.lr,
-            weight_decay_linear: config.linear.weight_decay,
             lr_ft: config.ft.lr,
             weight_decay_ft: config.ft.weight_decay,
             lr_head: config.head.lr,
@@ -71,13 +63,9 @@ impl TrainingOptions {
         Ok(())
     }
 
-    /// 線形、第1層、出力部の3群へ係数を割り当てる。
-    pub fn optimizer(&self) -> AdamWConfig {
-        AdamWConfig {
-            linear: AdamWGroup {
-                lr: self.lr_linear,
-                weight_decay: self.weight_decay_linear,
-            },
+    /// 第1層と出力部の2群へ係数を割り当てる。
+    pub fn optimizer(&self) -> OptimizerConfig {
+        OptimizerConfig {
             ft: AdamWGroup {
                 lr: self.lr_ft,
                 weight_decay: self.weight_decay_ft,

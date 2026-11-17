@@ -340,9 +340,6 @@ impl Evaluator {
         self.ring.finish(ticket)?;
         Ok(())
     }
-    pub fn device(&self) -> &Device {
-        &self.device
-    }
     /// Read intermediate values only for diagnostics/equivalence checks.
     pub fn evaluate(&mut self, batch: &BatchSlot, values: &[f32]) -> Result<Evaluation> {
         self.prepare(batch, values)?;

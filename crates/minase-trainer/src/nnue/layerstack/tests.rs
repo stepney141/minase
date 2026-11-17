@@ -59,16 +59,16 @@ fn scales_validate_teacher_and_rounded_divisor() {
 fn canonical_mapping_and_rotation_match_every_existing_p_feature() {
     use crate::nnue::data::decode_p_feature;
     for f in 0..FEATURE_COUNT {
-        assert_eq!(canonical(f), crate::nnue::model::canonical(f));
+        assert_eq!(
+            canonical(f),
+            f / 144 * 72 + f % 144 / 12 * 6 + (f % 12).min(11 - f % 12)
+        );
         let packed = 2 * canonical(f) + usize::from(f % 12 >= 6);
         assert_eq!(decode_p_feature(packed as u32).unwrap() as usize, f);
         assert_eq!(canonical(f), canonical(mirror_feature(f)));
         assert_ne!(f % 12 >= 6, mirror_feature(f) % 12 >= 6);
         for j in 0..H {
-            assert_eq!(
-                unit(f, j),
-                crate::nnue::model::rotated_unit(f % 12 >= 6, j, H)
-            );
+            assert_eq!(unit(f, j), if f % 12 >= 6 { (j + H / 2) % H } else { j });
         }
     }
 }
@@ -597,6 +597,7 @@ fn quantization_report_has_signed_absolute_maximum_errors_and_saturation() {
 fn checkpoint_resume_preserves_next_update_bits() {
     let settings = settings();
     let mut checkpoint = Checkpoint {
+        progress: progress(),
         parameters: Parameters::initialize(settings.seed, settings.scale),
         optimizer: AdamW::new(settings.optimizer).unwrap(),
         settings,
@@ -611,6 +612,7 @@ fn checkpoint_resume_preserves_next_update_bits() {
         .optimizer
         .update(&mut checkpoint.parameters, &gradients, 0.7)
         .unwrap();
+    checkpoint.progress.completed_steps = checkpoint.optimizer.step;
     let mut resumed = Checkpoint::decode(&checkpoint.encode().unwrap()).unwrap();
     resumed.check_settings(&checkpoint.settings).unwrap();
     for c in [&mut checkpoint, &mut resumed] {
@@ -631,6 +633,7 @@ fn checkpoint_resume_preserves_next_update_bits() {
         }
     }
     // 再開条件に予算や並列度を保存していないことを、配列とメタデータの双方で確かめる。
+    checkpoint.progress.completed_steps = checkpoint.optimizer.step;
     let arrays = crate::nn::npz::decode(&checkpoint.encode().unwrap()).unwrap();
     let meta: serde_json::Value = serde_json::from_slice(&arrays["meta"].data).unwrap();
     for key in ["total_superbatches", "time_limit", "threads"] {
@@ -658,6 +661,7 @@ fn checkpoint_rejects_missing_extra_wrong_shape_type_and_inconsistent_settings()
     use crate::nn::npz;
     let settings = settings();
     let c = Checkpoint {
+        progress: progress(),
         parameters: Parameters::zeros(),
         optimizer: AdamW::new(settings.optimizer).unwrap(),
         settings,
@@ -878,4 +882,17 @@ fn psqt_preserves_small_residuals_with_single_precision_compensation() {
     let result = forward(&w, &f).unwrap();
     assert_eq!(result.psqt, [1.0, 0.0]);
     assert_eq!(result.output, 0.5);
+}
+
+fn progress() -> crate::nnue::train::Progress {
+    crate::nnue::train::Progress {
+        completed_superbatches: 0,
+        completed_steps: 0,
+        elapsed_seconds: 0.0,
+        config: crate::nn::checkpoint::Configuration {
+            settings: serde_json::json!({}),
+            inputs: serde_json::json!({}),
+            preprocessing: serde_json::json!({}),
+        },
+    }
 }

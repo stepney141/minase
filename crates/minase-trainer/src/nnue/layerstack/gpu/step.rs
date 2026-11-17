@@ -7,7 +7,7 @@ use crate::nnue::{
     gpu::{BatchTicket, HostRing, device::pinned_zeros},
     layerstack::{AdamW, OptimizerConfig, Scale},
 };
-use cudarc::driver::{PinnedHostSlice, PushKernelArg};
+use cudarc::driver::{CudaEvent, PinnedHostSlice, PushKernelArg, sys::CUevent_flags};
 use std::sync::{
     Arc,
     atomic::{AtomicBool, Ordering},
@@ -16,18 +16,36 @@ use std::sync::{
 struct Readback {
     sums: PinnedHostSlice<f64>,
     status: PinnedHostSlice<u32>,
+    events: [CudaEvent; 4],
 }
 impl Readback {
     fn new(device: &Device) -> Result<Self> {
         Ok(Self {
             sums: pinned_zeros(device, STATS)?,
             status: pinned_zeros(device, 1)?,
+            events: [
+                device
+                    .context
+                    .new_event(Some(CUevent_flags::CU_EVENT_DEFAULT))?,
+                device
+                    .context
+                    .new_event(Some(CUevent_flags::CU_EVENT_DEFAULT))?,
+                device
+                    .context
+                    .new_event(Some(CUevent_flags::CU_EVENT_DEFAULT))?,
+                device
+                    .context
+                    .new_event(Some(CUevent_flags::CU_EVENT_DEFAULT))?,
+            ],
         })
     }
 }
 pub(crate) struct StepMetrics {
     pub loss: f64,
     pub step: u64,
+    pub forward_ms: f32,
+    pub backward_ms: f32,
+    pub optimizer_ms: f32,
 }
 #[must_use = "collect the result after submitting the next update"]
 pub(crate) struct StepResult {
@@ -49,6 +67,9 @@ impl StepResult {
             Ok(StepMetrics {
                 loss: sums[0] / self.n as f64,
                 step: self.step,
+                forward_ms: self.readback.events[0].elapsed_ms(&self.readback.events[1])?,
+                backward_ms: self.readback.events[1].elapsed_ms(&self.readback.events[2])?,
+                optimizer_ms: self.readback.events[2].elapsed_ms(&self.readback.events[3])?,
             })
         })();
         if result.is_err() {
@@ -145,6 +166,7 @@ impl Step {
         let submitted = (|| -> Result<()> {
             self.targets[self.next].upload(&self.device, values)?;
             let input = ring.input(ticket)?;
+            readback.events[0].record(&self.device.compute)?;
             self.forward.launch(
                 &self.device,
                 &self.kernels,
@@ -153,6 +175,7 @@ impl Step {
                 &self.targets[self.next].values,
                 self.scale,
             )?;
+            readback.events[1].record(&self.device.compute)?;
             self.backward.launch(
                 &self.device,
                 &self.kernels,
@@ -161,6 +184,7 @@ impl Step {
                 &self.targets[self.next].values,
                 &mut self.forward,
             )?;
+            readback.events[2].record(&self.device.compute)?;
             ring.finish(ticket.clone())?;
             for p in Parameter::ALL {
                 let (lr, decay) =
@@ -192,6 +216,7 @@ impl Step {
                     args.launch(grid(p.active_len().div_ceil(THREADS), 1)?)?;
                 }
             }
+            readback.events[3].record(&self.device.compute)?;
             // The status flag is sticky. A later submission cannot erase an earlier
             // nonfinite result, including when its result ticket has been dropped.
             self.device
@@ -215,6 +240,11 @@ impl Step {
         };
         self.next ^= 1;
         Ok(result)
+    }
+    /// 最後に投入した更新の勾配を、CPUとの一致検査用に回収する。
+    pub fn gradients(&self) -> Result<Parameters> {
+        check_status(&self.device, &self.forward.nonfinite)?;
+        download(&self.device, &self.backward.gradients)
     }
     pub fn snapshot(&self) -> Result<(Parameters, AdamW)> {
         if self.failed.load(Ordering::Relaxed) {

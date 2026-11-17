@@ -941,7 +941,8 @@ mod tests {
             spill.estimate_teacher_cp_per_logit().unwrap(),
             memory.estimate_teacher_cp_per_logit().unwrap()
         );
-        for feature_set in [InputFeatureSet::P, InputFeatureSet::HalfKpHmB8] {
+        {
+            let feature_set = InputFeatureSet::P;
             let expected = Observations::compute(&memory, feature_set).unwrap();
             let actual = Observations::from_positions(
                 spill
@@ -952,7 +953,6 @@ mod tests {
             .unwrap();
             assert_eq!(actual.canonical_counts(), expected.canonical_counts());
             assert_eq!(actual.input_counts(), expected.input_counts());
-            assert_eq!(actual.virtual_mask(), expected.virtual_mask());
         }
         let validation: Vec<_> = spill
             .validation_chunks(3)

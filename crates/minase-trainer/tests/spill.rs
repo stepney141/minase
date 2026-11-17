@@ -361,7 +361,8 @@ fn spill_store_matches_the_in_memory_dataset_bit_for_bit() {
         assert_eq!(left.at_search_bound, right.at_search_bound);
     }
 
-    for feature_set in [InputFeatureSet::P, InputFeatureSet::HalfKpHmB8] {
+    {
+        let feature_set = InputFeatureSet::P;
         let memory = Observations::compute(&dataset, feature_set).unwrap();
         let spilled = Observations::from_positions(
             store.training_records().map(|record| {
@@ -372,7 +373,6 @@ fn spill_store_matches_the_in_memory_dataset_bit_for_bit() {
         .unwrap();
         assert_eq!(spilled.canonical_counts(), memory.canonical_counts());
         assert_eq!(spilled.input_counts(), memory.input_counts());
-        assert_eq!(spilled.virtual_mask(), memory.virtual_mask());
     }
 }
 
@@ -832,8 +832,6 @@ impl Training {
     fn new() -> Self {
         // 320対局のうちseed=11の検証対局を除いた訓練局面を33件ずつのバッチに分ける。
         let data = Data::new(&[(11, [2; 32], 320)]);
-        let base = include_bytes!("../../minase/nets/nnue-epoch0.bin");
-        fs::write(data.temp.join("base.bin"), base).unwrap();
         Self { data }
     }
     fn path(&self, name: &str) -> String {
@@ -842,18 +840,14 @@ impl Training {
     fn args(&self, output: &str, extra: &[&str]) -> minase_trainer::nnue::train::Args {
         let fixed = [
             "minase-trainer".to_owned(),
-            "--feature-set".into(),
-            "P".into(),
-            "--width".into(),
-            "8".into(),
+            "--rules".into(),
+            "L0,P0,R1,E0".into(),
             "--data".into(),
             self.data.paths[0].to_str().unwrap().into(),
-            "--base".into(),
-            self.path("base.bin"),
             "--output-dir".into(),
             self.path(output),
             "--teacher-cp-per-logit".into(),
-            "calibrate".into(),
+            "1072.65".into(),
             "--lambda".into(),
             "0.75".into(),
             "--device".into(),
@@ -916,11 +910,12 @@ fn cpu_spill_training_resumed_mid_epoch_matches_the_uninterrupted_run() {
     ];
     let mut continuous = buckets.to_vec();
     continuous.extend(["--superbatches", "2"]);
-    minase_trainer::nnue::train::run(training.args("continuous", &continuous)).unwrap();
+    minase_trainer::nnue::layerstack::trainer::run(training.args("continuous", &continuous))
+        .unwrap();
 
     let mut first = buckets.to_vec();
     first.extend(["--superbatches", "1"]);
-    minase_trainer::nnue::train::run(training.args("resumed", &first)).unwrap();
+    minase_trainer::nnue::layerstack::trainer::run(training.args("resumed", &first)).unwrap();
     assert_eq!(
         training::logs(&training.data.temp.join("resumed"))
             .iter()
@@ -930,7 +925,7 @@ fn cpu_spill_training_resumed_mid_epoch_matches_the_uninterrupted_run() {
     );
     // 順列を変えない容量と作業ディレクトリは再開時に変えてよい。
     let resumed_dir = training.path("resumed");
-    minase_trainer::nnue::train::run(training.args(
+    minase_trainer::nnue::layerstack::trainer::run(training.args(
         "resumed",
         &[
             "--buckets",
@@ -951,7 +946,10 @@ fn cpu_spill_training_resumed_mid_epoch_matches_the_uninterrupted_run() {
 
     let left = training.data.temp.join("continuous");
     let right = training.data.temp.join("resumed");
-    training::compare_checkpoints(&left.join("latest.npz"), &right.join("latest.npz"));
+    let a = minase_trainer::nnue::layerstack::Checkpoint::read(left.join("latest.npz")).unwrap();
+    let b = minase_trainer::nnue::layerstack::Checkpoint::read(right.join("latest.npz")).unwrap();
+    assert_eq!(a.parameters, b.parameters);
+    assert_eq!(a.optimizer, b.optimizer);
     assert_eq!(
         fs::read(left.join("nnue.bin")).unwrap(),
         fs::read(right.join("nnue.bin")).unwrap()
@@ -1004,7 +1002,7 @@ fn cpu_spill_training_resumed_mid_epoch_matches_the_uninterrupted_run() {
 fn resume_rejects_a_changed_bucket_count() {
     let training = Training::new();
     let scratch = training.scratch();
-    minase_trainer::nnue::train::run(training.args(
+    minase_trainer::nnue::layerstack::trainer::run(training.args(
         "output",
         &[
             "--buckets",
@@ -1032,7 +1030,7 @@ fn resume_rejects_a_changed_bucket_count() {
     ] {
         let mut extra = changed.clone();
         extra.extend(["--superbatches", "2", "--resume", &output]);
-        let error = minase_trainer::nnue::train::run(training.args("output", &extra))
+        let error = minase_trainer::nnue::layerstack::trainer::run(training.args("output", &extra))
             .expect_err("a changed bucket count must be rejected");
         assert!(
             matches!(
@@ -1059,7 +1057,7 @@ fn missing_or_non_directory_scratch_dir_fails_before_training() {
     fs::write(&file, b"").unwrap();
     for (i, scratch) in [training.path("missing"), file].into_iter().enumerate() {
         let output = format!("output-{i}");
-        let result = minase_trainer::nnue::train::run(training.args(
+        let result = minase_trainer::nnue::layerstack::trainer::run(training.args(
             &output,
             &[
                 "--buckets",
@@ -1084,7 +1082,7 @@ fn missing_or_non_directory_scratch_dir_fails_before_training() {
 fn training_removes_its_run_directory_after_a_bucket_overflow() {
     let training = Training::new();
     let scratch = training.scratch();
-    let error = minase_trainer::nnue::train::run(training.args(
+    let error = minase_trainer::nnue::layerstack::trainer::run(training.args(
         "output",
         &[
             "--buckets",

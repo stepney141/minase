@@ -142,6 +142,7 @@ impl Fixture {
         let path = self.path("best.npz");
         let config = OptimizerConfig::default();
         Checkpoint {
+            progress: progress(),
             optimizer: AdamW::new(config).unwrap(),
             parameters: model.parameters,
             settings: Settings {
@@ -1162,4 +1163,17 @@ fn removal_reference_excludes_deltas_clipped_to_zero() {
     assert_eq!(report["reversals"]["total"], 0);
     assert!(report["reversals"]["fraction"].is_null());
     assert_eq!(report["by_piece_state"]["20"]["total"], 0);
+}
+
+fn progress() -> minase_trainer::nnue::train::Progress {
+    minase_trainer::nnue::train::Progress {
+        completed_superbatches: 0,
+        completed_steps: 0,
+        elapsed_seconds: 0.0,
+        config: minase_trainer::nn::checkpoint::Configuration {
+            settings: serde_json::json!({}),
+            inputs: serde_json::json!({}),
+            preprocessing: serde_json::json!({}),
+        },
+    }
 }

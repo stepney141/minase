@@ -6,7 +6,7 @@ use minase::training::records::{
 use minase_core::{Color, Game, Position, Rules};
 use minase_trainer::{
     data::{self, CalibrateArgs, Dataset},
-    nnue::{handcrafted, train},
+    nnue::{layerstack::trainer::run, train},
 };
 use std::{
     fs,
@@ -162,21 +162,19 @@ struct TrainCommand {
     args: train::Args,
 }
 
-fn training_args(data: &Path, base: &Path, output: &Path) -> train::Args {
+fn training_args(data: &Path, output: &Path) -> train::Args {
     TrainCommand::parse_from([
         "train",
         "--data",
         data.to_str().unwrap(),
-        "--base",
-        base.to_str().unwrap(),
+        "--rules",
+        "LISHOGI",
+        "--teacher-cp-per-logit",
+        "679.03",
         "--output-dir",
         output.to_str().unwrap(),
         "--device",
         "cpu",
-        "--feature-set",
-        "P",
-        "--width",
-        "4",
         "--lambda",
         "1",
         "--lr-schedule",
@@ -198,34 +196,22 @@ fn training_args(data: &Path, base: &Path, output: &Path) -> train::Args {
 }
 
 #[test]
-fn lishogi_handcrafted_base_trains_adjudicated_games_and_rejects_jcsa_books() {
+fn lishogi_training_accepts_adjudicated_games_and_rejects_jcsa_books() {
     let fixture = Fixture::new();
-    let base = fixture.0.join("v0.bin");
-    handcrafted::run(handcrafted::Args {
-        cp_per_logit: 679.03,
-        output: base.clone(),
-    })
-    .unwrap();
-    let net = minase::eval::Nnue::decode(&fs::read(&base).unwrap()).unwrap();
-    assert_eq!(net.rule_set(), "L1,L2,P0,P3,R1,E1,E3");
     let jcsa = fixture.write(Rules::JCSA);
     let output = fixture.0.join("rejected");
-    let error = train::run(training_args(&jcsa, &base, &output))
-        .err()
-        .unwrap();
+    let error = run(training_args(&jcsa, &output)).err().unwrap();
     assert!(
         matches!(
             error.downcast_ref::<train::Error>(),
-            Some(train::Error::Invalid(
-                "MNSD rule set differs from baseline MNUE"
-            ))
+            Some(train::Error::Invalid("MNSD rule set differs from --rules"))
         ),
         "{error}"
     );
     let lishogi = fixture.write(Rules::LISHOGI);
     let output = fixture.0.join("trained");
-    let summary = train::run(training_args(&lishogi, &base, &output)).unwrap();
+    let summary = run(training_args(&lishogi, &output)).unwrap();
     assert_eq!(summary.completed_steps, 1);
-    let net = minase::eval::Nnue::decode(&fs::read(output.join("nnue.bin")).unwrap()).unwrap();
-    assert_eq!(net.rule_set(), "L1,L2,P0,P3,R1,E1,E3");
+    minase::eval::nnue::network::Network::decode(&fs::read(output.join("nnue.bin")).unwrap())
+        .unwrap();
 }

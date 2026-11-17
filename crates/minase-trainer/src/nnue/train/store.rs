@@ -2,9 +2,8 @@
 
 use super::{Args, Error, Result};
 use crate::{
-    data::{Dataset, SpillStore, TeacherCalibration, TeacherClass, TeacherCpPerLogitSource},
+    data::{Dataset, SpillStore, TeacherClass},
     nn::{Sha256Hasher, hex},
-    nnue::data::{InputFeatureSet, Observations},
 };
 use std::path::Path;
 
@@ -61,60 +60,44 @@ impl Store {
     }
 
     /// 全入力の規則セットを基準と照合する。
-    pub(super) fn check_rules(&self, rule_set: &str) -> Result<()> {
-        let matches = match self {
-            Self::Memory(d) => d.headers().all(|header| header.rule_set() == rule_set),
-            Self::Spill(d) => d.headers().all(|header| header.rule_set() == rule_set),
+    pub(super) fn check_rules(&self, rules: minase_core::rules::Rules) -> Result<()> {
+        let headers: Vec<_> = match self {
+            Self::Memory(d) => d.headers().collect(),
+            Self::Spill(d) => d.headers().collect(),
         };
-        if !matches {
-            return Err(Error::Invalid("MNSD rule set differs from baseline MNUE").into());
+        for header in headers {
+            let codes = minase_core::rules::parse_rule_set(header.rule_set())?;
+            if minase_core::rules::Rules::from_codes(&codes)? != rules {
+                return Err(Error::Invalid("MNSD rule set differs from --rules").into());
+            }
         }
         Ok(())
     }
 
-    /// ファイル順の訓練局面から観測数を集計する。
-    pub(super) fn observations(&self, feature_set: InputFeatureSet) -> Result<Observations> {
-        Ok(match self {
-            Self::Memory(d) => Observations::compute(d, feature_set)?,
-            Self::Spill(d) => Observations::from_positions(
-                d.training_records()
-                    .map(|record| Ok(record?.sample.to_position()?)),
-                feature_set,
-            )?,
-        })
-    }
-
-    /// 訓練集合による推定または較正ファイルの照合で尺度を解決する。
-    pub(super) fn calibration(
+    pub(super) fn validation_sample(
         &self,
-        source: Option<&TeacherCpPerLogitSource>,
-        cp_per_logit: f32,
-    ) -> Result<TeacherCalibration> {
-        let Some(source) = source else {
-            let lambdas = match self {
-                Self::Memory(d) => d.teacher_lambdas(),
-                Self::Spill(d) => d.teacher_lambdas(),
-            };
-            return Ok(TeacherCalibration {
-                teacher_cp_per_logit: lambdas
-                    .iter()
-                    .map(|&lambda| (lambda != 0.0).then_some(f64::from(cp_per_logit)))
-                    .collect(),
-                teacher_score_multiplier: lambdas
-                    .iter()
-                    .map(|&lambda| (lambda != 0.0).then_some(1.0))
-                    .collect(),
-                at_search_bound: lambdas
-                    .iter()
-                    .map(|&lambda| (lambda != 0.0).then_some(false))
-                    .collect(),
-                source: serde_json::json!("base"),
-            });
+        requested: usize,
+        seed: u64,
+    ) -> Result<Vec<(minase_core::Position, minase_core::Color)>> {
+        let samples = match self {
+            Self::Memory(d) => crate::data::floyd_sample(
+                d.validation_indices().len() as u64,
+                requested.min(d.validation_indices().len()),
+                seed,
+            )?
+            .into_iter()
+            .map(|i| d.record(d.validation_indices()[i as usize]))
+            .collect::<crate::data::Result<Vec<_>>>()?,
+            Self::Spill(d) => d
+                .validation_sample(requested, seed)?
+                .into_iter()
+                .map(|r| r.sample)
+                .collect(),
         };
-        match self {
-            Self::Memory(d) => Ok(source.resolve(d, cp_per_logit)?),
-            Self::Spill(d) => Ok(super::spill_calibration::resolve(d, source, cp_per_logit)?),
-        }
+        samples
+            .into_iter()
+            .map(|sample| Ok((sample.to_position()?, sample.side_to_move())))
+            .collect()
     }
 }
 

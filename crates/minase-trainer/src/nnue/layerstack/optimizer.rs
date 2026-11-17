@@ -2,7 +2,7 @@ use super::{Error, Parameter, Parameters, Result};
 use crate::nn::{AdamCoefficients, AdamWGroup};
 
 /// 第1層と後段のAdamWの係数。バイアスは全て後段群に属する。
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, serde::Serialize)]
 pub struct OptimizerConfig {
     /// 第1層の重みとPSQT。
     pub ft: AdamWGroup,

@@ -8,10 +8,7 @@ use minase_core::{Color, PieceCode, PieceKind, Position, PositionBuilder, Square
 use minase_trainer::data::{Outcome, Sample};
 use minase_trainer::{
     data::Dataset,
-    nnue::{
-        data::{BatchSlot, InputFeatureSet, build_batches},
-        model::{Masks, Model, Shape},
-    },
+    nnue::data::{BatchSlot, InputFeatureSet, build_batches},
 };
 use std::{
     fs,
@@ -157,32 +154,4 @@ pub fn mirror(position: &Position) -> Position {
             .unwrap();
     }
     result
-}
-pub fn all_observed(set: InputFeatureSet) -> Masks {
-    let mut canonical = vec![true; 6841];
-    canonical[6840] = false;
-    let mut input = vec![true; set.dimensions() + 1];
-    input[set.dimensions()] = false;
-    Masks::new(set, canonical, input).unwrap()
-}
-pub fn model(set: InputFeatureSet, width: usize) -> Model {
-    model_with_head(
-        set,
-        width,
-        minase_trainer::nnue::model::HeadKind::PairwiseL16L32,
-    )
-}
-pub fn model_with_head(
-    set: InputFeatureSet,
-    width: usize,
-    head: minase_trainer::nnue::model::HeadKind,
-) -> Model {
-    Model::initialize(
-        Shape::new(set, width, 1000.0, head).unwrap(),
-        &vec![[0.0; 2]; 13680],
-        all_observed(set),
-        71,
-        0.05,
-    )
-    .unwrap()
 }

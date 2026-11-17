@@ -6,7 +6,7 @@
 
 use super::{
     Error, Result,
-    backend::{Backend, Buffer, StepResult},
+    backend::{Buffer, StepMetrics, TrainerBackend},
 };
 use crate::{
     data::{Dataset, EpochReader, SpillStore},
@@ -26,7 +26,6 @@ use std::{
 struct Prepared {
     host: Buffer,
     targets: Vec<f32>,
-    positions: usize,
 }
 
 #[derive(Default)]
@@ -62,13 +61,13 @@ impl Training {
         Ok(())
     }
 
-    fn collect(&mut self, result: StepResult, positions: usize) -> gpu::Result<()> {
-        let metrics = result.collect()?;
-        if !metrics.losses.loss.is_finite() {
-            return Err(gpu::Error::Invalid("non-finite training loss"));
+    fn collect(&mut self, metrics: StepMetrics) -> Result<()> {
+        let positions = metrics.positions;
+        if !metrics.loss_sum.is_finite() {
+            return Err(gpu::Error::Invalid("non-finite training loss").into());
         }
-        self.loss += metrics.losses.loss * positions as f64;
-        self.compute_seconds += f64::from(metrics.compute_ms) / 1000.0;
+        self.loss += metrics.loss_sum;
+        self.compute_seconds += metrics.compute_seconds;
         self.steps += 1;
         self.positions = self
             .positions
@@ -123,16 +122,8 @@ fn produce(
                 supply.teacher_cp_per_logit,
                 supply.dataset.teacher_lambdas(),
             )?;
-            let positions = batch.len();
             host.fill(batch)?;
-            if sender
-                .send(Prepared {
-                    host,
-                    targets,
-                    positions,
-                })
-                .is_err()
-            {
+            if sender.send(Prepared { host, targets }).is_err() {
                 return Ok(());
             }
         }
@@ -141,7 +132,10 @@ fn produce(
 }
 
 /// 周の部分列を、指定した更新回数だけ学ぶ。
-pub(super) fn train_batches(supply: Supply<'_>, backend: &mut Backend) -> Result<Option<Training>> {
+pub(super) fn train_batches(
+    supply: Supply<'_>,
+    backend: &mut impl TrainerBackend,
+) -> Result<Option<Training>> {
     train_batches_inner(supply.options, backend, |buffers, recycled, sender| {
         produce(&supply, buffers, recycled, sender)
     })
@@ -161,10 +155,10 @@ pub(super) struct BatchOptions {
 /// 両供給元の更新と結果回収を同じ順序で実行する。
 fn train_batches_inner(
     options: BatchOptions,
-    backend: &mut Backend,
+    backend: &mut impl TrainerBackend,
     produce: impl FnOnce([Buffer; 3], Receiver<Buffer>, SyncSender<Prepared>) -> gpu::Result<()> + Send,
 ) -> Result<Option<Training>> {
-    let (mut queue, buffers) = backend.queue(options.feature_set, options.batch)?;
+    let (mut queue, buffers) = backend.queue(options.batch)?;
     let memory = backend.memory()?;
     let (sender, receiver) = sync_channel(3);
     let (recycle, recycled) = sync_channel(3);
@@ -179,7 +173,6 @@ fn train_batches_inner(
                 gpu_total_bytes: memory.map(|(_, total)| total),
                 ..Training::default()
             };
-            let mut pending: Option<(StepResult, usize)> = None;
             let mut submitted = 0;
             while submitted < total_batches && Instant::now() < options.deadline {
                 let Ok(mut prepared) = receiver.recv() else {
@@ -191,7 +184,7 @@ fn train_batches_inner(
                 let multiplier = options
                     .schedule
                     .multiplier(backend.step(), options.batches_per_superbatch);
-                let result = backend.enqueue(
+                let result = backend.train_step(
                     &mut queue,
                     &mut prepared.host,
                     &prepared.targets,
@@ -203,13 +196,13 @@ fn train_batches_inner(
                 training.last_multiplier = Some(multiplier);
                 // 3面だけを循環させる。fillはその面の転送完了を待ってから書き込む。
                 let _ = recycle.send(prepared.host);
-                if let Some((previous, positions)) = pending.replace((result, prepared.positions)) {
-                    training.collect(previous, positions)?;
+                if let Some(previous) = result {
+                    training.collect(previous)?;
                 }
                 submitted += 1;
             }
-            if let Some((last, positions)) = pending {
-                training.collect(last, positions)?;
+            if let Some(last) = backend.flush_pending_loss()? {
+                training.collect(last)?;
             }
             if Instant::now() >= options.deadline {
                 return Ok(None);
@@ -222,6 +215,7 @@ fn train_batches_inner(
             }
             Ok(Some(training))
         })();
+        let drained = backend.flush_pending_loss();
         // CUDA失敗、時間切れ、正常終了の全経路で、送信と面待ちの双方を解除する。
         drop(receiver);
         drop(recycle);
@@ -230,6 +224,7 @@ fn train_batches_inner(
             .map_err(|_| crate::nnue::data::Error::WorkerPanicked)?;
         // 元のワーカーエラーを、受信側の「途中終了」で隠さない。
         supplied?;
+        drained?;
         consumed
     })
 }
@@ -242,7 +237,7 @@ pub(super) fn train_spill_batches(
     workers: usize,
     scales: &[f64],
     options: BatchOptions,
-    backend: &mut Backend,
+    backend: &mut impl TrainerBackend,
 ) -> Result<Option<Training>> {
     let feature_set = options.feature_set;
     let batch_size = options.batch;
@@ -314,19 +309,129 @@ pub(super) fn train_spill_batches(
                     },
                 };
                 let targets = build_targets(&batch, scales, store.teacher_lambdas())?;
-                let positions = batch.len();
                 host.fill(batch)?;
-                if sender
-                    .send(Prepared {
-                        host,
-                        targets,
-                        positions,
-                    })
-                    .is_err()
-                {
+                if sender.send(Prepared { host, targets }).is_err() {
                     return Ok(());
                 }
             }
         }
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::nnue::train::{
+        Progress,
+        backend::{Queue, Validation},
+    };
+    use minase_core::{Color, Position};
+    use serde_json::Value;
+    use std::path::Path;
+
+    struct Deferred {
+        steps: u64,
+        pending: Option<StepMetrics>,
+        flushes: usize,
+        fail_second: bool,
+    }
+    impl TrainerBackend for Deferred {
+        fn name(&self) -> &str {
+            "deferred test backend"
+        }
+        fn feature_set(&self) -> InputFeatureSet {
+            InputFeatureSet::P
+        }
+        fn step(&self) -> u64 {
+            self.steps
+        }
+        fn memory(&self) -> Result<Option<(usize, usize)>> {
+            Ok(None)
+        }
+        fn queue(&self, _: usize) -> Result<(Queue, [Buffer; 3])> {
+            Ok((Queue::Cpu, std::array::from_fn(|_| Buffer::Cpu(None))))
+        }
+        fn train_step(
+            &mut self,
+            _: &mut Queue,
+            _: &mut Buffer,
+            targets: &[f32],
+            _: f64,
+        ) -> Result<Option<StepMetrics>> {
+            if self.fail_second && self.steps == 1 {
+                return Err(Error::Invalid("injected update failure").into());
+            }
+            self.steps += 1;
+            Ok(self.pending.replace(StepMetrics {
+                loss_sum: self.steps as f64,
+                positions: targets.len(),
+                compute_seconds: 0.01,
+            }))
+        }
+        fn flush_pending_loss(&mut self) -> Result<Option<StepMetrics>> {
+            self.flushes += 1;
+            Ok(self.pending.take())
+        }
+        fn validate_step(&mut self, _: &BatchSlot, _: &[f32]) -> Result<Validation> {
+            panic!("validation is outside the supply pipeline")
+        }
+        fn statistics(&mut self, _: Option<&Validation>) -> Result<Value> {
+            panic!("statistics are outside the supply pipeline")
+        }
+        fn save_checkpoint(&mut self, _: &Path, _: &Progress) -> Result<()> {
+            panic!("saving is outside the supply pipeline")
+        }
+        fn export(&mut self, _: &Path, _: &[(Position, Color)]) -> Result<Value> {
+            panic!("export is outside the supply pipeline")
+        }
+    }
+    #[test]
+    fn delayed_losses_are_drained_on_completion_failure_and_expiration() {
+        for mode in 0..3 {
+            let mut backend = Deferred {
+                steps: 0,
+                pending: None,
+                flushes: 0,
+                fail_second: mode == 1,
+            };
+            let options = BatchOptions {
+                feature_set: InputFeatureSet::P,
+                batch: 2,
+                schedule: "constant:1".parse().unwrap(),
+                batches_per_superbatch: 3.try_into().unwrap(),
+                steps: 3,
+                deadline: if mode == 2 {
+                    Instant::now()
+                } else {
+                    Instant::now() + std::time::Duration::from_secs(60)
+                },
+            };
+            let result = train_batches_inner(options, &mut backend, |buffers, _, sender| {
+                for host in buffers {
+                    if sender
+                        .send(Prepared {
+                            host,
+                            targets: vec![0.5; 2],
+                        })
+                        .is_err()
+                    {
+                        break;
+                    }
+                }
+                Ok(())
+            });
+            assert!(backend.pending.is_none());
+            assert!(backend.flushes > 0);
+            match mode {
+                0 => {
+                    let result = result.unwrap().unwrap();
+                    assert_eq!(result.steps, 3);
+                    assert_eq!(result.positions, 6);
+                    assert_eq!(result.loss, 6.0);
+                }
+                1 => assert!(result.is_err()),
+                _ => assert!(result.unwrap().is_none()),
+            }
+        }
+    }
 }

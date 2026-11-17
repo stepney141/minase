@@ -1,6 +1,36 @@
 //! 手書き評価v0を幅256のP型MNUEへ書き出す。非線形部分はすべて0とする。
 
-use super::model::{Error, Result};
+/// v0書き出しの失敗。
+#[derive(Debug)]
+pub enum Error {
+    /// MNUEの符号化または復号の失敗。
+    Mnue(minase::eval::nnue::Error),
+    /// ファイル操作の失敗。
+    Io(std::io::Error),
+}
+impl std::fmt::Display for Error {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Mnue(e) => e.fmt(f),
+            Self::Io(e) => e.fmt(f),
+        }
+    }
+}
+impl std::error::Error for Error {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::Mnue(e) => Some(e),
+            Self::Io(e) => Some(e),
+        }
+    }
+}
+impl From<std::io::Error> for Error {
+    fn from(e: std::io::Error) -> Self {
+        Self::Io(e)
+    }
+}
+/// v0書き出しの処理結果。
+pub type Result<T> = std::result::Result<T, Error>;
 use crate::{nn::hex, pst::v0_piece_values};
 use minase::eval::{
     Nnue,

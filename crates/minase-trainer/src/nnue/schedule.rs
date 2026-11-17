@@ -1,6 +1,6 @@
 //! 完了した更新回数から、3群に共通する学習率の倍率を求める。
 
-use crate::nnue::model::{Error, Result};
+use crate::nnue::layerstack::{Error, Result};
 use serde::Serialize;
 use std::{fmt, num::NonZeroU64, str::FromStr};
 

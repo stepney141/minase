@@ -1,3 +1,4 @@
+use super::super::commands::{ATOL, RTOL};
 use super::engine::{BackwardBuffers, ForwardBuffers, Targets};
 use super::*;
 use super::{
@@ -7,10 +8,7 @@ use super::{
 use crate::data::{Outcome, Sample};
 use crate::nnue::{
     data::{BatchSlot, InputFeatureSet},
-    gpu::{
-        HostRing,
-        equivalence::{ATOL, RTOL},
-    },
+    gpu::HostRing,
     layerstack::{
         AdamW, Features, OptimizerConfig, Scale, backward, model::Uniform,
         reference::forward_validated,
