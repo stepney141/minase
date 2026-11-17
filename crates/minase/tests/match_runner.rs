@@ -1183,25 +1183,23 @@ fn usi_options_reject_unknown_names_invalid_values_and_unsupported_types() {
 #[test]
 fn additional_options_reject_random_before_engine_start() {
     for side in ["candidate", "baseline"] {
-        {
-            let (spec, message) = ("random", "random engine");
-            let dir = run_directory();
-            let output = Command::new(env!("CARGO_BIN_EXE_minase"))
-                .args(["match", "run", "--rules", "JCSA", "--run-dir"])
-                .arg(&dir)
-                .args([
-                    &format!("--{side}"),
-                    spec,
-                    &format!("--{side}-option"),
-                    "NnBatchSize=64",
-                ])
-                .args(["--concurrency", "1", "elo", "--pairs", "1"])
-                .output()
-                .unwrap();
-            assert!(!output.status.success());
-            assert!(String::from_utf8_lossy(&output.stderr).contains(message));
-            assert!(!dir.exists());
-        }
+        let (spec, message) = ("random", "random engine");
+        let dir = run_directory();
+        let output = Command::new(env!("CARGO_BIN_EXE_minase"))
+            .args(["match", "run", "--rules", "JCSA", "--run-dir"])
+            .arg(&dir)
+            .args([
+                &format!("--{side}"),
+                spec,
+                &format!("--{side}-option"),
+                "NnBatchSize=64",
+            ])
+            .args(["--concurrency", "1", "elo", "--pairs", "1"])
+            .output()
+            .unwrap();
+        assert!(!output.status.success());
+        assert!(String::from_utf8_lossy(&output.stderr).contains(message));
+        assert!(!dir.exists());
     }
 }
 

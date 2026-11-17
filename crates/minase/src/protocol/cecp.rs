@@ -763,7 +763,7 @@ impl CecpProtocol {
         }
     }
 
-    /// `option RuleSet=<値>`だけを処理し、他のオプション名は無視する。
+    /// `RuleSet`と`EvalFile`の`option`を処理し、他のオプション名は無視する。
     ///
     /// `EvalFile`はパスを保存し、ネット、置換表、history表を破棄する。読み取りは準備時に行う。
     /// `RuleSet`との指定順は自由である。

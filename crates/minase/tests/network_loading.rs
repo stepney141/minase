@@ -141,8 +141,8 @@ fn same_path_reset_discards_network_and_hashes_the_entire_replacement() {
     bytes[108..112].copy_from_slice(&1234.0_f32.to_le_bytes());
     fs::write(&path, &bytes).unwrap();
     let new = read_network_file(&path).unwrap();
-    assert_eq!(old.network.checksum(), new.network.checksum());
-    assert_ne!(old.sha256, new.sha256);
+    assert_eq!(old.network().checksum(), new.network().checksum());
+    assert_ne!(old.sha256(), new.sha256());
     let (result, output) = run(
         &mut protocol,
         &format!(

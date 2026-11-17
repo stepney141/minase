@@ -34,10 +34,6 @@ const INJECTION_WINDOW: usize = 80;
 
 /// コマンドを実行し、失敗時は説明を標準エラーへ出して非0終了する。
 pub(super) fn main(arguments: Arguments) {
-    if let Err(error) = minase::eval::weights() {
-        eprintln!("error: embedded evaluation weights are invalid: {error}");
-        process::exit(1);
-    }
     if let Err(error) = run(arguments) {
         eprintln!("error: {error}");
         process::exit(1);
@@ -85,7 +81,7 @@ mod test_support {
         }
     }
 
-    /// 学習前の固定重みを使い、埋め込みネットの更新から切り離す。
+    /// 学習前の固定重みを使い、学習済みネットの更新から切り離す。
     pub(super) fn epoch_zero_nnue() -> minase::eval::Nnue {
         minase::eval::Nnue::decode(include_bytes!("../../../../nets/nnue-epoch0.bin"))
             .expect("epoch-zero weights are valid")

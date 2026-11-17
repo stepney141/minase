@@ -11,9 +11,21 @@ use std::{
 /// 同じバイト列から復号したネットと、ファイル全体のSHA-256。
 pub struct NetworkFile {
     /// 検証済みのネット。
-    pub network: Arc<Nnue>,
+    network: Arc<Nnue>,
     /// ヘッダを含むファイル全体のSHA-256。
-    pub sha256: [u8; 32],
+    sha256: [u8; 32],
+}
+
+impl NetworkFile {
+    /// 同じファイルのバイト列から復号した検証済みのネットを返す。
+    pub fn network(&self) -> &Arc<Nnue> {
+        &self.network
+    }
+
+    /// ヘッダを含むファイル全体のSHA-256を返す。
+    pub fn sha256(&self) -> &[u8; 32] {
+        &self.sha256
+    }
 }
 
 /// 外部のNNUEファイルを読み込めない原因。

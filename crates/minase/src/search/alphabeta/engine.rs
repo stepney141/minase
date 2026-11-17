@@ -19,7 +19,9 @@ use crate::search::{
 /// 理由は`docs/adr/carry-histories-and-correction-histories-within-a-game.md`にある。
 /// NNUEの重みは`prepare`で外部ファイルから取得する。
 pub struct Engine {
+    /// 準備時に読むNNUEファイルのパス。
     pub(in crate::search) eval_file: String,
+    /// 準備済みのネットとファイル全体のSHA-256。
     pub(in crate::search) network: Option<crate::eval::nnue::NetworkFile>,
     /// 準備または最初の探索まで未確保の置換表。
     pub(in crate::search) transposition_table: Option<TranspositionTable>,
@@ -159,7 +161,7 @@ impl Engine {
         ponder: bool,
     ) -> Result<SearchHandle, StartFailure> {
         let nnue = match &self.network {
-            Some(file) => Arc::clone(&file.network),
+            Some(file) => Arc::clone(file.network()),
             None => {
                 return Err(StartFailure {
                     searcher: Searcher::AlphaBeta(self),

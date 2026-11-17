@@ -584,7 +584,8 @@ mod tests {
             "/nets/nnue-epoch0.bin"
         )))
         .unwrap()
-        .network;
+        .network()
+        .clone();
         // [`BENCH_POSITIONS`]の15局面を本番のbenchで解析し探索する。
         let mut transposition_table = TranspositionTable::new(1).unwrap();
         let mut run = || {
@@ -614,7 +615,7 @@ mod tests {
             feature_set::{FeatureSet, Mirror},
         };
 
-        let nnue = Nnue::decode(include_bytes!("../../nets/nnue.bin")).unwrap();
+        let nnue = Nnue::decode(include_bytes!("../../nets/nnue-epoch0.bin")).unwrap();
         let rules = Rules::JCSA;
         let limits = SearchLimits::new(Some(1), None, None, None).unwrap();
         let mut table = TranspositionTable::new(1).unwrap();

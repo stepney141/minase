@@ -60,7 +60,6 @@ fn create_searcher(protocol: ProtocolKind, search: SearchKind) -> Result<Searche
 /// 実行時のエラーは標準エラーへ報告し、終了コード1で終える。
 pub(super) fn main(protocol: ProtocolKind, io_log: Option<PathBuf>, search: SearchKind) {
     let started = Instant::now();
-
     if let Err(error) = run(started, protocol, io_log, search) {
         eprintln!("error: {error}");
         process::exit(1);

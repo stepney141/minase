@@ -12,6 +12,9 @@ use minase::training::records::{
 use minase_core::notation::{sfen::parse_extended_sfen, usi};
 use minase_core::{Color, Game, GameResult, Rules, WinReason};
 use serde_json::{Value, json};
+use sha2::{Digest, Sha256};
+
+const TEST_NETWORK: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/nets/nnue-epoch0.bin");
 
 const CASES: &str = include_str!("fixtures/lishogi_import_cases.ndjson");
 static NEXT: AtomicU64 = AtomicU64::new(0);
@@ -43,7 +46,7 @@ fn import(directory: &Directory, mode: &str, name: &str, concurrency: &str) -> O
     let mut command = Command::new(env!("CARGO_BIN_EXE_minase"));
     command.args(["data", "lishogi"]);
     command
-        .args([mode, "--input"])
+        .args([mode, "--eval-file", TEST_NETWORK, "--input"])
         .arg(input)
         .arg("--output")
         .arg(directory.path(name))
@@ -108,6 +111,10 @@ fn games_filter_in_specified_order_and_preserve_details_and_records() {
     let mut reader = Reader::new(File::open(dir.path("one.mnsd")).unwrap()).unwrap();
     assert_eq!(reader.header().rule_set(), "L0,P0,R1,E0");
     assert_eq!(reader.header().teacher_search_budget(), 200);
+    assert_eq!(
+        reader.header().network_checksum(),
+        &<[u8; 32]>::from(Sha256::digest(fs::read(TEST_NETWORK).unwrap()))
+    );
     let mut counts = [0; 3];
     let mut last_game = 0;
     while let Some(decoded) = reader.read_game().unwrap() {
@@ -288,7 +295,7 @@ fn opening_generation_cli_requires_zero_random_moves_and_one_game_per_line() {
     let command = |random_moves: &str, name: &str| {
         Command::new(env!("CARGO_BIN_EXE_minase"))
             .args(["data", "selfplay"])
-            .args(["generate", "--openings"])
+            .args(["generate", "--eval-file", TEST_NETWORK, "--openings"])
             .arg(dir.path("openings.txt"))
             .arg("--output-dir")
             .arg(dir.path(name))
@@ -632,7 +639,14 @@ fn selfplay_summary_counts_saved_entries_and_discards_capped_games() {
         let output_directory = dir.path(&format!("selfplay-{cap}"));
         let path = output_directory.join("teacher.mnsd");
         let output = Command::new(env!("CARGO_BIN_EXE_minase"))
-            .args(["data", "selfplay", "generate", "--output-dir"])
+            .args([
+                "data",
+                "selfplay",
+                "generate",
+                "--eval-file",
+                TEST_NETWORK,
+                "--output-dir",
+            ])
             .arg(&output_directory)
             .args([
                 "--chunk-games",
@@ -701,5 +715,42 @@ fn selfplay_summary_counts_saved_entries_and_discards_capped_games() {
             summary["games"].parse::<u64>().unwrap(),
             saved_games + summary["games_discarded_max_ply"].parse::<u64>().unwrap()
         );
+    }
+}
+
+/// ネットを使う3つのコマンドは、ファイルの未指定を引数解析で拒否する。
+#[test]
+fn generation_and_import_require_eval_file() {
+    for args in [
+        vec![
+            "data",
+            "selfplay",
+            "generate",
+            "--output-dir",
+            "unused",
+            "--games",
+            "1",
+            "--chunk-games",
+            "1",
+            "--seed",
+            "7",
+            "--random-moves",
+            "0",
+        ],
+        vec![
+            "data", "lishogi", "games", "--input", "unused", "--output", "unused", "--report",
+            "unused", "--seed", "7",
+        ],
+        vec![
+            "data", "lishogi", "openings", "--input", "unused", "--output", "unused", "--report",
+            "unused",
+        ],
+    ] {
+        let output = Command::new(env!("CARGO_BIN_EXE_minase"))
+            .args(args)
+            .output()
+            .unwrap();
+        assert_eq!(output.status.code(), Some(2));
+        assert!(String::from_utf8_lossy(&output.stderr).contains("--eval-file <EVAL_FILE>"));
     }
 }

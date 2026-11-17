@@ -319,6 +319,7 @@ pub struct Header {
 impl Header {
     /// 規則セットと来歴を検査し、件数0のヘッダを作る。
     /// `teacher_search_budget`は教師の探索規模で、αβ探索ならノード上限、モンテカルロ木探索なら探索回数を表す。
+    /// `network_checksum`は`--eval-file`で読んだネットのファイル全体のSHA-256である。
     /// 探索なしでは`network_checksum`と`teacher_search_budget`をすべて0にする。
     pub fn new(
         rule_set: String,
@@ -367,7 +368,8 @@ impl Header {
     pub fn generation_commit(&self) -> &str {
         &self.generation_commit
     }
-    /// 教師の重みの検査和を返す。
+    /// `--eval-file`で読んだネットのファイル全体のSHA-256を返す。
+    /// 探索なしの対局記録ではすべて0を返す。
     pub fn network_checksum(&self) -> &[u8; 32] {
         &self.network_checksum
     }

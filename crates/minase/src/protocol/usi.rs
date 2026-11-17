@@ -4835,7 +4835,8 @@ mod tests {
     fn diagnostic_evaluation_matches_full_evaluation_and_formats_rows() {
         let weights = nnue::read_network_file(std::path::Path::new(TEST_NETWORK))
             .unwrap()
-            .network;
+            .network()
+            .clone();
         let mut protocol = test_protocol();
         let rules_text = canonical_rules_text(&parse_rule_set("L0,P0,R1,E2").unwrap());
         assert_eq!(

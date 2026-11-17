@@ -675,14 +675,14 @@ mod tests {
     #[test]
     fn injection_counts_and_offsets_stay_within_configured_bounds() {
         let rules = Rules::LISHOGI;
-        let nnue = minase::eval::weights().expect("embedded weights are valid");
+        let nnue = crate::selfplay_gen::test_support::epoch_zero_nnue();
         let maximum = 80;
 
         let game_number = 1;
         let (opening_ply, plan) = opening_and_plan(rules, 19, game_number, maximum);
         let mut table = test_table();
         let completed = play_game(
-            nnue.as_ref(),
+            &nnue,
             rules,
             game_number,
             test_settings(19, maximum, 32),

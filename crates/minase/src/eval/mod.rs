@@ -7,7 +7,7 @@ pub mod nnue;
 #[allow(dead_code)]
 pub mod pst;
 
-pub use nnue::{Nnue, weights};
+pub use nnue::Nnue;
 
 use minase_core::{PieceCode, Position};
 

@@ -360,7 +360,7 @@ impl Searcher {
     /// 読み込み済みのネットのファイル全体のSHA-256を返す。未読込では`None`。
     pub fn network_sha256(&self) -> Option<&[u8; 32]> {
         match self {
-            Self::AlphaBeta(engine) => engine.network.as_ref().map(|file| &file.sha256),
+            Self::AlphaBeta(engine) => engine.network.as_ref().map(|file| file.sha256()),
             Self::Mcts(engine) => engine.network_sha256(),
         }
     }
@@ -368,7 +368,7 @@ impl Searcher {
     /// 診断用に準備済みのNNUEを借りる。未準備またはMCTSなら`None`。
     pub fn nnue(&self) -> Option<&std::sync::Arc<crate::eval::Nnue>> {
         match self {
-            Self::AlphaBeta(engine) => engine.network.as_ref().map(|file| &file.network),
+            Self::AlphaBeta(engine) => engine.network.as_ref().map(|file| file.network()),
             Self::Mcts(_) => None,
         }
     }

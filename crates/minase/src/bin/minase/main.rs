@@ -344,6 +344,8 @@ mod tests {
                 "data",
                 "lishogi",
                 "openings",
+                "--eval-file",
+                concat!(env!("CARGO_MANIFEST_DIR"), "/nets/nnue-epoch0.bin"),
                 "--input",
                 "games.ndjson",
                 "--output",

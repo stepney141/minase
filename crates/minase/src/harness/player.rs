@@ -413,20 +413,18 @@ mod tests {
         }
     }
 
-    // [`resolve_player`]の契約に従い、randomとCECPの追加USI設定は起動前に拒否する。
+    // [`resolve_player`]の契約に従い、randomの追加USI設定は起動前に拒否する。
     #[test]
     fn random_resolution_rejects_nonempty_usi_options() {
-        {
-            let spec = "random";
-            let result = resolve_player(
-                parse_player_spec(spec).unwrap(),
-                parse_search_limit("depth=1").unwrap(),
-                None,
-                "R1",
-                vec![("Tune_First".to_owned(), "17".to_owned())],
-                None,
-            );
-            assert_eq!(result.err().unwrap().kind(), io::ErrorKind::InvalidInput);
-        }
+        let spec = "random";
+        let result = resolve_player(
+            parse_player_spec(spec).unwrap(),
+            parse_search_limit("depth=1").unwrap(),
+            None,
+            "R1",
+            vec![("Tune_First".to_owned(), "17".to_owned())],
+            None,
+        );
+        assert_eq!(result.err().unwrap().kind(), io::ErrorKind::InvalidInput);
     }
 }

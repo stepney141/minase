@@ -39,7 +39,6 @@ pub(super) fn main(arguments: Arguments) {
     if let Err(error) = arguments.validate_startup_args() {
         error.exit();
     }
-
     if let Err(error) = arguments.validate_ponder() {
         crate::subcommand_command(&["match", "run"])
             .error(ErrorKind::ValueValidation, error)

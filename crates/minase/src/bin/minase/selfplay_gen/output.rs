@@ -35,7 +35,7 @@
 //! |---|---|
 //! | `rules` | 規則セットの名前。 |
 //! | `generation_commit` | 起動時に`git rev-parse HEAD`で求めた生成コミット。 |
-//! | `network_checksum` | MNSDヘッダに書く、ネットの重みの本体のSHA-256の16進表記。 |
+//! | `network_checksum` | MNSDヘッダに書く、`--eval-file`で読んだネットのファイル全体のSHA-256の16進表記。 |
 //! | `seed` | 基本シード。 |
 //! | `games` | 総対局数G。開始局面一覧を使う場合は一覧の行数。 |
 //! | `chunk_games` | 塊の局数M。 |

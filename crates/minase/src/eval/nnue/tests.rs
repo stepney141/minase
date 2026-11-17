@@ -9,7 +9,7 @@ use minase_core::test_util::{position_from_codes, sq};
 use minase_core::{Move, MoveGenerator, MoveRules};
 use sha2::{Digest, Sha256};
 
-/// 学習前のP型・幅64を固定し、埋め込みネットの更新から独立させる。
+/// 学習前のP型・幅64を固定し、学習済みネットの更新から独立させる。
 const EPOCH_ZERO: &[u8] = include_bytes!("../../../nets/nnue-epoch0.bin");
 
 /// 同じ仕様の検査を両入力特徴集合へ具体化する。
@@ -311,7 +311,7 @@ fn reference_u8_pairwise(acc: &[i16], output: &mut [u8]) {
     }
 }
 
-/// 線形補正APIの検査には、埋め込みネットによらない幅4の固定重みを使う。
+/// 線形補正APIの検査には、学習済みネットによらない幅4の固定重みを使う。
 fn linear_correction_base() -> Vec<u8> {
     let mut values = [100; PIECE_STATE_COUNT];
     values[11] = 200;
@@ -998,15 +998,19 @@ fn random_games_preserve_accumulators_symmetry_and_epoch_zero_evaluation<F: Feat
 }
 
 #[test]
-fn embedded_width_checksum_and_rules_match_header() {
-    let nnue = weights().unwrap();
+fn network_file_width_checksum_and_rules_match_header() {
+    let path = std::path::Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/nets/nnue-epoch0.bin"));
+    let bytes = std::fs::read(path).unwrap();
+    let file = read_network_file(path).unwrap();
+    assert_eq!(file.sha256(), &<[u8; 32]>::from(Sha256::digest(&bytes)));
+    let nnue = file.network();
     assert_eq!(
         nnue.width(),
-        u32::from_le_bytes(EMBEDDED[104..108].try_into().unwrap()) as usize
+        u32::from_le_bytes(EPOCH_ZERO[104..108].try_into().unwrap()) as usize
     );
     assert_eq!(
         nnue.checksum(),
-        &<[u8; 32]>::from(Sha256::digest(&EMBEDDED[HEADER_LENGTH..]))
+        &<[u8; 32]>::from(Sha256::digest(&EPOCH_ZERO[HEADER_LENGTH..]))
     );
     let codes = minase_core::rules::parse_rule_set(nnue.rule_set()).unwrap();
     assert_eq!(
@@ -1032,10 +1036,10 @@ fn encoding_input<'a, F: FeatureSet, H: Head>(
     }
 }
 
-/// 配布済みのMNUE版5を、予約領域と検査和も含めて完全に再現する。
+/// 固定ネットのMNUE版5を、予約領域と検査和も含めて完全に再現する。
 #[test]
-fn embedded_encode_round_trip_is_byte_identical() {
-    let net = Nnue::decode(EMBEDDED).unwrap();
+fn fixed_network_encode_round_trip_is_byte_identical() {
+    let net = Nnue::decode(EPOCH_ZERO).unwrap();
     assert_eq!(
         encode::<ActiveFeatureSet, _>(&encoding_input(
             &net,
@@ -1046,7 +1050,7 @@ fn embedded_encode_round_trip_is_byte_identical() {
                 .collect::<Vec<_>>()
         ))
         .unwrap(),
-        EMBEDDED
+        EPOCH_ZERO
     );
 }
 

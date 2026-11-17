@@ -14,7 +14,7 @@ use std::{
     num::{NonZeroU16, NonZeroU32},
 };
 
-/// git、埋め込みネット、および引数から生成条件を確定して教師を生成する。
+/// git、外部ファイルのネット、および引数から生成条件を確定して教師を生成する。
 pub(super) fn generate(arguments: &GenerateArguments) -> io::Result<()> {
     let opening_bytes = arguments.openings.as_ref().map(fs::read).transpose()?;
     let openings = opening_bytes.as_deref().map(read_openings).transpose()?;
@@ -41,14 +41,15 @@ pub(super) fn generate(arguments: &GenerateArguments) -> io::Result<()> {
             "the working tree is dirty; commit changes or pass --allow-dirty",
         ));
     }
-    let nnue = minase::eval::weights().map_err(data_error)?;
+    let network =
+        minase::eval::nnue::read_network_file(&arguments.eval_file).map_err(data_error)?;
     let openings_sha256 = opening_bytes
         .as_deref()
         .map(|bytes| hex(&Sha256::digest(bytes)));
     let conditions = GenerationConditions::new(
         rules,
         generation_commit,
-        *nnue.checksum(),
+        *network.sha256(),
         arguments.seed,
         games,
         arguments.chunk_games,
@@ -63,10 +64,106 @@ pub(super) fn generate(arguments: &GenerateArguments) -> io::Result<()> {
     let report = generate_to_directory(
         &arguments.output_dir,
         &conditions,
-        nnue.as_ref(),
+        network.network().as_ref(),
         openings.as_deref(),
         arguments.concurrency,
     )?;
     report.print(&conditions, arguments.concurrency);
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::selfplay_gen::{
+        cli::{Arguments, Operation},
+        test_support::TemporaryDirectory,
+    };
+    use clap::Parser;
+    use minase::eval::nnue::NetworkFileError;
+    use minase::training::records::Reader;
+    use std::path::Path;
+
+    const NETWORK: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/nets/nnue-epoch0.bin");
+
+    fn arguments(directory: &Path) -> GenerateArguments {
+        let Operation::Generate(mut args) = Arguments::try_parse_from([
+            "selfplay_gen",
+            "generate",
+            "--eval-file",
+            NETWORK,
+            "--output-dir",
+            "unused",
+            "--games",
+            "2",
+            "--chunk-games",
+            "1",
+            "--seed",
+            "7",
+            "--nodes",
+            "1",
+            "--random-moves",
+            "0",
+            "--max-ply",
+            "1",
+            "--hash-mb",
+            "1",
+            "--concurrency",
+            "2",
+            "--allow-dirty",
+        ])
+        .unwrap()
+        .command
+        else {
+            panic!("generate arguments")
+        };
+        args.output_dir = directory.join("output");
+        args
+    }
+
+    /// 指定ファイル全体の識別子を生成条件と教師ヘッダの両方に記録する。
+    #[test]
+    fn generation_records_entire_network_file_checksum() {
+        let temporary = TemporaryDirectory::new();
+        let args = arguments(&temporary.0);
+        generate(&args).unwrap();
+        let expected: [u8; 32] = Sha256::digest(fs::read(NETWORK).unwrap()).into();
+        let config: serde_json::Value =
+            serde_json::from_slice(&fs::read(args.output_dir.join("config.json")).unwrap())
+                .unwrap();
+        assert_eq!(config["network_checksum"], hex(&expected));
+        let reader =
+            Reader::new(fs::File::open(args.output_dir.join("teacher.mnsd")).unwrap()).unwrap();
+        assert_eq!(reader.header().network_checksum(), &expected);
+    }
+
+    /// 読めないファイルと復号できないファイルの原因を型のまま保持し、出力を作らない。
+    #[test]
+    fn generation_preserves_network_file_errors_without_output() {
+        let temporary = TemporaryDirectory::new();
+        let mut args = arguments(&temporary.0);
+        args.eval_file = temporary.0.join("network.bin");
+        for exists in [false, true] {
+            if exists {
+                fs::write(&args.eval_file, b"invalid network").unwrap();
+            }
+            let error = generate(&args).unwrap_err();
+            let cause = error
+                .get_ref()
+                .unwrap()
+                .downcast_ref::<NetworkFileError>()
+                .unwrap();
+            match cause {
+                NetworkFileError::Read { path, .. } => {
+                    assert!(!exists);
+                    assert_eq!(path, &args.eval_file);
+                }
+                NetworkFileError::Decode { path, .. } => {
+                    assert!(exists);
+                    assert_eq!(path, &args.eval_file);
+                }
+            }
+            assert!(!args.output_dir.exists());
+        }
+    }
 }

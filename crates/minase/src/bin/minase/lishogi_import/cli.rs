@@ -34,6 +34,9 @@ pub(super) enum Operation {
 
 #[derive(clap::Args)]
 pub(super) struct Common {
+    /// 評価に使うNNUEネットのファイル。
+    #[arg(long)]
+    pub(super) eval_file: PathBuf,
     /// 1行1局のゲームJSON。
     #[arg(long)]
     pub(super) input: PathBuf,
