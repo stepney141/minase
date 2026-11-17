@@ -3,6 +3,7 @@
 pub mod features;
 pub mod handcrafted;
 pub mod nnue;
+pub mod piece_values;
 // 比較用PSTの探索向け内部APIもソースとテストを保持する。
 #[allow(dead_code)]
 pub mod pst;

@@ -19,6 +19,9 @@ mod format;
 pub use file::{NetworkFile, NetworkFileError, read_network_file};
 pub mod head;
 pub mod input;
+// 探索へ接続するまでの一時的な許可。
+#[allow(dead_code)]
+pub mod network;
 mod stats;
 #[cfg(test)]
 mod tests;

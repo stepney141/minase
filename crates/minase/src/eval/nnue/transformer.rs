@@ -80,6 +80,21 @@ impl<I: Indexer> FtAccumulator<I> {
 }
 
 impl<I: Indexer> FeatureTransformer<I> {
+    /// 第1層の幅を返す。
+    pub(crate) fn width(&self) -> usize {
+        self.width
+    }
+
+    /// 書き出し用のバイアスを借用する。
+    pub(crate) fn biases(&self) -> &[i16] {
+        &self.biases
+    }
+
+    /// 書き出し用の行優先の重みを借用する。
+    pub(crate) fn weights(&self) -> &[i16] {
+        &self.weights
+    }
+
     /// 正の偶数の幅、幅と同じバイアス数、行数×幅と同じ重み数を検査する。
     /// 行数×幅は桁あふれを検査し、表現できなければ重みの長さのエラーとする。
     pub(crate) fn new(
