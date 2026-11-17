@@ -1,10 +1,45 @@
 //! 固定15局面をハッシュの評価器でPV-MCTS探索し、根の全統計を出力する。
 //!
-//! `nodes`は1〜4,294,967,295で既定800、`batch`は1〜1,024で既定256。
-//! 規則はJCSA、探索設定は既定値とし、各局面に新しい木を作る。
-//! セッションの局面、設定、推論器、および探索木には依存しない。
-//! 出力は探索条件、局面ごとの最善手・停止理由・主変化・根の統計、全局面の集計の順。
-//! 時間の欄を除く出力を、同じ機械とビルド設定での回帰検査に使う。
+//! `--search mcts`で起動したときの`bench`は、次の引数を受け付ける。
+//!
+//! ```text
+//! bench [nodes <N>] [batch <N>]
+//! ```
+//!
+//! `nodes`は1局面のシミュレーションの上限回数で、省略時は800、範囲は1〜4,294,967,295である。
+//! `batch`は1回の推論に送る葉の数の上限で、省略時は256、範囲は1〜1,024である。
+//! `depth`、`threads`、および`repetitions`は、`crates/minase/src/protocol/usi/diagnostics.rs`で`<語> requires --search alphabeta`として拒否する。
+//! `--features tuning`のビルドでは、引数を受け付けて実行した時点から`Tune_`で始まるオプションの変更を拒否する。
+//!
+//! 局面集はαβ探索の`bench`と同じ15局面を[`super::bench::BENCH_POSITIONS`]から共有する。
+//! 規則は日本中将棋連盟の規則に基づく`JCSA`に固定し、各局面で新しい探索木を作る。
+//! 木の容量256 MiBと`batch`の既定値256は、それぞれ`USI_Hash`と`NnBatchSize`の既定値と同じである。
+//! 引き分けには、評価値の既定値0に当たる勝率0.5を返す[`DrawValue::SelfPlay`]を使う。
+//! PUCTの係数と方策の温度は`SearchConfig::default()`から取り、セッションの`PolicyTemperature`は使わない。
+//! 対局と同じ[`crate::search::mcts::run`]に、時間の制限なしでシミュレーションの上限回数だけを与え、評価器には[`HashEvaluator`]を使う。
+//! セッションの局面、設定、推論器、および探索木には依存せず、規則の設定も`isready`によるネットの準備も要らない。
+//!
+//! 出力は探索条件の行に始まり、各局面の結果と根の統計が続き、全局面の集計で終わる。
+//! 各行の書式は次のとおりで、`position`から`movestats move`までを局面ごとに出力する。
+//!
+//! ```text
+//! bench mcts nodes <N> batch <N> capacity-bytes <容量> policy-temperature <温度> c-init <値> c-base <値> c-fpu <値> c-init-root <値> c-base-root <値> c-fpu-root <値>
+//! position <局面名> best <着手> stop <nodes|depth> pv <着手の列>
+//! movestats root ...
+//! movestats move ...
+//! summary simulations <合計> elapsed-ms <合計> sps <毎秒のシミュレーション数>
+//! ```
+//!
+//! `movestats root`は根の要約を、`movestats move`は全候補手の統計を1手1行で示し、各欄の定義は[`crate::search::mcts::move_stats::lines`]に従う。
+//! USIの層が各行に`info string `を付け、成功時だけ末尾に`info string end`を加える。
+//! 停止理由は、上限回数に達したときと木の容量が尽きたときは`nodes`、根の勝敗が確定して上限より前に止まったときは`depth`となる。
+//! 勝率から評価値への換算に使う勝率尺度はセッションの設定に依存するため、評価値をセンチポーン（cp）では出さず、根の表の`q`に勝率を示す。
+//!
+//! 比較する前に、両方の実行が終了コード0で終わり、`info string error:`の行がなく、15局面の`position`の行と`info string end`があることを確かめる。
+//! 同じ機械で同じ設定でビルドした2つのコミットの出力が、`elapsed-ms`と`sps`の値を除いて全行一致すれば、探索の結果は変わっていないと判定する。
+//! softmax、対数、および平方根の浮動小数点の計算は機械や数学ライブラリによって変わり得るため、機械をまたいだ一致は求めない。
+//!
+//! 設計判断の理由は`docs/adr/run-bench-with-the-launched-search-and-detect-pv-mcts-regressions-with-a-hash-evaluator.md`にある。
 
 use std::fmt;
 use std::io;

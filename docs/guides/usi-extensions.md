@@ -157,6 +157,7 @@ minaseは`usi`への応答で次のオプションを宣言する。
 | `NnCacheDir` | string | `$XDG_CACHE_HOME/minase/tensorrt`（環境変数が空なら空） | MCTSだけが宣言する。TensorRTのキャッシュを置くディレクトリ。空の文字列は`<empty>`と書く。 |
 | `NnBatchSize` | spin、1〜1,024 | 256 | MCTSだけが宣言する。1回の推論に送る葉の数の上限。 |
 | `PolicyTemperature` | spin、10〜1,000 | 140 | MCTSだけが宣言する。探索木の事前確率を作るときに方策のlogitを割る温度の100倍で、140なら温度1.4を表す。 |
+| `VerboseMoveStats` | check、`true`か`false` | `false` | MCTSだけが宣言する。有効なら、探索が終わるたびに根の候補手ごとの統計を出す（「根の候補手ごとの統計」の節）。値は大文字と小文字を区別しない。 |
 | `Tune_<名前>` | spin、係数ごと | 係数ごと | `--features tuning`でビルドしたαβ探索だけが宣言する。探索と時間管理の係数であり、最初の`go`の後は変更を拒否する（[SPSAの手引き](spsa.md)）。 |
 
 引き分けの評価値は、規則R1の千日手のように探索が引き分けと判定する局面で使う（[ADR](../adr/set-the-draw-value-by-usi-option-signed-from-the-root-side.md)）。
@@ -164,6 +165,38 @@ minaseは`usi`への応答で次のオプションを宣言する。
 `NnModel`を別の値へ変えると、読み込み済みのネット、推論器、およびMCTSが対局の間に持ち越す探索木を捨て、次の`isready`でネットを読み直すまで`go`、`eval`、および`nn-eval`を拒否する。
 文字列のオプションの値は、`value`の後の語を1つの空白でつないだものなので、連続する空白やタブを含むパスは指定できない。
 各オプションの受理で置換表や探索木を消すかどうかと、拒否の文言は、`UsiProtocol::handle_setoption`のdocコメントにある。
+
+### 根の候補手ごとの統計
+
+`VerboseMoveStats`を有効にしたMCTSは、探索が終わるたびに、探索を始めた局面（根）の要約1行と、根の全候補手の表を出す。
+対局でPV-MCTSが選んだ手の理由を、起動引数`--io-log`で記録した送受信のログから後で調べるための出力である（[ADR](../adr/print-pv-mcts-root-move-statistics-once-at-the-end-of-search-through-verbosemovestats.md)）。
+無効なら出力は変わらず、有効にしても`bestmove`、`info`の行、および次の探索での探索木の持ち越しは変わらない。
+
+```text
+info string movestats root simulations <S> reused <R₀> visits <R> value <V|-> tree-bytes <使用量> capacity-bytes <容量> elapsed-ms <経過> soft-ms <soft|-> hard-ms <hard|-> result <勝敗>
+info string movestats move <着手> visits <N> value-sum <W> q <Q|-> prior <P> value <V|-> result <勝敗>
+...
+```
+
+要約の`simulations`は今回の探索で完了したシミュレーションの数で、根の評価の1回を含む。
+`visits`は根の辺の訪問回数の和、`reused`は前の探索から持ち越した訪問数であり、`visits − (simulations − 1)`に等しい。
+要約の`value`は根の局面をネットが評価した手番側の勝率、`tree-bytes`と`capacity-bytes`は探索木の使用量と容量（バイト）、`elapsed-ms`は探索の経過時間（ミリ秒）である。
+`soft-ms`と`hard-ms`は時間配分の目安時間と上限時間で、`go nodes`と`go infinite`のように時間の予算がない探索では`-`になる。
+先読みでは予算を`ponderhit`の時点から測るので、`soft-ms`と`hard-ms`の起点は`elapsed-ms`の起点と異なる。
+
+`move`の行は根の候補手ごとに1行あり、最善手を選ぶ規則と同じ比較の降順に並ぶので、先頭の行は探索が選んだ手である。
+`visits`は辺の訪問回数、`value-sum`は勝率の和、`q`は勝率の和を訪問回数で割った値（未訪問なら`-`）、`prior`は方策の温度を適用した事前確率である。
+`move`の行の`value`は、その手の後の局面をネットが評価した勝率を根の手番側へ直した値で、ネットで評価していない局面では`-`になる。
+勝率を表す`value-sum`、`q`、および`value`は、どれも根の手番側から見た値である。
+`result`は、未確定なら`none`、引き分けなら`draw`、勝敗が確定していれば`win distance <手数>`か`loss distance <手数>`である。
+勝敗が同一局面の反復によるものなら`repetition`を、探索の経路の上で同じ局面が再び現れた時点で反復の規則の裁定を下したとみなす近似に依存する結果なら`approximate`を、後ろに付ける。
+浮動小数点の値は、往復変換で同じ値に戻る最短の10進表記で出す。
+
+表は最後の`info`の行の後、`info string stop`の行の前に、探索ごとに1回だけ出る。
+`go infinite`と先読みの探索が先に終わった場合は、終わった時点で出し、後の`stop`や`ponderhit`で結果を返すときには再び出さない。
+実行中の探索を`gameover`や`quit`で捨てた場合は出さない。
+対局ハーネスは既知の語の`info string`の行だけを読むので、`movestats`の行は対局の記録を変えない。
+各欄の定義は`crates/minase/src/search/mcts/move_stats.rs`の`lines`、出力の箇所は`crates/minase/src/protocol/usi.rs`の`write_move_stats`のdocコメントにある。
 
 ## 独自のコマンド
 
@@ -284,18 +317,55 @@ perftの件数は合法手生成の正しさの基準にせず（[ADR](../adr/ve
 
 ### bench
 
+`bench`は、固定の15局面を、起動した探索の方式で探索する（[ADR](../adr/run-bench-with-the-launched-search-and-detect-pv-mcts-regressions-with-a-hash-evaluator.md)）。
+αβ探索で起動したminaseではαβ探索の`bench`、`--search mcts`で起動したminaseではPV-MCTSの`bench`になり、受け付ける引数も異なる。
+どちらも規則は規則セット`JCSA`に固定であり、局面と探索の状態はbench専用のものを使う。
+そのため、規則の設定も`isready`も要らず、セッションの対局、探索木、およびオプションには影響しない。
+`--features tuning`でビルドしたminaseでは、`bench`も探索を実行するので、`go`と同じく、引数を受け付けて実行した時点から`Tune_<名前>`の変更を拒否する。
+探索の結果を変えない変更の確認と速度の比較での使い方は、[デバッグの手引き](debugging.md)にある。
+
+#### αβ探索のbench
+
 ```text
 bench [depth <N>] [threads <N>] [repetitions <N>]
 ```
 
-固定の局面集をαβ探索で探索し、局面ごとの深さ、ノード数、最善手、評価値と、全体の毎秒ノード数を出す。
+αβ探索で局面ごとの深さ、ノード数、最善手、評価値と、全体の毎秒ノード数を出す。
 省略時の値は、`depth`が3、`threads`が1、`repetitions`が1である。
 `repetitions`が2以上なら、計測に入れないウォームアップを1回行い、反復ごとの行と中央値の行を出す。
-規則は規則セット`JCSA`に固定であり、局面、置換表、およびhistory表はbench専用のものを使う。
-そのため、規則の設定も`isready`も要らず、セッションの対局、`USI_Hash`、および`Threads`には影響しない。
-MCTSで起動したminaseでも、同じαβ探索の測定として実行できる。
-`--features tuning`でビルドしたminaseでは、`bench`も探索を実行するので、`go`と同じく、実行した時点から`Tune_<名前>`の変更を拒否する。
-探索木を変えない変更の確認と速度の比較での使い方は、[デバッグの手引き](debugging.md)にある。
+置換表とhistory表はbench専用のものを使うので、`USI_Hash`と`Threads`には影響しない。
+PV-MCTSの`bench`の引数`nodes`と`batch`は、未知の語として拒否する。
+
+#### PV-MCTSのbench
+
+```text
+bench [nodes <N>] [batch <N>]
+```
+
+各局面で新しい探索木を作り、対局と同じPV-MCTSの探索を、時間の制限なしで`nodes`回のシミュレーションまで行う。
+`nodes`は1局面のシミュレーションの上限回数で、省略時は800、範囲は1〜4,294,967,295である。
+`batch`は1回の推論に送る葉の数の上限で、省略時は256、範囲は1〜1,024である。
+αβ探索の`bench`だけが受け付ける`depth`、`threads`、および`repetitions`は、`info string error: <語> requires --search alphabeta`の1行で拒否する。
+
+評価にはネットを使わず、局面と着手の文字列のハッシュから方策と価値を決める試験用の評価器を使うので、ネットもGPUもない機械で動く。
+局面の文字列は拡張SFENから手数の欄を除いた4欄、着手の文字列はUSIの着手の表記である。
+探索木の容量とバッチの既定値は`USI_Hash`と`NnBatchSize`の既定値と同じで、引き分けの勝率は0.5、手を選ぶ式PUCTの係数と方策の温度は既定の値であり、セッションの`PolicyTemperature`は使わない。
+
+```text
+info string bench mcts nodes <N> batch <N> capacity-bytes <容量> policy-temperature <温度> c-init <値> c-base <値> c-fpu <値> c-init-root <値> c-base-root <値> c-fpu-root <値>
+info string position <局面名> best <着手> stop <nodes|depth> pv <着手の列>
+info string movestats root ...
+info string movestats move ...
+...
+info string summary simulations <合計> elapsed-ms <合計> sps <毎秒のシミュレーション数>
+info string end
+```
+
+最初の行は探索の条件を記録する。
+各局面では、最善手、停止理由、および主変化（最善手から続く読み筋、`pv`）の行に続けて、`VerboseMoveStats`と同じ書式の根の要約と表（「根の候補手ごとの統計」の節）を出す。
+停止理由は、上限回数に達したときと探索木の容量が尽きたときは`nodes`、根の勝敗が確定して上限より前に止まったときは`depth`である。
+最後の行の前に、全局面のシミュレーション数と経過時間の合計、および毎秒のシミュレーション数を出す。
+勝率を評価値（cp）へ換算する係数はセッションの設定に依存するので、評価値は出さない。
 
 ### nn-eval
 

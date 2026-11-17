@@ -4,7 +4,7 @@
 
 本書は、中将棋エンジンminaseのPV-MCTSに、先行するエンジンが備えるデバッグの道具のうち、minaseに欠けている3つを加える手順を定める。
 PV-MCTSは、局面ごとに着手の確率（方策）と勝率（価値）を出すニューラルネット（以下ネット）で探索の木を広げるモンテカルロ木探索であり、minaseを`--search mcts`で起動したときの探索方式である。
-[エンジン開発のデバッグ手法の調査](../research/engine-debugging-survey.md)（以下、調査メモ）は、チェス、囲碁、および将棋の7つのPV-MCTSエンジンのソースを調べ、minaseが既に持つ道具（ネットの出力の表示と照合、探索の単体試験）を除くと、この3つが欠けていると結論した。
+[エンジン開発のデバッグ手法の調査](../../research/engine-debugging-survey.md)（以下、調査メモ）は、チェス、囲碁、および将棋の7つのPV-MCTSエンジンのソースを調べ、minaseが既に持つ道具（ネットの出力の表示と照合、探索の単体試験）を除くと、この3つが欠けていると結論した。
 第1の道具は、USI（エンジンとGUIの通信規約）のオプション`VerboseMoveStats`である。チェスエンジンlc0の同名のオプションに倣い、有効にすると、探索の終わりに、探索を始めた局面（根）の候補手ごとに、読んだ回数、ネットが付けた確率、探索で平均した勝率Q、およびその手の後の局面をネットが評価した勝率Vを出す。
 第2の道具は、探索木の各節点の統計が満たすべき等式を全節点で確かめる関数`Tree::validate`である。通常のビルドの速さを変えないように、試験と調査のビルドでだけ有効になる整合検査のフィーチャ`invariants`（Cargoでビルド時に機能を選ぶ仕組み）の下で呼ぶ。
 第3の道具は、固定の局面集を探索するUSIの独自コマンド`bench`を、起動した探索の方式に従わせる変更である。αβ探索で起動したminaseの`bench`はいまのまま変えず、`--search mcts`で起動したminaseの`bench`は、固定の15局面をPV-MCTSで固定の回数だけ探索して結果と根の統計を出す。将棋エンジンやねうら王の`bench`も、ビルドしたエンジンの探索を測る。
@@ -14,20 +14,26 @@ PV-MCTSの`bench`はネットの代わりに、局面と着手の文字列のハ
 
 ## 状態
 
-起案の段階であり、2026年11月17日に起案して、まだ着手していない。
-同じ日の利用者の決定で、PV-MCTSの固定局面の探索を別の名前のコマンドにせず、`--search mcts`で起動したときの`bench`にした（「`bench`を起動した探索の方式に従わせる」の節）。
-次の一手は、利用者の承認を得て、masterから切ったブランチでフェーズ1を始めることである。
+本書は完了時点で凍結した記録であり、以後の変更を反映しない。現行の仕様はコードのdocコメントに、設計判断は[docs/adr/](../../adr/README.md)にある。
+完了（採用）。2026年11月17日に起案し、同じ日に利用者の指示で着手して、フェーズ1〜4を終えた。
+起案の日の利用者の決定で、PV-MCTSの固定局面の探索を別の名前のコマンドにせず、`--search mcts`で起動したときの`bench`にした（「`bench`を起動した探索の方式に従わせる」の節）。
+PV-MCTSの`bench`、探索木の検査、および`VerboseMoveStats`を加えた後も、どのフェーズの終わりでも、既定の設定での探索の結果は変更前と一致した（[照合の記録](../../measurements/mcts-debugging-tools/mcts-debugging-tools-verification.md)）。
+実ネットをCPUで推論した15局面と10手の対局の`go nodes 800`の出力は、`time`と`nps`の値を除いて変更前のmasterと全行一致し、`VerboseMoveStats`を有効にした対局では、10手のうち9手の探索が前の手の木を持ち越していたので、木の付け替えの経路も通ったことを確かめた。
+PUCTの係数の調整はまだmasterに入っていないので、「検証」の5.のうち、`Tune_`を変えてから実行した`bench`が変えた後の値を使うことの確認は行っていない。
+設計判断は、[根の統計のADR](../../adr/print-pv-mcts-root-move-statistics-once-at-the-end-of-search-through-verbosemovestats.md)、[探索木の検査のADR](../../adr/validate-the-pv-mcts-tree-under-the-invariants-feature-at-the-end-of-each-search.md)、および[`bench`のADR](../../adr/run-bench-with-the-launched-search-and-detect-pv-mcts-regressions-with-a-hash-evaluator.md)の3本に移した。
+仕様は、ソースのdocコメント、[USIの独自拡張の手引き](../../guides/usi-extensions.md)、および[デバッグの手引き](../../guides/debugging.md)に移した。
+表と要約の各欄の意味は、対局の出力とPV-MCTSの`bench`が共有する`crates/minase/src/search/mcts/move_stats.rs`の`lines`のdocコメントに書き、`crates/minase/src/protocol/usi.rs`のdocコメントからはそれを参照する形にした。
 
 ## 目的
 
 本書の目的は、PV-MCTSの不具合と探索の振る舞いを、αβ探索と同じ程度に調べられるようにすることである。
-minaseのもう1つの探索方式であるαβ探索には、探索済みの局面の値を記録する置換表を照会する`tt`、局面ごとのノード数で変更の前後を比べる`bench`、および探索中に差分更新の値を全計算と照合するフィーチャ`invariants`がある（[デバッグの手引き](../guides/debugging.md)）。
+minaseのもう1つの探索方式であるαβ探索には、探索済みの局面の値を記録する置換表を照会する`tt`、局面ごとのノード数で変更の前後を比べる`bench`、および探索中に差分更新の値を全計算と照合するフィーチャ`invariants`がある（[デバッグの手引き](../../guides/debugging.md)）。
 PV-MCTSで使える道具は、ネットの出力を表示する`eval`、ネットの出力をPyTorchの出力と照合する`nn-eval`、および探索木の単体試験に限られる。
 いまの`bench`は、`--search mcts`で起動したminaseでもαβ探索を測る。
 このため、PV-MCTSについては、次の3つの場面で調べる手段がない。
 
 第1は、対局でPV-MCTSが不自然な手を指したときに、その手が選ばれた理由を調べる場面である。
-いまのPV-MCTSは探索の終わりに最善手、評価値、および読み筋だけを出すので（[MCTSの対局の探索のADR](../adr/search-mcts-games-by-puct-with-virtual-loss-batches.md)）、ほかの候補手を何回読んだか、どの手でQとVが食い違っていたかが分からない。
+いまのPV-MCTSは探索の終わりに最善手、評価値、および読み筋だけを出すので（[MCTSの対局の探索のADR](../../adr/search-mcts-games-by-puct-with-virtual-loss-batches.md)）、ほかの候補手を何回読んだか、どの手でQとVが食い違っていたかが分からない。
 対局サイトlishogiのBotや、エンジンどうしを自動で対局させる対局ハーネスでの探索は時間で区切られるので、同じ探索を後から再現することもできない。
 探索の終わりに候補手ごとの統計を出しておけば、送受信を記録する起動引数`--io-log`のログにその探索の統計が残る。
 
@@ -37,7 +43,7 @@ PV-MCTSで使える道具は、ネットの出力を表示する`eval`、ネッ�
 
 第3は、探索の結果を変えないはずの変更、たとえばリファクタリングや高速化を確かめる場面である。
 αβ探索ではbenchの局面ごとのノード数の一致で確かめるが、PV-MCTSには同じ役割の道具がない。
-これから予定する、手を選ぶ式の係数の[調整](mcts-puct-spsa.md)と、上位N手の読み筋を示す[MultiPV](multipv.md)もPV-MCTSのコードに触れるので、その前後で探索の結果を変えていないかを確かめる場面が生じる。
+これから予定する、手を選ぶ式の係数の[調整](../mcts-puct-spsa.md)と、上位N手の読み筋を示す[MultiPV](../multipv.md)もPV-MCTSのコードに触れるので、その前後で探索の結果を変えていないかを確かめる場面が生じる。
 
 本書は棋力を上げる計画ではない。
 
@@ -51,8 +57,8 @@ PV-MCTSで使える道具は、ネットの出力を表示する`eval`、ネッ�
 
 - αβ探索で起動したminaseの`bench`は変えない。αβ探索のほかの道具も変えない。
 - 探索の後に探索木を照会する独自コマンド、手順を指定した部分木の表示、および木の全節点の書き出しは扱わない。
-- 各候補手の読み筋は扱わない。根の上位N手の読み筋は[MultiPV](multipv.md)が扱う。
-- 探索中に統計を定期的に出す機能（lc0の`LogLiveStats`）は扱わない。PV-MCTSは探索の終わりにだけ`info`を出すという規則（[MCTSの対局の探索のADR](../adr/search-mcts-games-by-puct-with-virtual-loss-batches.md)）を保つ。
+- 各候補手の読み筋は扱わない。根の上位N手の読み筋は[MultiPV](../multipv.md)が扱う。
+- 探索中に統計を定期的に出す機能（lc0の`LogLiveStats`）は扱わない。PV-MCTSは探索の終わりにだけ`info`を出すという規則（[MCTSの対局の探索のADR](../../adr/search-mcts-games-by-puct-with-virtual-loss-batches.md)）を保つ。
 - 実ネットで探索するPV-MCTSの`bench`と、ハッシュの評価器を対局で使う評価器として選ぶ設定（推論の実行先を選ぶオプション`NnBackend`の選択肢）は扱わない。
 - 推論の結果を記録して後で再生する評価器（lc0の`recordreplay`）は扱わない。
 - 自己対局の探索の統計の表示と、CECP（xboard系の通信規約）の層は扱わない。
@@ -60,7 +66,7 @@ PV-MCTSで使える道具は、ネットの出力を表示する`eval`、ネッ�
 ## 依存関係
 
 本書は、PV-MCTSの探索木（`crates/minase/src/search/mcts/tree.rs`）、駆動部（`driver.rs`）、対局用の探索のループ（`engine.rs`の`run`）、自己対局の各手の決定（`crates/minase/src/bin/minase/zero_selfplay/game.rs`の`decision`）、および`bench`の受け付け（`crates/minase/src/protocol/usi/diagnostics.rs`の`handle_bench`）の現行の実装に依存する。
-探索の方式は[MCTSの対局の探索のADR](../adr/search-mcts-games-by-puct-with-virtual-loss-batches.md)に、整合検査の置き場所は[整合検査をフィーチャ`invariants`に置くADR](../adr/enable-invariant-checks-in-tests-by-feature.md)に、診断をUSIの独自コマンドにする方針は[診断のコマンドのADR](../adr/run-engine-diagnostics-as-usi-commands-and-keep-experiment-tools-as-subcommands.md)に従う。
+探索の方式は[MCTSの対局の探索のADR](../../adr/search-mcts-games-by-puct-with-virtual-loss-batches.md)に、整合検査の置き場所は[整合検査をフィーチャ`invariants`に置くADR](../../adr/enable-invariant-checks-in-tests-by-feature.md)に、診断をUSIの独自コマンドにする方針は[診断のコマンドのADR](../../adr/run-engine-diagnostics-as-usi-commands-and-keep-experiment-tools-as-subcommands.md)に従う。
 
 本書は、探索木について次の用語を使う。
 探索木の節点は局面に当たり、節点から子へ伸びる辺は着手に当たる。
@@ -87,11 +93,11 @@ USIの層は探索を別のスレッドで実行し、探索が終わると、�
 起案中の次の設計書と、コードが重なる。
 どの組でも、後からmasterへ入れる側が、先に入った変更に合わせる。
 
-- [MultiPV](multipv.md)は、探索の終わりにPV-MCTSの根の候補手を、最善手を選ぶ`best_edge`と同じ比較規則で並べ、USIの層で探索の終わりに出力する経路（`usi.rs`の`handle_search_event`と`finish_search`）を変える。本書の表も同じ比較規則で並べる。候補手を並べる関数は、先に入った側が作り、後の側はそれを使う。
-- [NNUEのネットの外部ファイル化](nnue-external-network-file.md)は、PV-MCTSの勝率尺度（勝率を評価値のcp、すなわちセンチポーンへ換算する係数）をUSIのオプション`NnCpPerLogit`で受け取る形に改め、αβ探索の`bench`に`isready`でのネットの準備を求め、`--search mcts`で起動したminaseの`bench`を拒否する。本書は、その`bench`をPV-MCTSの探索にするので、拒否と重なる。本書が先に入れば、外部ファイル化の側はPV-MCTSの`bench`を拒否せずに残す。外部ファイル化が先に入れば、本書がその拒否をPV-MCTSの探索に置き換える。本書の`VerboseMoveStats`とPV-MCTSの`bench`は、勝率尺度もNNUEのネットも使わず、勝率だけを出すので、勝率尺度の受け取り方の変更の影響は受けない。
-- [PUCTの係数の調整](mcts-puct-spsa.md)は、PUCTの係数と方策の温度の既定値を1つの表へ移し、調整用のビルドでは係数を`Tune_`で始まるUSIオプションで受ける。PV-MCTSの`bench`は、新しく作ったMCTSと同じく係数の表の値を使うので、通常のビルドでは表の既定値で探索する。αβ探索の`bench`は、調整用のビルドで`Tune_`を変えてから実行すると変えた後の係数で測り（[起動引数と診断ツールをUSIへ移す計画](archived/cli-to-usi.md)の`bench`の節）、引数を受け付けて実行した時点から`Tune_`の変更を拒否する（[USIの独自拡張の手引き](../guides/usi-extensions.md)の`bench`の節）。PV-MCTSの`bench`も、この2つの規則に揃える。使った係数の値は出力の最初の行に出るので、`Tune_`を変えた後の実行は、その行で区別できる。
+- [MultiPV](../multipv.md)は、探索の終わりにPV-MCTSの根の候補手を、最善手を選ぶ`best_edge`と同じ比較規則で並べ、USIの層で探索の終わりに出力する経路（`usi.rs`の`handle_search_event`と`finish_search`）を変える。本書の表も同じ比較規則で並べる。候補手を並べる関数は、先に入った側が作り、後の側はそれを使う。
+- [NNUEのネットの外部ファイル化](../nnue-external-network-file.md)は、PV-MCTSの勝率尺度（勝率を評価値のcp、すなわちセンチポーンへ換算する係数）をUSIのオプション`NnCpPerLogit`で受け取る形に改め、αβ探索の`bench`に`isready`でのネットの準備を求め、`--search mcts`で起動したminaseの`bench`を拒否する。本書は、その`bench`をPV-MCTSの探索にするので、拒否と重なる。本書が先に入れば、外部ファイル化の側はPV-MCTSの`bench`を拒否せずに残す。外部ファイル化が先に入れば、本書がその拒否をPV-MCTSの探索に置き換える。本書の`VerboseMoveStats`とPV-MCTSの`bench`は、勝率尺度もNNUEのネットも使わず、勝率だけを出すので、勝率尺度の受け取り方の変更の影響は受けない。
+- [PUCTの係数の調整](../mcts-puct-spsa.md)は、PUCTの係数と方策の温度の既定値を1つの表へ移し、調整用のビルドでは係数を`Tune_`で始まるUSIオプションで受ける。PV-MCTSの`bench`は、新しく作ったMCTSと同じく係数の表の値を使うので、通常のビルドでは表の既定値で探索する。αβ探索の`bench`は、調整用のビルドで`Tune_`を変えてから実行すると変えた後の係数で測り（[起動引数と診断ツールをUSIへ移す計画](cli-to-usi.md)の`bench`の節）、引数を受け付けて実行した時点から`Tune_`の変更を拒否する（[USIの独自拡張の手引き](../../guides/usi-extensions.md)の`bench`の節）。PV-MCTSの`bench`も、この2つの規則に揃える。使った係数の値は出力の最初の行に出るので、`Tune_`を変えた後の実行は、その行で区別できる。
 
-AlphaZero型探索の[2回目の強化学習の実行](alphazero-rl-2.md)は、作業の開始時のコミットで作ったバイナリを使うので、本書の変更の影響を受けない。
+AlphaZero型探索の[2回目の強化学習の実行](../alphazero-rl-2.md)は、作業の開始時のコミットで作ったバイナリを使うので、本書の変更の影響を受けない。
 本書が自己対局のコードに加える検査はフィーチャ`invariants`の下にあり、通常のビルドには入らない。
 `bench`を呼ぶスクリプト（`scripts/bench_compare.py`、`scripts/vast-spsa/`、`scripts/vast/generation_chain.py`）は、どれもαβ探索で起動したminaseに`bench`を送るので、本書の変更の影響を受けない。
 
@@ -161,7 +167,7 @@ lc0は`src/search/classic/search.cc`の460〜545行、Montyは`src/mcts.rs`の76
 探索に付随して自動で出す方式は、チェスのlc0の`VerboseMoveStats`とMontyの`report_moves`、将棋のdlshogiの`DebugMessage`の3つのオプションにある。
 探索の後に送るコマンドで照会する方式は、チェスではCeresの`dump-move-stats`だけにある。
 
-minaseのαβ探索は、探索の後に送る`tt`で置換表を照会する（[局面、評価、置換表の表示のADR](../adr/show-position-evaluation-and-tt-as-usi-commands.md)）。
+minaseのαβ探索は、探索の後に送る`tt`で置換表を照会する（[局面、評価、置換表の表示のADR](../../adr/show-position-evaluation-and-tt-as-usi-commands.md)）。
 PV-MCTSでコマンドの方式を採らないのは、対局中に行われた探索を後から調べる用途に、コマンドでは対応できないからである。
 lishogiのBotや対局ハーネスの探索は時間で区切られるので、同じ探索を再現できず、探索の後にコマンドを送る機会もない。
 オプションの方式なら、`--io-log`で記録した対局のログに、その探索の統計が残る。
@@ -199,7 +205,7 @@ UとSを出すには、PUCTで手を選ぶ関数`select_child`（`puct.rs`の57�
 logitは列に加えない。
 探索木が持つlogitは方策の温度で割った後の値であり（`engine.rs`の577行）、ネットの生のlogitを出す`eval`の値と食い違って誤読を招く。
 ただし、行の順を決める比較規則は、未訪問の辺どうしをこのlogitの大小で比べるので、表に出ないlogitが行の順に影響する。
-各候補手の読み筋は、[MultiPV](multipv.md)が扱う。
+各候補手の読み筋は、[MultiPV](../multipv.md)が扱う。
 
 ### 要約の行
 
@@ -252,7 +258,7 @@ info string movestats move <着手> visits <N> value-sum <W> q <Q|-> prior <P> v
 
 `result`は行の最後に置き、未確定なら`none`、引き分けの節点なら`draw`、勝敗が確定していれば`win`か`loss`に続けて`distance <手数>`を書く。
 同一局面の反復による勝敗なら`repetition`を、反復の近似に依存する結果なら`approximate`を、その後ろに付ける。
-反復の近似とは、探索の経路の上で同じ局面が1回再び現れた時点で、千日手などの反復の規則の裁定を下したとみなす扱いである（[MCTSの葉の裁定のADR](../adr/adjudicate-mcts-leaves-by-the-referee-before-the-repetition-approximation.md)）。
+反復の近似とは、探索の経路の上で同じ局面が1回再び現れた時点で、千日手などの反復の規則の裁定を下したとみなす扱いである（[MCTSの葉の裁定のADR](../../adr/adjudicate-mcts-leaves-by-the-referee-before-the-repetition-approximation.md)）。
 `move`の行の勝敗は、子の勝敗を根の手番側へ反転して手数を1増やした値であり、`best_edge`が比べる値と同じである。
 引き分けは確定した勝敗とは別の状態なので、`none`と区別する。
 
@@ -320,7 +326,7 @@ Ceresの`validate-store`との対応は次のとおりである（`src/Ceres.MCG
 - 自己対局の各手の決定（`zero_selfplay/game.rs`の`decision`）の前。自己対局はGumbel AlphaZeroの探索で`run`を通らないからである。`validate`と終了時の検査を行う。
 - 木の付け替え`Tree::reroot`の前と後。付け替えは、`used_bytes`を残す部分木の大きさで上書きし（`tree.rs`の700行）、捨てる枝の誤りも消すので、前でも確かめる。`validate`だけを行う。
 
-検査に失敗したら、[整合検査のADR](../adr/enable-invariant-checks-in-tests-by-feature.md)のとおり、失敗した条件、経路の辺の添字の列、および関係する値を含むメッセージでパニックする。
+検査に失敗したら、[整合検査のADR](../../adr/enable-invariant-checks-in-tests-by-feature.md)のとおり、失敗した条件、経路の辺の添字の列、および関係する値を含むメッセージでパニックする。
 
 シミュレーションのたびに全節点を検査する案は採らない。
 シミュレーションの回数をnとすると、木の節点の数もnに比例して増えるので、毎回の全検査の費用の合計はnの2乗に比例するからである。
@@ -349,13 +355,13 @@ lc0とCeresの`benchmark`、およびMontyの`bench`も、それぞれのエン�
 やねうら王がもう1つ持つ`benchmark`も、同じくビルドしたエンジンの`go`を使う（`source/usi.cpp`の803行以降）。
 
 minaseにも、起動した探索の方式でコマンドの働きが変わる例がある。
-`eval`は、αβ探索で起動すればNNUEの評価の内訳を、MCTSで起動すればネットの価値と方策を出す（[USIの独自拡張の手引き](../guides/usi-extensions.md)）。
+`eval`は、αβ探索で起動すればNNUEの評価の内訳を、MCTSで起動すればネットの価値と方策を出す（[USIの独自拡張の手引き](../../guides/usi-extensions.md)）。
 `go depth`はMCTSでは拒否し、`tt`はαβ探索だけが受け付ける。
 
 `bench`を呼ぶスクリプトは、どれもαβ探索で起動したminaseに送るので、PV-MCTSの`bench`への変更で壊れる呼び出し側はない。
 いまの手引きは、MCTSで起動したminaseの`bench`もαβ探索を測ると書いているので、その記述は改める。
-この変更は、[開発の規約](../../CONTRIBUTING.md)が互換性の対象に挙げるUSIのオプション、起動引数、規則コード、およびライブラリの公開APIのどれにも当たらないので、互換性を壊す変更の印は付けない。
-[NNUEのネットの外部ファイル化](nnue-external-network-file.md)は、MCTSで起動したminaseの`bench`を拒否すると定めるが、PV-MCTSの`bench`があれば拒否する状態は要らなくなる。
+この変更は、[開発の規約](../../../CONTRIBUTING.md)が互換性の対象に挙げるUSIのオプション、起動引数、規則コード、およびライブラリの公開APIのどれにも当たらないので、互換性を壊す変更の印は付けない。
+[NNUEのネットの外部ファイル化](../nnue-external-network-file.md)は、MCTSで起動したminaseの`bench`を拒否すると定めるが、PV-MCTSの`bench`があれば拒否する状態は要らなくなる。
 
 別の名前の独自コマンド（たとえば`mcts-bench`）を加えて、`bench`をαβ探索だけに残す案は採らない。
 同じ役割の診断に2つの名前ができ、先行エンジンにその形の先例がないからである。
@@ -369,11 +375,11 @@ bench [nodes <N>] [batch <N>]
 ```
 
 `nodes`は1局面のシミュレーションの上限回数で、省略時は800、範囲は1〜4,294,967,295である。
-800回は、固定の相手と強さを比べる測定がMCTSの1手の思考の制限に使う回数であり（[固定の相手の設計書](archived/mcts-fixed-opponents.md)）、上限は辺の訪問回数の型`u32`の最大値である。
+800回は、固定の相手と強さを比べる測定がMCTSの1手の思考の制限に使う回数であり（[固定の相手の設計書](mcts-fixed-opponents.md)）、上限は辺の訪問回数の型`u32`の最大値である。
 `batch`は1回の推論に送る葉の数の上限で、省略時の値256と範囲1〜1,024は、どちらもオプション`NnBatchSize`と同じである。
 αβ探索の`bench`だけが受け付ける`depth`、`threads`、および`repetitions`は、`tt`をMCTSで拒否する文言（`info string error: tt requires --search alphabeta`）と同じ形の`info string error: <語> requires --search alphabeta`の1行で拒否する。
 αβ探索の`bench`は、`nodes`と`batch`を、いまと同じく未知の語として拒否する。
-そのほかの引数の誤り（未知の語、値の欠落、範囲外の値、同じ引数の重複）は、[診断のコマンドの共通の契約](../guides/usi-extensions.md#共通の契約)のとおり`info string error:`の1行で拒否する。
+そのほかの引数の誤り（未知の語、値の欠落、範囲外の値、同じ引数の重複）は、[診断のコマンドの共通の契約](../../guides/usi-extensions.md#共通の契約)のとおり`info string error:`の1行で拒否する。
 
 局面は、αβ探索の`bench`の15局面（`crates/minase/src/diagnostics/bench.rs`の`BENCH_POSITIONS`）を写さずに共有し、規則は同じく、日本中将棋連盟の規則に基づく規則セット`JCSA`に固定する。
 αβ探索の`bench`の計算と出力の処理は変えず、PV-MCTSの`bench`は局面集だけを共有する別の処理として置く。
@@ -389,7 +395,7 @@ PUCTの係数と方策の温度は、新しく作ったMCTSと同じ既定の値
 規則の設定も、ネットを準備する`isready`も要らない。
 探索は、対局と同じ`run`に、時間の制限なしで上限回数だけを与えて呼び、探索のループを診断のために複製しない。
 上限回数に達したときと木の容量が尽きたときは、停止理由が`nodes`になる。
-根の勝敗が確定して上限より前に止まったときは、αβ探索が指定の深さを読み終えた場合と同じ停止理由`depth`になる（[MCTSの対局の探索のADR](../adr/search-mcts-games-by-puct-with-virtual-loss-batches.md)）。
+根の勝敗が確定して上限より前に止まったときは、αβ探索が指定の深さを読み終えた場合と同じ停止理由`depth`になる（[MCTSの対局の探索のADR](../../adr/search-mcts-games-by-puct-with-virtual-loss-batches.md)）。
 停止理由に使う語は、`info string stop`の行と同じである。
 
 出力は次の形である。
@@ -411,19 +417,19 @@ info string end
 主変化の行を表とは別に出すのは、主変化を取り出す`principal_variation`の誤りが、根の統計を変えずに主変化と深さだけを変え得るからである。
 
 PV-MCTSの`bench`は評価値（cp）を出さない。
-勝率をcpへ換算する勝率尺度は、[NNUEのネットの外部ファイル化](nnue-external-network-file.md)の後にはUSIのオプションから受け取る値になる。
+勝率をcpへ換算する勝率尺度は、[NNUEのネットの外部ファイル化](../nnue-external-network-file.md)の後にはUSIのオプションから受け取る値になる。
 cpを出すとPV-MCTSの`bench`がセッションの設定に依存するので、出さずに勝率だけを根の表の`q`で示す。
-外部ファイル化の後のαβ探索の`bench`は`isready`でネットを準備してから実行するが、PV-MCTSの`bench`はハッシュの評価器を使うので、その後も`isready`を要らない。
+外部ファイル化の後のαβ探索の`bench`は`isready`でネットを準備してから実行するが、PV-MCTSの`bench`はハッシュの評価器を使うので、その後も`isready`は要らない。
 
 2つのコミットの比較では、`elapsed-ms`と`sps`の欄の値を除いた出力の全行が一致することを確かめる。
 比較の前に、両方の実行が終了コード0で終わり、`info string error:`の行がなく、15局面の`position`の行と終端の行`info string end`があることを確かめる。
 両方の実行が同じエラーで止まった場合にも、出力の全行の一致は成り立ってしまうからである。
-この手順は、[移動だけの再編の教訓](../lessons/verify-move-only-reorganization.md)がαβ探索の`bench`に定めた比較と同じ形であり、専用のスクリプトは作らない。
+この手順は、[移動だけの再編の教訓](../../lessons/verify-move-only-reorganization.md)がαβ探索の`bench`に定めた比較と同じ形であり、専用のスクリプトは作らない。
 PV-MCTSの`bench`の一致は、同じ機械で同じ設定でビルドした2つのコミットについて判定する。
 探索はsoftmax、対数、および平方根の浮動小数点の計算を含み、機械や数学ライブラリの違いでわずかに変わり得るので、機械をまたいだ一致は求めない。
 
 回帰の検出の方式は、次の理由で選んだ。
-minaseは、現在の出力を丸ごと保存して比べる試験を書かない（[テストの手引き](../guides/testing-minase-rules.md)の「期待値の根拠」）。
+minaseは、現在の出力を丸ごと保存して比べる試験を書かない（[テストの手引き](../../guides/testing-minase-rules.md)の「期待値の根拠」）。
 このため、囲碁のKataGoのように期待出力をリポジトリにコミットして照合する方式は採れない。
 αβ探索の`bench`も、総ノード数を固定せず、2つのコミットの出力を比べる。
 チェスのMontyは、benchの総ノード数をコミットの本文に書いた署名と照合し、総ノード数が上限の回数に等しくならないように、選択の経路の平均の深さで探索を止める。
@@ -439,7 +445,7 @@ PV-MCTSの`bench`の評価器は、局面と着手の文字列のハッシュか
 lc0の評価器`random`は、ネットへの入力（盤の升ごとの値を並べた入力平面）のハッシュから、価値を一様に、方策のlogitを0〜3の範囲で一様に決める（`src/neural/backends/network_random.cc`の43〜92行）。
 minaseの評価器はこれに倣い、次の契約を持つ。
 
-- 局面の鍵は、拡張SFENから手数の欄を除いた4欄、すなわち盤面、手番、獅子を取った升、および成りを保留している駒の升である。獅子を取った升は、獅子以外の駒で獅子を取られた直後に、相手の獅子を取り返す手を制限する中将棋の規則（先獅子、[chu-shogi.md](../rules/chu-shogi.md)の第15条）の判定に使う欄であり、拡張SFENの文法はUSIの独自拡張の手引きにある。
+- 局面の鍵は、拡張SFENから手数の欄を除いた4欄、すなわち盤面、手番、獅子を取った升、および成りを保留している駒の升である。獅子を取った升は、獅子以外の駒で獅子を取られた直後に、相手の獅子を取り返す手を制限する中将棋の規則（先獅子、[chu-shogi.md](../../rules/chu-shogi.md)の第15条）の判定に使う欄であり、拡張SFENの文法はUSIの独自拡張の手引きにある。
 - ハッシュは、バイト列を1バイトずつ混ぜる単純なハッシュ関数である64ビットのFNV-1aを、文字列のUTF-8のバイト列に適用したものとする。その上位24ビットを2²⁴で割って、その文字列に対する0以上1未満の値uを求める。
 - 局面の価値は、局面の鍵から求めたuとする。
 - 着手のlogitは、局面の鍵と、USIの着手の表記を1つの空白でつないだ文字列から求めたuの3倍とする。
@@ -453,8 +459,8 @@ logitを0〜3にするのは、lc0の`random`と同じ範囲だからである�
 lc0がネットの入力をハッシュするのに対し、minaseは局面と着手の文字列をハッシュする。
 PV-MCTSの`bench`は2つのコミットの比較に使うので、評価器の出力が比べるコミットの間で変わってはならない。
 Zobristキーは局面の駒の配置などを乱数の表で要約した内部の値で、表の作り方を変えるコミットでは値が変わる（`crates/minase-core/src/position/zobrist.rs`）。
-ネットの入力の符号化も、[ネットの入力の候補](../proposals/zero-network-input-candidates.md)の採否で変わり得る。
-拡張SFENとUSIの着手の表記は、文法を[USIの独自拡張の手引き](../guides/usi-extensions.md)と調査メモが定める外部の表記なので、探索の処理を変えるコミットでも変わらない。
+ネットの入力の符号化も、[ネットの入力の候補](../../proposals/zero-network-input-candidates.md)の採否で変わり得る。
+拡張SFENとUSIの着手の表記は、文法を[USIの独自拡張の手引き](../../guides/usi-extensions.md)と調査メモが定める外部の表記なので、探索の処理を変えるコミットでも変わらない。
 手数の欄を除くのは、同じ局面に異なる手数で至った場合に同じ値を返すためである。
 
 価値を局面ごとに変えるのは、既存の一様な評価器（`crates/minase/src/nn/test_util.rs`の`UniformEvaluator`）では、ネットの評価の差による分岐を十分に試せないからである。
@@ -470,8 +476,8 @@ Zobristキーは局面の駒の配置などを乱数の表で要約した内部�
 ## 実装フェーズ
 
 本書の実装は、masterから切った1つのブランチとworktreeで行う。
-プログラムの実装は、プロジェクトの分担に従ってコード生成のエージェントCodexへ委任し、設計書を書いたエージェントClaudeは設計の確定、レビュー、検証、および文書を受け持つ（[委任の手引き](../guides/codex-delegation.md)）。
-各フェーズの委任では、[教訓の索引](../lessons/README.md)の「Rustの実装とテスト」と「探索の変更と採否測定」の節の規則を指示書に写す。
+プログラムの実装は、プロジェクトの分担に従ってコード生成のエージェントCodexへ委任し、設計書を書いたエージェントClaudeは設計の確定、レビュー、検証、および文書を受け持つ（[委任の手引き](../../guides/codex-delegation.md)）。
+各フェーズの委任では、[教訓の索引](../../lessons/README.md)の「Rustの実装とテスト」と「探索の変更と採否測定」の節の規則を指示書に写す。
 比較の道具を先に作り、後のフェーズはPV-MCTSの`bench`の出力で探索の結果を変えていないことを確かめる。
 
 ### フェーズ1　ハッシュの評価器、根の統計の書式、およびPV-MCTSの`bench`
@@ -495,17 +501,17 @@ USIのオプション`VerboseMoveStats`、`Engine`による時間の予算の保
 ### フェーズ4　文書の移し替え
 
 仕様をdocコメントと手引きへ、設計判断をADRへ移す。
-表と要約の各欄の意味、出力の順、および`VerboseMoveStats`の宣言は、`crates/minase/src/protocol/usi.rs`のdocコメントと[USIの独自拡張の手引き](../guides/usi-extensions.md)の「オプション」の節へ書く。
+表と要約の各欄の意味、出力の順、および`VerboseMoveStats`の宣言は、`crates/minase/src/protocol/usi.rs`のdocコメントと[USIの独自拡張の手引き](../../guides/usi-extensions.md)の「オプション」の節へ書く。
 同じ手引きの「診断のコマンド」の`bench`の節は、αβ探索の`bench`とPV-MCTSの`bench`に分けて書き直し、MCTSで起動したminaseでもαβ探索を測るという記述を消す。
 不変条件の一覧と許容の幅は`Tree::validate`のdocコメントへ、ハッシュの評価器の契約は評価器のdocコメントへ、PV-MCTSの`bench`の引数と出力はその処理のdocコメントへ書く。
 `DrawValue::SelfPlay`のdocコメントには、PV-MCTSの`bench`もこの値を使うことを書き足す。
-PV-MCTSの`bench`による比較の手順と、表の読み方は、[デバッグの手引き](../guides/debugging.md)へ書き、同書の道具の表の`bench`の行も改める。
+PV-MCTSの`bench`による比較の手順と、表の読み方は、[デバッグの手引き](../../guides/debugging.md)へ書き、同書の道具の表の`bench`の行も改める。
 ADRは、根の統計をUSIのオプションで探索の終わりに出す判断、探索木の不変条件を`invariants`の下で検査する判断、および`bench`を起動した探索の方式に従わせ、PV-MCTSではハッシュの評価器で回帰を検出する判断の3本とする。
 フェーズ4は、「検証」の節の1.と10.を確かめたときに終わる。
 
 ## 検証
 
-各フェーズで、`cargo fmt --check`、`cargo clippy`、および[テストの手引き](../guides/testing-minase-rules.md)のマージ前の検査を行う。
+各フェーズで、`cargo fmt --check`、`cargo clippy`、および[テストの手引き](../../guides/testing-minase-rules.md)のマージ前の検査を行う。
 試験の期待値は、本書の契約、USIの原典の仕様、およびPUCTと逆伝播の規則から導き、実装の出力を写さない。
 
 1. 上の検査がすべて通る。

@@ -147,7 +147,7 @@
 | 複数の読み筋を同時に示すMultiPV | [plans/multipv.md](plans/multipv.md) | 起案 | |
 | NNUEのネットを埋め込まず、USIのオプションEvalFileで外部のファイルから読む | [plans/nnue-external-network-file.md](plans/nnue-external-network-file.md) | 起案 | |
 | NNUEをtataraに倣った枠組みへ載せ替え、HalfKP_vm（256x2-32-32）を加える | [plans/nnue-tatara-framework-and-halfkp-vm.md](plans/nnue-tatara-framework-and-halfkp-vm.md) | 起案 | |
-| PV-MCTSのデバッグ道具（根の統計の表示、探索木の不変条件の検査、PV-MCTSのbench） | [plans/mcts-debugging-tools.md](plans/mcts-debugging-tools.md) | 起案 | |
+| PV-MCTSのデバッグ道具（根の統計の表示、探索木の不変条件の検査、PV-MCTSのbench） | [plans/archived/mcts-debugging-tools.md](plans/archived/mcts-debugging-tools.md) | 完了（採用） | 2026年11月17日 |
 
 ## 現在地
 
@@ -223,8 +223,7 @@ HalfKP_vmの世代反復は、P型の世代反復で評価関数の癖をつか�
 
 - [棋力向上の段階計画](plans/strength-stages.md)は、段階11（並列度、終盤処理）が未着手である。
 - [詰み探索（df-pn）](plans/mate-search.md)は、攻め方の手を王手に限る標準df-pnのソルバを、`go mate`と対局探索の両方から呼べるライブラリとして作る。αβ探索とPV-MCTSへの組み込みは、発動率を測ってから別の設計書で起案する。
-- [複数の読み筋を同時に示すMultiPV](plans/multipv.md)は、USIのオプション`MultiPV`で根の上位N手の読み筋を出す機能を、αβ探索とPV-MCTSの両方に加える。起案の段階で、利用者の承認を待っている。既定値1では探索と出力を変えず、開発用GUIでの表示は完了の後に`minase-gui`で別に計画する。NNUEのtatara化と探索のコードが重なるので、後からmasterへ入れる側が先に入った変更に合わせる。
-- [PV-MCTSのデバッグ道具](plans/mcts-debugging-tools.md)は、先行するPV-MCTSエンジンにあってminaseに欠けている3つの道具を加える。探索の終わりに根の候補手ごとの統計を出すUSIのオプション`VerboseMoveStats`、探索木の不変条件をフィーチャ`invariants`の下で検査する`Tree::validate`、および`--search mcts`で起動したときの`bench`である。この`bench`は、局面の文字列のハッシュで方策と価値を決める評価器で固定の15局面をPV-MCTSで探索し、2つのコミットの出力を比べられるようにする。αβ探索で起動したときの`bench`は変えない。起案の段階で、利用者の承認を待っている。既定では探索を変えないので、SPRTは行わない。MultiPVとは終了時の出力の経路が、NNUEのネットの外部ファイル化とはPV-MCTSで起動したときの`bench`の扱いが重なるので、後からmasterへ入れる側が先に入った変更に合わせる。
+- [複数の読み筋を同時に示すMultiPV](plans/multipv.md)は、USIのオプション`MultiPV`で根の上位N手の読み筋を出す機能を、αβ探索とPV-MCTSの両方に加える。起案の段階で、利用者の承認を待っている。既定値1では探索と出力を変えず、開発用GUIでの表示は完了の後に`minase-gui`で別に計画する。NNUEのtatara化と探索のコードが重なるので、後からmasterへ入れる側が先に入った変更に合わせる。PV-MCTSの根の候補手は、[PV-MCTSのデバッグ道具](plans/archived/mcts-debugging-tools.md)が加えた`Node::ranked_edges`で並べ、探索の終わりに表を出すUSIの層の経路は、同書の`VerboseMoveStats`の出力に合わせる。
 
 ### 合法手生成と対局ハーネス
 

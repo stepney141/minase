@@ -419,3 +419,6 @@ PSTは駒の種類と升ごとの値の表による評価、FMはFactorization M
 - 2026年11月16日 [AlphaZero型探索のネットのTensorRTのFP16の出力は、合法手の確率と価値をどちらも許容誤差5×10⁻²で照合する](compare-fp16-zero-network-probabilities-and-values-within-five-hundredths.md)
 - 2026年11月16日 [学習の系列が進むたびに書き換える記録はdocs/training/の系列ごとのディレクトリに置き、1回の測定で凍結する測定記録はdocs/measurements/に残す](keep-overwritten-training-series-records-under-docs-training.md)
 - 2026年11月16日 [学習の系列の進捗図は、gitに置くCSVから描き、記録からCSVを作る収集と、CSVから図を描く作図を別の操作にする](draw-training-series-progress-from-csvs-in-git-and-collect-them-separately.md)
+- 2026年11月17日 [PV-MCTSの根の候補手ごとの統計は、既定で無効のUSIオプション`VerboseMoveStats`で、探索の終わりに1回だけ出す](print-pv-mcts-root-move-statistics-once-at-the-end-of-search-through-verbosemovestats.md)
+- 2026年11月17日 [PV-MCTSの探索木の全節点の不変条件を、フィーチャ`invariants`の下で、探索の終わり、自己対局の各手の決定の前、および木の付け替えの前後に検査する](validate-the-pv-mcts-tree-under-the-invariants-feature-at-the-end-of-each-search.md)
+- 2026年11月17日 [`bench`は起動した探索の方式で固定局面を探索し、PV-MCTSでは文字列のハッシュで方策と価値を決める評価器で固定回数だけ探索して、2つのコミットの出力の一致で回帰を検出する](run-bench-with-the-launched-search-and-detect-pv-mcts-regressions-with-a-hash-evaluator.md)

@@ -22,6 +22,7 @@ pub enum DrawValue {
         cp_per_logit: f32,
     },
     /// 自己対局では引き分けの設定によらず0.5を使う。
+    /// PV-MCTSの`bench`（`crate::diagnostics::bench_mcts`）も、引き分けの評価値の既定値0に当たる勝率0.5としてこの値を使う。
     SelfPlay,
 }
 

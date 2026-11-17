@@ -4,7 +4,8 @@
 結論でminaseが持たないとした局面と評価値の表示、置換表の照会、入出力のログ、および探索統計は、同日の[デバッグ機能の整備の設計書](../plans/archived/debugging-tools.md)により、USIの独自コマンド`d`、`eval`、`tt`、起動引数`--io-log`、およびCargoフィーチャ`search-stats`として加わった。
 評価関数は2026年10月12日にNNUEへ替わり、[P型のNNUEは左右鏡映の対で第1層の重みを半幅だけ回して共有する](../adr/share-p-type-mirror-weights-by-half-width-rotation.md)ので、「minaseへの適用の可否」の第3点と異なり、現行の評価は左右鏡映でも変わらない。
 「PV-MCTS型エンジンのデバッグ」の節と、「minaseへの適用の可否」の第4点および第5点は2026年11月16日に加えたもので、そこでのminaseに関する記述は同日時点のものである。
-2026年11月17日に、[PV-MCTSのデバッグ道具の設計書](../plans/mcts-debugging-tools.md)の起案のためにふかうら王のソースを読み直し、`DebugMessage`の出力についての記述を訂正した。
+2026年11月17日に、[PV-MCTSのデバッグ道具の設計書](../plans/archived/mcts-debugging-tools.md)の起案のためにふかうら王のソースを読み直し、`DebugMessage`の出力についての記述を訂正した。
+第5点でminaseにないとした3つの道具は、同日に同書により、USIのオプション`VerboseMoveStats`、フィーチャ`invariants`の下の探索木の検査`Tree::validate`、および`--search mcts`で起動したときの`bench`として加わった。
 
 本書は、Chess Programming Wiki（以下CPW）の「Debugging」頁とその関連頁および引用投稿、ならびにStockfish、YaneuraOu、Fairy-Stockfish、HaChuのソースを調べ、エンジン開発で使われるデバッグ手法を整理した調査メモである。
 2026年11月16日には、ニューラルネット（以下ネット）で着手の方策と局面の価値を求めるモンテカルロ木探索のエンジンを調べて加えた。
@@ -310,4 +311,4 @@ MCTSの探索器は終了時に`SearchEvent::Finished`だけを送るので（`c
 回帰の検出に試験用の評価器を使う場合、`test-util`フィーチャの評価器（`crates/minase/src/nn/test_util.rs`）は、全ての手のlogitを0にするものと先頭の手のlogitだけを上げるものの2つで、どちらも価値を0.5に固定する。
 このため、lc0の`random`のように局面のハッシュから方策と価値を作る評価器と比べると、通る探索の経路が偏ると考えられる。
 並列化については、MCTSのオプション`Threads`が1だけを受け付けるので、dlshogiのような並列探索での節点の展開の競合は現状では生じない。
-第5点の3つの道具を加える計画は、[PV-MCTSのデバッグ道具の設計書](../plans/mcts-debugging-tools.md)にある。
+第5点の3つの道具を加える計画は、[PV-MCTSのデバッグ道具の設計書](../plans/archived/mcts-debugging-tools.md)にある。

@@ -20,6 +20,7 @@ minaseの道具の多くは、この照合の形をとる（差分更新と全�
 minaseは、通常の対局と測定には使わない調査用の道具を、USIの独自コマンド、起動引数、およびCargoフィーチャとして持つ。
 各道具の契約は、独自コマンドが`crates/minase/src/protocol/usi.rs`の`UsiProtocol::handle_diagnostic`のdocコメントに、`--io-log`が`crates/minase/src/bin/minase/io_log.rs`のdocコメントに、探索統計の項目が`SearchStats`のdocコメントにある。
 道具の方式を選んだ理由は、[局面、評価、置換表の表示をUSIの独自コマンドにする](../adr/show-position-evaluation-and-tt-as-usi-commands.md)、[入出力の記録を起動引数で有効にする](../adr/record-protocol-io-with-a-launch-argument.md)、[整合検査をフィーチャ`invariants`に置く](../adr/enable-invariant-checks-in-tests-by-feature.md)、および[探索統計をフィーチャ`search-stats`で数える](../adr/count-search-statistics-behind-a-feature.md)の各ADRにある。
+PV-MCTSの道具の理由は、[根の候補手ごとの統計](../adr/print-pv-mcts-root-move-statistics-once-at-the-end-of-search-through-verbosemovestats.md)、[探索木の検査](../adr/validate-the-pv-mcts-tree-under-the-invariants-feature-at-the-end-of-each-search.md)、および[`bench`を起動した探索の方式に従わせる](../adr/run-bench-with-the-launched-search-and-detect-pv-mcts-regressions-with-a-hash-evaluator.md)の各ADRにある。
 
 | 道具 | 使い方 | 用途 |
 |---|---|---|
@@ -28,9 +29,11 @@ minaseは、通常の対局と測定には使わない調査用の道具を、US
 | `tt` | USIで`go`の後に送る | 置換表に残る現局面と全子局面の項目（深さ、境界の種類、評価値、最善手）を表示する。 |
 | `perft <深さ> [divide]` | USIで`position`の後に送る | 現局面から指定した深さまでの合法手の経路数を、深さごとに数える。`divide`を付けると、根の合法手ごとの内訳を出す。 |
 | `random-play [games <N>] [seed <S>] [game <K>] [max-ply <N>] [verify-all] [verbose]` | USIで`RuleSet`の設定の後に送る | ランダムな合法手で対局を進め、毎手、局面の不変条件と合法手の適用を検査する。 |
-| `bench [depth <N>] [threads <N>] [repetitions <N>]` | USIで送る。規則の設定も`isready`も要らない | 固定の局面集をαβ探索で探索し、局面ごとの深さ、ノード数、最善手、評価値と、全体の毎秒ノード数を出す。 |
+| `bench [depth <N>] [threads <N>] [repetitions <N>]` | αβ探索で起動したminaseにUSIで送る。規則の設定も`isready`も要らない | 固定の局面集をαβ探索で探索し、局面ごとの深さ、ノード数、最善手、評価値と、全体の毎秒ノード数を出す。 |
+| `bench [nodes <N>] [batch <N>]` | `--search mcts`で起動したminaseにUSIで送る。規則の設定も`isready`も要らない | 同じ局面集を、ネットの代わりに文字列のハッシュで方策と価値を決める評価器を使って、PV-MCTSで固定の回数だけ探索し、局面ごとの最善手、停止理由、主変化、および根の候補手ごとの統計を出す。 |
+| `VerboseMoveStats` | `--search mcts`で起動したminaseに`setoption`で`true`を送る | 探索が終わるたびに、根の要約と根の候補手ごとの訪問回数、勝率の和、平均の勝率Q、事前確率、ネットの勝率、および確定した勝敗を`info string movestats`の行で出す。 |
 | `--io-log <パス>` | `minase`の起動引数 | 受け取った行と送った行を、起動からの経過ミリ秒付きでファイルへ記録する。 |
-| フィーチャ`invariants` | `cargo test`では常に有効。他のビルドでは`--features invariants` | 着手の実行と取消しのたびに局面を全検査し、探索中の評価のたびに差分更新の値を全計算と照合する。失敗すると診断を出してパニックする。 |
+| フィーチャ`invariants` | `cargo test`では常に有効。他のビルドでは`--features invariants` | 着手の実行と取消しのたびに局面を全検査し、探索中の評価のたびに差分更新の値を全計算と照合する。PV-MCTSの探索木は、探索の終わり、自己対局の各手の決定の前、および木の付け替え（次の手で探索木を引き継ぐ処理）の前後に全節点を検査する。失敗すると診断を出してパニックする。 |
 | フィーチャ`search-stats` | `--features search-stats`でビルドして`bench`を送る | ノードの種類、置換表の照会と打ち切り、βカット、最善手の順位を数えて`bench`が出力する。 |
 
 `eval`、`tt`、`perft`、`random-play`、および`bench`の出力は、各行が`info string`で始まり、`info string end`の行で終わる。
@@ -131,7 +134,7 @@ HaChuの規則との食い違いは、`scripts/hachu_replay.py`でHaChuの自己
 
 探索の不具合は、結果の誤り（明らかに悪い手、詰みの見落とし、評価値の異常）と、挙動の意図しない変化に分かれる。
 
-**挙動の変化の検出**：探索木を変えないはずの変更（高速化、リファクタリング）は、USIの独自コマンド`bench`の局面ごとのノード数、最善手、評価値が変更前と完全に一致することで確かめる。
+**αβ探索の挙動の変化の検出**：αβ探索で探索木を変えないはずの変更（高速化、リファクタリング）は、USIの独自コマンド`bench`の局面ごとのノード数、最善手、評価値が変更前と完全に一致することで確かめる。
 `bench`は、省略時には1スレッドの固定深さの探索であり、同じバイナリでは実行のたびに同じノード数を返す。
 規則は規則セット`JCSA`に固定で、局面、置換表、およびhistory表はbench専用のものを使うので、セッションの対局と設定には影響しない。
 
@@ -148,6 +151,37 @@ scripts/bench_compare.py --reference master --baseline master --parent master --
 
 ノード数が変わった場合は、変更に探索木を変える箇所が含まれている。
 探索木を変える変更の採否は、[sprt.md](sprt.md)の棋力測定で決める。
+
+**PV-MCTSの挙動の変化の検出**：PV-MCTSの探索の結果を変えないはずの変更は、`--search mcts`で起動したminaseの`bench`の出力が、変更前のコミットと、`elapsed-ms`と`sps`の値を除いて全行一致することで確かめる。
+この`bench`は、ネットの代わりに文字列のハッシュで方策と価値を決める評価器で、固定の15局面を固定の回数だけ探索する。
+局面ごとの最善手と主変化に加えて、根の全候補手の訪問回数と勝率の和を出すので、探索木のどの深さで訪問の配分や値が変わっても、打ち消し合わない限り出力に現れる。
+2つのコミットは同じ機械と同じ設定でreleaseビルドし、根の評価だけの`nodes 1`、1葉ずつ評価する`nodes 800 batch 1`、および既定の`nodes 800 batch 256`の3つの条件で比べる。
+浮動小数点の計算は機械や数学ライブラリで変わり得るので、機械をまたいだ一致は求めない。
+
+```console
+printf 'bench nodes 800 batch 256\nquit\n' | target/release/minase --protocol usi --search mcts > after.raw
+sed -E 's/(elapsed-ms|sps) [0-9]+/\1 */' after.raw > after.txt
+diff before.txt after.txt
+```
+
+比べる前に、両方の実行が終了コード0で終わり、`info string error:`の行がなく、15局面の`info string position`の行と最後の`info string end`の行があることを確かめる。
+両方が同じエラーで止まった場合にも、出力の全行は一致してしまうからである。
+出力の最初の行（`info string bench mcts`）は、手を選ぶ式PUCTの係数と方策の温度を記録するので、係数の既定値を変えるコミットとの比較で差が出たときは、まずこの行を比べる。
+`--features invariants`でビルドしたminaseの`bench`は、各局面の探索の終わりに探索木の全節点を検査し、検査に通れば通常のビルドと同じ出力を返す。
+αβ探索の`bench`を比べる`scripts/bench_compare.py`は、PV-MCTSの`bench`を扱わない。
+
+**PV-MCTSが選んだ手の調査**：対局でPV-MCTSが不自然な手を指したときは、`setoption name VerboseMoveStats value true`を送ってから同じ局面を探索するか、このオプションを有効にして`--io-log`で記録した対局のログから、その手を選んだ探索の表を読む。
+表の書式は[USIの独自拡張の手引き](usi-extensions.md)の「根の候補手ごとの統計」の節にあり、勝率を表す欄（`value-sum`、`q`、`value`）はどれも根の手番側から見た値である。
+先頭の行が選ばれた手で、訪問回数の多い手ほど、探索が長く読んだ手である。
+`q`は探索で平均した勝率、`value`はその手の後の局面をネットが1回だけ評価した勝率なので、両者の差が大きい手は、探索がネットの評価を覆した手である。
+`prior`が大きいのに訪問回数が少ない手は、探索がネットの方策の評価を覆した手である。
+要約の`reused`が正なら、前の手の探索木を持ち越しており、`simulations`より多い訪問が根の辺に積まれている。
+
+**PV-MCTSの探索木の検査**：探索木の統計の更新を誤っても、探索はエラーで止まらず、手の選び方が変わるだけなので、誤りが表に出にくい。
+`--features invariants`でビルドしたminaseと`cargo test`では、探索の終わり、自己対局の各手の決定の前、および木の付け替えの前後に、探索木の全節点を検査する。
+各節点の訪問回数、勝率の和、仮想損失（評価を待つ経路を一時的に負けとして数え、次の選択が同じ葉へ集まるのを避ける値）、事前確率、確定した勝敗、および使用量が条件を満たさなければ、条件と経路を含む診断でパニックする。
+条件の一覧と許す丸めの幅は、`crates/minase/src/search/mcts/tree/validate.rs`の`Tree::validate`のdocコメントにある。
+探索の終わりの検査は途中で打ち消し合った誤りを見逃し得るので、葉の選択、評価待ちの葉への衝突、および評価を中止した選択の取り消しの処理を変えるときは、その途中の状態で`Tree::validate`を呼ぶ単体テストも書く。
 
 **結果の誤りの調査**：問題の局面を`position`で与え、`go depth N`の`info`行で深さごとの評価値と読み筋を追う。
 評価値が特定の深さで急変するなら、その深さで初めて探索される変化に原因がある。
