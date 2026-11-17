@@ -2,7 +2,7 @@
 
 use core::fmt;
 
-use crate::search::{DRAW_VALUE_LIMIT, MAX_PLY};
+use crate::search::{DRAW_VALUE_LIMIT, MAX_PLY, MULTI_PV_LIMIT};
 
 /// 探索入力または探索器の初期化に失敗した理由。
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -18,6 +18,11 @@ pub enum SearchError {
     InvalidDrawValue {
         /// 指定された引き分けの値。
         value: i32,
+    },
+    /// MultiPVの設定値が`1..=MULTI_PV_LIMIT`の範囲外である。
+    InvalidMultiPv {
+        /// 指定された読み筋の本数。
+        value: usize,
     },
     /// ノード数上限が0である。
     ZeroNodeLimit,
@@ -46,6 +51,10 @@ impl fmt::Display for SearchError {
             Self::InvalidDrawValue { value } => write!(
                 formatter,
                 "draw value {value} is outside -{DRAW_VALUE_LIMIT}..={DRAW_VALUE_LIMIT}"
+            ),
+            Self::InvalidMultiPv { value } => write!(
+                formatter,
+                "MultiPV must be between 1 and {MULTI_PV_LIMIT}, got {value}"
             ),
             Self::ZeroNodeLimit => formatter.write_str("search node limit must be non-zero"),
             Self::ZeroMoveTime => formatter.write_str("search movetime must be non-zero"),

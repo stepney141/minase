@@ -45,6 +45,14 @@ fn mcts_handshake_declares_options_in_order_and_ignores_tuning_names() {
             "option name NnBatchSize type spin default 256 min 1 max 1024",
         ]
     );
+    let white = lines
+        .iter()
+        .position(|line| line.starts_with("option name DrawValueWhite "))
+        .unwrap();
+    assert_eq!(
+        lines[white + 1],
+        "option name MultiPV type spin default 1 min 1 max 35856"
+    );
     assert_eq!(lines.last(), Some(&"usiok"));
     assert!(!output.contains("Tune_"));
     assert!(!output.contains("error:"));
@@ -1034,4 +1042,25 @@ fn verbose_movestats_discard_running_search_emits_nothing() {
         assert!(!output.contains("bestmove"), "{output}");
         assert!(!output.contains("info depth"), "{output}");
     }
+}
+
+#[test]
+fn mcts_multipv_setting_labels_the_single_phase_one_line() {
+    let mut protocol = UsiProtocol::with_searcher(Searcher::Mcts(Engine::ready_for_test()));
+    let (result, output) = run(
+        &mut protocol,
+        "setoption name RuleSet value JCSA\nsetoption name MultiPV value 2\nposition startpos\ngo nodes 1\n",
+    );
+    result.unwrap();
+    assert!(!output.contains("error:"), "{output}");
+    let lines: Vec<_> = output
+        .lines()
+        .filter(|line| line.starts_with("info depth "))
+        .collect();
+    assert_eq!(lines.len(), 1, "{output}");
+    assert!(
+        lines[0].starts_with("info depth 1 multipv 1 score "),
+        "{output}"
+    );
+    super::assert_bestmove_matches_final_pv(&output);
 }

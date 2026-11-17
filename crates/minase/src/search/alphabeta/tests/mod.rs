@@ -921,23 +921,29 @@ fn event_reports(
     for event in events {
         match event {
             SearchEvent::Progress {
-                depth,
-                score,
+                lines,
                 nodes,
                 elapsed,
-                pv,
                 ..
-            } => progress.push((depth, score, nodes, elapsed, pv)),
+            } => {
+                assert_eq!(lines.len(), 1);
+                let line = lines.into_iter().next().unwrap();
+                progress.push((line.depth, line.score.unwrap(), nodes, elapsed, line.moves));
+            }
             SearchEvent::Finished {
                 best_move,
                 score,
                 depth,
                 nodes,
                 elapsed,
-                pv,
+                lines,
                 stop_reason,
                 ..
             } => {
+                assert_eq!(lines.len(), 1);
+                assert_eq!(lines[0].depth, depth);
+                assert_eq!(lines[0].score, Some(score));
+                let pv = lines.into_iter().next().unwrap().moves;
                 return (
                     progress,
                     FinishedReport {

@@ -6,7 +6,7 @@ use std::time::Duration;
 
 use crate::eval::Nnue;
 use crate::search::events::{SearchEvent, SearchResult, StopReason};
-use crate::search::{SearchRepetition, TranspositionTable};
+use crate::search::{PvLine, SearchRepetition, TranspositionTable};
 use minase_core::mv::Move;
 use minase_core::position::Position;
 use minase_core::rules::MoveRules;
@@ -344,11 +344,13 @@ pub(super) fn run_main_worker_with_iteration_hook(
         if let Some((sender, search_id)) = events {
             let _ = sender.send(SearchEvent::Progress {
                 search_id,
-                depth,
-                score,
                 nodes: shared.nodes(),
                 elapsed,
-                pv: completed_pv.clone(),
+                lines: vec![PvLine {
+                    depth,
+                    score: Some(score),
+                    moves: completed_pv.clone(),
+                }],
             });
         }
         if shared

@@ -1033,7 +1033,7 @@ fn increase_depth_state_resets_and_preserves_main_progress_depths() {
         let depths = receiver
             .try_iter()
             .filter_map(|event| match event {
-                SearchEvent::Progress { depth, .. } => Some(depth),
+                SearchEvent::Progress { lines, .. } => Some(lines[0].depth),
                 SearchEvent::Finished { .. } => None,
             })
             .collect::<Vec<_>>();

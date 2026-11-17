@@ -32,7 +32,7 @@ pub struct SearchHandle {
 }
 
 impl SearchHandle {
-    /// 探索イベントの受信端を返す。
+    /// 探索イベントの受信端を返す。読み筋は`lines`に最善から順位順で格納される。
     pub fn events(&self) -> &mpsc::Receiver<SearchEvent> {
         &self.events
     }

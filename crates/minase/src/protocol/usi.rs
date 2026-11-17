@@ -39,6 +39,10 @@
 //! USIに終局の裁定をエンジンから知らせる標準手段がないため、自発的な裁定通知は出さない。
 //! 理由は`docs/adr/keep-searched-moves-out-of-the-usi-game.md`にある。
 //!
+//! `MultiPV`は1〜35,856の本数を保持し、`go`の時点の値を探索へ渡す。
+//! 設定値が2以上なら各`info depth`行に1始まりの`multipv`順位を付ける。
+//! 現在の探索は設定値によらず1本を返す。既定値1では順位を付けない。
+//!
 //! 探索中の`stop`は探索を止めて`bestmove`を返す。
 //! `gameover`と`quit`は探索を止めて結果を捨て、`bestmove`を出さずに通常の処理へ戻す。
 //! 将棋所は先読み中に相手が投了すると`stop`なしで`gameover`を送るが、対局待ちへ移る通知なので着手を返さない。
@@ -58,7 +62,7 @@ use std::time::Duration;
 
 use crate::eval::nnue;
 use crate::search::{
-    self, ClockLimits, SearchEvent, SearchHandle, SearchLimits, SearchOptionKind,
+    self, ClockLimits, PvLine, SearchEvent, SearchHandle, SearchLimits, SearchOptionKind,
     SearchOptionValue, SearchSnapshot, Searcher, StopReason, TranspositionTable,
 };
 use minase_core::game::{DrawReason, Game, GameResult, GameStatus, WinReason};
@@ -104,6 +108,8 @@ pub struct UsiProtocol {
     draw_value_black: i32,
     /// 根が後手番のときに使う、根の手番側から見た引き分けの評価値(cp)。
     draw_value_white: i32,
+    /// 次の探索へ渡すMultiPVの設定値。
+    multi_pv: usize,
     /// 秒読みつき時計の締切に残す余裕(ms)。
     byoyomi_margin_ms: u64,
 }
@@ -145,6 +151,8 @@ struct SearchContext {
     ponder: bool,
     /// 最後に`info`として出力した完了深さ。
     last_info_depth: Option<u32>,
+    /// go受信時のMultiPV設定が2以上なら順位を出す。
+    show_multipv: bool,
 }
 
 /// 実行中の探索、または結果を保持して停止や的中を待つ状態。
@@ -211,6 +219,7 @@ impl UsiProtocol {
             resign_value: DEFAULT_RESIGN_VALUE,
             draw_value_black: search::DRAW_SCORE,
             draw_value_white: search::DRAW_SCORE,
+            multi_pv: 1,
             byoyomi_margin_ms: ClockLimits::DEFAULT_BYOYOMI_MARGIN_MS,
         }
     }
@@ -379,6 +388,13 @@ impl UsiProtocol {
                     return Ok(None);
                 }
             };
+        let snapshot = match snapshot.with_multi_pv(self.multi_pv) {
+            Ok(snapshot) => snapshot,
+            Err(error) => {
+                write_error(output, &error.to_string())?;
+                return Ok(None);
+            }
+        };
         let search_id = self.next_search_id;
         self.next_search_id = self.next_search_id.wrapping_add(1);
         let infinite = config.is_infinite();
@@ -409,6 +425,7 @@ impl UsiProtocol {
                 infinite,
                 ponder: tokens.contains(&"ponder"),
                 last_info_depth: None,
+                show_multipv: self.multi_pv >= 2,
             },
             handle,
         }))
@@ -607,15 +624,13 @@ impl UsiProtocol {
 
         match event {
             SearchEvent::Progress {
-                depth,
-                score,
+                lines,
                 nodes,
                 elapsed,
-                pv,
                 ..
             } => {
-                write_info(output, context, depth, score, nodes, elapsed, &pv, false)?;
-                context.last_info_depth = Some(depth);
+                write_pv_lines(output, context, nodes, elapsed, &lines)?;
+                context.last_info_depth = Some(lines[0].depth);
                 Ok(())
             }
             SearchEvent::Finished {
@@ -625,7 +640,7 @@ impl UsiProtocol {
                 depth,
                 nodes,
                 elapsed,
-                pv,
+                lines,
                 stop_reason,
                 ..
             } => {
@@ -641,14 +656,14 @@ impl UsiProtocol {
                     output,
                     &mut context,
                     depth,
-                    score,
                     nodes,
                     elapsed,
-                    &pv,
+                    &lines,
                     partial_score,
                 )?;
                 self.write_move_stats(output, &context.position, elapsed)?;
-                let ponder_move = validated_ponder_move(self.engine()?.game(), best_move, &pv);
+                let ponder_move =
+                    validated_ponder_move(self.engine()?.game(), best_move, &lines[0].moves);
                 if context.infinite || context.ponder {
                     *active = Some(ActiveSearch::AwaitingStop {
                         context,
@@ -754,15 +769,13 @@ impl UsiProtocol {
                     }
                     match event {
                         SearchEvent::Progress {
-                            depth,
-                            score,
+                            lines,
                             nodes,
                             elapsed,
-                            pv,
                             ..
                         } => {
-                            write_info(output, &context, depth, score, nodes, elapsed, &pv, false)?;
-                            context.last_info_depth = Some(depth);
+                            write_pv_lines(output, &context, nodes, elapsed, &lines)?;
+                            context.last_info_depth = Some(lines[0].depth);
                         }
                         SearchEvent::Finished {
                             partial_score,
@@ -771,7 +784,7 @@ impl UsiProtocol {
                             depth,
                             nodes,
                             elapsed,
-                            pv,
+                            lines,
                             stop_reason,
                             ..
                         } => {
@@ -779,15 +792,18 @@ impl UsiProtocol {
                                 output,
                                 &mut context,
                                 depth,
-                                score,
                                 nodes,
                                 elapsed,
-                                &pv,
+                                &lines,
                                 partial_score,
                             )?;
                             break (
                                 best_move,
-                                validated_ponder_move(self.engine()?.game(), best_move, &pv),
+                                validated_ponder_move(
+                                    self.engine()?.game(),
+                                    best_move,
+                                    &lines[0].moves,
+                                ),
                                 score,
                                 depth,
                                 stop_reason,
@@ -876,6 +892,7 @@ impl UsiProtocol {
     /// option name ByoyomiMargin type spin default 30 min 0 max 60000
     /// option name DrawValueBlack type spin default 0 min -28999 max 28999
     /// option name DrawValueWhite type spin default 0 min -28999 max 28999
+    /// option name MultiPV type spin default 1 min 1 max 35856
     /// ```
     ///
     /// 上の探索オプションはαβ探索の場合である。MCTSは`Threads`の上限を1とし、
@@ -952,6 +969,11 @@ impl UsiProtocol {
                 search::DRAW_VALUE_LIMIT
             )?;
         }
+        writeln!(
+            output,
+            "option name MultiPV type spin default 1 min 1 max {}",
+            search::MULTI_PV_LIMIT
+        )?;
         #[cfg(feature = "tuning")]
         if matches!(self.searcher, Some(Searcher::AlphaBeta(_))) {
             for &(name, default, min, max) in crate::search::params::PARAMETERS {
@@ -985,6 +1007,7 @@ impl UsiProtocol {
     /// 有効なら探索終了時に根の統計を出す。変更しても探索木を保つ。
     /// `ResignValue`はASCII数字だけの1〜99,999、`ByoyomiMargin`はASCII数字だけの0〜60,000 msである。
     /// この2値は先頭ゼロを許すが、符号、小数点、指数表記を許さない。
+    /// `MultiPV`は1〜35,856の整数を受け付け、次の探索へ渡す。置換表とhistory表は消さない。
     /// `DrawValueBlack`と`DrawValueWhite`は先頭の`-`を1つ許すASCII数字の列で、絶対値が28,999以下である。
     /// 先頭ゼロを許す。
     /// 値が変わった受理では置換表とhistory表を空にする。
@@ -1008,6 +1031,7 @@ impl UsiProtocol {
     /// | `ByoyomiMargin` | `missing ByoyomiMargin value`を返す。 | `invalid ByoyomiMargin value`を返す。 |
     /// | `DrawValueBlack` | `missing DrawValueBlack value`を返す。 | `invalid DrawValueBlack value`を返す。 |
     /// | `DrawValueWhite` | `missing DrawValueWhite value`を返す。 | `invalid DrawValueWhite value`を返す。 |
+    /// | `MultiPV` | `MultiPV requires a value`を返す。 | `MultiPV must be an integer from 1 to 35856`を返す。 |
     ///
     /// αβ探索の`tuning`ビルドの`Tune_`名は大文字小文字を区別し、最初の`go`以後は変更を拒否する。
     /// MCTSでは`Tune_`名も未知の名前として扱う。
@@ -1152,6 +1176,21 @@ impl UsiProtocol {
                 return write_error(output, "invalid ByoyomiMargin value");
             };
             self.byoyomi_margin_ms = value;
+            Ok(())
+        } else if name.eq_ignore_ascii_case("MultiPV") {
+            let Some(value) = value else {
+                return write_error(output, "MultiPV requires a value");
+            };
+            let Some(value) = parse_spin(value, 1, search::MULTI_PV_LIMIT) else {
+                return write_error(
+                    output,
+                    &format!(
+                        "MultiPV must be an integer from 1 to {}",
+                        search::MULTI_PV_LIMIT
+                    ),
+                );
+            };
+            self.multi_pv = value;
             Ok(())
         } else if name.eq_ignore_ascii_case("DrawValueBlack")
             || name.eq_ignore_ascii_case("DrawValueWhite")
@@ -1841,9 +1880,34 @@ fn write_bestmove(
     output.flush()
 }
 
-/// `info depth <d> score <評価> nodes <n> nps <nps> time <ms> pv <着手>...`を出す。
+/// 読み筋を順位順に出し、全行に同じノード数と経過時間を付ける。
+fn write_pv_lines(
+    output: &mut dyn Write,
+    context: &SearchContext,
+    nodes: u64,
+    elapsed: Duration,
+    lines: &[PvLine],
+) -> io::Result<()> {
+    for (index, line) in lines.iter().enumerate() {
+        write_info(
+            output,
+            context,
+            line.depth,
+            line.score,
+            nodes,
+            elapsed,
+            &line.moves,
+            index + 1,
+            false,
+        )?;
+    }
+    Ok(())
+}
+
+/// `info depth <d> [multipv <k>] [score <評価>] nodes <n> nps <nps> time <ms> pv <着手>...`を出す。
 ///
-/// 評価は[`score_text`]の`cp N`または符号つきの詰み手数であり、途中結果の下界には`lowerbound`を添える。
+/// `MultiPV`の設定値が2以上なら、深さの直後に1始まりの順位を付ける。
+/// 評価値があれば[`score_text`]の表記で出し、途中結果の下界には`lowerbound`を添える。
 /// 主ワーカーの完了反復ごとに出力する。経過時間は探索開始からのミリ秒で、先読み時間を含む。
 /// 経過時間0なら毎秒ノード数（nps）は0とする。
 /// 読み筋は探索開始時の局面から順に進めながらlishogi系のUSI表記へ変換する。
@@ -1853,17 +1917,26 @@ fn write_info(
     output: &mut dyn Write,
     context: &SearchContext,
     depth: u32,
-    score: i32,
+    score: Option<i32>,
     nodes: u64,
     elapsed: Duration,
     pv: &[Move],
+    rank: usize,
     lowerbound: bool,
 ) -> io::Result<()> {
-    let score = score_text(score);
-    let bound = if lowerbound { " lowerbound" } else { "" };
+    write!(output, "info depth {depth}")?;
+    if context.show_multipv {
+        write!(output, " multipv {rank}")?;
+    }
+    if let Some(score) = score {
+        write!(output, " score {}", score_text(score))?;
+        if lowerbound {
+            write!(output, " lowerbound")?;
+        }
+    }
     write!(
         output,
-        "info depth {depth} score {score}{bound} nodes {nodes} nps {} time {} pv",
+        " nodes {nodes} nps {} time {} pv",
         nodes_per_second(nodes, elapsed),
         elapsed.as_millis()
     )?;
@@ -1876,40 +1949,40 @@ fn write_info(
     output.flush()
 }
 
-/// 完了した採用結果が最後の進捗より深ければ、その結果を1行出す。
+/// 完了した採用結果が最後の進捗より深ければ、読み筋を全順位分出す。
 ///
-/// 補助ワーカーの深い結果もこの経路で通知する。深さ1の完了前に停止し、途中結果もなければ出さない。
-/// 途中結果を採用した場合は、`info string partial`に続けて完了深さ+1の情報を出し、
-/// 評価値を`lowerbound`つきの下界として示す。完了した反復の評価値とは区別する。
+/// 判定には完了反復の深さを使う。深さ1の完了前に停止し、途中結果もなければ出さない。
+/// 途中結果を採用した場合は、`info string partial`に続けて先頭の読み筋を1行だけ出し、
+/// 完了深さ+1と`partial_score`の下界を`lowerbound`つきで示す。
+/// この行にも、MultiPVの設定値が2以上なら`multipv 1`を付ける。
 #[allow(clippy::too_many_arguments)]
 fn write_final_info_if_deeper(
     output: &mut dyn Write,
     context: &mut SearchContext,
     depth: u32,
-    score: i32,
     nodes: u64,
     elapsed: Duration,
-    pv: &[Move],
+    lines: &[PvLine],
     partial_score: Option<i32>,
 ) -> io::Result<()> {
-    // 途中結果は下界として通知し、完了した反復の評価値と区別する。
     if let Some(partial_score) = partial_score {
         writeln!(output, "info string partial")?;
         return write_info(
             output,
             context,
             depth + 1,
-            partial_score,
+            Some(partial_score),
             nodes,
             elapsed,
-            pv,
+            &lines[0].moves,
+            1,
             true,
         );
     }
     if depth <= context.last_info_depth.unwrap_or(0) {
         return Ok(());
     }
-    write_info(output, context, depth, score, nodes, elapsed, pv, false)?;
+    write_pv_lines(output, context, nodes, elapsed, lines)?;
     context.last_info_depth = Some(depth);
     Ok(())
 }
@@ -2320,6 +2393,7 @@ mod tests {
     mod diagnostics;
     mod history;
     mod mcts_options;
+    mod multipv;
     mod nn_diagnostics;
     mod tuning;
     use std::collections::HashSet;
@@ -3291,65 +3365,76 @@ mod tests {
     // 完了値で判定し、通常終了・保留後のstop・ponderhitのいずれでも着手を返す。
     #[test]
     fn partial_info_uses_lowerbound_and_resignation_uses_completed_score() {
-        for (partial_score, score_text) in [(-1000, "cp -1000"), (-search::MATE + 1, "mate -0")] {
-            for release in [None, Some("stop"), Some("ponderhit")] {
-                let mut protocol = resignation_engine(RESIGN_MATERIAL_SFEN);
-                run(&mut protocol, "setoption name ResignValue value 100\n");
-                let legal = moves_sets(&run(&mut protocol, "moves\n")).remove(0);
-                let mut output = Vec::new();
-                let limits = if release.is_some() {
-                    vec!["ponder", "depth", "2"]
-                } else {
-                    vec!["depth", "2"]
-                };
-                let mut active = protocol.start_go(&limits, &mut output).unwrap();
-                loop {
-                    let Some(ActiveSearch::Running { handle, .. }) = active.as_ref() else {
-                        panic!("search must be running");
-                    };
-                    let mut event = handle
-                        .events()
-                        .recv_timeout(Duration::from_secs(5))
-                        .unwrap();
-                    let finished = if let SearchEvent::Finished {
-                        score,
-                        partial_score: lowerbound,
-                        depth,
-                        ..
-                    } = &mut event
-                    {
-                        *score = 100;
-                        *depth = 2;
-                        *lowerbound = Some(partial_score);
-                        true
+        for multi_pv in [1, 2] {
+            for (partial_score, score_text) in [(-1000, "cp -1000"), (-search::MATE + 1, "mate -0")]
+            {
+                for release in [None, Some("stop"), Some("ponderhit")] {
+                    let mut protocol = resignation_engine(RESIGN_MATERIAL_SFEN);
+                    run(
+                        &mut protocol,
+                        &format!(
+                            "setoption name ResignValue value 100\nsetoption name MultiPV value {multi_pv}\n"
+                        ),
+                    );
+                    let legal = moves_sets(&run(&mut protocol, "moves\n")).remove(0);
+                    let mut output = Vec::new();
+                    let limits = if release.is_some() {
+                        vec!["ponder", "depth", "2"]
                     } else {
-                        false
+                        vec!["depth", "2"]
                     };
-                    protocol
-                        .handle_search_event(&mut active, event, &mut output)
-                        .unwrap();
-                    if finished {
-                        break;
+                    let mut active = protocol.start_go(&limits, &mut output).unwrap();
+                    loop {
+                        let Some(ActiveSearch::Running { handle, .. }) = active.as_ref() else {
+                            panic!("search must be running");
+                        };
+                        let mut event = handle
+                            .events()
+                            .recv_timeout(Duration::from_secs(5))
+                            .unwrap();
+                        let finished = if let SearchEvent::Finished {
+                            score,
+                            partial_score: lowerbound,
+                            depth,
+                            ..
+                        } = &mut event
+                        {
+                            *score = 100;
+                            *depth = 2;
+                            *lowerbound = Some(partial_score);
+                            true
+                        } else {
+                            false
+                        };
+                        protocol
+                            .handle_search_event(&mut active, event, &mut output)
+                            .unwrap();
+                        if finished {
+                            break;
+                        }
                     }
+                    if let Some(command) = release {
+                        protocol
+                            .handle_searching_line(
+                                &mut active,
+                                &mut VecDeque::new(),
+                                command,
+                                &mut output,
+                            )
+                            .unwrap();
+                    }
+                    let text = String::from_utf8(output).unwrap();
+                    assert_eq!(text.matches("info string partial\n").count(), 1, "{text}");
+                    assert!(
+                        text.contains(&format!(
+                            "info string partial\ninfo depth 3{} score {score_text} lowerbound ",
+                            if multi_pv == 2 { " multipv 1" } else { "" }
+                        )),
+                        "{text}"
+                    );
+                    assert!(!text.contains("bestmove resign"), "{text}");
+                    assert_legal_bestmove(&text, &legal);
                 }
-                if let Some(command) = release {
-                    protocol
-                        .handle_searching_line(
-                            &mut active,
-                            &mut VecDeque::new(),
-                            command,
-                            &mut output,
-                        )
-                        .unwrap();
-                }
-                let text = String::from_utf8(output).unwrap();
-                assert_eq!(text.matches("info string partial\n").count(), 1, "{text}");
-                assert!(
-                    text.contains(&format!("info depth 3 score {score_text} lowerbound ")),
-                    "{text}"
-                );
-                assert!(!text.contains("bestmove resign"), "{text}");
-                assert_legal_bestmove(&text, &legal);
             }
         }
     }
@@ -3410,10 +3495,8 @@ mod tests {
                 .recv_timeout(Duration::from_secs(5))
                 .unwrap();
             let finished = match &mut event {
-                SearchEvent::Progress {
-                    score: reported, ..
-                } => {
-                    *reported = score;
+                SearchEvent::Progress { lines, .. } => {
+                    lines[0].score = Some(score);
                     false
                 }
                 SearchEvent::Finished { score: adopted, .. } => {
@@ -3505,12 +3588,9 @@ mod tests {
                         .recv_timeout(Duration::from_secs(5))
                         .unwrap();
                     let finished = match &mut event {
-                        SearchEvent::Progress {
-                            score: progress_score,
-                            ..
-                        } => {
+                        SearchEvent::Progress { lines, .. } => {
                             // 採用値とは逆の判定になる進捗報告にする。
-                            *progress_score = if resign { 100 } else { -29999 };
+                            lines[0].score = Some(if resign { 100 } else { -29999 });
                             false
                         }
                         SearchEvent::Finished {
@@ -3616,7 +3696,9 @@ mod tests {
             .events()
             .recv_timeout(Duration::from_secs(5))
             .unwrap();
-        assert!(matches!(event, SearchEvent::Progress { depth: 1, score, .. } if score < 0));
+        assert!(
+            matches!(&event, SearchEvent::Progress { lines, .. } if lines[0].depth == 1 && lines[0].score.unwrap() < 0)
+        );
         protocol.handle_search_event(active, event, output).unwrap();
     }
 

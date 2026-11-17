@@ -6,7 +6,7 @@ use std::sync::Arc;
 use crate::eval::Nnue;
 use crate::search::alphabeta::team::run_search_team;
 use crate::search::clock::{MonotonicClock, SearchClock};
-use crate::search::events::SearchEvent;
+use crate::search::events::{PvLine, SearchEvent};
 use crate::search::{
     DEFAULT_THREADS, DEFAULT_TT_SIZE_MB, HistoryTables, SearchHandle, SearchLimits, SearchOption,
     SearchOptionKind, SearchOptionValue, SearchSnapshot, Searcher, SetOptionError, StartError,
@@ -204,7 +204,11 @@ pub(in crate::search) fn start_search_with_clock(
                 depth: result.depth,
                 nodes: result.nodes,
                 elapsed: outcome.elapsed,
-                pv: outcome.pv,
+                lines: vec![PvLine {
+                    depth: result.depth,
+                    score: Some(result.score),
+                    moves: outcome.pv,
+                }],
                 stop_reason: outcome.stop_reason,
             });
             Ok(Searcher::AlphaBeta(engine))

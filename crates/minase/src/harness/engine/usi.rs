@@ -14,6 +14,16 @@ fn parse_usi_evaluation(line: &str) -> Result<Option<EngineEvaluation>, EngineFa
     if tokens.get(1) == Some(&"string") {
         return Ok(None);
     }
+    if let Some(index) = tokens.iter().position(|token| *token == "multipv") {
+        let rank = tokens
+            .get(index + 1)
+            .ok_or(EngineFailure::Crash)?
+            .parse::<usize>()
+            .map_err(|_| EngineFailure::Crash)?;
+        if rank != 1 {
+            return Ok(None);
+        }
+    }
     let Some(score_index) = tokens.iter().position(|token| *token == "score") else {
         return Ok(None);
     };
@@ -63,6 +73,9 @@ fn parse_usi_evaluation(line: &str) -> Result<Option<EngineEvaluation>, EngineFa
 
 /// `bestmove`より前の最後の有効な評価値つき`info`を保持する。
 ///
+/// USI原典は複数の読み筋の最善に`multipv 1`を付けると定めるため、
+/// `multipv`のない行と`multipv 1`の行だけを最善手の評価値として記録する。
+/// 2本目以降の値で上書きしない。
 /// 後続の評価値のない行や解析できない評価行では現在値を消さず、通信結果にも影響させない。
 pub(super) fn observe_usi_evaluation(current: &mut Option<EngineEvaluation>, line: &str) {
     if let Ok(Some(parsed)) = parse_usi_evaluation(line) {
@@ -173,6 +186,61 @@ impl EngineProcess {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // USI原典とMultiPVの契約: 最善の読み筋だけを記録し、後続行でも保つ。
+    #[test]
+    fn multipv_observation_preserves_the_best_line() {
+        let mut observed = None;
+        for line in [
+            "info depth 5 multipv 1 score cp 30 nodes 10 pv 1a1b",
+            "info depth 5 multipv 2 score cp -40 nodes 10 pv 2a2b",
+            "info depth 5 multipv 3 nodes 10 pv 3a3b",
+            "info string stop depth",
+        ] {
+            observe_usi_evaluation(&mut observed, line);
+        }
+        assert_eq!(
+            observed,
+            Some(EngineEvaluation {
+                depth: Some(5),
+                score: EngineScore::Cp(30),
+                bound: ScoreBound::Exact
+            })
+        );
+        observe_usi_evaluation(&mut observed, "info depth 4 score cp 12 pv 1a1b");
+        assert_eq!(
+            observed,
+            Some(EngineEvaluation {
+                depth: Some(4),
+                score: EngineScore::Cp(12),
+                bound: ScoreBound::Exact
+            })
+        );
+    }
+
+    #[test]
+    fn multipv_parser_rejects_malformed_ranks_and_ignores_other_ranks() {
+        for line in [
+            "info depth 5 multipv 2 score cp -40 pv 2a2b",
+            "info depth 5 multipv 0 score cp -40 pv 2a2b",
+            "info depth 5 multipv 3 nodes 10 pv 3a3b",
+        ] {
+            assert_eq!(parse_usi_evaluation(line), Ok(None));
+        }
+        for rank in [
+            "",
+            "x",
+            "-1",
+            "1.5",
+            "１",
+            "9999999999999999999999999999999999999999",
+        ] {
+            assert_eq!(
+                parse_usi_evaluation(&format!("info depth 5 multipv {rank}")),
+                Err(EngineFailure::Crash)
+            );
+        }
+    }
 
     #[test]
     fn movestats_preserves_recorded_evaluation_stop_reason_and_time() {

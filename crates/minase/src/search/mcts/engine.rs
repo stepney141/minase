@@ -16,9 +16,9 @@ use crate::search::budget::{TimeBudget, time_budget};
 use crate::search::clock::{MonotonicClock, SearchClock};
 use crate::search::inference::validate_output_shape;
 use crate::search::{
-    EvaluationError, PrepareError, SearchEvent, SearchHandle, SearchJoinError, SearchLimits,
-    SearchOption, SearchOptionKind, SearchOptionValue, SearchSnapshot, Searcher, SetOptionError,
-    StartError, StartFailure, StopReason,
+    EvaluationError, PrepareError, PvLine, SearchEvent, SearchHandle, SearchJoinError,
+    SearchLimits, SearchOption, SearchOptionKind, SearchOptionValue, SearchSnapshot, Searcher,
+    SetOptionError, StartError, StartFailure, StopReason,
 };
 
 /// 勝率尺度に依存しない、対局と診断で共有するMCTSの探索設定。
@@ -442,7 +442,11 @@ impl Engine {
                     depth: pv.len() as u32,
                     nodes: driver.simulations(),
                     elapsed: clock.elapsed(),
-                    pv,
+                    lines: vec![PvLine {
+                        depth: pv.len() as u32,
+                        score: Some(score),
+                        moves: pv,
+                    }],
                     stop_reason,
                 });
                 Ok(Searcher::Mcts(self))

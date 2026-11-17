@@ -36,6 +36,17 @@ fn finish(handle: SearchHandle) -> (Engine, SearchEvent) {
             ..
         }
     ));
+    if let SearchEvent::Finished {
+        lines,
+        depth,
+        score,
+        ..
+    } = &event
+    {
+        assert_eq!(lines.len(), 1);
+        assert_eq!(lines[0].depth, *depth);
+        assert_eq!(lines[0].score, Some(*score));
+    }
     assert_eq!(
         handle.events().recv_timeout(Duration::from_secs(5)),
         Err(mpsc::RecvTimeoutError::Disconnected)
@@ -68,7 +79,7 @@ fn uniform_engine_captures_the_last_royal_and_finishes_once() {
         score,
         depth,
         nodes,
-        pv,
+        lines,
         stop_reason,
         ..
     } = event
@@ -80,7 +91,14 @@ fn uniform_engine_captures_the_last_royal_and_finishes_once() {
     assert_eq!(score, MATE - 1);
     assert_eq!(depth, 1);
     assert!(nodes > 1);
-    assert_eq!(pv, [mv]);
+    assert_eq!(
+        lines,
+        [PvLine {
+            depth: 1,
+            score: Some(MATE - 1),
+            moves: vec![mv]
+        }]
+    );
     assert_eq!(stop_reason, StopReason::DepthCompleted);
 }
 
@@ -1418,9 +1436,9 @@ fn diagnostic_inference_does_not_change_search_visits_or_fixed_node_result() {
             best_move,
             score,
             nodes,
-            pv,
+            lines,
             ..
-        } => (best_move, score, nodes, pv),
+        } => (best_move, score, nodes, lines),
         _ => panic!(),
     };
     assert_eq!(summary(after), summary(before));

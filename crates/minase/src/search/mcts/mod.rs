@@ -12,6 +12,7 @@
 //! 自己対局では[`DrawValue::SelfPlay`]と[`tree::SelectionRule::Gumbel`]を使う。
 //! [`Engine`]は対局用PUCTを実行し、深さを主変化の長さ、ノード数を根の評価を含む
 //! シミュレーション数として、終了時の[`crate::search::SearchEvent::Finished`]だけを送る。
+//! 読み筋は`lines`の先頭に格納し、その評価値と深さは完了通知の値と一致する。
 
 pub mod driver;
 mod engine;

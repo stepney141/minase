@@ -32,7 +32,21 @@ impl StopReason {
     }
 }
 
+/// 順位つきの読み筋の1本。
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub struct PvLine {
+    /// この読み筋の深さ。
+    pub depth: u32,
+    /// 根の手番側から見た評価値。PV-MCTSの未訪問の辺では持たない。
+    pub score: Option<i32>,
+    /// 根から指す手の列。先頭がこの読み筋の根の手である。
+    pub moves: Vec<Move>,
+}
+
 /// 探索スレッドから届く進捗または完了通知。
+///
+/// `lines`は1要素以上を順位順に持ち、先頭が1本目（最善）である。
+/// `MultiPV`が1なら1要素で、その読み筋、評価値、深さは単一の主変化と同じである。
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub enum SearchEvent {
     /// 主ワーカーが窓内で反復深化の1反復を完了したときだけ送る進捗通知。
@@ -40,16 +54,12 @@ pub enum SearchEvent {
     Progress {
         /// 通知元の探索ID。
         search_id: u64,
-        /// 完了した深さ。
-        depth: u32,
-        /// その深さでの評価値。
-        score: i32,
         /// 通知時点のチーム全体の合計ノード数。数え方は[`SearchResult::nodes`]に従う。
         nodes: u64,
         /// 探索開始からの経過時間。
         elapsed: Duration,
-        /// その深さでの主変化。
-        pv: Vec<Move>,
+        /// 完了した反復の読み筋を最善から順位順に並べた列。
+        lines: Vec<PvLine>,
     },
     /// 全ワーカーが終了した後に1回だけ送る完了通知。
     /// 深さは最後の[`Self::Progress`]以上であり、補助ワーカーの採用により最善手と評価値は最後の進捗から変わり得る。
@@ -70,8 +80,10 @@ pub enum SearchEvent {
         nodes: u64,
         /// 探索開始からの経過時間。
         elapsed: Duration,
-        /// 採用した着手の主変化。途中結果があればその手のもの。
-        pv: Vec<Move>,
+        /// 採用した読み筋を最善から順位順に並べた列。
+        /// 途中結果を採ったときは先頭の`moves`が途中結果の読み筋となり、
+        /// 値の下界は`partial_score`で示す。深さと評価値は完了反復のものを保つ。
+        lines: Vec<PvLine>,
         /// 探索を停止した条件。
         stop_reason: StopReason,
     },

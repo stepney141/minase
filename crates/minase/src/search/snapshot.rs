@@ -1,11 +1,12 @@
 //! 探索開始時の対局の写し。MCTSの経路再生とαβ探索への入力を同じ対局から作る。
 
 use crate::search::error::SearchError;
-use crate::search::{DRAW_SCORE, DRAW_VALUE_LIMIT};
+use crate::search::{DRAW_SCORE, DRAW_VALUE_LIMIT, MULTI_PV_LIMIT};
 use minase_core::game::{Game, GameStatus};
 use minase_core::mv::Move;
 use minase_core::position::Position;
 use minase_core::rules::{MoveRules, RepetitionRule};
+use std::num::NonZeroUsize;
 
 /// 探索へ渡す反復規則と、規則が要する根の時点の状態。
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -42,6 +43,8 @@ impl SearchRepetition {
 pub struct SearchSnapshot {
     /// 根の対局。αβ探索の人工履歴を使う単体試験に限り`None`。
     game: Option<Game>,
+    /// MultiPVの設定値。
+    multi_pv: NonZeroUsize,
     /// 探索を開始する局面。
     pub(super) position: Position,
     /// 探索内で着手へ適用する規則。
@@ -99,6 +102,7 @@ impl SearchSnapshot {
             history_keys: game.repetition_key_history().to_vec(),
             root_moves,
             draw_value: DRAW_SCORE,
+            multi_pv: NonZeroUsize::MIN,
         })
     }
 
@@ -127,6 +131,7 @@ impl SearchSnapshot {
             history_keys,
             root_moves,
             draw_value: DRAW_SCORE,
+            multi_pv: NonZeroUsize::MIN,
         })
     }
 
@@ -147,6 +152,25 @@ impl SearchSnapshot {
         }
         self.draw_value = draw_value;
         Ok(self)
+    }
+
+    /// MultiPVの設定値を検査して設定する。
+    ///
+    /// # Errors
+    ///
+    /// `1..=MULTI_PV_LIMIT`の範囲外なら[`SearchError::InvalidMultiPv`]を返す。
+    pub fn with_multi_pv(mut self, multi_pv: usize) -> Result<Self, SearchError> {
+        let value = NonZeroUsize::new(multi_pv)
+            .filter(|value| value.get() <= MULTI_PV_LIMIT)
+            .ok_or(SearchError::InvalidMultiPv { value: multi_pv })?;
+        self.multi_pv = value;
+        Ok(self)
+    }
+
+    /// MultiPVの設定値を返す。
+    /// 探索が読む本数Nは、設定値と根の候補手の数の小さい方である。
+    pub const fn multi_pv(&self) -> NonZeroUsize {
+        self.multi_pv
     }
 
     /// 根の手番側から見た引き分けの値を返す。
@@ -187,4 +211,33 @@ impl SearchSnapshot {
 /// 先獅子の状態は`zobrist()`側に含まれる。
 pub(super) fn search_key(position: &Position) -> u64 {
     position.zobrist() ^ position.rights_zobrist()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use minase_core::Rules;
+
+    // MultiPVの設定契約: 既定値1、境界を含む1..=35,856。
+    #[test]
+    fn multi_pv_defaults_and_validates_bounds() {
+        let snapshot = SearchSnapshot::from_game(&Game::new(Rules::JCSA)).unwrap();
+        assert_eq!(snapshot.multi_pv().get(), 1);
+        for value in [1, MULTI_PV_LIMIT] {
+            assert_eq!(
+                snapshot
+                    .clone()
+                    .with_multi_pv(value)
+                    .unwrap()
+                    .multi_pv()
+                    .get(),
+                value
+            );
+        }
+        for value in [0, MULTI_PV_LIMIT + 1, usize::MAX] {
+            assert!(
+                matches!(snapshot.clone().with_multi_pv(value), Err(SearchError::InvalidMultiPv { value: rejected }) if rejected == value)
+            );
+        }
+    }
 }

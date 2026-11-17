@@ -37,7 +37,7 @@ pub use alphabeta::tt::{
 };
 pub(crate) use clock::MonotonicClock;
 pub use error::SearchError;
-pub use events::{SearchEvent, SearchResult, StopReason};
+pub use events::{PvLine, SearchEvent, SearchResult, StopReason};
 pub use handle::{SearchHandle, SearchJoinError, search};
 pub use inference::EvaluationError;
 pub use limits::{ClockLimits, SearchLimits};
@@ -48,6 +48,11 @@ pub use searcher::{
 pub use snapshot::{SearchRepetition, SearchSnapshot};
 
 use core::num::NonZeroUsize;
+
+/// MultiPVの設定値の上限。
+/// 合法手から方策の要素への写像は単射であることを試験済みなので、合法手数は35,856を超えない。
+/// 根拠は`docs/adr/encode-the-zero-policy-as-249-planes-per-from-square.md`にある。
+pub const MULTI_PV_LIMIT: usize = crate::nn::POLICY_SIZE;
 
 /// 王駒の捕獲または合法手なしによる勝敗を表す評価値の基準。
 /// 勝ちの値は `MATE - d`、負けの値はその負値とし、dは双方の各1着手を1手と数えた根から終局までの手数である。
