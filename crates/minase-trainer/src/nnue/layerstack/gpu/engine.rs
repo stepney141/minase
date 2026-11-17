@@ -1,6 +1,6 @@
 use super::*;
 use crate::nnue::{
-    data::{BatchSlot, FEATURE_COLUMNS, InputFeatureSet, max_segment_count},
+    data::{BatchSlot, FEATURE_COLUMNS, FeatureSet, max_segment_count},
     gpu::{HostRing, device::pinned_zeros, ring::DeviceInput},
     layerstack::{Forward, Scale},
     reference::Validation,
@@ -45,7 +45,7 @@ impl BackwardLengths {
 /// and pinned host memory. Includes the two input faces of HostRing.
 pub(crate) fn memory_bytes(n: usize, training: bool) -> Result<usize> {
     capacity(n)?;
-    let ring = crate::nnue::gpu::ring::device_bytes(InputFeatureSet::P, n)?;
+    let ring = crate::nnue::gpu::ring::device_bytes(FeatureSet::P, n)?;
     let forward = ForwardLengths::new(n).bytes();
     Ok(ring
         + forward
@@ -316,7 +316,7 @@ impl Evaluator {
             weights: upload(&device, weights)?,
             buffers: ForwardBuffers::new(&device, n)?,
             targets: Targets::new(&device, n)?,
-            ring: HostRing::new(&device, InputFeatureSet::P, n)?,
+            ring: HostRing::new(&device, FeatureSet::P, n)?,
             device,
             scale,
             capacity: n,
@@ -324,7 +324,7 @@ impl Evaluator {
     }
     fn prepare(&mut self, batch: &BatchSlot, values: &[f32]) -> Result<()> {
         targets(self.capacity, batch.len(), values)?;
-        if batch.feature_set() != InputFeatureSet::P {
+        if batch.feature_set() != FeatureSet::P {
             return Err(invalid("LayerStack requires P input"));
         }
         self.targets.upload(&self.device, values)?;

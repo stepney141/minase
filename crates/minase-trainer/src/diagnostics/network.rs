@@ -9,7 +9,6 @@ use std::path::{Path, PathBuf};
 #[derive(Debug)]
 pub(super) enum Error {
     MissingFmWeights(PathBuf),
-    HalfKpVmDeferred,
     Format(FormatError),
 }
 impl std::fmt::Display for Error {
@@ -19,9 +18,6 @@ impl std::fmt::Display for Error {
                 f,
                 "{}: baseline must contain FM weights (rank 32)",
                 path.display()
-            ),
-            Self::HalfKpVmDeferred => f.write_str(
-                "HalfKP_vm Simple diagnostics are deferred to phase 4; LayerStack is required",
             ),
             Self::Format(e) => e.fmt(f),
         }
@@ -36,7 +32,7 @@ impl std::error::Error for Error {
     }
 }
 
-/// tatara形式を復号し、診断で対応しているLayerStackだけを受理する。
+/// tatara形式を復号し、LayerStackとSimpleを受理する。
 pub(crate) struct IntegerNetwork {
     network: Network,
 }
@@ -46,9 +42,12 @@ impl IntegerNetwork {
     }
     pub(super) fn decode(bytes: &[u8]) -> std::result::Result<Self, Error> {
         let network = Network::decode(bytes).map_err(Error::Format)?;
-        match network {
-            Network::LayerStack(_) => Ok(Self { network }),
-            Network::Simple(_) => Err(Error::HalfKpVmDeferred),
+        Ok(Self { network })
+    }
+    pub(super) fn feature_set(&self) -> minase::eval::nnue::input::FeatureSet {
+        match self.network {
+            Network::LayerStack(_) => minase::eval::nnue::input::FeatureSet::P,
+            Network::Simple(_) => minase::eval::nnue::input::FeatureSet::HalfKpVm,
         }
     }
     pub(super) fn width(&self) -> usize {
@@ -57,7 +56,7 @@ impl IntegerNetwork {
     pub(super) fn fv_scale(&self) -> i32 {
         self.network.fv_scale()
     }
-    /// 両視点のPSQTと後段を局面から再計算し、センチポーンで返す。
+    /// ネットの構造に従って両視点を再計算し、指定視点の評価をセンチポーンで返す。
     pub(super) fn evaluate(&self, position: &Position, side: Color) -> Result<i32> {
         Ok(self.network.evaluate_for(position, side)?)
     }
@@ -74,11 +73,95 @@ pub(super) fn read_baseline(path: &Path) -> Result<Pst> {
     Ok(pst)
 }
 
+use crate::nnue::{layerstack as ls, simple};
+use minase::eval::nnue::input::{FeatureSet, HalfKpVm, Indexer};
+use minase_core::{PieceCode, Square};
+
+pub(super) enum FloatCheckpoint {
+    LayerStack(ls::Checkpoint),
+    Simple(simple::Checkpoint),
+}
+pub(super) enum FloatAccumulator {
+    LayerStack(Box<ls::diagnostics::Accumulator>),
+    Simple(simple::diagnostics::Accumulator),
+}
+impl FloatCheckpoint {
+    pub(super) fn read(path: &Path, set: FeatureSet) -> Result<Self> {
+        Ok(match set {
+            FeatureSet::P => Self::LayerStack(ls::Checkpoint::read(path)?),
+            FeatureSet::HalfKpVm => Self::Simple(simple::Checkpoint::read(path)?),
+        })
+    }
+    pub(super) fn width(&self) -> usize {
+        match self {
+            Self::LayerStack(_) => ls::H,
+            Self::Simple(cp) => cp.parameters.width(),
+        }
+    }
+    pub(super) fn divisor(&self) -> i32 {
+        match self {
+            Self::LayerStack(cp) => cp.settings.scale.divisor(),
+            Self::Simple(cp) => cp.settings.scale.divisor(),
+        }
+    }
+    pub(super) fn output_scale(&self) -> f64 {
+        8128.0 / f64::from(self.divisor())
+    }
+    pub(super) fn accumulator(&self, position: &Position, side: Color) -> Result<FloatAccumulator> {
+        Ok(match self {
+            Self::LayerStack(cp) => {
+                FloatAccumulator::LayerStack(Box::new(ls::diagnostics::Accumulator::new(
+                    &cp.parameters,
+                    &ls::Features::from_position(position, side),
+                )))
+            }
+            Self::Simple(cp) => FloatAccumulator::Simple(simple::diagnostics::Accumulator::new(
+                &cp.parameters,
+                &simple::Features::from_position(position, side)?,
+            )),
+        })
+    }
+    pub(super) fn output(&self, acc: &FloatAccumulator) -> Result<f64> {
+        match (self, acc) {
+            (Self::LayerStack(cp), FloatAccumulator::LayerStack(acc)) => {
+                Ok(acc.output(&cp.parameters))
+            }
+            (Self::Simple(cp), FloatAccumulator::Simple(acc)) => Ok(acc.output(&cp.parameters)),
+            _ => Err("checkpoint and accumulator architectures differ".into()),
+        }
+    }
+    pub(super) fn without(
+        &self,
+        acc: &FloatAccumulator,
+        position: &Position,
+        side: Color,
+        piece: PieceCode,
+        square: Square,
+    ) -> Result<f64> {
+        let bases = [side, side.opposite()]
+            .map(|view| minase::eval::features::feature_index(view, piece, square));
+        match (self, acc) {
+            (Self::LayerStack(cp), FloatAccumulator::LayerStack(acc)) => {
+                Ok(acc.without(&cp.parameters, bases).output(&cp.parameters))
+            }
+            (Self::Simple(cp), FloatAccumulator::Simple(acc)) => {
+                let mut rows = [0; 2];
+                for (v, view) in [side, side.opposite()].into_iter().enumerate() {
+                    rows[v] = HalfKpVm::row(HalfKpVm::context(position, view)?, bases[v])
+                        .ok_or("king is not a Simple removal feature")?;
+                }
+                Ok(acc.without(&cp.parameters, rows).output(&cp.parameters))
+            }
+            _ => Err("checkpoint and accumulator architectures differ".into()),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     #[test]
-    fn reads_layerstack_and_rejects_simple_and_malformed_inputs() {
+    fn reads_both_architectures_and_rejects_malformed_inputs() {
         use crate::nnue::layerstack::{Parameters, Scale, export};
         let scale = Scale::new(679.03).unwrap();
         let bytes = export(&Parameters::initialize(7, scale), scale).unwrap();
@@ -111,10 +194,8 @@ mod tests {
         })
         .unwrap()
         .encode();
-        assert!(matches!(
-            IntegerNetwork::decode(&simple),
-            Err(Error::HalfKpVmDeferred)
-        ));
+        let net = IntegerNetwork::decode(&simple).unwrap();
+        assert_eq!(net.evaluate(&Position::initial(), Color::Black).unwrap(), 0);
         for bad in [&bytes[..3], &bytes[..bytes.len() - 1], b"MNUE".as_slice()] {
             assert!(matches!(IntegerNetwork::decode(bad), Err(Error::Format(_))));
         }

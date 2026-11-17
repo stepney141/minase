@@ -5,6 +5,7 @@ mod checkpoint;
 pub(crate) mod diagnostics;
 mod export;
 pub(crate) mod gpu;
+pub mod input;
 mod model;
 mod optimizer;
 mod reference;

@@ -2,7 +2,7 @@ use super::{commands::BenchArgs, gpu::step::Step, *};
 use crate::{
     data::{Dataset, epoch_permutation},
     nnue::{
-        data::{BatchSlot, InputFeatureSet, MAX_BATCH_SIZE, build_batches, build_targets},
+        data::{BatchSlot, FeatureSet, MAX_BATCH_SIZE, build_batches, build_targets},
         gpu::{Device, HostRing},
         options::{self, DeviceKind},
         train,
@@ -112,11 +112,7 @@ pub(super) fn run(args: BenchArgs) -> train::Result<Value> {
                 scale,
                 args.check.batch,
             )?);
-            let ring = Box::new(HostRing::new(
-                &device,
-                InputFeatureSet::P,
-                args.check.batch,
-            )?);
+            let ring = Box::new(HostRing::new(&device, FeatureSet::P, args.check.batch)?);
             let bytes = step.device_bytes()?;
             let (free, total) = device.memory_info()?;
             let transfer_bytes = ring.transfer_bytes();
@@ -131,7 +127,7 @@ pub(super) fn run(args: BenchArgs) -> train::Result<Value> {
     };
     let warmup = build_batches(
         &dataset,
-        InputFeatureSet::P,
+        FeatureSet::P,
         &[&dataset.training_indices()[..args.check.batch]],
     )?
     .remove(0);
@@ -157,7 +153,7 @@ pub(super) fn run(args: BenchArgs) -> train::Result<Value> {
         }
         let supply = Instant::now();
         let ranges: Vec<_> = group.iter().map(Vec::as_slice).collect();
-        let batches = build_batches(&dataset, InputFeatureSet::P, &ranges)?;
+        let batches = build_batches(&dataset, FeatureSet::P, &ranges)?;
         let batches = batches
             .into_iter()
             .map(|batch| {

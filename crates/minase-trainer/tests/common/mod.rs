@@ -8,7 +8,7 @@ use minase_core::{Color, PieceCode, PieceKind, Position, PositionBuilder, Square
 use minase_trainer::data::{Outcome, Sample};
 use minase_trainer::{
     data::Dataset,
-    nnue::data::{BatchSlot, InputFeatureSet, build_batches},
+    nnue::data::{BatchSlot, FeatureSet, build_batches},
 };
 use std::{
     fs,
@@ -61,7 +61,7 @@ impl Fixture {
             root,
         }
     }
-    pub fn batch(&self, set: InputFeatureSet, indices: &[u64]) -> BatchSlot {
+    pub fn batch(&self, set: FeatureSet, indices: &[u64]) -> BatchSlot {
         build_batches(&self.dataset, set, &[indices])
             .unwrap()
             .remove(0)
@@ -83,7 +83,11 @@ pub fn position(
         builder
             .put(
                 Square::new(file, rank).unwrap(),
-                PieceCode::new(color, kind).unwrap(),
+                if kind == PieceKind::CrownPrince {
+                    PieceCode::new_promoted(color, kind).unwrap()
+                } else {
+                    PieceCode::new(color, kind).unwrap()
+                },
             )
             .unwrap();
     }

@@ -79,7 +79,10 @@ impl Checkpoint {
             "layerstack",
             &Metadata {
                 architecture: "LayerStack".into(),
-                feature_set: "P".into(),
+                feature_set: minase::eval::nnue::input::FeatureSet::P
+                    .spec()
+                    .arch_name()
+                    .into(),
                 rules: s.rules.to_string(),
                 progress: self.progress.clone(),
             },
@@ -119,7 +122,7 @@ impl Checkpoint {
     pub fn decode(bytes: &[u8]) -> Result<Self> {
         let (mut r, meta): (_, Metadata) = Reader::with_metadata(bytes, "layerstack")?;
         if meta.architecture != "LayerStack"
-            || meta.feature_set != "P"
+            || meta.feature_set != minase::eval::nnue::input::FeatureSet::P.spec().arch_name()
             || r.scalar::<u64>("width")? != H as u64
         {
             return Err(Error::Invalid("checkpoint architecture, features or width"));

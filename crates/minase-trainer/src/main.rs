@@ -70,14 +70,17 @@ enum NnueCommand {
 #[derive(Subcommand)]
 enum TrainCommand {
     Layerstack(Box<minase_trainer::nnue::train::Args>),
+    Simple(Box<minase_trainer::nnue::train::Args>),
 }
 #[derive(Subcommand)]
 enum CheckCommand {
     Layerstack(minase_trainer::nnue::layerstack::commands::CheckArgs),
+    Simple(minase_trainer::nnue::simple::commands::CheckArgs),
 }
 #[derive(Subcommand)]
 enum BenchCommand {
     Layerstack(minase_trainer::nnue::layerstack::commands::BenchArgs),
+    Simple(minase_trainer::nnue::simple::commands::BenchArgs),
 }
 
 fn main() -> std::process::ExitCode {
@@ -139,6 +142,27 @@ fn run_nnue(command: NnueCommand) -> Result<(), Box<dyn std::error::Error>> {
         }
         NnueCommand::BenchStep(BenchCommand::Layerstack(args)) => {
             let report = minase_trainer::nnue::layerstack::commands::bench(args)?;
+            println!("{}", serde_json::to_string_pretty(&report)?);
+            Ok(())
+        }
+        NnueCommand::Train(TrainCommand::Simple(args)) => {
+            minase_trainer::nnue::simple::trainer::run(*args).map(|summary| {
+                eprintln!(
+                    "superbatches: {}; updates: {}; stopped_by: {}; status: {}",
+                    summary.completed_superbatches,
+                    summary.completed_steps,
+                    summary.stopped_by,
+                    summary.status
+                );
+            })
+        }
+        NnueCommand::CheckEquivalence(CheckCommand::Simple(args)) => {
+            let report = minase_trainer::nnue::simple::commands::check(args)?;
+            println!("{}", serde_json::to_string_pretty(&report)?);
+            Ok(())
+        }
+        NnueCommand::BenchStep(BenchCommand::Simple(args)) => {
+            let report = minase_trainer::nnue::simple::commands::bench(args)?;
             println!("{}", serde_json::to_string_pretty(&report)?);
             Ok(())
         }

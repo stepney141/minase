@@ -14,7 +14,7 @@ use minase_trainer::data::{
     BucketAssigner, Dataset, EpochReader, Error, Lookahead, Outcome, Sample, SpillRecord,
     SpillStore, bucket_permutation, floyd_sample, rao_sandelius_order,
 };
-use minase_trainer::nnue::data::{InputFeatureSet, Observations};
+use minase_trainer::nnue::data::{FeatureSet, Observations};
 use std::{
     collections::BTreeSet,
     fs,
@@ -362,7 +362,7 @@ fn spill_store_matches_the_in_memory_dataset_bit_for_bit() {
     }
 
     {
-        let feature_set = InputFeatureSet::P;
+        let feature_set = FeatureSet::P;
         let memory = Observations::compute(&dataset, feature_set).unwrap();
         let spilled = Observations::from_positions(
             store.training_records().map(|record| {

@@ -8,3 +8,5 @@ pub mod options;
 pub mod reference;
 pub mod schedule;
 pub mod train;
+
+pub mod simple;

@@ -1,4 +1,4 @@
-use super::{BatchSlot, InputFeatureSet, MAX_BATCH_SIZE};
+use super::{BatchSlot, FeatureSet, MAX_BATCH_SIZE};
 use crate::data::{Outcome, Sample};
 use crate::nnue::gpu::{Error, Result};
 use minase_core::{Color, PieceCode, PieceKind, PositionBuilder, Square};
@@ -13,7 +13,7 @@ impl Random {
         ((self.next() >> 40) as f32 / 8_388_608.0) - 1.0
     }
 }
-pub(crate) fn synthetic_batch(set: InputFeatureSet, n: usize, seed: u64) -> Result<BatchSlot> {
+pub(crate) fn synthetic_batch(set: FeatureSet, n: usize, seed: u64) -> Result<BatchSlot> {
     if !(1..=MAX_BATCH_SIZE).contains(&n) {
         return Err(Error::Invalid("synthetic batch size"));
     }

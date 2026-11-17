@@ -3,7 +3,7 @@ use super::{
     *,
 };
 use crate::nnue::{
-    data::InputFeatureSet,
+    data::FeatureSet,
     gpu::{BatchTicket, HostRing, device::pinned_zeros},
     layerstack::{AdamW, OptimizerConfig, Scale},
 };
@@ -151,7 +151,7 @@ impl Step {
         if self.failed.load(Ordering::Relaxed) {
             return Err(invalid("LayerStack step has failed"));
         }
-        ring.validate_streams(&self.device, InputFeatureSet::P)?;
+        ring.validate_streams(&self.device, FeatureSet::P)?;
         let n = ring.input(ticket)?.len;
         targets(self.capacity, n, values)?;
         let count = self

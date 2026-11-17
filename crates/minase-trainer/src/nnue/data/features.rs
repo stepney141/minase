@@ -1,124 +1,71 @@
-use minase::eval::features::{FEATURE_COUNT, feature_index, lion_feature_index};
-use minase_core::{Color, Position, Square};
-use serde::Serialize;
+use minase::eval::nnue::input::{
+    AnchorError, FeatureSet, HalfKpVm, Indexer, P, for_each_active_row,
+};
+use minase_core::{Color, Position};
 
-use super::{Error, Result};
-
-/// 元の盤面の144升と先獅子の1枠を合わせた、1視点の列数。
-pub const FEATURE_COLUMNS: usize = 145;
-/// 鏡映対の片側6,840行と埋め草1行。
-pub const CANONICAL_ROWS: usize = FEATURE_COUNT / 2 + 1;
-/// 空升または先獅子のない列。逆索引には含めない。
+/// 両入力の仕様が定める1視点の発火数上限。
+pub const FEATURE_COLUMNS: usize = FeatureSet::P.spec().max_active();
+/// 空列。逆索引には含めない。
 pub const SENTINEL: u32 = u32::MAX;
 
-/// 学習器で使用する入力特徴集合。
-#[derive(Clone, Copy, Debug, PartialEq, Eq, clap::ValueEnum, Serialize)]
-pub enum InputFeatureSet {
-    /// 王の位置で条件付けず、正準行と半幅回転で鏡映を共有する。
-    #[value(name = "P")]
-    P,
-}
-
-impl InputFeatureSet {
-    /// 入力特徴集合の特徴数。P型では圧縮前の13,680行。
-    pub fn dimensions(self) -> usize {
-        match self {
-            Self::P => FEATURE_COUNT,
-        }
-    }
-
-    /// 第1層用逆索引の行数。P型だけ埋め草行を含む。
-    pub fn first_layer_rows(self) -> usize {
-        match self {
-            Self::P => CANONICAL_ROWS,
-        }
+pub(crate) fn first_layer_rows(set: FeatureSet) -> usize {
+    match set {
+        FeatureSet::P => crate::nnue::layerstack::input::CANONICAL_ROWS,
+        FeatureSet::HalfKpVm => set.spec().dimensions(),
     }
 }
 
-pub(super) fn canonical_row(base: u32) -> u32 {
-    let square = base % 144;
-    let file = square % 12;
-    base / 144 * 72 + square / 12 * 6 + file.min(11 - file)
+fn rows<I: Indexer>(position: &Position, side: Color) -> Result<Vec<usize>, AnchorError> {
+    let context = I::context(position, side)?;
+    let mut rows = Vec::with_capacity(I::FEATURE_SET.spec().max_active());
+    for_each_active_row::<I>(context, side, position, |r| rows.push(r));
+    Ok(rows)
 }
 
-pub(super) fn encode_p_feature(base: u32) -> u32 {
-    canonical_row(base) * 2 + u32::from(base % 12 >= 6)
-}
-
-/// P型の`正準行番号×2＋回転ビット`を基底特徴番号へ戻す。番兵は保持する。
-pub fn decode_p_feature(value: u32) -> Result<u32> {
-    if value == SENTINEL {
-        return Ok(SENTINEL);
-    }
-    if value >= FEATURE_COUNT as u32 {
-        return Err(Error::PFeature { value });
-    }
-    let row = value / 2;
-    let file = row % 6;
-    let file = if value & 1 == 0 { file } else { 11 - file };
-    Ok(row / 72 * 144 + row % 72 / 6 * 12 + file)
-}
-
-pub(super) fn base_features(
+pub(crate) fn active_rows(
+    set: FeatureSet,
     position: &Position,
-    perspective: Color,
-) -> [[u32; FEATURE_COLUMNS]; 2] {
+    side: Color,
+) -> Result<Vec<usize>, AnchorError> {
+    match set {
+        FeatureSet::P => rows::<P>(position, side),
+        FeatureSet::HalfKpVm => rows::<HalfKpVm>(position, side),
+    }
+}
+
+pub(super) fn input_features(
+    set: FeatureSet,
+    position: &Position,
+    side: Color,
+) -> Result<[[u32; FEATURE_COLUMNS]; 2], AnchorError> {
     let mut result = [[SENTINEL; FEATURE_COLUMNS]; 2];
-    for (view, side) in [perspective, perspective.opposite()]
-        .into_iter()
-        .enumerate()
-    {
-        for square in Square::all() {
-            if let Some(piece) = position.piece_at(square) {
-                result[view][square.dense_index()] = feature_index(side, piece, square) as u32;
+    if set == FeatureSet::P {
+        for (v, view) in [side, side.opposite()].into_iter().enumerate() {
+            P::context(position, view)?;
+            for square in minase_core::Square::all() {
+                if let Some(piece) = position.piece_at(square) {
+                    let base = minase::eval::features::feature_index(view, piece, square);
+                    result[v][square.dense_index()] =
+                        crate::nnue::layerstack::input::encode_p_feature(
+                            P::row((), base).expect("P includes every base") as u32,
+                        );
+                }
+            }
+            if let Some(trigger) = position.lion_taken_by_non_lion() {
+                result[v][FEATURE_COLUMNS - 1] = crate::nnue::layerstack::input::encode_p_feature(
+                    minase::eval::features::lion_feature_index(view, trigger.square) as u32,
+                );
             }
         }
-        if let Some(trigger) = position.lion_taken_by_non_lion() {
-            result[view][144] = lion_feature_index(side, trigger.square) as u32;
+        return Ok(result);
+    }
+    for (v, side) in [side, side.opposite()].into_iter().enumerate() {
+        for (dst, row) in result[v].iter_mut().zip(active_rows(set, position, side)?) {
+            *dst = match set {
+                FeatureSet::P => crate::nnue::layerstack::input::encode_p_feature(row as u32),
+                FeatureSet::HalfKpVm => row as u32,
+            };
         }
     }
-    result
-}
-
-pub(super) fn input_features(bases: &[[u32; FEATURE_COLUMNS]; 2]) -> [[u32; FEATURE_COLUMNS]; 2] {
-    bases.map(|view| {
-        view.map(|base| {
-            if base == SENTINEL {
-                SENTINEL
-            } else {
-                encode_p_feature(base)
-            }
-        })
-    })
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn p_features_round_trip_every_base_and_preserve_the_sentinel() {
-        for base in 0..FEATURE_COUNT as u32 {
-            let packed = encode_p_feature(base);
-            assert_eq!(decode_p_feature(packed).unwrap(), base);
-        }
-        assert_eq!(decode_p_feature(SENTINEL).unwrap(), SENTINEL);
-        assert!(decode_p_feature(FEATURE_COUNT as u32).is_err());
-    }
-
-    /// 筋0〜11を左右対称に0〜5へ折り、右半分の筋に回転ビットを立てる。
-    /// 期待値は「駒×72＋段×6＋min(筋, 11−筋)」の2倍に回転ビットを足して手で求めた。
-    #[test]
-    fn p_features_fold_files_symmetrically_into_canonical_rows() {
-        for (base, packed) in [
-            (0, 0),           // 駒0、段0、筋0
-            (5, 10),          // 筋5は折り返さない最後の筋
-            (6, 11),          // 筋6は筋5の行に回転ビット1
-            (11, 1),          // 筋11は筋0の行に回転ビット1
-            (157, 158),       // 駒1、段1、筋1
-            (13_679, 13_669), // 駒94、段11、筋11
-        ] {
-            assert_eq!(encode_p_feature(base), packed, "base={base}");
-        }
-    }
+    Ok(result)
 }

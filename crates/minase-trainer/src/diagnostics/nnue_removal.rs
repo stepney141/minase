@@ -7,12 +7,14 @@ use serde::Serialize;
 
 use super::{
     Result,
-    network::IntegerNetwork,
+    network::{FloatCheckpoint, IntegerNetwork},
     sample::{FileIdentity, SampleArgs, SampleIdentity, file_identity, sample_identity},
     statistics::{Reversals, reversal_statistics},
 };
-use crate::nnue::layerstack::{Checkpoint, Features, H, diagnostics::Accumulator};
-use minase::eval::{features::feature_index, piece_values::piece_value};
+use minase::eval::{
+    nnue::input::{AnchorError, FeatureSet, HalfKpVm, Indexer},
+    piece_values::piece_value,
+};
 use minase_core::{Color, Position, PositionBuilder};
 
 #[derive(Debug)]
@@ -30,14 +32,14 @@ impl std::fmt::Display for Error {
                 network,
             } => write!(
                 f,
-                "LayerStack width mismatch: checkpoint={checkpoint}, network={network}"
+                "NNUE width mismatch: checkpoint={checkpoint}, network={network}"
             ),
             Self::ScaleMismatch {
                 checkpoint,
                 network,
             } => write!(
                 f,
-                "LayerStack fv_scale mismatch: checkpoint={checkpoint}, network={network}"
+                "NNUE fv_scale mismatch: checkpoint={checkpoint}, network={network}"
             ),
             Self::NonFiniteDifference => f.write_str("non-finite removal difference"),
             Self::NoRemovals => f.write_str("sample contains no non-royal removals"),
@@ -78,10 +80,10 @@ fn v0_sum(position: &Position, side: Color) -> i32 {
 /// 検証集合の駒除去診断の引数。
 #[derive(Args)]
 pub struct RemovalArgs {
-    /// LayerStackのNPZチェックポイント。
+    /// LayerStackまたはSimpleのNPZチェックポイント。
     #[arg(long = "float")]
     float_path: PathBuf,
-    /// 比較するtatara形式のLayerStack。
+    /// 比較するtatara形式のLayerStackまたはSimple。
     #[arg(long)]
     net: PathBuf,
     #[command(flatten)]
@@ -125,6 +127,7 @@ pub(super) struct Report {
     float: FileIdentity,
     net: FileIdentity,
     removal_count: usize,
+    terminal_removal_count: usize,
     reference: &'static str,
     float_batch_vs_recomputed: BatchCheck,
     float_vs_integer_recomputed: IntegerCheck,
@@ -134,7 +137,10 @@ pub(super) struct Report {
     pub(super) error: Option<String>,
 }
 
-/// 王駒以外を1枚ずつ除き、K_o×(Y_after−Y_before)を整数のevaluate_for差分と比較する。
+/// Simpleでは王将は入力に含まれないため除去しない。太子は除去対象に含む。
+/// 王将のない側の最後の太子を除くと静的評価が定義できないため、終局の除去として
+/// terminal_removal_countに数え、差分統計から除く。LayerStackでは王駒を除去しない。
+/// 対象駒を1枚ずつ除き、K_o×(Y_after−Y_before)を整数のevaluate_for差分と比較する。
 /// 両視点の累算値とPSQTから行を引く方法と、除去後局面からのf64再計算を照合する。
 /// K_o=8128/mはチェックポイントから取り、ネットの幅とfv_scale=mの一致を要求する。
 /// v0参照はエンジンの固定駒価値を合計し、両局面を±28,999 cpへ制限してから引く。
@@ -142,23 +148,22 @@ pub(super) fn run(args: &RemovalArgs) -> Result<Report> {
     let dataset = args.sample.open()?;
     let indices = args.sample.select(&dataset, true)?;
     let net = IntegerNetwork::read(&args.net)?;
-    let checkpoint = Checkpoint::read(&args.float_path)?;
-    if net.width() != H {
+    let checkpoint = FloatCheckpoint::read(&args.float_path, net.feature_set())?;
+    if net.width() != checkpoint.width() {
         return Err(Error::WidthMismatch {
-            checkpoint: H,
+            checkpoint: checkpoint.width(),
             network: net.width(),
         }
         .into());
     }
-    let scale = checkpoint.settings.scale;
-    if scale.divisor() != net.fv_scale() {
+    if checkpoint.divisor() != net.fv_scale() {
         return Err(Error::ScaleMismatch {
-            checkpoint: scale.divisor(),
+            checkpoint: checkpoint.divisor(),
             network: net.fv_scale(),
         }
         .into());
     }
-    let weights = &checkpoint.parameters;
+    let mut terminal_removal_count = 0;
     let mut by_state: BTreeMap<usize, Vec<(i32, i32)>> = BTreeMap::new();
     let mut all_pairs = Vec::new();
     let mut maximum = 0.0_f64;
@@ -172,27 +177,40 @@ pub(super) fn run(args: &RemovalArgs) -> Result<Report> {
             .filter_map(|square| {
                 before.piece_at(square).and_then(|piece| {
                     let state = piece_state(piece);
-                    (!matches!(state, 11 | 21)).then_some((square, state, piece))
+                    (state != 11 && (net.feature_set() == FeatureSet::HalfKpVm || state != 21))
+                        .then_some((square, state, piece))
                 })
             })
             .collect();
         if squares.is_empty() {
             continue;
         }
-        let accumulator = Accumulator::new(weights, &Features::from_position(&before, perspective));
-        let floating_before = accumulator.output(weights);
+        let accumulator = checkpoint.accumulator(&before, perspective)?;
+        let floating_before = checkpoint.output(&accumulator)?;
         let integer_before = net.evaluate(&before, perspective)?;
         let reference_before = v0_sum(&before, perspective);
         for &(square, state, piece) in &squares {
             let after = remove_piece(&before, square)?;
-            let rows = [perspective, perspective.opposite()]
-                .map(|side| feature_index(side, piece, square));
-            let batched = scale.output()
-                * (accumulator.without(weights, rows).output(weights) - floating_before);
+            if net.feature_set() == FeatureSet::HalfKpVm {
+                let mut terminal = false;
+                for side in Color::ALL {
+                    match HalfKpVm::context(&after, side) {
+                        Ok(_) => {}
+                        Err(AnchorError::MissingRoyal { .. }) => terminal = true,
+                        Err(error) => return Err(error.into()),
+                    }
+                }
+                if terminal {
+                    terminal_removal_count += 1;
+                    continue;
+                }
+            }
+            let batched = checkpoint.output_scale()
+                * (checkpoint.without(&accumulator, &before, perspective, piece, square)?
+                    - floating_before);
             let floating_after =
-                Accumulator::new(weights, &Features::from_position(&after, perspective))
-                    .output(weights);
-            let float_delta = scale.output() * (floating_after - floating_before);
+                checkpoint.output(&checkpoint.accumulator(&after, perspective)?)?;
+            let float_delta = checkpoint.output_scale() * (floating_after - floating_before);
             let integer_delta = net.evaluate(&after, perspective)? - integer_before;
             let batch_error = batched - float_delta;
             let integer_error = f64::from(integer_delta) - float_delta;
@@ -221,6 +239,7 @@ pub(super) fn run(args: &RemovalArgs) -> Result<Report> {
         float: file_identity(&args.float_path)?,
         net: file_identity(&args.net)?,
         removal_count: all_pairs.len(),
+        terminal_removal_count,
         reference: "v0 initial_weights at both endpoints",
         float_batch_vs_recomputed: BatchCheck {
             max_absolute_cp: maximum,

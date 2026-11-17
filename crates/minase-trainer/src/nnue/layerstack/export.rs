@@ -2,10 +2,12 @@ use super::model::{ALPHA, HALF, canonical, unit};
 use super::reference::forward_validated;
 use super::{Error, Features, H, Parameter as P, Parameters, Result, Scale};
 use minase::eval::{
-    features::FEATURE_COUNT,
+    nnue::input::FeatureSet,
     nnue::network::{LayerStackNetwork, LayerStackParameters, Network},
 };
 use minase_core::{Color, Position};
+
+const FEATURE_COUNT: usize = FeatureSet::P.spec().dimensions();
 
 fn quantized(
     name: &'static str,

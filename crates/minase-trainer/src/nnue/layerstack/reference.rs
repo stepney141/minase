@@ -1,8 +1,10 @@
 use super::model::{HALF, canonical, unit};
+use crate::nnue::layerstack::input::decode_p_feature;
 
 use super::{Error, H, Parameter as P, Parameters, Result, Scale};
-use crate::nnue::data::{BatchSlot, InputFeatureSet, SENTINEL, decode_p_feature};
-use minase::eval::features::{FEATURE_COUNT, active_features_for};
+use crate::nnue::data::{BatchSlot, FEATURE_COLUMNS, FeatureSet, SENTINEL};
+use minase::eval::features::active_features_for;
+const FEATURE_COUNT: usize = FeatureSet::P.spec().dimensions();
 use minase_core::{Color, Position};
 
 const ALPHA: f32 = 127.0 / 128.0;
@@ -15,10 +17,9 @@ pub struct Features {
 impl Features {
     /// 各視点145特徴以下、各番号13680未満を要求する。重複は和に含める。
     pub fn new(views: [Vec<usize>; 2]) -> Result<Self> {
-        if views
-            .iter()
-            .any(|v| v.len() > 145 || v.iter().any(|&f| f >= FEATURE_COUNT))
-        {
+        if views.iter().any(|v| {
+            v.len() > FeatureSet::P.spec().max_active() || v.iter().any(|&f| f >= FEATURE_COUNT)
+        }) {
             return Err(Error::Invalid("P features"));
         }
         Ok(Self { views })
@@ -35,10 +36,10 @@ impl Features {
     }
     /// 既存のP型バッチの圧縮番号を基底番号へ戻す。
     pub fn from_batch(batch: &BatchSlot) -> Result<Vec<Self>> {
-        if batch.feature_set() != InputFeatureSet::P {
+        if batch.feature_set() != FeatureSet::P {
             return Err(Error::Invalid("LayerStack requires P input"));
         }
-        let (rows, remainder) = batch.features().as_chunks::<290>();
+        let (rows, remainder) = batch.features().as_chunks::<{ 2 * FEATURE_COLUMNS }>();
         if !remainder.is_empty() || rows.len() != batch.len() {
             return Err(Error::Invalid("P batch shape"));
         }
@@ -51,7 +52,10 @@ impl Features {
                         .map(|&f| Ok(decode_p_feature(f)? as usize))
                         .collect()
                 };
-                Self::new([view(&rows[..145])?, view(&rows[145..])?])
+                Self::new([
+                    view(&rows[..FEATURE_COLUMNS])?,
+                    view(&rows[FEATURE_COLUMNS..])?,
+                ])
             })
             .collect()
     }

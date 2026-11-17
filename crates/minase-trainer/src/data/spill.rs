@@ -78,6 +78,8 @@ struct SpillFile {
 /// 読み戻した局面と、学習に使う教師情報。
 #[derive(Debug)]
 pub struct SpillRecord {
+    /// 元の教師ファイル。診断エラーの出所に使う。
+    pub source_path: PathBuf,
     /// 入力順に振った全適格局面の通し番号。
     pub index: u64,
     /// 元の探索値、結果と対局情報を含む局面。
@@ -449,6 +451,7 @@ impl SpillStore {
             game: u32::from_le_bytes(bytes[122..126].try_into().expect("fixed field")),
         };
         Ok(SpillRecord {
+            source_path: file.summary.path.clone(),
             index: file.start + local,
             sample: Sample::from_compact(&bytes[..COMPACT_LEN], metadata, origin),
             teacher_score: f32::from_le_bytes(bytes[113..117].try_into().expect("fixed field")),
@@ -807,7 +810,7 @@ impl EpochReader<'_> {
 mod tests {
     use super::*;
     use crate::data::{Dataset, rao_sandelius_order};
-    use crate::nnue::data::{BatchSlot, InputFeatureSet, Observations};
+    use crate::nnue::data::{BatchSlot, FeatureSet, Observations};
     use minase::training::records::{
         Entry, Exclusion, GameRecord, Outcome as GameOutcome, Policy, TeacherKind, Value, Writer,
     };
@@ -901,8 +904,7 @@ mod tests {
                     while let Some(records) = reader.next_chunk(batch).unwrap() {
                         let remaining = memory.training_indices().len() - indices.len();
                         assert_eq!(records.len(), batch.min(remaining));
-                        let slot =
-                            BatchSlot::from_spill_records(InputFeatureSet::P, &records).unwrap();
+                        let slot = BatchSlot::from_spill_records(FeatureSet::P, &records).unwrap();
                         for (record, &index) in records.iter().zip(slot.record_indices()) {
                             assert_eq!(record.index, index);
                             assert_eq!(record.sample, memory.record(index).unwrap());
@@ -942,7 +944,7 @@ mod tests {
             memory.estimate_teacher_cp_per_logit().unwrap()
         );
         {
-            let feature_set = InputFeatureSet::P;
+            let feature_set = FeatureSet::P;
             let expected = Observations::compute(&memory, feature_set).unwrap();
             let actual = Observations::from_positions(
                 spill

@@ -1,8 +1,8 @@
 use crate::data::{Outcome, Sample};
 use minase_core::{Color, Position};
 
-use super::features::{base_features, input_features};
-use super::{Error, FEATURE_COLUMNS, InputFeatureSet, Result, SENTINEL};
+use super::features::input_features;
+use super::{Error, FEATURE_COLUMNS, FeatureSet, Result, SENTINEL};
 use crate::data::{Dataset, build_targets_from_arrays, outcome_code};
 
 /// バッチの教師値を[`build_targets_from_arrays`]の混合式で構築する。
@@ -27,6 +27,7 @@ struct PositionedSample {
     score: f32,
     class: u32,
     outcome: Outcome,
+    source: Option<(std::path::PathBuf, u32, u16)>,
 }
 
 /// 回転欄のビット幅。
@@ -100,7 +101,7 @@ impl PackedOccurrence {
         ((self.0 >> PERSPECTIVE_SHIFT) & ((1 << PERSPECTIVE_BITS) - 1)) as u8
     }
 
-    /// 元の盤面のdense升、または先獅子の列144を返す。
+    /// P型では元のdense升または先獅子の列144、HalfKP_vmでは特徴列挙順の位置を返す。
     pub fn column(self) -> u8 {
         ((self.0 >> COLUMN_SHIFT) & ((1 << COLUMN_BITS) - 1)) as u8
     }
@@ -209,13 +210,14 @@ impl ReverseIndex {
 /// CPUで構築し、そのまま転送できる1バッチの面。配列はいずれも連続したVec。
 ///
 /// 局面数をBとすると、`features`は`[B, 2, 145]`。
-/// 局面、視点（手番側0、相手側1）、元の盤面のdense升の順で行優先に並ぶ。
-/// 列144は先獅子である。残る局面ごとの配列はすべて`[B]`。
+/// 局面、視点（手番側0、相手側1）、列の順で行優先に並ぶ。P型の列は元の盤面のdense升である。
+/// P型の列144は先獅子である。HalfKP_vmはエンジンの列挙順に詰め、残りを番兵とする。
+/// 残る局面ごとの配列はすべて`[B]`。
 /// 第1層の逆索引は[行数＋1]の開始位置と、発火数個のu32を持つ。
 /// 後退用の区分表もワーカーが構築し、行・逆索引要素とも昇順を保つ。
 #[derive(Debug, PartialEq)]
 pub struct BatchSlot {
-    feature_set: InputFeatureSet,
+    feature_set: FeatureSet,
     record_indices: Vec<u64>,
     features: Vec<u32>,
     teacher_scores: Vec<f32>,
@@ -226,7 +228,7 @@ pub struct BatchSlot {
 
 impl BatchSlot {
     /// この面の入力特徴集合を返す。
-    pub fn feature_set(&self) -> InputFeatureSet {
+    pub fn feature_set(&self) -> FeatureSet {
         self.feature_set
     }
     /// 局面数Bを返す。
@@ -241,7 +243,7 @@ impl BatchSlot {
     pub fn record_indices(&self) -> &[u64] {
         &self.record_indices
     }
-    /// 両視点の特徴`[B, 2, 145]`。P型は正準行×2＋回転。
+    /// 両視点の特徴`[B, 2, 145]`。P型は正準行×2＋回転、HalfKP_vmは実の行番号。
     pub fn features(&self) -> &[u32] {
         &self.features
     }
@@ -262,7 +264,7 @@ impl BatchSlot {
         &self.first_layer_inverse
     }
 
-    fn build(dataset: &Dataset, feature_set: InputFeatureSet, indices: &[u64]) -> Result<Self> {
+    fn build(dataset: &Dataset, feature_set: FeatureSet, indices: &[u64]) -> Result<Self> {
         Self::assemble(
             feature_set,
             indices,
@@ -271,6 +273,7 @@ impl BatchSlot {
                     dataset.record(index)?,
                     dataset.teacher_score(index)?,
                     dataset.teacher_class(index)?,
+                    Some(dataset.source_path(index)?.to_owned()),
                 ))
             }),
         )
@@ -279,7 +282,7 @@ impl BatchSlot {
     /// 合成記録または読み込み済み記録から面を作る。通し番号は記録の添字とする。
     /// 教師値と分類は記録と同数で、教師値は有限でなければならない。
     pub fn from_records(
-        feature_set: InputFeatureSet,
+        feature_set: FeatureSet,
         records: &[Sample],
         teacher_scores: &[f32],
         teacher_classes: &[u32],
@@ -298,13 +301,13 @@ impl BatchSlot {
                 .iter()
                 .zip(teacher_scores)
                 .zip(teacher_classes)
-                .map(|((record, &score), &class)| Ok((record.clone(), score, class))),
+                .map(|((record, &score), &class)| Ok((record.clone(), score, class, None))),
         )
     }
 
     /// 読み戻した記録の通し番号を保ち、指定順に面を構築する。
     pub fn from_spill_records(
-        feature_set: InputFeatureSet,
+        feature_set: FeatureSet,
         records: &[crate::data::SpillRecord],
     ) -> Result<Self> {
         let indices: Vec<_> = records.iter().map(|record| record.index).collect();
@@ -319,27 +322,29 @@ impl BatchSlot {
                     record.sample.clone(),
                     record.teacher_score,
                     record.teacher_class,
+                    Some(record.source_path.clone()),
                 ))
             }),
         )
     }
 
     fn assemble(
-        feature_set: InputFeatureSet,
+        feature_set: FeatureSet,
         indices: &[u64],
-        samples: impl Iterator<Item = Result<(Sample, f32, u32)>>,
+        samples: impl Iterator<Item = Result<(Sample, f32, u32, Option<std::path::PathBuf>)>>,
     ) -> Result<Self> {
         Self::assemble_positions(
             feature_set,
             indices,
             samples.map(|sample| {
-                let (record, score, class) = sample?;
+                let (record, score, class, path) = sample?;
                 Ok(PositionedSample {
                     position: record.to_position()?,
                     perspective: record.side_to_move(),
                     score,
                     class,
                     outcome: record.outcome(),
+                    source: path.map(|p| (p, record.game_number(), record.ply())),
                 })
             }),
         )
@@ -348,7 +353,7 @@ impl BatchSlot {
     /// 配置の内部手番とは独立に評価視点を指定する。特徴抽出と逆索引は学習と共有する。
     /// 教師値は0、分類は0、結果は引き分けとして数値評価用のバッチを作る。
     pub fn from_evaluation_positions(
-        feature_set: InputFeatureSet,
+        feature_set: FeatureSet,
         positions: &[Position],
         perspective: Color,
     ) -> Result<Self> {
@@ -363,13 +368,14 @@ impl BatchSlot {
                     score: 0.0,
                     class: 0,
                     outcome: Outcome::Draw,
+                    source: None,
                 })
             }),
         )
     }
 
     fn assemble_positions(
-        feature_set: InputFeatureSet,
+        feature_set: FeatureSet,
         indices: &[u64],
         samples: impl Iterator<Item = Result<PositionedSample>>,
     ) -> Result<Self> {
@@ -384,8 +390,16 @@ impl BatchSlot {
         let mut outcomes = Vec::with_capacity(indices.len());
         for sample in samples {
             let sample = sample?;
-            let bases = base_features(&sample.position, sample.perspective);
-            let inputs = input_features(&bases);
+            let inputs = input_features(feature_set, &sample.position, sample.perspective)
+                .map_err(|error| match sample.source {
+                    Some((path, game, ply)) => Error::TeacherAnchor {
+                        path,
+                        game,
+                        ply,
+                        error,
+                    },
+                    None => Error::Anchor(error),
+                })?;
             features.extend(inputs.into_iter().flatten());
             teacher_scores.push(sample.score);
             teacher_classes.push(sample.class);
@@ -393,9 +407,9 @@ impl BatchSlot {
         }
         let first_layer_inverse = ReverseIndex::build(
             &features,
-            feature_set.first_layer_rows(),
+            super::first_layer_rows(feature_set),
             2,
-            feature_set == InputFeatureSet::P,
+            feature_set == FeatureSet::P,
         )?;
         Ok(Self {
             feature_set,
@@ -416,7 +430,7 @@ impl BatchSlot {
 /// 全ワーカーは成功・失敗のどちらでもこの関数を抜ける前に回収する。
 pub fn build_batches(
     dataset: &Dataset,
-    feature_set: InputFeatureSet,
+    feature_set: FeatureSet,
     batches: &[&[u64]],
 ) -> Result<Vec<BatchSlot>> {
     std::thread::scope(|scope| {

@@ -1,6 +1,6 @@
 use super::{Device, Error, Result, device::pinned_zeros, require_len};
 use crate::nnue::data::{
-    BatchSlot, FEATURE_COLUMNS, InputFeatureSet, MAX_BATCH_SIZE, max_segment_count,
+    BatchSlot, FEATURE_COLUMNS, FeatureSet, MAX_BATCH_SIZE, max_segment_count,
 };
 use cudarc::driver::{
     CudaEvent, CudaSlice, DeviceRepr, PinnedHostSlice, ValidAsZeroBits, sys::CUevent_flags,
@@ -92,7 +92,7 @@ impl RingState {
 /// 元の`HostRing`だけがこの面を転送でき、転送中のメモリを同時に書き換えられない。
 pub struct HostBuffer {
     owner: Arc<()>,
-    set: InputFeatureSet,
+    set: FeatureSet,
     capacity: usize,
     record_indices: PinnedHostSlice<u64>,
     features: PinnedHostSlice<u32>,
@@ -108,7 +108,7 @@ pub struct HostBuffer {
     transfer_done: CudaEvent,
 }
 impl HostBuffer {
-    fn new(device: &Device, set: InputFeatureSet, capacity: usize, owner: Arc<()>) -> Result<Self> {
+    fn new(device: &Device, set: FeatureSet, capacity: usize, owner: Arc<()>) -> Result<Self> {
         let entries = capacity * 2 * FEATURE_COLUMNS;
         Ok(Self {
             owner,
@@ -119,10 +119,13 @@ impl HostBuffer {
             teacher_scores: pinned_zeros(device, capacity)?,
             teacher_classes: pinned_zeros(device, capacity)?,
             outcomes: pinned_zeros(device, capacity)?,
-            first_segment_starts: pinned_zeros(device, set.first_layer_rows() + 1)?,
+            first_segment_starts: pinned_zeros(
+                device,
+                crate::nnue::data::first_layer_rows(set) + 1,
+            )?,
             first_segment_offsets: pinned_zeros(
                 device,
-                max_segment_count(set.first_layer_rows(), entries) + 1,
+                max_segment_count(crate::nnue::data::first_layer_rows(set), entries) + 1,
             )?,
             first_entries: pinned_zeros(device, entries)?,
             len: 0,
@@ -201,13 +204,13 @@ struct InputLengths {
     first_offsets: usize,
 }
 impl InputLengths {
-    fn new(set: InputFeatureSet, capacity: usize) -> Self {
+    fn new(set: FeatureSet, capacity: usize) -> Self {
         let entries = capacity * 2 * FEATURE_COLUMNS;
         Self {
             capacity,
             entries,
-            first_starts: set.first_layer_rows() + 1,
-            first_offsets: max_segment_count(set.first_layer_rows(), entries) + 1,
+            first_starts: crate::nnue::data::first_layer_rows(set) + 1,
+            first_offsets: max_segment_count(crate::nnue::data::first_layer_rows(set), entries) + 1,
         }
     }
     fn bytes(&self) -> usize {
@@ -216,7 +219,7 @@ impl InputLengths {
         17 * self.capacity + 4 * (2 * self.entries + self.first_starts + self.first_offsets)
     }
 }
-pub(in crate::nnue) fn device_bytes(set: InputFeatureSet, capacity: usize) -> Result<usize> {
+pub(in crate::nnue) fn device_bytes(set: FeatureSet, capacity: usize) -> Result<usize> {
     if !(1..=MAX_BATCH_SIZE).contains(&capacity) {
         return Err(Error::Invalid("ring capacity"));
     }
@@ -224,7 +227,7 @@ pub(in crate::nnue) fn device_bytes(set: InputFeatureSet, capacity: usize) -> Re
 }
 
 impl DeviceInput {
-    fn new(device: &Device, set: InputFeatureSet, capacity: usize) -> Result<Self> {
+    fn new(device: &Device, set: FeatureSet, capacity: usize) -> Result<Self> {
         let s = &device.transfer;
         let lengths = InputLengths::new(set, capacity);
         Ok(Self {
@@ -253,7 +256,7 @@ impl DeviceInput {
 /// 準備済みの面を受け取る`upload_prepared`では供給側が3面を循環させる。
 pub struct HostRing {
     device: Device,
-    set: InputFeatureSet,
+    set: FeatureSet,
     capacity: usize,
     hosts: Option<[HostBuffer; 3]>,
     transfer_bytes: usize,
@@ -263,7 +266,7 @@ pub struct HostRing {
 }
 impl HostRing {
     /// 最大局面数に合わせて固定メモリと入力配列を確保する。
-    pub fn new(device: &Device, set: InputFeatureSet, capacity: usize) -> Result<Self> {
+    pub fn new(device: &Device, set: FeatureSet, capacity: usize) -> Result<Self> {
         if !(1..=MAX_BATCH_SIZE).contains(&capacity) {
             return Err(Error::Invalid("ring capacity"));
         }
@@ -362,11 +365,7 @@ impl HostRing {
         self.transfer_bytes
     }
 
-    pub(in crate::nnue) fn validate_streams(
-        &self,
-        device: &Device,
-        set: InputFeatureSet,
-    ) -> Result<()> {
+    pub(in crate::nnue) fn validate_streams(&self, device: &Device, set: FeatureSet) -> Result<()> {
         if !Arc::ptr_eq(&self.device.compute, &device.compute)
             || !Arc::ptr_eq(&self.device.transfer, &device.transfer)
             || self.set != set
@@ -445,7 +444,7 @@ mod tests {
     fn gpu_workers_fill_and_reuse_three_owned_host_buffers() {
         let device = Device::new(0).unwrap();
         {
-            let set = InputFeatureSet::P;
+            let set = FeatureSet::P;
             let mut ring = HostRing::new(&device, set, 3).unwrap();
             let bytes = ring.transfer_bytes();
             let buffers = ring.take_host_buffers().unwrap();
@@ -510,9 +509,8 @@ mod tests {
     #[ignore = "requires a CUDA GPU"]
     fn gpu_transfer_timing_survives_reused_input_and_host_slots() {
         let device = Device::new(0).unwrap();
-        let batch =
-            crate::nnue::data::synthetic::synthetic_batch(InputFeatureSet::P, 3, 71).unwrap();
-        let mut ring = HostRing::new(&device, InputFeatureSet::P, 3).unwrap();
+        let batch = crate::nnue::data::synthetic::synthetic_batch(FeatureSet::P, 3, 71).unwrap();
+        let mut ring = HostRing::new(&device, FeatureSet::P, 3).unwrap();
         let mut timings = Vec::new();
         for _ in 0..5 {
             let ticket = ring.upload(&batch).unwrap();
@@ -533,7 +531,7 @@ mod tests {
     fn gpu_ring_transfers_all_arrays_and_reuses_three_host_two_device_slots() {
         let device = Device::new(0).unwrap();
         {
-            let set = InputFeatureSet::P;
+            let set = FeatureSet::P;
             let mut ring = HostRing::new(&device, set, 100).unwrap();
             // 2面を同時に保持し、完了を記録してからだけ次の面へ進める。
             for iteration in 0..4 {

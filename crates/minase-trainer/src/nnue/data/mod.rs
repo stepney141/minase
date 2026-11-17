@@ -12,7 +12,9 @@ pub use batch::{
     ROTATION_SHIFT, ReverseIndex, build_batches, build_targets,
 };
 pub use error::Error;
-pub use features::{CANONICAL_ROWS, FEATURE_COLUMNS, InputFeatureSet, SENTINEL, decode_p_feature};
+pub(crate) use features::first_layer_rows;
+pub use features::{FEATURE_COLUMNS, SENTINEL};
+pub use minase::eval::nnue::input::FeatureSet;
 pub use observations::Observations;
 
 /// NNUEの特徴、観測回数またはバッチの構築結果。

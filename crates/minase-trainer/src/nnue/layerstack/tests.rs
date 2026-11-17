@@ -57,7 +57,7 @@ fn scales_validate_teacher_and_rounded_divisor() {
 
 #[test]
 fn canonical_mapping_and_rotation_match_every_existing_p_feature() {
-    use crate::nnue::data::decode_p_feature;
+    use crate::nnue::layerstack::input::decode_p_feature;
     for f in 0..FEATURE_COUNT {
         assert_eq!(
             canonical(f),

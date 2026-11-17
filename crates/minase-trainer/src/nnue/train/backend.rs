@@ -1,6 +1,6 @@
 use super::{Progress, Result};
 use crate::nnue::{
-    data::{BatchSlot, InputFeatureSet},
+    data::{BatchSlot, FeatureSet},
     gpu::{self, HostBuffer, HostRing},
 };
 use minase_core::{Color, Position};
@@ -70,7 +70,7 @@ pub(crate) enum Queue {
 /// 初期化と再開は実装側で済ませてから渡す。未回収の結果は全境界でflushする。
 pub(crate) trait TrainerBackend {
     fn name(&self) -> &str;
-    fn feature_set(&self) -> InputFeatureSet;
+    fn feature_set(&self) -> FeatureSet;
     fn step(&self) -> u64;
     fn memory(&self) -> Result<Option<(usize, usize)>>;
     fn queue(&self, capacity: usize) -> Result<(Queue, [Buffer; 3])>;

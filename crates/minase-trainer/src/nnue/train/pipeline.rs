@@ -11,7 +11,7 @@ use super::{
 use crate::{
     data::{Dataset, EpochReader, SpillStore},
     nnue::{
-        data::{BatchSlot, InputFeatureSet, build_batches, build_targets},
+        data::{BatchSlot, FeatureSet, build_batches, build_targets},
         gpu,
         schedule::LrSchedule,
     },
@@ -144,7 +144,7 @@ pub(super) fn train_batches(
 /// 周とsuperbatchの境界のうち、先に到達する位置までの更新条件。
 #[derive(Clone, Copy)]
 pub(super) struct BatchOptions {
-    pub feature_set: InputFeatureSet,
+    pub feature_set: FeatureSet,
     pub batch: usize,
     pub schedule: LrSchedule,
     pub batches_per_superbatch: NonZeroU64,
@@ -339,8 +339,8 @@ mod tests {
         fn name(&self) -> &str {
             "deferred test backend"
         }
-        fn feature_set(&self) -> InputFeatureSet {
-            InputFeatureSet::P
+        fn feature_set(&self) -> FeatureSet {
+            FeatureSet::P
         }
         fn step(&self) -> u64 {
             self.steps
@@ -395,7 +395,7 @@ mod tests {
                 fail_second: mode == 1,
             };
             let options = BatchOptions {
-                feature_set: InputFeatureSet::P,
+                feature_set: FeatureSet::P,
                 batch: 2,
                 schedule: "constant:1".parse().unwrap(),
                 batches_per_superbatch: 3.try_into().unwrap(),

@@ -7,7 +7,7 @@ use super::{
     *,
 };
 use crate::nnue::{
-    data::{BatchSlot, InputFeatureSet},
+    data::{BatchSlot, FeatureSet},
     gpu::{Device, HostRing},
     options::DeviceKind,
     train::{
@@ -102,10 +102,10 @@ fn settings(args: &Args) -> train::Result<Settings> {
 /// LayerStackの初期化または再開を終え、共通の学習ループへ渡す。
 pub fn run(args: Args) -> train::Result<train::Summary> {
     let settings = settings(&args)?;
-    let architecture = json!({"kind": "LayerStack", "feature_set": "P", "H": H,
+    let architecture = json!({"kind": "LayerStack", "feature_set": FeatureSet::P.spec().arch_name(), "H": H,
         "K_t": settings.scale.teacher(), "m": settings.scale.divisor(), "K_o": settings.scale.output(),
         "rules": settings.rules.to_string(), "optimizer": settings.optimizer,
-        "initialization": {"ft_distribution": "uniform", "ft_half_width": (1.0 / minase::eval::features::FEATURE_COUNT as f64).sqrt(), "dense_distribution": "uniform", "dense_half_width": 0.01, "biases": "zero", "psqt": "signed_v0_material_over_K_o"}});
+        "initialization": {"ft_distribution": "uniform", "ft_half_width": (1.0 / FeatureSet::P.spec().dimensions() as f64).sqrt(), "dense_distribution": "uniform", "dense_half_width": 0.01, "biases": "zero", "psqt": "signed_v0_material_over_K_o"}});
     train::run_with(args, architecture, |args, progress| {
         if args.resume.is_some() {
             Trainer::resume(args, progress)
@@ -121,8 +121,8 @@ impl TrainerBackend for Trainer {
             Execution::Cuda(step) => step.device().name(),
         }
     }
-    fn feature_set(&self) -> InputFeatureSet {
-        InputFeatureSet::P
+    fn feature_set(&self) -> FeatureSet {
+        FeatureSet::P
     }
     fn step(&self) -> u64 {
         match &self.execution {
@@ -143,7 +143,7 @@ impl TrainerBackend for Trainer {
         match &self.execution {
             Execution::Cpu { .. } => Ok((Queue::Cpu, std::array::from_fn(|_| Buffer::Cpu(None)))),
             Execution::Cuda(step) => {
-                let mut ring = HostRing::new(step.device(), InputFeatureSet::P, capacity)?;
+                let mut ring = HostRing::new(step.device(), FeatureSet::P, capacity)?;
                 let buffers = ring.take_host_buffers()?.map(Buffer::Cuda);
                 Ok((Queue::Cuda(Box::new(ring)), buffers))
             }

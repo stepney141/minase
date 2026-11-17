@@ -1,7 +1,9 @@
 use crate::data::Dataset;
+use crate::nnue::layerstack::input::CANONICAL_ROWS;
 
-use super::features::{base_features, canonical_row};
-use super::{CANONICAL_ROWS, InputFeatureSet, Result, SENTINEL};
+use super::features::active_rows;
+use super::{FeatureSet, Result};
+use crate::nnue::layerstack::input::canonical_row;
 
 /// 訓練集合だけから求めた特徴の観測回数。
 pub struct Observations {
@@ -12,7 +14,7 @@ pub struct Observations {
 impl Observations {
     /// 訓練集合だけを1回走査し、手番側の正準行と両視点の入力特徴の出現回数を求める。
     /// 正準行は鏡映込みの回数の左半分に相当し、入力特徴は鏡映を追加せず数える。
-    pub fn compute(dataset: &Dataset, feature_set: InputFeatureSet) -> Result<Self> {
+    pub fn compute(dataset: &Dataset, feature_set: FeatureSet) -> Result<Self> {
         Self::from_positions(
             dataset
                 .training_indices()
@@ -25,23 +27,30 @@ impl Observations {
     /// ファイル順の訓練局面の列を1回走査して観測回数を求める。
     pub fn from_positions(
         positions: impl Iterator<Item = Result<minase_core::Position>>,
-        feature_set: InputFeatureSet,
+        feature_set: FeatureSet,
     ) -> Result<Self> {
-        let mut canonical_counts = vec![0; CANONICAL_ROWS];
-        let mut input_counts = vec![0; feature_set.dimensions()];
+        let mut canonical_counts = vec![
+            0;
+            if feature_set == FeatureSet::P {
+                CANONICAL_ROWS
+            } else {
+                0
+            }
+        ];
+        let mut input_counts = vec![0; feature_set.spec().dimensions()];
         for position in positions {
             let position = position?;
-            let bases = base_features(&position, position.side_to_move());
-            for &base in &bases[0] {
-                if base != SENTINEL {
-                    // 元の特徴とその鏡映の片方だけが左半分に入る。
-                    // 鏡映込みの回数の左半分に相当するため、1特徴を2回数えない。
-                    canonical_counts[canonical_row(base) as usize] += 1;
-                }
-            }
-            for &base in bases.iter().flatten() {
-                if base != SENTINEL {
-                    input_counts[base as usize] += 1;
+            for (v, side) in [position.side_to_move(), position.side_to_move().opposite()]
+                .into_iter()
+                .enumerate()
+            {
+                for row in
+                    active_rows(feature_set, &position, side).map_err(super::Error::Anchor)?
+                {
+                    if feature_set == FeatureSet::P && v == 0 {
+                        canonical_counts[canonical_row(row as u32) as usize] += 1;
+                    }
+                    input_counts[row] += 1;
                 }
             }
         }
@@ -51,7 +60,8 @@ impl Observations {
         })
     }
 
-    /// 手番側の鏡映込みの回数から左半分を取った6,841行を返す。埋め草は0。
+    /// P型では手番側の鏡映込みの回数から左半分を取った6,841行を返す。
+    /// 埋め草は0。HalfKP_vmは正準行を共有しないため空列を返す。
     pub fn canonical_counts(&self) -> &[u64] {
         &self.canonical_counts
     }

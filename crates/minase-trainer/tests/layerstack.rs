@@ -3,7 +3,7 @@ mod common;
 use common::Fixture;
 use minase_core::{Color, Position};
 use minase_trainer::nnue::{
-    data::{BatchSlot, InputFeatureSet, build_targets},
+    data::{BatchSlot, FeatureSet, build_targets},
     layerstack::{
         AdamW, Features, OptimizerConfig, Parameter, Parameters, Scale, forward, train_batch,
     },
@@ -13,7 +13,7 @@ use minase_trainer::nnue::{
 fn cpu_batch_uses_existing_teacher_mixture_and_scale_ratio() {
     let scale = Scale::new(1072.65).unwrap();
     let fixture = Fixture::new(&[Position::initial(); 1]);
-    let batch = fixture.batch(InputFeatureSet::P, &[0]);
+    let batch = fixture.batch(FeatureSet::P, &[0]);
     let mut weights = Parameters::zeros();
     weights[Parameter::L3Bias][0] = 0.25;
     let mut optimizer = AdamW::new(OptimizerConfig::default()).unwrap();
@@ -56,8 +56,7 @@ fn packed_p_batches_match_position_features() {
     let positions = minase_core::test_util::bench_positions();
     let weights = Parameters::initialize(12, Scale::new(679.03).unwrap());
     for side in Color::ALL {
-        let batch =
-            BatchSlot::from_evaluation_positions(InputFeatureSet::P, &positions, side).unwrap();
+        let batch = BatchSlot::from_evaluation_positions(FeatureSet::P, &positions, side).unwrap();
         let features = Features::from_batch(&batch).unwrap();
         assert_eq!(features.len(), positions.len());
         for (position, packed) in positions.iter().zip(features) {

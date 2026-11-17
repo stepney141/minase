@@ -362,6 +362,12 @@ impl Dataset {
         Ok(scores)
     }
 
+    /// 通し番号に対応する教師ファイルを返す。
+    pub(crate) fn source_path(&self, index: u64) -> Result<&Path> {
+        let key = self.game_key(index)?;
+        Ok(&self.files[key.0].summary.path)
+    }
+
     /// 入力ファイルの番号と、そのファイル内の対局番号で対局を区別する。
     pub(crate) fn game_key(&self, index: u64) -> Result<GameKey> {
         let (file, local) = self.locate(index)?;

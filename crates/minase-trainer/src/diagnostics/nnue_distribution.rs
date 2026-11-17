@@ -21,7 +21,7 @@ use super::{
 pub struct DistributionArgs {
     #[command(flatten)]
     sample: SampleArgs,
-    /// 比較名、次元32のFMを持つMNPT版3、tatara形式のLayerStackの組。複数回指定できる。
+    /// 比較名、次元32のFMを持つMNPT版3、tatara形式のLayerStackまたはSimpleの組。複数回指定できる。
     #[arg(long, required = true, num_args = 3, value_names = ["NAME", "BASELINE", "CANDIDATE"], action = clap::ArgAction::Append)]
     pair: Vec<String>,
     /// 新規作成するJSON報告。
@@ -78,7 +78,7 @@ pub(super) struct Report {
 
 /// `--pair NAME BASELINE CANDIDATE`の各組を同じ標本で比較する。
 /// 引数は1組以上を要求し、NAMEは組の間で一意でなければならない。
-/// BASELINEは次元32のFMを持つMNPT版3、CANDIDATEはtatara形式のLayerStackである。
+/// BASELINEは次元32のFMを持つMNPT版3、CANDIDATEはtatara形式のLayerStackまたはSimpleである。
 /// 各局面は[`Sample::to_position`](crate::data::Sample::to_position)で復元し、記録された手番側の視点から評価する。
 /// 基準は[`pst::evaluate_for_diagnostics`]のPSTとFMを合わせた整数評価、候補は[`IntegerNetwork::evaluate`]の整数評価であり、単位はセンチポーンである。
 pub(super) fn run(args: &DistributionArgs) -> Result<Report> {

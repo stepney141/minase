@@ -3,6 +3,7 @@
 #[path = "common/mnsd.rs"]
 mod mnsd;
 use minase_trainer::data::{Outcome, Sample};
+use minase_trainer::nnue::layerstack::input::decode_p_feature;
 use std::{
     fs,
     path::PathBuf,
@@ -14,9 +15,8 @@ use minase_core::{Color, PieceCode, PieceKind, Position, PositionBuilder, Square
 use minase_trainer::{
     data::{Dataset, Error, Lookahead},
     nnue::data::{
-        BatchSlot, FEATURE_COLUMNS, InputFeatureSet, Observations, PackedOccurrence,
+        BatchSlot, FEATURE_COLUMNS, FeatureSet, Observations, PackedOccurrence,
         REVERSE_INDEX_SEGMENT_LEN, ReverseIndex, SENTINEL, build_batches, build_targets,
-        decode_p_feature,
     },
 };
 
@@ -365,8 +365,7 @@ fn lambda_one_preserves_previous_sigmoid_target_bits() {
             .iter()
             .map(|_| sample(&Position::initial(), 1, 0, 0, outcome))
             .collect();
-        let batch =
-            BatchSlot::from_records(InputFeatureSet::P, &records, &scores, &[0; 5]).unwrap();
+        let batch = BatchSlot::from_records(FeatureSet::P, &records, &scores, &[0; 5]).unwrap();
         let actual: Vec<_> = build_targets(&batch, &[321.0], &[1.0])
             .unwrap()
             .into_iter()
@@ -511,7 +510,7 @@ fn observation_counts_match_python_canonical_half_without_doubling() {
 
     let dataset = Dataset::open(&[path], None, std::num::NonZeroUsize::new(1).unwrap()).unwrap();
     {
-        let set = InputFeatureSet::P;
+        let set = FeatureSet::P;
         let observed = Observations::compute(&dataset, set).unwrap();
         assert_eq!(observed.canonical_counts().len(), 6841);
         // 白歩の手番視点は(29*144 + 10*12 + 8)=4304、正準行は2151。
@@ -523,12 +522,16 @@ fn observation_counts_match_python_canonical_half_without_doubling() {
         assert_eq!(observed.input_counts().iter().sum::<u64>(), 4);
         assert_eq!(observed.canonical_mask().iter().filter(|&&v| v).count(), 1);
         assert!(!observed.canonical_mask()[6840]);
-        assert!(!observed.input_mask()[set.dimensions()]);
+        assert!(!observed.input_mask()[set.spec().dimensions()]);
     }
 }
 
 fn verify_inverse(slot: &BatchSlot, inverse: &ReverseIndex) {
-    let (features, views, rows) = (slot.features(), 2, slot.feature_set().first_layer_rows());
+    let (features, views, rows) = (
+        slot.features(),
+        2,
+        minase_trainer::nnue::layerstack::input::CANONICAL_ROWS,
+    );
     let p_encoded = true;
     assert_eq!(inverse.starts().len(), rows + 1);
     assert_eq!(inverse.starts()[0], 0);
@@ -608,7 +611,7 @@ fn inverse_segments_preserve_hot_rows_across_fixed_length_boundaries() {
     for count in [127, 128, 129, 256, 257] {
         let indices = vec![0; count];
         {
-            let set = InputFeatureSet::P;
+            let set = FeatureSet::P;
             let batches = build_batches(&dataset, set, &[&indices]).unwrap();
             assert_eq!(batches, build_batches(&dataset, set, &[&indices]).unwrap());
             let batch = &batches[0];
@@ -636,7 +639,7 @@ fn batches_preserve_order_metadata_and_inverse_occurrences() {
     let dataset = Dataset::open(&[path], None, std::num::NonZeroUsize::new(1).unwrap()).unwrap();
     let batches: &[&[u64]] = &[&[2, 0, 1, 0], &[1, 0], &[2]];
     {
-        let set = InputFeatureSet::P;
+        let set = FeatureSet::P;
         let slots = build_batches(&dataset, set, batches).unwrap();
         assert_eq!(slots, build_batches(&dataset, set, batches).unwrap());
         for (slot, &indices) in slots.iter().zip(batches) {
@@ -658,11 +661,11 @@ fn batches_preserve_order_metadata_and_inverse_occurrences() {
         assert!(slots[2].first_layer_inverse().entries().is_empty());
     }
     assert!(matches!(
-        build_batches(&dataset, InputFeatureSet::P, &[&[]]),
+        build_batches(&dataset, FeatureSet::P, &[&[]]),
         Err(minase_trainer::nnue::data::Error::BatchSize { size: 0 })
     ));
     assert!(matches!(
-        build_batches(&dataset, InputFeatureSet::P, &[&[3], &[0]]),
+        build_batches(&dataset, FeatureSet::P, &[&[3], &[0]]),
         Err(minase_trainer::nnue::data::Error::Data(
             Error::RecordIndex { .. }
         ))
@@ -681,7 +684,7 @@ fn p_batch_columns_match_known_python_numbers_and_lion_slot() {
     );
 
     let dataset = Dataset::open(&[path], None, std::num::NonZeroUsize::new(1).unwrap()).unwrap();
-    let slots = build_batches(&dataset, InputFeatureSet::P, &[&[0]]).unwrap();
+    let slots = build_batches(&dataset, FeatureSet::P, &[&[0]]).unwrap();
     let slot = &slots[0];
     assert_eq!(slot.features()[20], 4303);
     assert_eq!(slot.features()[145 + 20], 10963);

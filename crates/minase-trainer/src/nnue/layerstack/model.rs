@@ -1,11 +1,12 @@
 use super::{Error, Result};
-use minase::eval::{features::FEATURE_COUNT, piece_values::piece_value_of_state};
+use minase::eval::{nnue::input::FeatureSet, piece_values::piece_value_of_state};
+const FEATURE_COUNT: usize = FeatureSet::P.spec().dimensions();
 use std::ops::{Index, IndexMut};
 
 /// P型LayerStackの第1層の幅。
 pub const H: usize = 256;
 /// 左右鏡映を共有した6,840行と、常に0の埋め草1行。
-pub const ROWS: usize = FEATURE_COUNT / 2 + 1;
+pub const ROWS: usize = super::input::CANONICAL_ROWS;
 pub(super) const HALF: usize = H / 2;
 pub(super) const ALPHA: f64 = 127.0 / 128.0;
 

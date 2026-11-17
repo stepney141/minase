@@ -31,7 +31,7 @@ impl std::error::Error for Error {}
 /// 全合法手の評価差診断の引数。
 #[derive(Args)]
 pub struct MovesArgs {
-    /// 比較するtatara形式のLayerStack。
+    /// 比較するtatara形式のLayerStackまたはSimple。
     #[arg(long)]
     net: PathBuf,
     /// 基準とする、次元32のFMを持つMNPT版3。
@@ -195,7 +195,7 @@ fn unmatched_error(candidate_only: usize, baseline_only: usize) -> Option<String
     })
 }
 
-/// `--positions`の全局面の全合法手について、tatara形式のLayerStackとMNPT版3の着手前後の評価差を比べる。
+/// `--positions`の全局面の全合法手について、tatara形式のLayerStackまたはSimpleとMNPT版3の着手前後の評価差を比べる。
 /// 合成の由来を含むMNSDも受理する。
 /// ヘッダの規則セットを解釈して`lishogi`との一致を要求し、不一致と記録数0を拒否する。
 /// [`Reader::read_game`]で各対局を復元し、その最初の局面から[`Game`]を作って[`move_rows`]で各手を評価する。

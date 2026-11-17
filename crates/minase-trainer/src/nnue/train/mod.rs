@@ -35,7 +35,7 @@ mod store;
 mod subsample;
 use crate::{
     data::{Dataset, epoch_permutation},
-    nnue::data::{BatchSlot, InputFeatureSet, build_batches, build_targets},
+    nnue::data::{BatchSlot, FeatureSet, build_batches, build_targets},
 };
 pub use args::Args;
 pub(crate) use backend::{TrainerBackend, Validation};
@@ -616,7 +616,7 @@ impl<B: TrainerBackend> Session<B> {
 /// 供給元に応じて検証バッチを読み、共通の順序で集計する。
 struct StoreValidation<'a> {
     store: &'a Store,
-    feature_set: InputFeatureSet,
+    feature_set: FeatureSet,
     teacher_cp_per_logit: &'a [f64],
     batch: usize,
     deadline: Instant,
@@ -668,7 +668,7 @@ impl StoreValidation<'_> {
 /// 全検証集合への借用と評価条件。
 struct ValidationSet<'a> {
     dataset: &'a Dataset,
-    feature_set: InputFeatureSet,
+    feature_set: FeatureSet,
     indices: &'a [u64],
     teacher_cp_per_logit: &'a [f64],
     batch: usize,

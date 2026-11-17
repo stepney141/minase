@@ -557,6 +557,7 @@ fn removal_reports_known_reversals_and_keeps_the_lion_square_when_its_piece_is_r
             "float",
             "net",
             "removal_count",
+            "terminal_removal_count",
             "reference",
             "float_batch_vs_recomputed",
             "float_vs_integer_recomputed",
@@ -975,7 +976,7 @@ fn removal_rejects_scale_mismatch_and_empty_removals_without_report() {
     let error = f.diagnose(&removal_args("1")).unwrap_err();
     assert_eq!(
         error.to_string(),
-        "LayerStack fv_scale mismatch: checkpoint=12, network=8"
+        "NNUE fv_scale mismatch: checkpoint=12, network=8"
     );
     assert!(!f.path("report.json").exists());
     f.checkpoint(model(&pawn_linear(100.0), 1016.0));
@@ -989,7 +990,7 @@ fn removal_rejects_scale_mismatch_and_empty_removals_without_report() {
     fs::write(f.path("net.bin"), narrow.encode()).unwrap();
     assert_eq!(
         f.diagnose(&removal_args("1")).unwrap_err().to_string(),
-        "LayerStack width mismatch: checkpoint=256, network=2"
+        "NNUE width mismatch: checkpoint=256, network=2"
     );
     assert!(!f.path("report.json").exists());
     f.network("net.bin", &model(&pawn_linear(100.0), 1016.0));
@@ -1176,4 +1177,156 @@ fn progress() -> minase_trainer::nnue::train::Progress {
             preprocessing: serde_json::json!({}),
         },
     }
+}
+
+fn simple_files(f: &Fixture) {
+    use minase_trainer::nnue::simple as s;
+    let mut parameters = s::Parameters::initialize(7, 16).unwrap();
+    parameters[s::Parameter::FtBiases].fill(0.25);
+    parameters[s::Parameter::L1Biases].fill(0.25);
+    parameters[s::Parameter::L2Biases].fill(0.25);
+    let scale = s::Scale::new(1016.0).unwrap();
+    fs::write(f.path("net.bin"), s::export(&parameters, scale).unwrap()).unwrap();
+    s::Checkpoint {
+        parameters,
+        optimizer: s::AdamW::new(s::OptimizerConfig::default(), 16).unwrap(),
+        settings: s::Settings {
+            width: 16,
+            scale,
+            rules: Rules::JCSA,
+            lambda: 0.75,
+            seed: 7,
+            optimizer: s::OptimizerConfig::default(),
+        },
+        progress: progress(),
+    }
+    .write(f.path("best.npz"))
+    .unwrap();
+}
+#[test]
+fn simple_removal_includes_prince_and_records_last_royal_removal() {
+    let f = Fixture::new();
+    simple_files(&f);
+    let positions = [
+        common::position(
+            &[
+                (0, 0, Color::Black, PieceKind::King),
+                (1, 0, Color::Black, PieceKind::CrownPrince),
+                (11, 11, Color::White, PieceKind::King),
+                (2, 3, Color::Black, PieceKind::Pawn),
+            ],
+            Color::Black,
+            None,
+        ),
+        common::position(
+            &[
+                (1, 0, Color::Black, PieceKind::CrownPrince),
+                (11, 11, Color::White, PieceKind::King),
+                (2, 3, Color::Black, PieceKind::Pawn),
+            ],
+            Color::Black,
+            None,
+        ),
+    ];
+    f.data("data.mnsd", &positions, 11, &[4, 4], "JCSA");
+    let report = f.success(&removal_args("2"), "report.json");
+    assert_eq!(report["removal_count"], 3);
+    assert_eq!(report["terminal_removal_count"], 1);
+    assert!(report["by_piece_state"].get("21").is_some());
+    assert!(report["by_piece_state"].get("11").is_none());
+    assert_eq!(report["float_batch_vs_recomputed"]["passed"], true);
+}
+#[test]
+fn simple_moves_record_capture_of_last_king_without_static_evaluation() {
+    let f = Fixture::new();
+    simple_files(&f);
+    let position = common::position(
+        &[
+            (0, 0, Color::Black, PieceKind::King),
+            (11, 11, Color::White, PieceKind::King),
+            (11, 8, Color::Black, PieceKind::Rook),
+        ],
+        Color::Black,
+        None,
+    );
+    f.data(
+        "data.mnsd",
+        std::slice::from_ref(&position),
+        11,
+        &[4],
+        "lishogi",
+    );
+    f.baseline("base.bin", &pawn_linear(50.0), 0);
+    let game = Game::from_position(Rules::LISHOGI, position);
+    let terminal = game
+        .legal_moves()
+        .iter()
+        .filter(|&&mv| {
+            let mut after = game.clone();
+            after.play(mv).unwrap();
+            after.result().is_some()
+        })
+        .count();
+    assert!(terminal > 0);
+    let report = f.success(&moves_args(), "report.json");
+    assert_eq!(report["terminal_count"], terminal);
+    assert!(report["by_position"][0]["matched_count"].as_u64().unwrap() > 0);
+}
+
+#[test]
+fn simple_distribution_uses_integer_evaluation_in_all_intervals() {
+    use minase_trainer::nnue::simple as s;
+    let f = Fixture::new();
+    let positions = distribution_positions();
+    f.data(
+        "data.mnsd",
+        &positions,
+        11,
+        &vec![4; positions.len()],
+        "JCSA",
+    );
+    f.baseline("base.bin", &pawn_linear(50.0), 0);
+    let mut w = s::Parameters::zeros(16).unwrap();
+    // Relative own pawns have compressed state 28. Only the first component and
+    // the us half reach the output: FT=4 per pawn, dense weights=64, m=8.
+    for row in 28 * 144..29 * 144 {
+        w[s::Parameter::FtVirtual][row * 16] = 1.0 / 32.0;
+    }
+    for p in [
+        s::Parameter::L1Weights,
+        s::Parameter::L2Weights,
+        s::Parameter::L3Weights,
+    ] {
+        w[p][0] = 1.0;
+    }
+    fs::write(
+        f.path("net.bin"),
+        s::export(&w, s::Scale::new(1016.0).unwrap()).unwrap(),
+    )
+    .unwrap();
+    let report = f.success(
+        &[
+            "nnue-distribution",
+            "--data",
+            "data.mnsd",
+            "--sample",
+            "24",
+            "--seed",
+            "7",
+            "--pair",
+            "simple",
+            "base.bin",
+            "net.bin",
+            "--output",
+            "report.json",
+        ],
+        "report.json",
+    );
+    assert_eq!(report["sample_count"], 24);
+    assert_close(
+        &report["pairs"][0]["candidate_statistics"]["mean_cp"],
+        240.0,
+        1e-12,
+    );
+    assert_close(&report["pairs"][0]["regression_slope"], 0.64, 1e-12);
 }
