@@ -370,7 +370,7 @@ impl Searcher {
     }
 
     /// 診断用に準備済みのNNUEを借りる。未準備またはMCTSなら`None`。
-    pub fn network(&self) -> Option<&std::sync::Arc<crate::eval::nnue::network::Network>> {
+    pub fn network(&self) -> Option<&std::sync::Arc<crate::eval::nnue::Network>> {
         match self {
             Self::AlphaBeta(engine) => engine.network.as_ref().map(|file| file.network()),
             Self::Mcts(_) => None,

@@ -1,6 +1,6 @@
 use super::Result;
 use minase::eval::{
-    nnue::network::{FormatError, Network},
+    nnue::{FormatError, Network},
     pst::Pst,
 };
 use minase_core::{Color, Position};
@@ -196,7 +196,11 @@ mod tests {
         .encode();
         let net = IntegerNetwork::decode(&simple).unwrap();
         assert_eq!(net.evaluate(&Position::initial(), Color::Black).unwrap(), 0);
-        for bad in [&bytes[..3], &bytes[..bytes.len() - 1], b"MNUE".as_slice()] {
+        for bad in [
+            &bytes[..3],
+            &bytes[..bytes.len() - 1],
+            b"invalid network".as_slice(),
+        ] {
             assert!(matches!(IntegerNetwork::decode(bad), Err(Error::Format(_))));
         }
     }

@@ -3,7 +3,7 @@
 use core::num::NonZeroUsize;
 use std::sync::Arc;
 
-use crate::eval::nnue::network::Network;
+use crate::eval::nnue::Network;
 use crate::search::alphabeta::team::run_search_team;
 use crate::search::clock::{MonotonicClock, SearchClock};
 use crate::search::events::{PvLine, SearchEvent};

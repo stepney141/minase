@@ -212,6 +212,5 @@ fn lishogi_training_accepts_adjudicated_games_and_rejects_jcsa_books() {
     let output = fixture.0.join("trained");
     let summary = run(training_args(&lishogi, &output)).unwrap();
     assert_eq!(summary.completed_steps, 1);
-    minase::eval::nnue::network::Network::decode(&fs::read(output.join("nnue.bin")).unwrap())
-        .unwrap();
+    minase::eval::nnue::Network::decode(&fs::read(output.join("nnue.bin")).unwrap()).unwrap();
 }

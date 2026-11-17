@@ -885,7 +885,7 @@ fn nonlinear_output(features: usize) -> f64 {
 
 #[test]
 fn removal_matches_layerstack_formula_and_engine_deltas_in_both_views() {
-    use minase::eval::nnue::network::Network;
+    use minase::eval::nnue::Network;
     let f = Fixture::new();
     let mut positions = Vec::new();
     for side in Color::ALL {
@@ -986,7 +986,7 @@ fn removal_rejects_scale_mismatch_and_empty_removals_without_report() {
     narrow.ft_biases = vec![0; 2];
     narrow.ft_weights = vec![0; FEATURE_COUNT * 2];
     narrow.l1_weights = vec![0; 16 * 2];
-    let narrow = minase::eval::nnue::network::LayerStackNetwork::new(narrow).unwrap();
+    let narrow = minase::eval::nnue::LayerStackNetwork::new(narrow).unwrap();
     fs::write(f.path("net.bin"), narrow.encode()).unwrap();
     assert_eq!(
         f.diagnose(&removal_args("1")).unwrap_err().to_string(),

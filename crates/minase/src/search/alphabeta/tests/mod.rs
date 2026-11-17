@@ -54,7 +54,7 @@ use std::sync::{Arc, OnceLock, mpsc};
 use std::thread;
 use std::time::Duration;
 
-use crate::eval::nnue::network::Network;
+use crate::eval::nnue::Network;
 
 use crate::search::alphabeta::INFINITY;
 #[cfg(feature = "tuning")]
@@ -325,7 +325,7 @@ fn shared_test_network() -> &'static Arc<Network> {
 }
 
 fn fixed_network() -> Network {
-    Network::LayerStack(crate::eval::nnue::network::test_util::fixed_layer_stack())
+    Network::LayerStack(crate::eval::nnue::test_util::fixed_layer_stack())
 }
 
 /// 時間制限のない単一ワーカーで根の窓と置換表を検査する。
@@ -1055,7 +1055,7 @@ fn evaluate(network: &Network, position: &Position) -> i32 {
         .expect("test position has valid anchors")
 }
 
-impl crate::eval::nnue::network::SearchEvaluator<'_> {
+impl crate::eval::nnue::SearchEvaluator<'_> {
     fn refresh_for_test(&mut self, position: &Position, ply: usize) {
         match self {
             Self::LayerStack { net, accumulators } => accumulators[ply] = net.refresh(position),

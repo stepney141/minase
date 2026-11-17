@@ -55,7 +55,7 @@ enum PstCommand {
 
 #[derive(Subcommand)]
 enum NnueCommand {
-    /// 手書き評価v0を線形の経路だけで表したMNUEへ書き出す。
+    /// 手書き評価v0をPSQTで表したtatara形式のLayerStackへ書き出す。
     ExportHandcrafted(minase_trainer::nnue::handcrafted::Args),
     /// 構造を選んで学習する。
     #[command(subcommand)]

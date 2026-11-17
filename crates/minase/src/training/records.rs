@@ -319,7 +319,7 @@ pub struct Header {
 impl Header {
     /// 規則セットと来歴を検査し、件数0のヘッダを作る。
     /// `teacher_search_budget`は教師の探索規模で、αβ探索ならノード上限、モンテカルロ木探索なら探索回数を表す。
-    /// `network_checksum`は`--eval-file`で読んだネットのファイル全体のSHA-256である。
+    /// `network_checksum`は`--eval-file`で読んだtatara形式のネットのファイル全体のSHA-256である。
     /// 探索なしでは`network_checksum`と`teacher_search_budget`をすべて0にする。
     pub fn new(
         rule_set: String,

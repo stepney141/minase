@@ -43,7 +43,7 @@ pub enum Error {
     /// 教師値または入力バッチの不正。
     Data(crate::nnue::data::Error),
     /// エンジンが量子化したネットを拒否した。
-    Network(minase::eval::nnue::network::FormatError),
+    Network(minase::eval::nnue::FormatError),
     /// ファイル操作の失敗。
     Io(std::io::Error),
 }
@@ -86,8 +86,8 @@ impl From<crate::nnue::data::Error> for Error {
         Self::Data(e)
     }
 }
-impl From<minase::eval::nnue::network::FormatError> for Error {
-    fn from(e: minase::eval::nnue::network::FormatError) -> Self {
+impl From<minase::eval::nnue::FormatError> for Error {
+    fn from(e: minase::eval::nnue::FormatError) -> Self {
         Self::Network(e)
     }
 }

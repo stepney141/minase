@@ -116,7 +116,7 @@ fn tatara_identity_hashes_header_and_payload_for_both_versions() {
             bytes[offset] ^= 1;
         }
     }
-    fs::write(&path, b"MNUE").unwrap();
+    fs::write(&path, b"invalid network").unwrap();
     assert_eq!(
         file_identity(&path).unwrap_err().kind(),
         std::io::ErrorKind::InvalidData

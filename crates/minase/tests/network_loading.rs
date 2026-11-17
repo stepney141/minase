@@ -138,9 +138,9 @@ fn same_path_reset_discards_network_and_hashes_the_entire_replacement() {
     assert_eq!(output, ready(&bytes));
     // 除数だけを変えた有効なネットでもファイル全体の識別子は変わる。
     let old = read_network_file(&path).unwrap();
-    let mut parameters = minase::eval::nnue::network::test_util::layer_stack_parameters();
+    let mut parameters = minase::eval::nnue::test_util::layer_stack_parameters();
     parameters.fv_scale *= 2;
-    bytes = minase::eval::nnue::network::LayerStackNetwork::new(parameters)
+    bytes = minase::eval::nnue::LayerStackNetwork::new(parameters)
         .unwrap()
         .encode();
     fs::write(&path, &bytes).unwrap();

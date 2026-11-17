@@ -18,7 +18,7 @@ use std::num::{NonZeroU32, NonZeroUsize};
 use std::time::Instant;
 
 use crate::eval::nnue::AccumulatorStats;
-use crate::eval::nnue::network::Network;
+use crate::eval::nnue::Network;
 use crate::search::{MAX_PLY, SearchLimits, SearchSnapshot, TranspositionTable, search};
 use minase_core::notation::usi;
 use minase_core::{Game, MoveGenerator, Rules, parse_sfen};
@@ -408,7 +408,7 @@ fn run_bench(
 
 /// 指定されたネットで、固定局面とJCSA規則を使って探索ベンチを実行する。
 pub fn run(
-    nnue: &crate::eval::nnue::network::Network,
+    nnue: &crate::eval::nnue::Network,
     arguments: Arguments,
     output: &mut dyn FnMut(&str) -> io::Result<()>,
 ) -> Result<(), Error> {
@@ -611,8 +611,8 @@ mod tests {
     #[test]
     fn accumulator_counts_include_all_workers_and_exclude_previous_runs() {
         for nnue in [
-            Network::LayerStack(crate::eval::nnue::network::test_util::fixed_layer_stack()),
-            Network::Simple(crate::eval::nnue::network::test_util::fixed_simple()),
+            Network::LayerStack(crate::eval::nnue::test_util::fixed_layer_stack()),
+            Network::Simple(crate::eval::nnue::test_util::fixed_simple()),
         ] {
             let rules = Rules::JCSA;
             let limits = SearchLimits::new(Some(1), None, None, None).unwrap();

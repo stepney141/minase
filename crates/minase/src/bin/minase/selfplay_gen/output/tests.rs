@@ -1056,9 +1056,9 @@ fn resume_compares_entire_external_network_files() {
     assert_eq!(fs::read(directory.join("teacher.mnsd")).unwrap(), saved);
 
     // 除数だけを変えた有効なネットも、ファイル全体の識別子で区別する。
-    let mut parameters = minase::eval::nnue::network::test_util::layer_stack_parameters();
+    let mut parameters = minase::eval::nnue::test_util::layer_stack_parameters();
     parameters.fv_scale *= 2;
-    let replacement = minase::eval::nnue::network::LayerStackNetwork::new(parameters).unwrap();
+    let replacement = minase::eval::nnue::LayerStackNetwork::new(parameters).unwrap();
     fs::write(&path, replacement.encode()).unwrap();
     let second = read_network_file(&path).unwrap();
     assert_ne!(first.sha256(), second.sha256());

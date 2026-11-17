@@ -6,7 +6,7 @@ use std::sync::atomic::{AtomicBool, AtomicU64, Ordering as AtomicOrdering};
 use std::sync::{Arc, mpsc};
 use std::thread;
 
-use crate::eval::nnue::network::Network;
+use crate::eval::nnue::Network;
 use crate::search::alphabeta::team::run_search_team;
 use crate::search::clock::{MonotonicClock, SearchClock};
 use crate::search::error::SearchError;

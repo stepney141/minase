@@ -7,7 +7,7 @@ use minase::datagen::statistics::Statistics;
 use minase::datagen::{
     MATE_BAND_START, best_move_is_tactical, current_position_is_repeated, data_error, invalid_data,
 };
-use minase::eval::nnue::network::Network;
+use minase::eval::nnue::Network;
 use minase::search::{
     DEFAULT_THREADS, HistoryTables, SearchError, SearchLimits, SearchResult, SearchSnapshot,
     TranspositionTable, search,

@@ -8,7 +8,7 @@
 use core::cmp::Reverse;
 use std::cell::OnceCell;
 
-use crate::eval::nnue::network::Network;
+use crate::eval::nnue::Network;
 use crate::eval::{PIECE_STATE_COUNT, piece_state_of};
 use minase_core::MoveGenerator;
 use minase_core::board::{BOARD_SQUARE_COUNT, Bitboard, Square};

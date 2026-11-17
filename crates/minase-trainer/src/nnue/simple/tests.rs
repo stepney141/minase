@@ -1,6 +1,6 @@
 use super::*;
 use Parameter as P;
-use minase::eval::nnue::network::{Network, SimpleParameters};
+use minase::eval::nnue::{Network, SimpleParameters};
 use minase_core::Color;
 
 const WIDTH: usize = 16;

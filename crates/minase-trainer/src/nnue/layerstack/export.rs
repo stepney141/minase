@@ -3,7 +3,7 @@ use super::reference::forward_validated;
 use super::{Error, Features, H, Parameter as P, Parameters, Result, Scale};
 use minase::eval::{
     nnue::input::FeatureSet,
-    nnue::network::{LayerStackNetwork, LayerStackParameters, Network},
+    nnue::{LayerStackNetwork, LayerStackParameters, Network},
 };
 use minase_core::{Color, Position};
 

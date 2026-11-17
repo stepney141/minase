@@ -11,7 +11,7 @@ use std::sync::mpsc;
 use std::thread;
 use std::time::Duration;
 
-use crate::eval::nnue::network::Network;
+use crate::eval::nnue::Network;
 use crate::search::events::{SearchEvent, SearchResult, StopReason};
 use crate::search::limits::SearchLimits;
 use crate::search::{MAX_PLY, SearchRepetition, TranspositionTable};

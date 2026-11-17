@@ -3,7 +3,7 @@ use super::reference::{crelu_grad, forward_validated, square_grad};
 use super::*;
 use Parameter::*;
 use minase::eval::features::{FEATURE_COUNT, mirror_feature};
-use minase::eval::nnue::network::{LayerStackNetwork, LayerStackParameters, Network};
+use minase::eval::nnue::{LayerStackNetwork, LayerStackParameters, Network};
 use minase_core::test_util::{bench_positions, position_from_codes, sampled_random_positions};
 use minase_core::{
     Color, Position, Square,

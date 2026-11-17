@@ -141,7 +141,7 @@ mod tests {
     fn simple_generation_records_entire_network_file_checksum() {
         let temporary = TemporaryDirectory::new();
         let mut args = arguments(&temporary.0);
-        let bytes = minase::eval::nnue::network::test_util::fixed_simple().encode();
+        let bytes = minase::eval::nnue::test_util::fixed_simple().encode();
         args.eval_file = temporary.0.join("simple.bin");
         fs::write(&args.eval_file, &bytes).unwrap();
         // 1手で王将を取れる実戦開始形式の局面により、ネットの棋力に終局を依存させない。

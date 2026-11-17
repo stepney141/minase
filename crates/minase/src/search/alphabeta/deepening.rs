@@ -4,7 +4,7 @@ use std::sync::atomic::Ordering as AtomicOrdering;
 use std::sync::mpsc;
 use std::time::Duration;
 
-use crate::eval::nnue::network::Network;
+use crate::eval::nnue::Network;
 use crate::search::events::{SearchEvent, SearchResult, StopReason};
 use crate::search::{PvLine, SearchRepetition, TranspositionTable};
 use minase_core::mv::Move;

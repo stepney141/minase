@@ -78,7 +78,7 @@ pub(super) fn process_job(
     job: &Job,
     common: &Common,
     openings: bool,
-    nnue: &minase::eval::nnue::network::Network,
+    nnue: &minase::eval::nnue::Network,
     table: &mut TranspositionTable,
 ) -> io::Result<Processed> {
     let limits = SearchLimits::new(None, Some(u64::from(common.nodes.get())), None, None)

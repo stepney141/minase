@@ -2262,11 +2262,11 @@ fn diagnostic_position(engine: &Engine) -> Result<Vec<String>, String> {
 /// 本体と同じ整数の演算順で評価値と経路ごとの寄与を表示する。
 fn diagnostic_evaluation(
     position: &Position,
-    network: &nnue::network::Network,
+    network: &nnue::Network,
 ) -> Result<Vec<String>, String> {
     position.validate().map_err(|error| error.to_string())?;
     match network {
-        nnue::network::Network::LayerStack(net) => {
+        nnue::Network::LayerStack(net) => {
             let d = net.breakdown(position);
             let mut lines = vec![
                 format!("evaluation {}", d.value),
@@ -2283,7 +2283,7 @@ fn diagnostic_evaluation(
             lines.push("note evaluation = clamp((dense + psqt) / fv-scale, -28999, 28999) with division truncated toward zero; psqt = (sum of square contributions + lion) / 2 truncated toward zero".to_owned());
             Ok(lines)
         }
-        nnue::network::Network::Simple(net) => {
+        nnue::Network::Simple(net) => {
             let d = net.breakdown(position).map_err(|error| error.to_string())?;
             Ok(vec![format!("evaluation {}", d.value), "structure Simple".to_owned(), "feature-set HalfKPVm".to_owned(), format!("dense {}", d.out), format!("fv-scale {}", d.fv_scale), "note evaluation = clamp(dense / fv-scale, -28999, 28999) with division truncated toward zero".to_owned()])
         }
@@ -4877,7 +4877,7 @@ mod tests {
 
     #[test]
     fn diagnostic_evaluation_obeys_structure_order_and_integer_arithmetic() {
-        use crate::eval::nnue::network::{
+        use crate::eval::nnue::{
             Network,
             test_util::{fixed_layer_stack, fixed_simple},
         };

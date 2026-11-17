@@ -208,8 +208,7 @@ fn cpu_records_initial_validation_planned_updates_and_tatara_export() {
     }
     let checkpoint = Checkpoint::read(dir.join("latest.npz")).unwrap();
     let network =
-        minase::eval::nnue::network::Network::decode(&fs::read(dir.join("nnue.bin")).unwrap())
-            .unwrap();
+        minase::eval::nnue::Network::decode(&fs::read(dir.join("nnue.bin")).unwrap()).unwrap();
     let q = minase_trainer::nnue::layerstack::quantize(
         &checkpoint.parameters,
         checkpoint.settings.scale,
@@ -420,7 +419,7 @@ fn subsampling_changes_only_training_and_spill_resume_repeats_it() {
 }
 
 fn integer_reference(
-    q: &minase::eval::nnue::network::LayerStackParameters,
+    q: &minase::eval::nnue::LayerStackParameters,
     features: &minase_trainer::nnue::layerstack::Features,
 ) -> i32 {
     let mut input = [0_i64; 256];

@@ -59,11 +59,10 @@ fn search_apis_use_the_supplied_nnue() {
     );
     // 固定ネットの出力バイアスだけを変え、注入した重みを区別する。
     let baseline = fixed_network();
-    let mut parameters = crate::eval::nnue::network::test_util::layer_stack_parameters();
+    let mut parameters = crate::eval::nnue::test_util::layer_stack_parameters();
     parameters.output_bias = 128 * 100;
-    let supplied = Network::LayerStack(
-        crate::eval::nnue::network::LayerStackNetwork::new(parameters).unwrap(),
-    );
+    let supplied =
+        Network::LayerStack(crate::eval::nnue::LayerStackNetwork::new(parameters).unwrap());
     let mut child = position.clone();
     let root_move = legal_moves(&position)
         .into_iter()

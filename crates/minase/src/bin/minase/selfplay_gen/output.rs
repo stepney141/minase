@@ -140,7 +140,7 @@ use super::{
 use minase::datagen::output::{DirectoryLock, atomic_json, commit_files};
 use minase::datagen::statistics::{RecordedStatistics, SCORE_VALUE_COUNT, Statistics, score_index};
 use minase::datagen::{data_error, hex};
-use minase::eval::nnue::network::Network;
+use minase::eval::nnue::Network;
 use minase::search::{TranspositionTable, TranspositionTableError};
 use minase::training::records::{
     self, Exclusion, HEADER_LEN, Header, Reader, TeacherKind, Value, Writer,

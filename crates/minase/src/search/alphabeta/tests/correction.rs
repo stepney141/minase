@@ -109,14 +109,13 @@ pub(super) fn quiescence_stand_pat_beta_cutoff_uses_corrected_static_eval() {
 #[cfg(feature = "tuning")]
 pub(super) fn quiescence_stand_pat_clamps_at_evaluation_limit() {
     let board = bare_kings();
-    let mut parameters = crate::eval::nnue::network::test_util::layer_stack_parameters();
+    let mut parameters = crate::eval::nnue::test_util::layer_stack_parameters();
     // 上限直前の出力を明示し、特定の駒配置や学習済み重みに依存しない。
     parameters.output_weights.fill(0);
     parameters.l1_weights[15 * parameters.width..].fill(0);
     parameters.output_bias = (EVALUATION_LIMIT - 1) * parameters.fv_scale;
-    let network = Network::LayerStack(
-        crate::eval::nnue::network::LayerStackNetwork::new(parameters).unwrap(),
-    );
+    let network =
+        Network::LayerStack(crate::eval::nnue::LayerStackNetwork::new(parameters).unwrap());
     let v = evaluate(&network, &board);
     with_network_root_searcher(&network, &board, &[], |searcher| {
         zero_position_correction(searcher, &board);

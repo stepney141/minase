@@ -1,6 +1,6 @@
 use super::reference::forward_validated;
 use super::{Error, Features, Parameter as P, Parameters, Result, SPEC, Scale};
-use minase::eval::nnue::network::{SimpleNetwork, SimpleParameters};
+use minase::eval::nnue::{SimpleNetwork, SimpleParameters};
 use minase_core::{Color, Position};
 fn quantized(
     name: &'static str,

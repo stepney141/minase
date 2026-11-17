@@ -148,7 +148,10 @@ def create(offer: str, label: str, onstart: Path, image: str, disk: int,
 
 
 def file_sha256(path: Path) -> str:
-    """ファイル全体を分割して読み、SHA-256を16進数で返す。"""
+    """ファイル全体を分割して読み、SHA-256を16進数で返す。
+
+    tatara形式のネットもヘッダと重みを含む全バイトで識別し、構造には依存しない。
+    """
     digest = hashlib.sha256()
     with path.open('rb') as stream:
         for block in iter(lambda: stream.read(1024 * 1024), b''):

@@ -3,8 +3,8 @@
 use std::sync::atomic::Ordering as AtomicOrdering;
 use std::time::Duration;
 
-use crate::eval::nnue::network::Network;
-use crate::eval::nnue::network::SearchEvaluator;
+use crate::eval::nnue::Network;
+use crate::eval::nnue::SearchEvaluator;
 use crate::search::events::StopReason;
 use crate::search::{DRAW_SCORE, MAX_PLY, REPETITION_WIN, SearchRepetition, TranspositionTable};
 use minase_core::board::{BOARD_SQUARE_COUNT, Square};
