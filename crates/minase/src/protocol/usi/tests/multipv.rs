@@ -364,3 +364,50 @@ fn multipv_finished_prints_all_lines_only_when_the_selected_worker_is_deeper() {
         assert_ranked_output(&text, 3);
     }
 }
+
+#[test]
+fn multipv_repetition_scores_keep_cp_while_ordinary_proofs_use_mate() {
+    let context = SearchContext {
+        id: 1,
+        position: Position::initial(),
+        rules: Rules::JCSA,
+        infinite: false,
+        ponder: false,
+        last_info_depth: None,
+        show_multipv: true,
+    };
+    let scores = [
+        search::MATE - 5,
+        search::REPETITION_WIN - 5,
+        -search::REPETITION_WIN + 5,
+        -search::MATE + 5,
+    ];
+    let lines: Vec<_> = scores
+        .into_iter()
+        .map(|score| PvLine {
+            depth: 1,
+            score: Some(score),
+            moves: vec![],
+        })
+        .collect();
+    let mut output = Vec::new();
+    write_pv_lines(
+        &mut output,
+        &context,
+        10,
+        Duration::from_millis(100),
+        &lines,
+    )
+    .unwrap();
+    let output = String::from_utf8(output).unwrap();
+    // usi-extensions.md: 王駒捕獲までの5手から、詰み後の2手を引いて3手と表示する。
+    let expected = format!(
+        "info depth 1 multipv 1 score mate 3 nodes 10 nps 100 time 100 pv\n\
+         info depth 1 multipv 2 score cp {} nodes 10 nps 100 time 100 pv\n\
+         info depth 1 multipv 3 score cp {} nodes 10 nps 100 time 100 pv\n\
+         info depth 1 multipv 4 score mate -3 nodes 10 nps 100 time 100 pv\n",
+        search::REPETITION_WIN - 5,
+        -search::REPETITION_WIN + 5,
+    );
+    assert_eq!(output, expected);
+}

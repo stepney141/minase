@@ -1526,3 +1526,84 @@ fn inference_boundary_rejects_nonfinite_logits_values_and_out_of_range_probabili
         }
     }
 }
+
+#[test]
+fn multipv_nodes_one_preserves_first_line_and_uses_root_value_only_for_it() {
+    struct RootEvaluator;
+    impl Evaluator for RootEvaluator {
+        fn evaluate(
+            &mut self,
+            queries: &[Query<'_>],
+            logits: &mut Vec<f32>,
+            values: &mut Vec<f32>,
+        ) -> Result<(), NnError> {
+            NonUniformEvaluator.evaluate(queries, logits, values)?;
+            values.fill(0.75);
+            Ok(())
+        }
+    }
+    let input = initial();
+    let expected_moves = input.root_moves()[..3].to_vec();
+    let mut results = Vec::new();
+    for count in [1, 3] {
+        let mut engine = engine(RootEvaluator);
+        engine.config.cp_per_logit = 100.0;
+        let handle = engine
+            .start(
+                input.clone().with_multi_pv(count).unwrap(),
+                nodes(1),
+                1,
+                false,
+            )
+            .unwrap();
+        let event = handle
+            .events()
+            .recv_timeout(Duration::from_secs(5))
+            .unwrap();
+        let SearchEvent::Finished {
+            best_move,
+            score,
+            depth,
+            nodes,
+            lines,
+            stop_reason,
+            partial_score,
+            ..
+        } = event
+        else {
+            panic!("only Finished is sent");
+        };
+        assert_eq!(lines.len(), count);
+        for (rank, line) in lines.iter().enumerate() {
+            assert_eq!(line.moves, [expected_moves[rank]]);
+            assert_eq!(line.depth, 1);
+            assert_eq!(line.score, if rank == 0 { Some(110) } else { None });
+        }
+        assert_eq!(score, 110); // round(100 ln 3)
+        assert_eq!(best_move, expected_moves[0]);
+        assert_eq!(nodes, 1);
+        assert_eq!(depth, 1);
+        assert_eq!(stop_reason, StopReason::NodeLimit);
+        assert_eq!(partial_score, None);
+        assert_eq!(
+            handle.events().recv_timeout(Duration::from_secs(5)),
+            Err(mpsc::RecvTimeoutError::Disconnected)
+        );
+        let Searcher::Mcts(engine) = handle.join().unwrap() else {
+            panic!()
+        };
+        let driver = engine.driver.unwrap();
+        assert_eq!(score, driver.score(100.0).unwrap());
+        assert_eq!(lines[0].moves, driver.tree().principal_variation());
+        results.push((
+            best_move,
+            score,
+            depth,
+            nodes,
+            lines[0].clone(),
+            stop_reason,
+            partial_score,
+        ));
+    }
+    assert_eq!(results[0], results[1]);
+}

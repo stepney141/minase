@@ -8,9 +8,11 @@ use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::time::Duration;
 
 use super::Error;
-use super::driver::{DrawValue, Driver, EvaluationRequest, Step, validate_scale};
+use super::driver::{
+    DrawValue, Driver, EvaluationRequest, Step, probability_to_score, validate_scale,
+};
 use super::puct::PuctConfig;
-use super::tree::{NodeState, SelectionRule};
+use super::tree::{NodeState, SelectionRule, Tree};
 use crate::nn::{Evaluator, ExecutionProvider, Network, NnError, OnnxEvaluator, Query};
 use crate::search::budget::{TimeBudget, time_budget};
 use crate::search::clock::{MonotonicClock, SearchClock};
@@ -397,6 +399,7 @@ impl Engine {
         ponder: bool,
         clock: Arc<dyn SearchClock>,
     ) -> Result<SearchHandle, StartFailure> {
+        let multi_pv = snapshot.multi_pv().get().min(snapshot.root_moves().len());
         if let Err(error) = self.prepare_driver(snapshot, limits) {
             return Err(StartFailure {
                 searcher: Searcher::Mcts(self),
@@ -426,10 +429,10 @@ impl Engine {
                     &hit_ns,
                     &stop,
                 )?;
-                let pv = driver.tree().principal_variation();
                 let score = driver
                     .score(self.config.cp_per_logit)
                     .map_err(SearchJoinError::Mcts)?;
+                let lines = pv_lines(driver.tree(), multi_pv, score, self.config.cp_per_logit);
                 let best_move = driver
                     .tree()
                     .best_move()
@@ -439,14 +442,10 @@ impl Engine {
                     search_id,
                     best_move,
                     score,
-                    depth: pv.len() as u32,
+                    depth: lines[0].depth,
                     nodes: driver.simulations(),
                     elapsed: clock.elapsed(),
-                    lines: vec![PvLine {
-                        depth: pv.len() as u32,
-                        score: Some(score),
-                        moves: pv,
-                    }],
+                    lines,
                     stop_reason,
                 });
                 Ok(Searcher::Mcts(self))
@@ -485,6 +484,41 @@ impl Engine {
         }
         Ok(())
     }
+}
+
+/// 探索終了後の木を読むだけで上位N本を組み立て、探索と木の再利用を変えない。
+///
+/// 順位は最善手と同じく確定した勝ち、未確定、確定した負けの順とする。
+/// 確定値は大きい方、未確定同士は訪問回数、Q、未訪問なら方策のlogitで比べ、
+/// 同順位なら元の順を保つ。Nは設定値と根の候補手数の小さい方である。
+/// 1本目は従来の根の評価値を保ち、2本目以降は親から見た確定値、
+/// またはQを0.001〜0.999に丸めた対数オッズに勝率尺度を掛けたcpを使う。
+/// 2本目以降の未訪問の辺はdlshogiと同じく値を持たない。
+/// ふかうら王の勝率0.5は根拠のない値なので採らない。
+/// 理由は`docs/plans/multipv.md`を参照する。
+pub(super) fn pv_lines(tree: &Tree, count: usize, score: i32, cp_per_logit: f32) -> Vec<PvLine> {
+    tree.root()
+        .ranked_edges()
+        .into_iter()
+        .take(count)
+        .enumerate()
+        .map(|(rank, index)| {
+            let edge = &tree.root().edges[index];
+            let moves = tree.variation_from_edge(index);
+            let score = if rank == 0 {
+                Some(score)
+            } else if let Some(proof) = edge.parent_proof() {
+                Some(proof.score())
+            } else {
+                edge.q().map(|q| probability_to_score(q, cp_per_logit))
+            };
+            PvLine {
+                depth: moves.len() as u32,
+                score,
+                moves,
+            }
+        })
+        .collect()
 }
 
 fn default_cache_dir(xdg_cache_home: Option<&OsStr>) -> PathBuf {

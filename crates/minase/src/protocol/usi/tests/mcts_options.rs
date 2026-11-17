@@ -1045,11 +1045,34 @@ fn verbose_movestats_discard_running_search_emits_nothing() {
 }
 
 #[test]
-fn mcts_multipv_setting_labels_the_single_phase_one_line() {
+fn mcts_multipv_setting_labels_a_single_root_candidate() {
+    use minase_core::test_util::{position, sq};
+    use minase_core::{Color, PieceKind};
+    // フェーズ1の1行の期待を、N=1となる境界局面で維持する。
+    let position = position(
+        Color::Black,
+        &[
+            (sq(0, 11), Color::Black, PieceKind::King),
+            (sq(1, 11), Color::Black, PieceKind::Pawn),
+            (sq(1, 10), Color::Black, PieceKind::Pawn),
+            (sq(11, 0), Color::White, PieceKind::King),
+        ],
+    );
+    let game = Game::from_position(Rules::JCSA, position);
+    assert_eq!(
+        crate::search::SearchSnapshot::from_game(&game)
+            .unwrap()
+            .root_moves()
+            .len(),
+        1
+    );
+    let sfen = minase_core::notation::sfen::to_sfen(game.position());
     let mut protocol = UsiProtocol::with_searcher(Searcher::Mcts(Engine::ready_for_test()));
     let (result, output) = run(
         &mut protocol,
-        "setoption name RuleSet value JCSA\nsetoption name MultiPV value 2\nposition startpos\ngo nodes 1\n",
+        &format!(
+            "setoption name RuleSet value JCSA\nsetoption name MultiPV value 2\nposition sfen {sfen} - 1\ngo nodes 1\n"
+        ),
     );
     result.unwrap();
     assert!(!output.contains("error:"), "{output}");
@@ -1063,4 +1086,196 @@ fn mcts_multipv_setting_labels_the_single_phase_one_line() {
         "{output}"
     );
     super::assert_bestmove_matches_final_pv(&output);
+}
+
+#[test]
+fn mcts_multipv_nodes_one_emits_two_lines_with_no_second_score() {
+    let mut protocol = UsiProtocol::with_searcher(Searcher::Mcts(Engine::ready_for_test()));
+    let (result, output) = run(
+        &mut protocol,
+        "setoption name RuleSet value JCSA\nsetoption name MultiPV value 2\nposition startpos\ngo nodes 1\n",
+    );
+    result.unwrap();
+    assert!(!output.contains("error:"), "{output}");
+    let lines: Vec<_> = output
+        .lines()
+        .filter(|line| line.starts_with("info depth "))
+        .collect();
+    assert_eq!(lines.len(), 2, "{output}");
+    assert!(
+        lines[0].starts_with("info depth 1 multipv 1 score "),
+        "{output}"
+    );
+    assert!(
+        lines[1].starts_with("info depth 1 multipv 2 nodes 1 "),
+        "{output}"
+    );
+    assert_mcts_pv_lines(&output, &Game::new(Rules::JCSA), 2, true);
+}
+
+// multipv.mdの検証13。連続した行、統計の共有、合法性、最善手との一致を検査する。
+fn assert_mcts_pv_lines(output: &str, game: &Game, count: usize, ranked: bool) {
+    assert!(!output.contains("error:"), "{output}");
+    let all: Vec<_> = output.lines().collect();
+    let indices: Vec<_> = all
+        .iter()
+        .enumerate()
+        .filter_map(|(index, line)| line.starts_with("info depth ").then_some(index))
+        .collect();
+    assert_eq!(indices.len(), count, "{output}");
+    let mut first_moves = Vec::new();
+    for (rank, &index) in indices.iter().enumerate() {
+        assert_eq!(index, indices[0] + rank, "PV lines must be consecutive");
+        let line = all[index];
+        assert_eq!(line.contains(" multipv "), ranked, "{line}");
+        if ranked {
+            assert_eq!(stats_field(line, "multipv"), (rank + 1).to_string());
+        }
+        for field in ["nodes", "nps", "time"] {
+            assert_eq!(
+                stats_field(line, field),
+                stats_field(all[indices[0]], field)
+            );
+        }
+        let (_, pv) = line.split_once(" pv ").unwrap();
+        let moves: Vec<_> = pv.split_whitespace().collect();
+        assert_eq!(
+            stats_field(line, "depth").parse::<usize>().unwrap(),
+            moves.len()
+        );
+        assert!(!first_moves.contains(&moves[0]));
+        first_moves.push(moves[0]);
+        let mut replay = game.clone();
+        for text in moves {
+            let mv = usi::parse(replay.position(), text).unwrap();
+            assert!(replay.legal_moves().contains(&mv), "{line}");
+            replay.play(mv).unwrap();
+        }
+    }
+    assert_eq!(stats_bestmove(output), first_moves[0]);
+}
+
+#[test]
+fn mcts_multipv_natural_stop_and_both_ponderhit_paths_emit_legal_lines() {
+    for count in [1, 3] {
+        for path in ["natural", "stop", "ponder_running", "ponder_completed"] {
+            let mut protocol = verbose_protocol();
+            let (result, output) = run(
+                &mut protocol,
+                &format!("setoption name MultiPV value {count}\n"),
+            );
+            result.unwrap();
+            assert!(output.is_empty());
+            let mut output = Vec::new();
+            let args = match path {
+                "natural" => vec!["nodes", "8"],
+                "stop" => vec!["infinite"],
+                _ => vec!["ponder", "nodes", "8"],
+            };
+            let mut active = protocol.start_go(&args, &mut output).unwrap();
+            if matches!(path, "natural" | "ponder_completed") {
+                complete_stats_search(&mut protocol, &mut active, &mut output);
+            }
+            if path != "natural" {
+                protocol
+                    .handle_searching_line(
+                        &mut active,
+                        &mut std::collections::VecDeque::new(),
+                        if path == "stop" { "stop" } else { "ponderhit" },
+                        &mut output,
+                    )
+                    .unwrap();
+            }
+            if path == "ponder_running" {
+                complete_stats_search(&mut protocol, &mut active, &mut output);
+            }
+            assert!(active.is_none());
+            let output = String::from_utf8(output).unwrap();
+            assert_mcts_pv_lines(&output, &Game::new(Rules::JCSA), count, count > 1);
+        }
+    }
+}
+
+#[test]
+fn mcts_multipv_is_limited_to_the_two_root_candidates() {
+    use minase_core::test_util::{position, sq};
+    use minase_core::{Color, PieceKind};
+    let position = position(
+        Color::Black,
+        &[
+            (sq(0, 11), Color::Black, PieceKind::King),
+            (sq(1, 11), Color::Black, PieceKind::Pawn),
+            (sq(11, 0), Color::White, PieceKind::King),
+        ],
+    );
+    let game = Game::from_position(Rules::JCSA, position);
+    assert_eq!(
+        crate::search::SearchSnapshot::from_game(&game)
+            .unwrap()
+            .root_moves()
+            .len(),
+        2
+    );
+    let sfen = minase_core::notation::sfen::to_sfen(game.position());
+    let mut protocol = verbose_protocol();
+    let (result, output) = run(
+        &mut protocol,
+        &format!("setoption name MultiPV value 3\nposition sfen {sfen} - 1\ngo nodes 1\n"),
+    );
+    result.unwrap();
+    assert_mcts_pv_lines(&output, &game, 2, true);
+}
+
+fn stats_without_elapsed(output: &str) -> Vec<Vec<String>> {
+    output
+        .lines()
+        .filter(|line| line.starts_with("info string movestats ") || line.starts_with("bestmove "))
+        .map(|line| {
+            let mut words = line.split_whitespace();
+            let mut result = Vec::new();
+            while let Some(word) = words.next() {
+                if word == "elapsed-ms" {
+                    words.next().unwrap();
+                } else {
+                    result.push(word.to_owned());
+                }
+            }
+            result
+        })
+        .collect()
+}
+
+#[test]
+fn mcts_multipv_preserves_all_move_stats_and_subtree_reuse() {
+    let mut sessions = Vec::new();
+    for count in [1, 3] {
+        let mut protocol = verbose_protocol();
+        let (result, first) = run(
+            &mut protocol,
+            &format!("setoption name MultiPV value {count}\ngo nodes 300\n"),
+        );
+        result.unwrap();
+        assert_mcts_pv_lines(&first, &Game::new(Rules::JCSA), count, count > 1);
+        let mv = stats_bestmove(&first);
+        let visits = stats_field(stats_moves(&first)[0], "visits")
+            .parse::<u64>()
+            .unwrap();
+        assert!(visits > 1, "exercise an expanded subtree");
+        let (result, second) = run(
+            &mut protocol,
+            &format!("position startpos moves {mv}\ngo nodes 300\n"),
+        );
+        result.unwrap();
+        assert_eq!(
+            stats_field(stats_root(&second), "reused")
+                .parse::<u64>()
+                .unwrap(),
+            visits - 1
+        );
+        sessions.push((
+            stats_without_elapsed(&first),
+            stats_without_elapsed(&second),
+        ));
+    }
+    assert_eq!(sessions[0], sessions[1]);
 }

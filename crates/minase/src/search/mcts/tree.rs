@@ -256,7 +256,11 @@ impl Node {
     /// 最善手と同じ比較規則の降順に、辺の添字を安定ソートして返す。
     ///
     /// 同順位では元の辺の順を保ち、先頭は`best_edge`と一致する。
-    /// 評価待ちなら空になる。`docs/plans/multipv.md`のMultiPVも使用する予定である。
+    /// 確定した勝ち、未確定、確定した負けの順で、確定値は大きい方を採る。
+    /// 未確定同士は訪問回数、訪問済みならQ、未訪問なら方策のlogitで比べる。
+    /// 評価待ちなら空になる。MultiPVと根の統計の表示が使う。
+    /// 辺そのものを並べ替えず、探索と木の再利用を変えない。
+    /// 理由は`docs/plans/multipv.md`を参照する。
     pub fn ranked_edges(&self) -> Vec<usize> {
         if matches!(self.state, NodeState::Pending { .. }) {
             return Vec::new();
@@ -678,22 +682,35 @@ impl Tree {
 
     /// 最善手の規則で主変化を返す。根では未訪問でも評価済みなら1手を含める。
     pub fn principal_variation(&self) -> Vec<Move> {
-        let mut pv = Vec::new();
-        let mut node = self.root();
-        while let Some(index) = node.best_edge() {
-            let edge = &node.edges[index];
-            if !pv.is_empty() && edge.visits == 0 {
+        match self.root.best_edge() {
+            Some(index) => self.variation_from_edge(index),
+            None => Vec::new(),
+        }
+    }
+
+    /// 指定した根の辺から、子の最善手をたどった読み筋を返す。
+    ///
+    /// 根の辺は未訪問でも含め、2手目以降は訪問済みの辺だけを含める。
+    /// 展開済みまたは勝敗の確定した子だけを進み、木も探索も変更しない。
+    /// 根の順位は[`Node::ranked_edges`]で決める。
+    /// MultiPVの値は1本目が根の評価値、以降は親から見た確定値かQの対数オッズである。
+    /// 2本目以降の未訪問の辺はdlshogiと同じく値を持たず、根拠のない勝率0.5を使わない。
+    /// 理由は`docs/plans/multipv.md`を参照する。
+    pub(super) fn variation_from_edge(&self, index: usize) -> Vec<Move> {
+        let mut edge = &self.root.edges[index];
+        let mut pv = vec![edge.mv];
+        while let Some(child) = edge.child.as_deref() {
+            if !matches!(child.state, NodeState::Expanded | NodeState::Proven(_)) {
+                break;
+            }
+            let Some(index) = child.best_edge() else {
+                break;
+            };
+            edge = &child.edges[index];
+            if edge.visits == 0 {
                 break;
             }
             pv.push(edge.mv);
-            match edge.child.as_deref() {
-                Some(child)
-                    if matches!(child.state, NodeState::Expanded | NodeState::Proven(_)) =>
-                {
-                    node = child;
-                }
-                _ => break,
-            }
         }
         pv
     }

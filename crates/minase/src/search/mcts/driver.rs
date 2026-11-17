@@ -258,8 +258,7 @@ impl Driver {
             .q()
             .or(root.value)
             .ok_or(TreeError::NotEvaluated)?;
-        let p = f64::from(value).clamp(0.001, 0.999);
-        Ok((f64::from(cp_per_logit) * (p / (1.0 - p)).ln()).round() as i32)
+        Ok(probability_to_score(value, cp_per_logit))
     }
 
     /// 履歴の差分をたどれ、根の規則と候補手が一致するときだけ木を付け替える。
@@ -486,6 +485,12 @@ impl Driver {
             },
         )
     }
+}
+
+/// 勝率を0.001〜0.999に丸め、検査済みの勝率尺度で対数オッズをcpへ写す。
+pub(super) fn probability_to_score(value: f32, cp_per_logit: f32) -> i32 {
+    let p = f64::from(value).clamp(0.001, 0.999);
+    (f64::from(cp_per_logit) * (p / (1.0 - p)).ln()).round() as i32
 }
 
 fn proven(outcome: Outcome, repetition: bool, approximate: bool) -> NodeState {
