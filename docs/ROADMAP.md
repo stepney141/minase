@@ -65,6 +65,7 @@
 | AlphaZero型探索の強化学習の実行 | [plans/archived/alphazero-rl.md](plans/archived/alphazero-rl.md) | 中断 | 2026年11月9日 |
 | AlphaZero型探索の強化学習の2回目の実行の準備 | [plans/archived/alphazero-rl-2-prep.md](plans/archived/alphazero-rl-2-prep.md) | 完了（採用） | 2026年11月10日 |
 | AlphaZero型探索の強化学習の2回目の実行 | [plans/alphazero-rl-2.md](plans/alphazero-rl-2.md) | 進行中 | |
+| 学習済みネットを拡張して行う3回目の強化学習 | [plans/alphazero-rl-3.md](plans/alphazero-rl-3.md) | 起案 | |
 | 対局用MCTSを全部の規則コードで探索できるようにする | [plans/archived/mcts-rule-codes.md](plans/archived/mcts-rule-codes.md) | 完了（採用） | 2026年11月13日 |
 | AlphaZero型探索の強さを測る固定の相手 | [plans/archived/mcts-fixed-opponents.md](plans/archived/mcts-fixed-opponents.md) | 完了（採用） | 2026年11月14日 |
 | AlphaZero型探索のネットを診断する固定の検証用データ | [plans/archived/zero-validation-games.md](plans/archived/zero-validation-games.md) | 完了（採用） | 2026年11月15日 |
@@ -197,20 +198,18 @@ PV-MCTSには、勝率尺度をオプション`NnCpPerLogit`で渡す。
 
 ### AlphaZero型探索
 
-[統括計画](plans/alphazero.md)は、ゼロから強化学習で育てたネットのMCTSを、αβ探索とNNUEの組合せと同等以上に強くすることを目標とする。
+[統括計画](plans/alphazero.md)は、ゼロから強化学習で育てたネットを用いたMCTSを、αβ探索とNNUEの組合せと同等以上に強くすることを目標とする。
 6本のサブタスクのうち5本は完了した。
-最後のサブタスクである強化学習の実行は、自己対局と学習を1サイクルとして繰り返す。
-[1回目](plans/archived/alphazero-rl.md)はサイクル32で中断したので、2回目は20ブロック256チャネルのネットをランダムに初期化してやり直す。
+最後のサブタスクである強化学習では、自己対局と学習を1サイクルとして繰り返す。
+[1回目](plans/archived/alphazero-rl.md)はサイクル32で中断し、[2回目](plans/alphazero-rl-2.md)は20ブロック256チャネルのネットでサイクル100を終えた。
+サイクル100で得たネットの追加学習は、2回目の学習効率を見直すための別実験として扱う。
+経過と成果物は[2回目の実験記録](training/alphazero-rl-2/README.md)にある。
 
-2回目の実行は、[2回目の実行の設計書](plans/alphazero-rl-2.md)で進める。
-この設計書は、自己対局の規則を`lishogi`へ切り替える作業、定例の測定の用意、およびサイクルの実行を扱う。
-前提の設計書はすべて完了しており、新しい初期ネットは、NASの系列`cycles-rl2-az`の`cycle-0000/`にある。
-フェーズ1の規則の`lishogi`への切り替えと定例の測定の用意は、2026年11月16日にmasterへマージした。
-同じ日の利用者の決定で、別の系列での試走をやめ、系列`cycles-rl2-az`の最初のセッションをサイクル3で区切って確かめることにした。
-フェーズ2では、同じ日にvast.aiのRTX 4090を4枚積んだ機械でサイクル1〜3を回し、学習が健全に始まったことを確かめた（[最初のセッションの記録](measurements/alphazero-rl-2/alphazero-rl-2-first-session.md)）。
-利用者の承認を得てフェーズ3に着手し、サイクル1〜10を終えた。サイクル10のネットは短い試しの対局で固定の相手に全敗したので、利用者の決定でサイクル10の定例の測定は行わず、サイクル11〜20を回している。
-[学習の系列の記録と進捗図](plans/archived/training-series-records.md)は、2026年11月16日に完了した。
-系列の記録の置き場[docs/training/](training/README.md)と進捗図の道具ができており、2回目の実行のサイクル1〜3の記録から`cycles.csv`と進捗図が作れることを確かめた。
+[3回目の強化学習](plans/alphazero-rl-3.md)は起案の段階である。
+2回目の重みと教師データを引き継ぎ、学習率のコサイン減衰、バッチサイズ256、学習量の増加、および価値ヘッドと大域情報を扱う層の拡張を提案する。
+学習対象の対局も直近4万局へ絞る。
+追加費用の上限は100米ドルとし、その範囲で棋力を高めることを優先する。
+現在は起案にとどめ、次に設計内容を確定して実装と実験の着手を決める。
 
 2回目の実行と並行して進められる作業は、PUCTの係数の調整とNNUEの世代反復の2件である。
 [対局用MCTSのPUCTの係数と方策の温度のSPSAによる調整](plans/mcts-puct-spsa.md)は起案の段階で利用者の承認を待っており、本番の調整には、2回目の実行のネットのうち利用者が指定するものを使う。
