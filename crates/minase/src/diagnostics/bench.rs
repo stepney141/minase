@@ -127,16 +127,16 @@ impl std::error::Error for Error {
 }
 
 /// ベンチ対象の名前と2欄SFEN。
-struct BenchPosition {
+pub(crate) struct BenchPosition {
     /// 出力に使う局面名。
-    name: &'static str,
+    pub(crate) name: &'static str,
     /// 局面の2欄基本形SFEN。
-    sfen: &'static str,
+    pub(crate) sfen: &'static str,
 }
 
 /// 初期局面と中盤、終盤を含む固定15局面。
 /// `minase_core::test_util::BENCH_SFENS`は試験が共有する写しとして同じ15局面を同じ順で持つ。
-const BENCH_POSITIONS: &[BenchPosition] = &[
+pub(crate) const BENCH_POSITIONS: &[BenchPosition] = &[
     BenchPosition {
         name: "initial",
         sfen: "lfcsgekgscfl/a1b1txot1b1a/mvrhdqndhrvm/pppppppppppp/3i4i3/12/12/3I4I3/PPPPPPPPPPPP/MVRHDNQDHRVM/A1B1TOXT1B1A/LFCSGKEGSCFL b",

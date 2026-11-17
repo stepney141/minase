@@ -17,11 +17,13 @@ pub mod driver;
 mod engine;
 mod error;
 pub mod gumbel;
+pub(crate) mod move_stats;
 pub mod puct;
 pub mod tree;
 
 pub use driver::{DrawValue, Driver, EvaluationRequest, Step};
-pub use engine::{Config, Engine};
+pub(crate) use engine::run;
+pub use engine::{Config, Engine, SearchConfig};
 pub use error::Error;
 
 #[cfg(test)]

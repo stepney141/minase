@@ -3,7 +3,7 @@
 use std::fmt;
 use std::num::ParseIntError;
 
-use crate::diagnostics::{bench, nn_eval, nn_fixture, perft, random_play};
+use crate::diagnostics::{bench, bench_mcts, nn_eval, nn_fixture, perft, random_play};
 use std::path::PathBuf;
 
 use super::*;
@@ -21,6 +21,8 @@ enum ArgumentError {
     },
     Perft(perft::ArgumentError),
     Bench(bench::ArgumentError),
+    BenchMcts(bench_mcts::ArgumentError),
+    RequiresAlphaBeta(&'static str),
     RandomPlay(random_play::ArgumentError),
 }
 
@@ -37,6 +39,8 @@ impl fmt::Display for ArgumentError {
             } => write!(f, "invalid {name} '{value}': {source}"),
             Self::Perft(error) => error.fmt(f),
             Self::Bench(error) => error.fmt(f),
+            Self::BenchMcts(error) => error.fmt(f),
+            Self::RequiresAlphaBeta(name) => write!(f, "{name} requires --search alphabeta"),
             Self::RandomPlay(error) => error.fmt(f),
         }
     }
@@ -48,6 +52,7 @@ impl std::error::Error for ArgumentError {
             Self::Integer { source, .. } => Some(source),
             Self::Perft(error) => Some(error),
             Self::Bench(error) => Some(error),
+            Self::BenchMcts(error) => Some(error),
             Self::RandomPlay(error) => Some(error),
             _ => None,
         }
@@ -107,6 +112,32 @@ fn parse_bench(tokens: &[&str]) -> Result<bench::Arguments, ArgumentError> {
         }
     }
     bench::Arguments::new(depth, threads, repetitions).map_err(ArgumentError::Bench)
+}
+
+fn parse_bench_mcts(tokens: &[&str]) -> Result<bench_mcts::Arguments, ArgumentError> {
+    let mut nodes = bench_mcts::DEFAULT_NODES;
+    let mut batch = bench_mcts::DEFAULT_BATCH;
+    let mut seen = std::collections::HashSet::new();
+    let mut tokens = tokens.iter().copied();
+    while let Some(token) = tokens.next() {
+        let name = match token {
+            "nodes" => "nodes",
+            "batch" => "batch",
+            "depth" => return Err(ArgumentError::RequiresAlphaBeta("depth")),
+            "threads" => return Err(ArgumentError::RequiresAlphaBeta("threads")),
+            "repetitions" => return Err(ArgumentError::RequiresAlphaBeta("repetitions")),
+            _ => return Err(ArgumentError::Unknown(token.to_owned())),
+        };
+        if !seen.insert(name) {
+            return Err(ArgumentError::Duplicate(name));
+        }
+        let value = tokens.next().ok_or(ArgumentError::Missing(name))?;
+        match name {
+            "nodes" => nodes = integer(name, value)?,
+            _ => batch = integer(name, value)?,
+        }
+    }
+    bench_mcts::Arguments::new(nodes, batch).map_err(ArgumentError::BenchMcts)
 }
 
 /// out以降はNnCacheDirと同じく、すべての語を1個の空白でつないだパスとする。
@@ -267,8 +298,22 @@ impl UsiProtocol {
         finish(result, output)
     }
 
-    /// セッションの探索器や対局に触れず、専用のαβ探索で測定する。
+    /// 起動した探索方式で固定局面を測る。セッションの探索器や対局は変更しない。
+    /// αβ探索はdepth・threads・repetitions、PV-MCTSはnodes・batchを受け付ける。
+    /// PV-MCTSはハッシュの評価器で固定回数探索し、ネットの準備を要求しない。
     pub(super) fn handle_bench(&self, tokens: &[&str], output: &mut dyn Write) -> io::Result<()> {
+        if matches!(self.searcher, Some(Searcher::Mcts(_))) {
+            let arguments = match parse_bench_mcts(tokens) {
+                Ok(arguments) => arguments,
+                Err(error) => return write_error(output, &error.to_string()),
+            };
+            #[cfg(feature = "tuning")]
+            TUNING_LOCKED.store(true, Ordering::Relaxed);
+            return finish(
+                bench_mcts::run(arguments, &mut |line| write_line(output, line)),
+                output,
+            );
+        }
         let arguments = match parse_bench(tokens) {
             Ok(arguments) => arguments,
             Err(error) => return write_error(output, &error.to_string()),
@@ -342,6 +387,45 @@ mod tests {
         ] {
             assert!(parse_random_play(&tokens).is_ok());
         }
+    }
+
+    #[test]
+    fn mcts_bench_defaults_and_boundaries_follow_the_contract() {
+        let defaults = bench_mcts::Arguments::new(
+            NonZeroU32::new(800).unwrap(),
+            NonZeroUsize::new(256).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(parse_bench_mcts(&[]).unwrap(), defaults);
+        for nodes in [1, u32::MAX] {
+            for batch in [1, 1024] {
+                assert_eq!(
+                    parse_bench_mcts(&["batch", &batch.to_string(), "nodes", &nodes.to_string()])
+                        .unwrap(),
+                    bench_mcts::Arguments::new(
+                        NonZeroU32::new(nodes).unwrap(),
+                        NonZeroUsize::new(batch).unwrap()
+                    )
+                    .unwrap()
+                );
+            }
+        }
+        for (name, value) in [
+            ("nodes", "0"),
+            ("nodes", "4294967296"),
+            ("nodes", "nope"),
+            ("batch", "0"),
+            ("batch", "nope"),
+        ] {
+            assert!(matches!(
+                parse_bench_mcts(&[name, value]),
+                Err(ArgumentError::Integer { .. })
+            ));
+        }
+        assert!(matches!(
+            parse_bench_mcts(&["batch", "1025"]),
+            Err(ArgumentError::BenchMcts(_))
+        ));
     }
 
     #[test]

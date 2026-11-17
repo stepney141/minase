@@ -12,7 +12,7 @@
 //! | `gameover` | [`EngineCommand::EndGame`]を適用する。 |
 //! | `moves`、`state` | `handle_moves`と`handle_state`の独自照会を処理する。 |
 //! | `perft <深さ> [divide]` | 現局の着手規則で経路を数え、各行に`info string`を付けて終端行`end`まで出力する。 |
-//! | `bench [depth <N>] [threads <N>] [repetitions <N>]` | 規則や準備を要求せず、専用のαβ探索で固定局面を測り、各行と終端行を出力する。 |
+//! | `bench` | 規則や準備を要求せず、起動した探索方式で固定局面を測る。αβ探索は`[depth <N>] [threads <N>] [repetitions <N>]`、`--search mcts`は`[nodes <N>] [batch <N>]`を受け付け、ハッシュの評価器でPV-MCTSを固定回数探索する。 |
 //! | `nn-fixture out <パス>` | 規則や準備を要求せず、288局面のJSON Linesを書き出し、報告と終端行を返す。 |
 //! | `nn-eval out <パス>` | MCTSの準備済み推論器で288局面を評価してJSONを書き出し、所要時間と終端行を返す。 |
 //! | `random-play [games <N>] [seed <S>] [game <K>] [max-ply <N>] [verify-all] [verbose]` | 最後に受理した規則で独立した対局を検査し、結果と終端行を返す。 |
@@ -1768,7 +1768,7 @@ fn validated_ponder_move(game: &Game, best_move: Move, pv: &[Move]) -> Option<St
 /// `info string stop <理由>`に続けて`bestmove <着手>[ ponder <予想手>]`を出す。
 ///
 /// 投了時は`bestmove resign`とし、予想手を付けない。
-/// 停止理由は[`stop_reason_text`]で表し、先読み用に上書きしない。
+/// 停止理由は[`StopReason::as_str`]で表し、先読み用に上書きしない。
 /// 理由の行は対局ハーネスが手ごとの停止理由を保存するために使う。
 /// 正常に開始して結果を返す`go`ごとに`bestmove`は1回であり、
 /// `gameover`、`quit`、または入力の切断で捨てた探索には出さない。
@@ -1780,7 +1780,7 @@ fn write_bestmove(
     stop_reason: StopReason,
     resign: bool,
 ) -> io::Result<()> {
-    writeln!(output, "info string stop {}", stop_reason_text(stop_reason))?;
+    writeln!(output, "info string stop {}", stop_reason.as_str())?;
     if resign {
         writeln!(output, "bestmove resign")?;
     } else {
@@ -1791,19 +1791,6 @@ fn write_bestmove(
         writeln!(output)?;
     }
     output.flush()
-}
-
-/// 探索を実際に終わらせた[`StopReason`]を固定語へ1対1に写す。
-/// 指定深さの完了は`depth`、ノード上限は`nodes`、softとhardの時間制限は`soft`と`hard`、
-/// 外部の停止要求は`external`とする。
-const fn stop_reason_text(reason: StopReason) -> &'static str {
-    match reason {
-        StopReason::DepthCompleted => "depth",
-        StopReason::NodeLimit => "nodes",
-        StopReason::SoftLimit => "soft",
-        StopReason::HardLimit => "hard",
-        StopReason::ExternalStop => "external",
-    }
 }
 
 /// `info depth <d> score <評価> nodes <n> nps <nps> time <ms> pv <着手>...`を出す。
@@ -4385,7 +4372,7 @@ mod tests {
                 "reason={reason:?}"
             );
             assert!(
-                words.insert(stop_reason_text(reason)),
+                words.insert(reason.as_str()),
                 "duplicate word for {reason:?}"
             );
         }

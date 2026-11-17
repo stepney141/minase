@@ -19,6 +19,19 @@ pub enum StopReason {
     ExternalStop,
 }
 
+impl StopReason {
+    /// 探索を実際に終わらせた理由を、対局と診断で共通の固定語へ写す。
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::DepthCompleted => "depth",
+            Self::NodeLimit => "nodes",
+            Self::SoftLimit => "soft",
+            Self::HardLimit => "hard",
+            Self::ExternalStop => "external",
+        }
+    }
+}
+
 /// 探索スレッドから届く進捗または完了通知。
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub enum SearchEvent {

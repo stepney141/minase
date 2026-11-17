@@ -1,6 +1,7 @@
 //! 対局状態を変更せずに実行する診断。出力先へ接頭辞のない行を渡す。
 
 pub mod bench;
+pub(crate) mod bench_mcts;
 pub mod nn_eval;
 pub mod nn_fixture;
 pub mod perft;

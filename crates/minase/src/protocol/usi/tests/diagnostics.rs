@@ -329,8 +329,8 @@ fn bench_and_perft_preserve_game_settings_and_search_state() {
 
 #[test]
 fn bench_works_with_mcts_without_network_preparation() {
-    let mut protocol = UsiProtocol::with_searcher(Searcher::mcts().unwrap());
-    assert_ended(&run(&mut protocol, "bench depth 1\n"));
+    let mut protocol = mcts_bench_protocol();
+    assert_ended(&run(&mut protocol, "bench nodes 4 batch 2\n"));
     assert!(protocol.engine().is_err());
 }
 
@@ -413,5 +413,231 @@ fn diagnostics_flush_every_line() {
             .unwrap();
         assert!(output.pending.is_empty());
         assert_eq!(output.lines.last().unwrap(), "info string end\n");
+    }
+}
+
+fn mcts_bench_protocol() -> UsiProtocol {
+    use crate::search::mcts::{Config, Engine};
+    UsiProtocol::with_searcher(Searcher::Mcts(Engine::new(Config::new(600.0))))
+}
+
+fn without_timing(output: &str, fields: &[&str]) -> String {
+    output
+        .lines()
+        .map(|line| {
+            let mut words = line.split_whitespace();
+            let mut retained = Vec::new();
+            while let Some(word) = words.next() {
+                retained.push(word);
+                if fields.contains(&word) {
+                    words.next().expect("a timing field has a value");
+                }
+            }
+            retained.join(" ")
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+fn field<'a>(line: &'a str, name: &str) -> &'a str {
+    let mut words = line.split_whitespace();
+    while let Some(word) = words.next() {
+        if word == name {
+            return words.next().unwrap();
+        }
+    }
+    panic!("missing {name}: {line}");
+}
+
+#[test]
+fn mcts_bench_reports_default_configuration_and_all_legal_moves_in_fixture_order() {
+    use crate::diagnostics::bench::BENCH_POSITIONS;
+    use crate::search::mcts::SearchConfig;
+    let mut protocol = mcts_bench_protocol();
+    let output = run(&mut protocol, "bench nodes 4 batch 2\n");
+    assert_ended(&output);
+    let mut lines = output.lines();
+    let config = SearchConfig::default();
+    let p = config.puct;
+    assert_eq!(
+        lines.next().unwrap(),
+        format!(
+            "info string bench mcts nodes 4 batch 2 capacity-bytes {} policy-temperature {} c-init {} c-base {} c-fpu {} c-init-root {} c-base-root {} c-fpu-root {}",
+            config.capacity_bytes,
+            config.policy_temperature,
+            p.c_init,
+            p.c_base,
+            p.c_fpu,
+            p.c_init_root,
+            p.c_base_root,
+            p.c_fpu_root
+        )
+    );
+    let mut total = 0_u64;
+    for entry in BENCH_POSITIONS {
+        let game = Game::from_position(Rules::JCSA, minase_core::parse_sfen(entry.sfen).unwrap());
+        let legal: std::collections::HashSet<_> = game
+            .legal_moves()
+            .into_iter()
+            .map(|mv| usi::text_generated(game.position(), mv))
+            .collect();
+        let position_line = lines.next().unwrap();
+        assert_eq!(field(position_line, "position"), entry.name);
+        let best = field(position_line, "best");
+        assert!(legal.contains(best));
+        assert_eq!(field(position_line, "pv"), best);
+        assert!(["nodes", "depth"].contains(&field(position_line, "stop")));
+        let summary = lines.next().unwrap();
+        assert!(summary.starts_with("info string movestats root "));
+        let simulations: u64 = field(summary, "simulations").parse().unwrap();
+        total += simulations;
+        if field(position_line, "stop") == "nodes" {
+            assert_eq!(simulations, 4);
+        }
+        assert_eq!(field(summary, "reused"), "0");
+        assert_eq!(
+            field(summary, "visits").parse::<u64>().unwrap(),
+            simulations - 1
+        );
+        let mut reported = std::collections::HashSet::new();
+        for index in 0..legal.len() {
+            let row = lines.next().unwrap();
+            assert!(row.starts_with("info string movestats move "));
+            let mv = field(row, "move");
+            if index == 0 {
+                assert_eq!(mv, best);
+            }
+            assert!(reported.insert(mv.to_owned()));
+        }
+        assert_eq!(reported, legal);
+    }
+    let summary = lines.next().unwrap();
+    assert!(summary.starts_with("info string summary "));
+    assert_eq!(field(summary, "simulations").parse::<u64>().unwrap(), total);
+    assert_eq!(lines.next(), Some("info string end"));
+    assert_eq!(lines.next(), None);
+    assert!(protocol.engine().is_err());
+}
+
+#[test]
+fn mcts_bench_repeats_exactly_except_timing_and_root_only_has_no_visits() {
+    for options in ["nodes 1", "nodes 16 batch 1", "nodes 16 batch 8"] {
+        let mut protocol = mcts_bench_protocol();
+        let first = run(&mut protocol, &format!("bench {options}\n"));
+        let second = run(&mut protocol, &format!("bench {options}\n"));
+        assert_ended(&first);
+        assert_ended(&second);
+        assert_eq!(
+            without_timing(&first, &["elapsed-ms", "sps"]),
+            without_timing(&second, &["elapsed-ms", "sps"])
+        );
+        if options == "nodes 1" {
+            for line in first.lines() {
+                if line.starts_with("info string movestats root ") {
+                    assert!(line.contains("simulations 1 reused 0 visits 0"));
+                } else if line.starts_with("info string movestats move ") {
+                    assert_eq!(field(line, "visits"), "0");
+                    assert_eq!(field(line, "q"), "-");
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn mcts_bench_preserves_session_and_ignores_policy_temperature() {
+    let mut protocol = mcts_bench_protocol();
+    run(
+        &mut protocol,
+        "setoption name RuleSet value L1,P0,R2,E2\nusinewgame\nposition startpos moves 6i6h\n",
+    );
+    let before = run(&mut protocol, "state\n");
+    assert!(!before.contains("error:"));
+    let first = run(&mut protocol, "bench nodes 4 batch 2\n");
+    assert_eq!(run(&mut protocol, "state\n"), before);
+    assert_eq!(
+        run(
+            &mut protocol,
+            "setoption name PolicyTemperature value 100\n"
+        ),
+        ""
+    );
+    let second = run(&mut protocol, "bench nodes 4 batch 2\n");
+    assert_eq!(run(&mut protocol, "state\n"), before);
+    assert_ended(&first);
+    assert_ended(&second);
+    assert_eq!(
+        without_timing(&first, &["elapsed-ms", "sps"]),
+        without_timing(&second, &["elapsed-ms", "sps"])
+    );
+}
+
+#[test]
+fn mcts_bench_preserves_next_search_and_tree_reuse() {
+    use crate::nn::test_util::NonUniformEvaluator;
+    use crate::search::mcts::{Config, Engine};
+    let search = |with_bench| {
+        let engine =
+            Engine::with_evaluator(Some(Box::new(NonUniformEvaluator)), Config::new(600.0));
+        let mut protocol = UsiProtocol::with_searcher(Searcher::Mcts(engine));
+        let setup = run(
+            &mut protocol,
+            "setoption name RuleSet value JCSA\nusinewgame\nposition startpos\n",
+        );
+        assert!(!setup.contains("error:"), "{setup}");
+        let first = run(&mut protocol, "go nodes 5\n");
+        if with_bench {
+            assert_ended(&run(&mut protocol, "bench nodes 4 batch 2\n"));
+        }
+        let second = run(&mut protocol, "position startpos\ngo nodes 5\n");
+        for output in [&first, &second] {
+            assert!(output.contains("bestmove "), "{output}");
+            assert!(!output.contains("error:"), "{output}");
+        }
+        without_timing(&format!("{first}{second}"), &["time", "nps"])
+    };
+    assert_eq!(search(false), search(true));
+}
+
+#[test]
+fn mcts_bench_rejections_are_single_errors_without_end() {
+    let mut protocol = mcts_bench_protocol();
+    for (args, message) in [
+        ("depth 3", "depth requires --search alphabeta"),
+        ("depth", "depth requires --search alphabeta"),
+        ("threads 1", "threads requires --search alphabeta"),
+        ("repetitions 1", "repetitions requires --search alphabeta"),
+        ("nodes", "nodes requires a value"),
+        ("batch", "batch requires a value"),
+        ("nodes 1 nodes 2", "duplicate argument nodes"),
+        ("batch 1 batch 2", "duplicate argument batch"),
+        ("unknown", "unknown diagnostic argument 'unknown'"),
+        ("batch 1025", "batch must be from 1 to 1024"),
+    ] {
+        assert_eq!(
+            run(&mut protocol, &format!("bench {args}\n")),
+            format!("info string error: {message}\n")
+        );
+    }
+    for args in [
+        "nodes 0",
+        "nodes 4294967296",
+        "nodes nope",
+        "batch 0",
+        "batch nope",
+    ] {
+        let output = run(&mut protocol, &format!("bench {args}\n"));
+        assert_eq!(output.lines().count(), 1);
+        assert!(
+            output.starts_with("info string error: invalid "),
+            "{output}"
+        );
+    }
+    let mut alphabeta = UsiProtocol::new();
+    for arg in ["nodes", "batch"] {
+        assert_eq!(
+            run(&mut alphabeta, &format!("bench {arg} 1\n")),
+            format!("info string error: unknown diagnostic argument '{arg}'\n")
+        );
     }
 }

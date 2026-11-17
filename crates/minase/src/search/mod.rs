@@ -35,6 +35,7 @@ pub(crate) use alphabeta::tt::{Bound, Hit};
 pub use alphabeta::tt::{
     DEFAULT_SIZE_MB as DEFAULT_TT_SIZE_MB, TranspositionTable, TranspositionTableError,
 };
+pub(crate) use clock::MonotonicClock;
 pub use error::SearchError;
 pub use events::{SearchEvent, SearchResult, StopReason};
 pub use handle::{SearchHandle, SearchJoinError, search};

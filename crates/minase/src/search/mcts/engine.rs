@@ -21,9 +21,9 @@ use crate::search::{
     StartError, StartFailure, StopReason,
 };
 
-/// 対局用MCTSの設定。勝率尺度は探索の境界から値で受け取る。
+/// 勝率尺度に依存しない、対局と診断で共有するMCTSの探索設定。
 #[derive(Clone, Copy, Debug)]
-pub struct Config {
+pub struct SearchConfig {
     /// 節点と辺に使える容量。単位はバイト。
     pub capacity_bytes: usize,
     /// 1回の推論に送る葉の数の上限。
@@ -35,18 +35,33 @@ pub struct Config {
     /// logitをTで割り、PUCTが使う事前確率だけを変える。
     /// Tは正なので、未訪問の辺を比較するときのlogitの大小は変わらない。
     pub policy_temperature: f32,
-    /// 1ロジットあたりのcp。
-    pub cp_per_logit: f32,
 }
 
-impl Config {
-    /// 容量256 MiB、バッチ256、既定のPUCT係数、および方策の温度1.4を使う。
-    pub fn new(cp_per_logit: f32) -> Self {
+impl Default for SearchConfig {
+    fn default() -> Self {
         Self {
             capacity_bytes: 256 * 1024 * 1024,
             batch_size: NonZeroUsize::new(256).unwrap(),
             puct: PuctConfig::default(),
             policy_temperature: 1.4,
+        }
+    }
+}
+
+/// 対局用MCTSの設定。勝率尺度は探索の境界から値で受け取る。
+#[derive(Clone, Copy, Debug)]
+pub struct Config {
+    /// 対局と診断で共有する探索設定。
+    pub search: SearchConfig,
+    /// 1ロジットあたりのcp。
+    pub cp_per_logit: f32,
+}
+
+impl Config {
+    /// 既定の探索設定と、指定した勝率尺度を使う。
+    pub fn new(cp_per_logit: f32) -> Self {
+        Self {
+            search: SearchConfig::default(),
             cp_per_logit,
         }
     }
@@ -163,9 +178,9 @@ impl Engine {
                             min: 1,
                             max: 65_536,
                         })?;
-                if self.config.capacity_bytes != capacity_bytes {
+                if self.config.search.capacity_bytes != capacity_bytes {
                     self.clear();
-                    self.config.capacity_bytes = capacity_bytes;
+                    self.config.search.capacity_bytes = capacity_bytes;
                 }
             }
             ("Threads", SearchOptionValue::Spin(_)) => {}
@@ -193,16 +208,16 @@ impl Engine {
             }
             ("NnBatchSize", SearchOptionValue::Spin(value)) => {
                 let batch_size = NonZeroUsize::new(value).expect("validated non-zero batch size");
-                if self.config.batch_size != batch_size {
-                    self.config.batch_size = batch_size;
+                if self.config.search.batch_size != batch_size {
+                    self.config.search.batch_size = batch_size;
                     self.evaluator = None;
                 }
             }
             ("PolicyTemperature", SearchOptionValue::Spin(value)) => {
                 let temperature = value as f32 / 100.0;
-                if self.config.policy_temperature != temperature {
+                if self.config.search.policy_temperature != temperature {
                     self.clear();
-                    self.config.policy_temperature = temperature;
+                    self.config.search.policy_temperature = temperature;
                 }
             }
             _ => unreachable!("all validated MCTS options are handled"),
@@ -238,7 +253,7 @@ impl Engine {
             }
             let provider = self.execution_provider()?;
             let network = self.network.as_ref().ok_or(PrepareError::MissingModel)?;
-            let evaluator = OnnxEvaluator::new(network, &provider, self.config.batch_size)
+            let evaluator = OnnxEvaluator::new(network, &provider, self.config.search.batch_size)
                 .map_err(PrepareError::Network)?;
             self.evaluator = Some(Box::new(evaluator));
         }
@@ -257,13 +272,17 @@ impl Engine {
             return Err(EvaluationError::NotPrepared);
         }
         let network = self.network.as_ref().ok_or(EvaluationError::NotPrepared)?;
-        Ok((network.sha256(), &self.backend, self.config.batch_size))
+        Ok((
+            network.sha256(),
+            &self.backend,
+            self.config.search.batch_size,
+        ))
     }
 
     /// 生のlogitを、探索と同じ温度とsoftmaxで事前確率へ変換する。
     pub(crate) fn policy_priors(&self, logits: &[f32]) -> Vec<f32> {
         let mut priors = logits.to_vec();
-        apply_policy_temperature(&mut priors, self.config.policy_temperature);
+        apply_policy_temperature(&mut priors, self.config.search.policy_temperature);
         crate::nn::softmax(&mut priors);
         priors
     }
@@ -280,7 +299,7 @@ impl Engine {
             .ok_or(EvaluationError::NotPrepared)?;
         let mut batch_logits = Vec::new();
         let mut batch_values = Vec::new();
-        for batch in queries.chunks(self.config.batch_size.get()) {
+        for batch in queries.chunks(self.config.search.batch_size.get()) {
             evaluator
                 .evaluate(batch, &mut batch_logits, &mut batch_values)
                 .map_err(EvaluationError::Inference)?;
@@ -359,7 +378,7 @@ impl Engine {
                 let stop_reason = run(
                     driver,
                     evaluator.as_mut(),
-                    self.config,
+                    &self.config.search,
                     limits,
                     clock.as_ref(),
                     &hit_ns,
@@ -401,7 +420,7 @@ impl Engine {
             return Err(Error::DepthLimitUnsupported);
         }
         validate_scale(self.config.cp_per_logit)?;
-        self.config.puct.validate()?;
+        self.config.search.puct.validate()?;
         let draw = DrawValue::Game {
             cp_per_logit: self.config.cp_per_logit,
         };
@@ -414,7 +433,7 @@ impl Engine {
         if !reused {
             self.driver = Some(Box::new(Driver::new(
                 snapshot,
-                self.config.capacity_bytes,
+                self.config.search.capacity_bytes,
                 draw,
             )?));
         }
@@ -430,10 +449,10 @@ fn default_cache_dir(xdg_cache_home: Option<&OsStr>) -> PathBuf {
 }
 
 #[allow(clippy::too_many_arguments)]
-fn run(
+pub(crate) fn run(
     driver: &mut Driver,
     evaluator: &mut dyn Evaluator,
-    config: Config,
+    config: &SearchConfig,
     limits: SearchLimits,
     clock: &dyn SearchClock,
     hit_ns: &AtomicU64,

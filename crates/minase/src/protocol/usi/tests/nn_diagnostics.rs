@@ -131,7 +131,10 @@ fn nn_eval_uses_prepared_inference_and_preserves_fixture_and_batch_order() {
         let engine = MctsEngine::with_evaluator(
             Some(Box::new(evaluator)),
             Config {
-                batch_size: NonZeroUsize::new(batch).unwrap(),
+                search: crate::search::mcts::SearchConfig {
+                    batch_size: NonZeroUsize::new(batch).unwrap(),
+                    ..crate::search::mcts::SearchConfig::default()
+                },
                 ..Config::new(600.0)
             },
         );

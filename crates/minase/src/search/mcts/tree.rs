@@ -119,7 +119,7 @@ impl Edge {
         (self.visits > 0).then(|| self.value_sum as f32 / self.visits as f32)
     }
 
-    fn parent_proof(&self) -> Option<Proof> {
+    pub(super) fn parent_proof(&self) -> Option<Proof> {
         match self.child.as_ref()?.state {
             NodeState::Proven(proof) => Some(proof.for_parent()),
             _ => None,
@@ -236,6 +236,19 @@ impl Node {
             }
         }
         best
+    }
+
+    /// 最善手と同じ比較規則の降順に、辺の添字を安定ソートして返す。
+    ///
+    /// 同順位では元の辺の順を保ち、先頭は`best_edge`と一致する。
+    /// 評価待ちなら空になる。`docs/plans/multipv.md`のMultiPVも使用する予定である。
+    pub fn ranked_edges(&self) -> Vec<usize> {
+        if matches!(self.state, NodeState::Pending { .. }) {
+            return Vec::new();
+        }
+        let mut indices: Vec<_> = (0..self.edges.len()).collect();
+        indices.sort_by(|&a, &b| compare_edges(&self.edges[b], &self.edges[a]));
+        indices
     }
 
     fn subtree_bytes(&self) -> usize {
@@ -425,6 +438,11 @@ impl Tree {
     /// 節点と辺が使用する容量をバイト単位で返す。
     pub fn used_bytes(&self) -> usize {
         self.used_bytes
+    }
+
+    /// 節点と辺に使える容量をバイト単位で返す。
+    pub fn capacity_bytes(&self) -> usize {
+        self.capacity_bytes
     }
 
     /// 経路上の作成済みの節点を返す。

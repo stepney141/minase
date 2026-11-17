@@ -14,8 +14,11 @@ fn engine(evaluator: impl Evaluator + Send + 'static) -> Engine {
     Engine::with_evaluator(
         Some(Box::new(evaluator)),
         Config {
-            capacity_bytes: CAPACITY,
-            batch_size: NonZeroUsize::new(4).unwrap(),
+            search: crate::search::mcts::SearchConfig {
+                capacity_bytes: CAPACITY,
+                batch_size: NonZeroUsize::new(4).unwrap(),
+                ..crate::search::mcts::SearchConfig::default()
+            },
             ..Config::new(SCALE)
         },
     )
@@ -186,7 +189,7 @@ fn policy_temperature_accepts_boundaries_and_rejects_out_of_range_values() {
         engine
             .set_option("PolicyTemperature", SearchOptionValue::Spin(value))
             .unwrap();
-        assert_eq!(engine.config.policy_temperature, expected);
+        assert_eq!(engine.config.search.policy_temperature, expected);
     }
     for value in [9, 1001] {
         assert_eq!(
@@ -198,7 +201,7 @@ fn policy_temperature_accepts_boundaries_and_rejects_out_of_range_values() {
                 max: 1000,
             })
         );
-        assert_eq!(engine.config.policy_temperature, 10.0);
+        assert_eq!(engine.config.search.policy_temperature, 10.0);
     }
 }
 
@@ -291,7 +294,7 @@ fn batch_collection_honors_both_batch_size_and_remaining_simulations() {
 fn capacity_stops_after_evaluating_the_root_without_counting_a_failed_descent() {
     let input = initial();
     let mut engine = engine(UniformEvaluator);
-    engine.config.capacity_bytes =
+    engine.config.search.capacity_bytes =
         std::mem::size_of::<Node>() + input.root_moves().len() * std::mem::size_of::<Edge>();
     let (engine, event) = finish(engine.start(input, nodes(100), 1, false).unwrap());
     assert!(matches!(
@@ -324,7 +327,7 @@ fn ambiguous_lion_reuse_matches_a_fresh_repetition_win() {
     after_quiet.make_move_unchecked(quiet, input.rules());
     let reply = minase_core::notation::usi::parse(&after_quiet, "10c11d10c").unwrap();
     let mut previous = engine(ScriptedEvaluator::line(input.position(), &[quiet, reply]));
-    previous.config.batch_size = NonZeroUsize::new(256).unwrap();
+    previous.config.search.batch_size = NonZeroUsize::new(256).unwrap();
     let mut fresh_engine = engine(ScriptedEvaluator::line(input.position(), &[quiet, reply]));
     fresh_engine.config = previous.config;
     let (mut previous, _) = finish(previous.start(input, nodes(10_000), 1, false).unwrap());
@@ -419,7 +422,7 @@ fn new_root_at_a_repetition_terminal_is_rebuilt_from_snapshot_candidates() {
     let (root, line) = rook_cycle(false, false);
     let mut game = Game::from_position(rules(RepetitionRule::R1), root.clone());
     let mut engine = engine(ScriptedEvaluator::line(&root, &line));
-    engine.config.batch_size = NonZeroUsize::new(1).unwrap();
+    engine.config.search.batch_size = NonZeroUsize::new(1).unwrap();
     let (mut engine, _) = finish(
         engine
             .start(
@@ -598,7 +601,7 @@ fn hard_limit_caps_the_batch_using_root_evaluation_time_per_leaf() {
         batches: batches.clone(),
         milliseconds_per_leaf: 21,
     });
-    engine.config.batch_size = NonZeroUsize::new(256).unwrap();
+    engine.config.search.batch_size = NonZeroUsize::new(256).unwrap();
     let limits = SearchLimits::new(None, None, Some(100), None).unwrap();
     let (_, event) = finish(
         engine
@@ -735,7 +738,7 @@ fn gated() -> (Engine, Receiver<usize>, Sender<()>, Receiver<()>) {
         dropped: dropped_tx,
         calls: 0,
     });
-    engine.config.batch_size = NonZeroUsize::new(1).unwrap();
+    engine.config.search.batch_size = NonZeroUsize::new(1).unwrap();
     (engine, entered, release, dropped)
 }
 fn entered(receiver: &Receiver<usize>, expected: usize) {
@@ -1053,7 +1056,7 @@ fn an_already_requested_stop_cannot_skip_the_root_evaluation() {
     let reason = run(
         &mut driver,
         &mut UniformEvaluator,
-        config,
+        &config.search,
         limits,
         &clock,
         &AtomicU64::new(0),
@@ -1083,9 +1086,9 @@ fn invalid_scale_puct_and_root_capacity_return_the_engine_before_spawning() {
     for capacity in [false, true] {
         let mut engine = engine(UniformEvaluator);
         if capacity {
-            engine.config.capacity_bytes = 0;
+            engine.config.search.capacity_bytes = 0;
         } else {
-            engine.config.puct.c_base = 0.0;
+            engine.config.search.puct.c_base = 0.0;
         }
         let failure = match engine.start(initial(), nodes(2), 1, false) {
             Err(failure) => failure,
@@ -1183,14 +1186,14 @@ fn inference_options_accept_boundaries_and_map_backends_without_fallback() {
         engine
             .set_option("NnBatchSize", SearchOptionValue::Spin(size))
             .unwrap();
-        assert_eq!(engine.config.batch_size.get(), size);
+        assert_eq!(engine.config.search.batch_size.get(), size);
     }
     for size in [0, 1025, usize::MAX] {
         assert!(matches!(
             engine.set_option("NnBatchSize", SearchOptionValue::Spin(size)),
             Err(SetOptionError::OutOfRange { .. })
         ));
-        assert_eq!(engine.config.batch_size.get(), 1024);
+        assert_eq!(engine.config.search.batch_size.get(), 1024);
     }
     assert!(matches!(
         engine.set_option("NnBackend", SearchOptionValue::Combo("vulkan".to_owned())),
@@ -1242,7 +1245,7 @@ fn hash_capacity_change_discards_tree_and_keeps_evaluator() {
         .set_option("USI_Hash", SearchOptionValue::Spin(2))
         .unwrap();
     assert!(engine.driver.is_none());
-    assert_eq!(engine.config.capacity_bytes, 2 * 1024 * 1024);
+    assert_eq!(engine.config.search.capacity_bytes, 2 * 1024 * 1024);
     assert!(engine.evaluator.is_some());
 }
 

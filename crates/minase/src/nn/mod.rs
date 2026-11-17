@@ -6,6 +6,7 @@
 //! ONNXの方策はメタデータ`policy_labels`の昇順の表に従って、盤面によらず取り得る16,108ラベルへ詰め、評価器が元のラベルから逆引きする。
 //! 推論には評価器の抽象[`Evaluator`]とONNX Runtimeによる[`OnnxEvaluator`]を用意する。
 //! `test-util`フィーチャでは、各着手に同じ方策logitを返す試験用の評価器も公開する。
+//! ハッシュの評価器は通常のビルドにも含め、PV-MCTSの`bench`だけが使う。
 //! プロジェクト内では`minase_core`と駒の状態番号を得るための`crate::eval::features`にだけ依存し、`search`を参照しない。
 //!
 //! 設計判断は`docs/adr/`の次の8本に記録している。
@@ -27,6 +28,7 @@ pub mod control;
 pub mod encoding;
 mod error;
 pub mod evaluator;
+pub(crate) mod hash_evaluator;
 pub mod onnx;
 pub mod policy;
 mod policy_map;

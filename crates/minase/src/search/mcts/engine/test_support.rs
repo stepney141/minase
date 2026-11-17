@@ -29,7 +29,10 @@ impl Engine {
         let mut engine = Self::with_evaluator(
             Some(Box::new(UniformEvaluator)),
             Config {
-                capacity_bytes: CAPACITY,
+                search: crate::search::mcts::SearchConfig {
+                    capacity_bytes: CAPACITY,
+                    ..crate::search::mcts::SearchConfig::default()
+                },
                 ..Config::new(SCALE)
             },
         );
