@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """持ち時間期の局面で、深さ6への到達率と難しさの信号の発動率を数える診断。
 
-使い方: signal_probe.py <実行ディレクトリ> <エンジン> [局面数] [pawn_value]
+使い方: signal_probe.py <実行ディレクトリ> <エンジン> <ネット> [局面数] [pawn_value]
 実行ディレクトリの対局記録から候補側の持ち時間期の手を一様に選び、着手前の持ち時間を
 記録から再現して、同じ局面と時計を`go btime/wtime/byoyomi`でエンジンに与える。
 主ワーカーの完了反復（`info depth`行、lowerbound を除く）の最善手と評価値から、
@@ -67,7 +67,7 @@ def signal(its, pawn_value):
     return changed or dropped
 
 
-def main(run_dir, engine, count=200, pawn_value=100):
+def main(run_dir, engine, eval_file, count=200, pawn_value=100):
     samples, byoyomi = main_phase_positions(run_dir, int(count))
     proc = subprocess.Popen([engine, "--protocol", "usi"],
                             stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True, bufsize=1)
@@ -85,6 +85,7 @@ def main(run_dir, engine, count=200, pawn_value=100):
 
     send("usi"); wait("usiok")
     send("setoption name RuleSet value JCSA")
+    send(f"setoption name EvalFile value {pathlib.Path(eval_file).resolve()}")
     send("isready"); wait("readyok")
     reached = fired = 0
     for moves, remaining in samples:

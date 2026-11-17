@@ -11,6 +11,7 @@ import ast
 from contextlib import redirect_stderr, redirect_stdout
 from datetime import datetime, timezone
 import fcntl
+import hashlib
 import io
 import json
 import os
@@ -34,7 +35,7 @@ from test_generation_chain import Clock, write_book, inspect_book
 
 def values(root: Path, clock: Clock) -> dict:
     """全引数を明示し、試験の条件を実装の既定値に依存させない。"""
-    return {'run-dir': str(root / 'run'), 'repo': str(root / 'repo'), 'ref': 'refs/heads/master',
+    return {'run-dir': str(root / 'run'), 'repo': str(root / 'repo'), 'eval-file': str(root / 'network.bin'), 'ref': 'refs/heads/master',
             'commit': 'a' * 40, 'minase-bin': str(root / 'inspect'), 'generation': '3',
             'first-book': '2', 'last-book': '3', 'seed-base': '9700000000', 'seed-book-step': '100000',
             'games': '10', 'nodes': '20000', 'random-moves': '0', 'max-ply': '4000', 'hash-mb': '16',
@@ -106,7 +107,7 @@ class Commands:
             if number in job['skip_books']:
                 continue
             fields = {'rule_set': 'L1,L2,P0,P3,R1,E1,E3', 'generation_commit': job['commit'],
-                      'network_checksum': '12' * 32, 'teacher_search_budget': job['nodes'],
+                      'network_checksum': hashlib.sha256((self.root / 'network.bin').read_bytes()).hexdigest(), 'teacher_search_budget': job['nodes'],
                       'seed': job['generation_seed'] + job['book_step'] * number,
                       'game_count': 9, 'entry_count': 136} | self.bad_header
             path = machine['root'] / f'teacher/gen-{job["generation"]}/book-{number}.mnsd'
@@ -140,8 +141,6 @@ class Commands:
         if name == 'git':
             if command[3] == 'merge-base':
                 return self.result(command, code=0 if self.ancestor else 1)
-            if command[3] == 'show':
-                return self.result(command, b'MNUE' + bytes(140) + bytes.fromhex('12' * 32))
             if command[3:5] == ['bundle', 'create']:
                 if self.bundle_failure is not None:
                     raise self.bundle_failure
@@ -219,6 +218,9 @@ class Commands:
             if words[0] == 'mkdir':
                 for path in words[2:]:
                     self.local(path).mkdir(parents=True, exist_ok=True)
+                return self.result(command)
+            if words[0] == 'mv':
+                self.local(words[1]).replace(self.local(words[2]))
                 return self.result(command)
             if words[-1] == 'cpu-info':
                 info = self.cpus.get(machine['offer']['id'], {'nproc': 256, 'cpu_limit': 230.4})
@@ -303,6 +305,7 @@ class TeacherTests(unittest.TestCase):
         temporary = tempfile.TemporaryDirectory()
         self.addCleanup(temporary.cleanup)
         self.root = Path(temporary.name)
+        (self.root / 'network.bin').write_bytes(b'MNUE' + bytes(140) + bytes.fromhex('12' * 32) + b'weights')
         self.clock = Clock()
         self.options = values(self.root, self.clock)
         self.commands = Commands(self.root, self.clock)
@@ -327,6 +330,26 @@ class TeacherTests(unittest.TestCase):
     def calls(self) -> list[list[str]]:
         return [command for command, _, _ in self.commands.calls]
 
+    def test_network_transfer_and_header_expectation_use_whole_file_sha256(self) -> None:
+        data = (self.root / 'network.bin').read_bytes()
+        checksum = hashlib.sha256(data).hexdigest()
+        self.assertNotEqual(checksum, data[144:176].hex())
+        self.assertEqual(self.execute(), 0, self.errors.getvalue())
+        job = self.commands.jobs[0]
+        self.assertEqual(job['network'], f'/workspace/job/networks/{checksum}.bin')
+        self.assertEqual(job['network_sha256'], checksum)
+        remote = self.commands.machines[17]['root'] / 'networks' / f'{checksum}.bin'
+        self.assertEqual(remote.read_bytes(), data)
+        self.assertFalse(remote.with_suffix('.bin.tmp').exists())
+        for number in (2, 3):
+            book = self.root / f'run/gen-3/teacher/book-{number}.mnsd'
+            self.assertEqual(inspect_book(book)['network_checksum'], checksum)
+        uploads = [(command, seconds) for command, seconds, _ in self.commands.calls
+                   if command[0] == 'rsync' and str(self.root / 'network.bin') in command]
+        self.assertEqual(len(uploads), 1)
+        self.assertIn(f'{checksum}.bin.tmp', uploads[0][0][-1])
+        self.assertAlmostEqual(uploads[0][1], len(data) / 1_000_000 + 120)
+
     def test_normal_exit_collects_again_deletes_and_chain_reads_accepted_books(self) -> None:
         """事例3・10・11: 範囲外を飛ばし、受理した本を連続生成の入力にする。"""
         self.assertEqual(self.execute(), 0, self.errors.getvalue())
@@ -342,7 +365,7 @@ class TeacherTests(unittest.TestCase):
         args = teacher.arguments(argv(self.options))
         args.seed_generation_step = 0
         runner = chain.Chain(args)
-        self.assertEqual(runner.books(3, 'a' * 40, '12' * 32), {2: 120, 3: 120})
+        self.assertEqual(runner.books(3, 'a' * 40, hashlib.sha256((self.root / 'network.bin').read_bytes()).hexdigest()), {2: 120, 3: 120})
         accepted = [item for item in self.events() if item['event'] == 'accepted']
         self.assertEqual([item['recorded_positions'] for item in accepted], [120, 120])
         self.assertIsNone(self.state()['current'])

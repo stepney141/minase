@@ -8,6 +8,7 @@ cycle1-reference-summaryは開始サイクルが1のときに必須で、それ�
 generation-commitとtrainer-commitはそれぞれ40桁の16進数字で指定する。
 作業場所、ソース、キャッシュは、Colab機では/contentの下のaz、src、cache、vast.aiでは/workspaceの下のaz、src、cacheとする。
 ソースの場所にはtrainer-commitの書庫を展開し、導入とビルドを済ませておく。
+--nn-cp-per-logitには出力の照合に使う正の有限の勝率尺度を指定し、サイクルとセッションの記録に残す。
 --minaseは作業機で集計に使う実行ファイルを指定する。
 NASのrootと借りた機械の作業場所は同じ相対パスを使い、接続と転送は1本ずつ実行する。
 Colab機にはcolab sshを中継にして接続する。
@@ -174,6 +175,7 @@ class Options:
     checkpoint_steps: int
     train_seed_base: int
     minase: Path
+    nn_cp_per_logit: float
     poll_seconds: float
     cycle1_reference_summary: Path | None
 
@@ -218,7 +220,7 @@ class Options:
             raise ValueError("cycle1-reference-summary is required exactly when first-cycle is 1")
         if self.deadline.utcoffset() is None:
             raise ValueError("deadline must include a UTC offset")
-        for name in ("cycle_minutes", "lr", "momentum", "clip_grad_norm", "poll_seconds"):
+        for name in ("nn_cp_per_logit", "cycle_minutes", "lr", "momentum", "clip_grad_norm", "poll_seconds"):
             value = getattr(self, name)
             if not math.isfinite(value) or value <= 0:
                 raise ValueError(f"{name} must be finite and positive")
@@ -258,7 +260,7 @@ def add_arguments(parser: argparse.ArgumentParser) -> None:
                  "games-per-thread", "replay-buffer-games", "batch-size", "checkpoint-steps",
                  "train-seed-base", "branch-from", "generation-seed-offset"):
         parser.add_argument(f"--{name}", type=int, required=True)
-    for name in ("cycle-minutes", "lr", "momentum", "weight-decay", "clip-grad-norm",
+    for name in ("nn-cp-per-logit", "cycle-minutes", "lr", "momentum", "weight-decay", "clip-grad-norm",
                  "value-lambda", "poll-seconds"):
         parser.add_argument(f"--{name}", type=float, required=True)
     parser.add_argument("--start-position", choices=("shuffled-setup", "initial"), required=True)
@@ -913,6 +915,7 @@ class Runner:
                         raise ValueError(f"USI paths must not contain a newline: {path!r}")
                 commands = ["usi", "setoption name RuleSet value lishogi",
                             f"setoption name NnModel value {network}",
+                            f"setoption name NnCpPerLogit value {self.options.nn_cp_per_logit}",
                             f"setoption name NnBackend value {backend}",
                             f"setoption name NnBatchSize value {batch}"]
                 if backend == "tensorrt":
@@ -1046,7 +1049,7 @@ class Runner:
             if options.machine == "colab":
                 end_balance = self.remote.usage()
             ended = datetime.now(UTC)
-            settings = {"lr": options.lr,
+            settings = {"lr": options.lr, "nn_cp_per_logit": options.nn_cp_per_logit,
                         "cycles_dir": options.cycles_dir.as_posix(),
                         "base_cycles_dir": options.base_cycles_dir.as_posix(), "branch_from": options.branch_from}
             interval = {**settings, "machine_kind": options.machine, "cycle": cycle,

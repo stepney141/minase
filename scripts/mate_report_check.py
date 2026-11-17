@@ -6,12 +6,13 @@
 見つける深さと、実戦で攻撃側が到達した深さを並べる。
 結果の読み方は docs/audits/usi-resignation-diagnosis-2026-09-23.md の「詰み帯の誤投了の内訳」。
 
-    python3 scripts/mate_report_check.py --binary target/release/minase [--max-depth 14]
+    python3 scripts/mate_report_check.py --binary target/release/minase --eval-file /path/to/network.bin [--max-depth 14]
 """
 import argparse
 import glob
 import json
 import os
+from pathlib import Path
 import subprocess
 import time
 
@@ -85,7 +86,7 @@ def extract_cases(root):
 
 
 class Engine:
-    def __init__(self, binary, rules):
+    def __init__(self, binary, rules, eval_file):
         self.process = subprocess.Popen(
             [binary, "--protocol", "usi"],
             stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True, bufsize=1,
@@ -93,6 +94,7 @@ class Engine:
         self.send("usi")
         self.wait("usiok")
         self.send(f"setoption name RuleSet value {rules}")
+        self.send(f"setoption name EvalFile value {Path(eval_file).resolve()}")
         self.send("isready")
         self.wait("readyok")
         self.send("usinewgame")
@@ -143,6 +145,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--root", default="data/matches")
     parser.add_argument("--binary", required=True, help="攻撃側として探索するminaseの実行ファイル")
+    parser.add_argument("--eval-file", required=True)
     parser.add_argument("--max-depth", type=int, default=14)
     parser.add_argument("--timeout", type=float, default=150, help="1回の探索の上限秒数（超過時はstop）")
     args = parser.parse_args()
@@ -150,7 +153,7 @@ def main():
     print(f"cases={len(cases)}")
     print("run pair | defender depth mated_in | attacker depth stop think_ms | mate first seen at depth (iteration ms)")
     for case in cases:
-        engine = Engine(args.binary, case["rules"])
+        engine = Engine(args.binary, case["rules"], args.eval_file)
         found = None
         for depth in range(1, args.max_depth + 1):
             result = engine.search(case["moves_after_report"], depth, args.timeout)

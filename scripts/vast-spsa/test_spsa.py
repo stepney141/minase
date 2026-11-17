@@ -58,6 +58,7 @@ class SpsaTests(unittest.TestCase):
         temporary = tempfile.TemporaryDirectory()
         self.addCleanup(temporary.cleanup)
         self.root = Path(temporary.name)
+        (self.root / 'network.bin').write_bytes(b'test network')
         (self.root / 'params').write_text('parameter 1\n')
         self.write_config(CONFIG)
 
@@ -268,6 +269,11 @@ class SpsaTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             launch.onstart(1800000000, 'a' * 4048)
 
+    def bench_input(self) -> str:
+        return ('setoption name RuleSet value JCSA\n'
+                f'setoption name EvalFile value {self.root / "network.bin"}\nisready\n'
+                'bench depth 9 repetitions 3\nquit\n')
+
     def test_bench_cli_outputs_mean_and_rejects_invalid_counts(self) -> None:
         """2本の中央値100と301の平均を出力し、不正な本数では実行しない。"""
         binary = self.root / 'engine'
@@ -277,7 +283,7 @@ class SpsaTests(unittest.TestCase):
             '#!/usr/bin/env python3\n'
             'import fcntl\nfrom pathlib import Path\nimport sys\n'
             'assert sys.argv[1:] == ["--protocol", "usi"]\n'
-            'assert sys.stdin.read() == "bench depth 9 repetitions 3\\nquit\\n"\n'
+            f'assert sys.stdin.read() == {self.bench_input()!r}\n'
             'with Path(__file__).with_suffix(".count").open("r+") as counter:\n'
             '    fcntl.flock(counter, fcntl.LOCK_EX)\n'
             '    index = int(counter.read())\n'
@@ -288,14 +294,14 @@ class SpsaTests(unittest.TestCase):
             'print("info string end")\n')
         binary.chmod(0o755)
         command = [sys.executable, str(SCRIPT_DIR / 'bench.py'), 'engine']
-        result = subprocess.run([*command, '2', 'logs'], cwd=self.root,
+        result = subprocess.run([*command, '2', 'logs', 'network.bin'], cwd=self.root,
                                 capture_output=True, text=True, timeout=5)
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(result.stdout, '200.5\n')
         self.assertEqual(result.stderr, '')
         for count in ('0', '-1', '1.5', 'abc'):
             with self.subTest(count=count):
-                result = subprocess.run([*command, count, 'logs'], cwd=self.root,
+                result = subprocess.run([*command, count, 'logs', 'network.bin'], cwd=self.root,
                                         capture_output=True, text=True, timeout=5)
                 self.assertNotEqual(result.returncode, 0)
                 self.assertEqual(result.stdout, '')
@@ -312,13 +318,13 @@ class SpsaTests(unittest.TestCase):
                 binary.write_text(
                     '#!/usr/bin/env python3\nimport sys\n'
                     'assert sys.argv[1:] == ["--protocol", "usi"]\n'
-                    'assert sys.stdin.read() == "bench depth 9 repetitions 3\\nquit\\n"\n'
+                    f'assert sys.stdin.read() == {self.bench_input()!r}\n'
                     'print("info string median: nps=100")\n'
                     f'print({ending!r})\nsys.exit({code})\n')
                 binary.chmod(0o755)
                 children = remote.Children()
                 with self.assertRaises(ValueError):
-                    remote.bench(binary, 1, logs, children)
+                    remote.bench(binary, 1, logs, children, self.root / 'network.bin', 'JCSA')
                 self.assertEqual(children.processes, [])
 
 
@@ -330,6 +336,7 @@ class WorkflowTests(unittest.TestCase):
         temporary = tempfile.TemporaryDirectory()
         self.addCleanup(temporary.cleanup)
         self.root = Path(temporary.name)
+        (self.root / 'network.bin').write_bytes(b'test network')
         self.fake = test_common.FakeCommands(self.root)
         engine = test_common.FAKE.replace(
             "if 'transfer' in response:",
@@ -381,6 +388,7 @@ class WorkflowTests(unittest.TestCase):
         self.fake.add('git', [])
         self.fake.add('ssh', ['-i'])
         self.fake.add('ssh', ['-i'])
+        self.fake.add('scp', ['-r'], upload=str(uploaded))
         self.fake.add('scp', ['-r'], upload=str(uploaded))
         self.fake.add('ssh', ['-i'])
 
@@ -560,10 +568,13 @@ class WorkflowTests(unittest.TestCase):
         self.fake.add('vastai', ['search', 'offers'], json.dumps([OFFER]))
         self.queue_successful_launch(42, uploaded)
         with patch.object(Path, 'home', return_value=self.root), \
-                patch.object(sys, 'argv', ['launch.py', 'trial', '1449', '--offer', '42']):
+                patch.object(sys, 'argv', ['launch.py', '--eval-file', str(self.root / 'network.bin'), 'trial', '1449', '--offer', '42']):
             self.assertEqual(launch.main(), 0)
         self.assertEqual(tomllib.loads((uploaded / 'session.toml').read_text()), CONFIG)
         self.assertTrue((uploaded / 'remote.py').is_file())
+        self.assertEqual((uploaded / 'network.bin').read_bytes(), b'test network')
+        self.assertTrue(any(call[0] == 'scp' and call[-1].endswith(':/workspace/job/network.bin')
+                            for call in self.fake.calls()))
         self.assertEqual(self.fake.calls()[-1][-1], 'touch /workspace/job/started')
         self.assertEqual((directory / 'instance-id').read_text(), '17\n')
         self.assertFalse(list(directory.glob('.launch.*')))
@@ -593,7 +604,7 @@ class WorkflowTests(unittest.TestCase):
         self.fake.add('vastai', ['search', 'offers'], response)
         self.queue_successful_launch(51, uploaded)
         output = io.StringIO()
-        arguments = ['launch.py', 'trial', '1449', '--max-price', '1',
+        arguments = ['launch.py', '--eval-file', str(self.root / 'network.bin'), 'trial', '1449', '--max-price', '1',
                      '--min-cpu-cores', '224', '--min-cpu-ram', '260000',
                      '--cpu', 'EPYC', '--cpu', 'Ryzen', '--wait', '2']
         with patch.object(Path, 'home', return_value=self.root), patch.object(sys, 'argv', arguments), \
@@ -620,7 +631,7 @@ class WorkflowTests(unittest.TestCase):
         self.fake.add('vastai', ['create', 'instance', '41'], code=1)
         self.fake.add('vastai', ['show'], '[]')
         self.queue_successful_launch(42, uploaded)
-        arguments = ['launch.py', 'trial', '1449', '--max-price', '1',
+        arguments = ['launch.py', '--eval-file', str(self.root / 'network.bin'), 'trial', '1449', '--max-price', '1',
                      '--min-cpu-cores', '192', '--min-cpu-ram', '260000',
                      '--cpu', 'EPYC', '--wait', '2']
         with patch.object(Path, 'home', return_value=self.root), patch.object(sys, 'argv', arguments):
@@ -638,7 +649,7 @@ class WorkflowTests(unittest.TestCase):
         self.fake.add('vastai', ['search', 'offers'], '[]')
         self.fake.add('vastai', ['search', 'offers'], json.dumps([OFFER]))
         self.queue_successful_launch(42, uploaded)
-        arguments = ['launch.py', 'trial', '1449', '--max-price', '1',
+        arguments = ['launch.py', '--eval-file', str(self.root / 'network.bin'), 'trial', '1449', '--max-price', '1',
                      '--min-cpu-cores', '192', '--min-cpu-ram', '260000',
                      '--cpu', 'EPYC', '--wait', '2']
         with patch.object(Path, 'home', return_value=self.root), patch.object(sys, 'argv', arguments), \
@@ -656,7 +667,7 @@ class WorkflowTests(unittest.TestCase):
         self.fake.add('vastai', ['show'], '[]')
         self.fake.add('vastai', ['search', 'offers'], json.dumps([OFFER]))
         self.fake.add('rustc', ['--version'], 'rustc 1.90.0 (test)\n')
-        arguments = ['launch.py', 'trial', '1449', '--max-price', '1',
+        arguments = ['launch.py', '--eval-file', str(self.root / 'network.bin'), 'trial', '1449', '--max-price', '1',
                      '--min-cpu-cores', '192', '--min-cpu-ram', '260000',
                      '--cpu', 'EPYC', '--wait', '1']
         errors = io.StringIO()
@@ -670,32 +681,32 @@ class WorkflowTests(unittest.TestCase):
 
     def test_launch_rejects_invalid_arguments_before_vastai(self) -> None:
         """競合、欠落、旧形式、未知の引数と不正な数値を作成前に拒否する。"""
-        complete = ['launch.py', 'trial', '60', '--max-price', '1',
+        complete = ['launch.py', '--eval-file', str(self.root / 'network.bin'), 'trial', '60', '--max-price', '1',
                     '--min-cpu-cores', '192', '--min-cpu-ram', '260000',
                     '--cpu', 'EPYC', '--wait', '1']
         cases = [
-            ['launch.py', 'trial', '60', '--offer', '42', '--max-price', '1',
+            ['launch.py', '--eval-file', str(self.root / 'network.bin'), 'trial', '60', '--offer', '42', '--max-price', '1',
              '--min-cpu-cores', '192', '--min-cpu-ram', '260000',
              '--cpu', 'EPYC', '--wait', '1'],
-            ['launch.py', 'trial', '60', '--offer', '42', '--min-cpu-ram', '260000'],
+            ['launch.py', '--eval-file', str(self.root / 'network.bin'), 'trial', '60', '--offer', '42', '--min-cpu-ram', '260000'],
             *[complete[:index] + complete[index + 2:] for index in (3, 5, 7, 9, 11)],
-            ['launch.py', 'trial', '42', '60'],
-            ['launch.py', 'trial', '60', '--offer', '42', '--unknown'],
-            ['launch.py', 'trial', '0', '--offer', '42'],
-            ['launch.py', 'trial', '60', '--offer', '0'],
-            ['launch.py', 'trial', '60', '--max-price', '0',
+            ['launch.py', '--eval-file', str(self.root / 'network.bin'), 'trial', '42', '60'],
+            ['launch.py', '--eval-file', str(self.root / 'network.bin'), 'trial', '60', '--offer', '42', '--unknown'],
+            ['launch.py', '--eval-file', str(self.root / 'network.bin'), 'trial', '0', '--offer', '42'],
+            ['launch.py', '--eval-file', str(self.root / 'network.bin'), 'trial', '60', '--offer', '0'],
+            ['launch.py', '--eval-file', str(self.root / 'network.bin'), 'trial', '60', '--max-price', '0',
              '--min-cpu-cores', '192', '--min-cpu-ram', '260000',
              '--cpu', 'EPYC', '--wait', '1'],
-            ['launch.py', 'trial', '60', '--max-price', 'inf',
+            ['launch.py', '--eval-file', str(self.root / 'network.bin'), 'trial', '60', '--max-price', 'inf',
              '--min-cpu-cores', '192', '--min-cpu-ram', '260000',
              '--cpu', 'EPYC', '--wait', '1'],
-            ['launch.py', 'trial', '60', '--max-price', '1',
+            ['launch.py', '--eval-file', str(self.root / 'network.bin'), 'trial', '60', '--max-price', '1',
              '--min-cpu-cores', '0', '--min-cpu-ram', '260000',
              '--cpu', 'EPYC', '--wait', '1'],
-            ['launch.py', 'trial', '60', '--max-price', '1',
+            ['launch.py', '--eval-file', str(self.root / 'network.bin'), 'trial', '60', '--max-price', '1',
              '--min-cpu-cores', '192', '--min-cpu-ram', '0',
              '--cpu', 'EPYC', '--wait', '1'],
-            ['launch.py', 'trial', '60', '--max-price', '1',
+            ['launch.py', '--eval-file', str(self.root / 'network.bin'), 'trial', '60', '--max-price', '1',
              '--min-cpu-cores', '192', '--min-cpu-ram', '260000',
              '--cpu', 'EPYC', '--wait', '0'],
         ]
@@ -729,7 +740,9 @@ class WorkflowTests(unittest.TestCase):
                 self.fake.add('cargo', ['build', '--release', '--locked', '--bin', 'minase'])
                 self.fake.add('minase', ['spsa', 'params', '--engine', 'commit:' + CONFIG['commit']], 'parameter 1\n')
                 self.fake.add('minase', ['--protocol', 'usi'], 'info string median: nps=866000\ninfo string end\n',
-                              input='bench depth 9 repetitions 3\nquit\n')
+                              input=(f'setoption name RuleSet value {CONFIG["rules"]}\n'
+                                     f'setoption name EvalFile value {job / "network.bin"}\nisready\n'
+                                     'bench depth 9 repetitions 3\nquit\n'))
                 good = ('summary: applied=1 valid_pairs=8 discarded_pairs=0\n'
                         'engine_failures: illegal_moves=0 crashes=0 timeouts=0 time_forfeits=0 rejected_moves=0\n')
                 if scenario != 'too_slow':
@@ -741,6 +754,10 @@ class WorkflowTests(unittest.TestCase):
                 with patch.object(remote, 'resources', return_value=(2, 10_000_000_000)):
                     self.assertEqual(remote.remote_main('trial', job), expected)
                 self.assertEqual((job / 'logs/exit-status').read_text(), str(expected) + '\n')
+                new_runs = [call for call in self.fake.calls()
+                            if call[:3] == ['minase', 'spsa', '--run-dir'] and Path(call[3]).parent == job]
+                self.assertTrue(all(call[call.index('--option') + 1] == f'EvalFile={job / "network.bin"}'
+                                    for call in new_runs))
                 params_calls = [call for call in self.fake.calls() if call[:3] == ['minase', 'spsa', 'params']]
                 self.assertTrue(params_calls)
                 self.assertTrue(all(call == ['minase', 'spsa', 'params', '--engine', 'commit:' + CONFIG['commit']] for call in params_calls))
@@ -761,7 +778,9 @@ class WorkflowTests(unittest.TestCase):
         self.fake.add('git', ['checkout', '--detach', CONFIG['runner_commit']])
         self.fake.add('git', ['rev-parse', '--verify'], CONFIG['commit'] + '\n')
         self.fake.add('minase', ['--protocol', 'usi'], 'info string median: nps=866000\ninfo string end\n',
-                      input='bench depth 9 repetitions 3\nquit\n')
+                      input=(f'setoption name RuleSet value {CONFIG["rules"]}\n'
+                                     f'setoption name EvalFile value {job / "network.bin"}\nisready\n'
+                                     'bench depth 9 repetitions 3\nquit\n'))
         self.fake.add('minase', ['spsa', '--resume', str(job / 'trial')],
                       'summary: applied=3750 valid_pairs=30000 discarded_pairs=0\n'
                       'engine_failures: illegal_moves=0 crashes=0 timeouts=0 time_forfeits=0 rejected_moves=0\n')

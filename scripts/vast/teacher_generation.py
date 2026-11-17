@@ -22,7 +22,8 @@ remote/work/には本ごとのconfig.json、塊、および追記中の生成ロ
 
 生成機では、/workspace/job/を作業のルートとする。
 worker.pidにはsetsidで起動したbashのプロセス識別子を保存し、bashはstartedの作成を待ってgeneration_worker.pyをexecするため、作業プロセスも同じ識別子とセッションを使う。
-worker.jsonは仕事がないまま待つ上限idle_limit_secondsを1,800秒に設定し、job.jsonは生成条件、対象番号、および同時対局数を指定する。
+worker.jsonは仕事がないまま待つ上限idle_limit_secondsを1,800秒に設定し、job.jsonは生成条件、対象番号、同時対局数、ネットの絶対パスnetwork、およびファイル全体のSHA-256であるnetwork_sha256を指定する。
+--eval-fileのネットはコードのバンドルとは別にnetworks/<SHA-256>.binへ転送する。
 bundles/source.bundleは指定コミットをビルドするためのGitの履歴であり、job.jsonのtarget_booksはlast_book + 1、skip_booksはfirst_book未満の番号と受け入れ済みの番号の和集合とする。
 作業プロセスは0以上target_books未満からskip_booksと生成機で公開済みの番号を除き、小さい番号から生成する。
 
@@ -140,8 +141,6 @@ DISK_GB = 30
 IDLE_SECONDS = 1800
 # 観測と回収を終えてから次の巡回まで置く秒数である。
 COLLECT_SECONDS = 60
-# 生成コミットから受け入れ検査用のチェックサムを読む重みのパスである。
-NETWORK = 'crates/minase/nets/nnue.bin'
 # 1スレッドあたりの探索速度をノード/秒で表し、出品の単価比較に使う。
 # docs/measurements/interruptible-teacher-generation/interruptible-teacher-generation-candidates.md
 NPS_PER_THREAD = {'7B13': 186_200, '9654': 214_300}
@@ -583,7 +582,7 @@ class TeacherGeneration:
     def prepare(self) -> bool:
         generation = self.args.generation
         self.ssh('mkdir -p ' + ' '.join(f'{REMOTE}/{name}/gen-{generation}' for name in ('work', 'teacher', 'logs'))
-                 + f' {REMOTE}/bundles', 60)
+                 + f' {REMOTE}/bundles {REMOTE}/networks', 60)
         with tempfile.TemporaryDirectory(dir=self.root) as temporary:
             directory = Path(temporary)
             config = directory / 'worker.json'
@@ -612,6 +611,9 @@ class TeacherGeneration:
             bundle = directory / 'source.bundle'
             common.run_timed(['git', '-C', str(self.args.repo), 'bundle', 'create', str(bundle), self.args.ref], 600)
             self.upload([bundle], REMOTE + '/bundles/source.bundle')
+            network = f'{REMOTE}/networks/{self.checksum}.bin'
+            self.upload([self.args.eval_file], network + '.tmp')
+            self.ssh(f'mv {network}.tmp {network}', 60)
             for number in self.numbers():
                 if number in self.accepted:
                     continue
@@ -630,7 +632,8 @@ class TeacherGeneration:
                 self.save()
             job = {key: getattr(self.args, key) for key in
                    ('generation', 'commit', 'games', 'nodes', 'random_moves', 'max_ply', 'hash_mb', 'chunk_games')}
-            job.update(bundle=REMOTE + '/bundles/source.bundle', reference=self.args.ref,
+            job.update(network=network, network_sha256=self.checksum,
+                       bundle=REMOTE + '/bundles/source.bundle', reference=self.args.ref,
                        generation_seed=self.args.seed_base, book_step=self.args.seed_book_step,
                        target_books=self.args.last_book + 1,
                        skip_books=sorted(set(range(self.args.first_book)) | self.accepted), concurrency=cores)
@@ -771,11 +774,7 @@ class TeacherGeneration:
         self.recover()
         common.run_timed(['git', '-C', str(self.args.repo), 'merge-base', '--is-ancestor',
                           self.args.commit, self.args.ref], 60)
-        data = common.run_timed(['git', '-C', str(self.args.repo), 'show', f'{self.args.commit}:{NETWORK}'],
-                                60, text=False, stdout=subprocess.PIPE).stdout
-        if len(data) < 176 or data[:4] != b'MNUE':
-            raise GenerationStop('生成コミットにMNUEのヘッダがありません')
-        self.checksum = data[144:176].hex()
+        self.checksum = common.file_sha256(self.args.eval_file)
         self.accept()
         if self.state['rentals']:
             self.clean_work(self.state['rentals'][-1])
@@ -901,7 +900,7 @@ def arguments(argv: list[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     sub = parser.add_subparsers(dest='command', required=True)
     run = sub.add_parser('run', help='教師の生成を開始または再開する', argument_default=argparse.SUPPRESS)
-    for name in ('run-dir', 'repo'):
+    for name in ('run-dir', 'repo', 'eval-file'):
         run.add_argument('--' + name, required=True, type=absolute_path, help='絶対パス')
     run.add_argument('--minase-bin', required=True, type=lambda value: Path(value).resolve(),
                      help='受け入れの検査に使う実行ファイル')

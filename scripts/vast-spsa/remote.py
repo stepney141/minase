@@ -5,7 +5,8 @@
 設定検査と計算の関数は、import remoteで利用できる。
 
 ジョブのディレクトリは`/workspace/job`である。
-`session.toml`、`params`、`source.bundle`を読み、事前確認を行う場合は`safety.params`も読む。
+`session.toml`、`params`、`source.bundle`、`network.bin`を読み、事前確認を行う場合は`safety.params`も読む。
+`network.bin`をbenchと新規SPSAへEvalFileとして渡し、再開ではmanifest.jsonの条件を使う。
 `source.bundle`から一時ディレクトリ`minase-cloning/`へcloneし、そのディレクトリをrunnerと調整用ビルドを置く`minase/`へ改名する。
 ビルドを終えると`.build-ready`を作り、以後の起動では同じジョブ内のビルドを再利用する。
 `.remote.lock`は重複起動を防ぐために使う。
@@ -56,6 +57,8 @@ def check_name(name: str) -> None:
 
 def load_session(directory: Path) -> Session:
     """`session.toml`の型、必須キー、値の範囲とパラメーターファイルを検査する。
+
+    ネットはsession.tomlに含めず、launch.pyがnetwork.binとして転送する。
 
     必須の`commit`、`runner_commit`、`rules`は空でない文字列である。
     必須の`seed`は0以上2の64乗未満の整数である。
@@ -216,7 +219,7 @@ class Children:
         raise SystemExit(128 + signum)
 
 
-def bench(binary: Path, count: int, logs: Path, children: Children,
+def bench(binary: Path, count: int, logs: Path, children: Children, network: Path, rules: str,
           *, cwd: Path | None = None) -> Decimal:
     """同時対局数と同じ本数のbenchを実行し、中央値NPSの平均を返す。"""
     with ExitStack() as stack:
@@ -229,7 +232,9 @@ def bench(binary: Path, count: int, logs: Path, children: Children,
                 processes.append(process)
                 if process.stdin is None:
                     raise RuntimeError('benchの標準入力を開けませんでした')
-                process.stdin.write('bench depth 9 repetitions 3\nquit\n')
+                process.stdin.write(f'setoption name RuleSet value {rules}\n'
+                                    f'setoption name EvalFile value {network}\nisready\n'
+                                    'bench depth 9 repetitions 3\nquit\n')
                 process.stdin.close()
             codes = [process.wait() for process in processes]
             for process in processes:
@@ -330,7 +335,7 @@ def execute(session: str, job: Path, children: Children) -> int:
         raise ValueError(f'調整用ビルドがありません: {binary}')
     cores, memory = resources()
     count = concurrency(cores, memory, config['game_rss_bytes'])
-    remote_nps = bench(binary, count, logs, children, cwd=repository)
+    remote_nps = bench(binary, count, logs, children, job / 'network.bin', config['rules'], cwd=repository)
     factor, each, hours = sizing(config['local_nps'], remote_nps, config['iterations'],
                                 config['pairs_per_iteration'], count)
     with (logs / 'sizing.txt').open('a') as output:
@@ -368,7 +373,8 @@ def execute(session: str, job: Path, children: Children) -> int:
             args = ['--run-dir', str(safety), '--seed', str(config['precheck_seed']),
                     '--engine', 'commit:' + config['commit'], '--params', str(job / 'safety.params'),
                     '--rules', config['rules'], '--each', each, '--concurrency', str(count),
-                    '--iterations', str(safety_iterations), '--pairs-per-iteration', '8']
+                    '--iterations', str(safety_iterations), '--pairs-per-iteration', '8',
+                    '--option', f'EvalFile={job / "network.bin"}']
             if run_spsa(children, args, safety_log, repository, safety_iterations, True, 4):
                 return 4
     with (logs / 'sizing.txt').open('a') as output:
@@ -377,7 +383,8 @@ def execute(session: str, job: Path, children: Children) -> int:
     args = ['--run-dir', str(run), '--seed', str(config['seed']), '--engine', 'commit:' + config['commit'],
             '--params', str(job / 'params'), '--rules', config['rules'], '--each', each,
             '--concurrency', str(count), '--iterations', str(config['iterations']),
-            '--pairs-per-iteration', str(config['pairs_per_iteration'])]
+            '--pairs-per-iteration', str(config['pairs_per_iteration']),
+            '--option', f'EvalFile={job / "network.bin"}']
     return run_spsa(children, args, logs / (session + '.log'), repository, config['iterations'], False, 5)
 
 

@@ -7,6 +7,8 @@ scripts/hachu_selfplay.py が生成したNDJSONを読み、各局の指し手列
 （docs/plans/protocol-layer.md フェーズ5）のHaChu互換規則セット検証で
 用いる。
 
+--eval-fileでネットを指定し、RuleSetの後、newの前にEvalFileを送る。
+
 1手ごとの応答の確定にはCECPの`ping`/`pong`を使う。minaseは合法手に無応答
 であるため、`pong`までに現れた行だけがその手への応答である。
 """
@@ -89,7 +91,7 @@ class Minase:
             self.proc.wait(timeout=5)
 
 
-def replay_game(binary: str, rules: str, game: dict, log) -> dict:
+def replay_game(binary: str, rules: str, game: dict, log, eval_file: Path) -> dict:
     outcome = {
         "game_index": game["game_index"],
         "rules": rules,
@@ -113,6 +115,7 @@ def replay_game(binary: str, rules: str, game: dict, log) -> dict:
         engine.send("protover 2")
         engine.send("variant chu")
         engine.send(f"option RuleSet={rules}")
+        engine.send(f"option EvalFile={eval_file}")
         engine.send("new")
         engine.send("force")
         engine.sync()
@@ -156,6 +159,7 @@ def replay_game(binary: str, rules: str, game: dict, log) -> dict:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--games", required=True, help="入力NDJSONのパス")
+    parser.add_argument("--eval-file", type=lambda value: Path(value).resolve(), required=True)
     parser.add_argument("--minase", required=True, help="minase実行ファイルのパス")
     parser.add_argument(
         "--rules",
@@ -185,7 +189,7 @@ def main() -> int:
     results = []
     for rules in rule_sets:
         for game in usable:
-            outcome = replay_game(args.minase, rules, game, log)
+            outcome = replay_game(args.minase, rules, game, log, args.eval_file)
             results.append(outcome)
             print(
                 f"rules={rules} game={outcome['game_index']} "

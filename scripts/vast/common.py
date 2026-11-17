@@ -7,6 +7,7 @@
 from collections.abc import Iterator
 from contextlib import contextmanager
 import fcntl
+import hashlib
 import ipaddress
 import json
 import math
@@ -144,6 +145,15 @@ def create(offer: str, label: str, onstart: Path, image: str, disk: int,
     if type(value) is not int or value <= 0:
         raise InvalidResponse('作成応答に正しいnew_contractがありません')
     return value
+
+
+def file_sha256(path: Path) -> str:
+    """ファイル全体を分割して読み、SHA-256を16進数で返す。"""
+    digest = hashlib.sha256()
+    with path.open('rb') as stream:
+        for block in iter(lambda: stream.read(1024 * 1024), b''):
+            digest.update(block)
+    return digest.hexdigest()
 
 
 def transfer_seconds(byte_count: int, remaining_seconds: float) -> float:
