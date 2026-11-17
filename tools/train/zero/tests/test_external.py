@@ -214,7 +214,7 @@ class ExternalEvaluationTests(unittest.TestCase):
             read_file(self.data)
         with self.assertRaisesRegex(ValueError, "teacher must be MCTS"):
             read_replay_buffer([self.data], [self.data], 42,
-                rank=0, world_size=1, batch_size=1, micro_batch_size=1, replay_threads=1,
+                samples="latest", rank=0, world_size=1, batch_size=1, micro_batch_size=1, replay_threads=1,
             )
 
     def test_nonfinite_diagnostics_are_rejected_without_output(self) -> None:

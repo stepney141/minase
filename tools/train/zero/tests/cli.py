@@ -58,7 +58,7 @@ def train_arguments(initial: Path, out: Path) -> list[str]:
         "train", "--init", str(initial), "--data-list", str(data_list),
         "--latest-data", "fixtures/zero-selfplay-small.mnsd",
         "--out-dir", str(out), "--cycle", "1", "--seed", "42", "--batch-size", "16",
-        "--micro-batch-size", "4", "--replay-threads", "1",
+        "--micro-batch-size", "4", "--replay-threads", "1", "--samples", "latest",
         "--lr", "0.01", "--momentum", "0.9", "--weight-decay", "0.0001",
         "--clip-grad-norm", "10", "--value-lambda", "0.333", "--precision", "fp32",
         "--checkpoint-steps", "4", "--device", "cpu", "--trainer-commit", COMMIT,

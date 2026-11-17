@@ -839,7 +839,7 @@ class Runner:
             _write(path, contents)
         command = [*trainer, "--init", initial, "--data-list", data_list,
                    "--latest-data", *latest_files, "--out-dir", out,
-                   "--cycle", str(cycle), "--seed", str(self.options.train_seed_base + cycle)]
+                   "--samples", "latest", "--cycle", str(cycle), "--seed", str(self.options.train_seed_base + cycle)]
         for name in ("batch_size", "lr", "momentum", "weight_decay", "clip_grad_norm",
                      "value_lambda", "precision", "checkpoint_steps"):
             command.extend(["--" + name.replace("_", "-"), str(getattr(self.options, name))])

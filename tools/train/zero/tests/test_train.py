@@ -162,7 +162,7 @@ class TrainTests(unittest.TestCase):
             setattr(cls, name, value)
         cls.data, cls.infos, _, _ = read_replay_buffer(
             [ZERO / "fixtures/zero-selfplay-small.mnsd"], [ZERO / "fixtures/zero-selfplay-small.mnsd"], 42,
-            rank=0, world_size=1, batch_size=16, micro_batch_size=4, replay_threads=1,
+            samples="latest", rank=0, world_size=1, batch_size=16, micro_batch_size=4, replay_threads=1,
         )
 
     @classmethod
@@ -369,7 +369,7 @@ class TrainTests(unittest.TestCase):
         ]
         write_small(path, [single_game(*game) for game in sorted(games)], "lishogi")
         data, _, _, _ = read_replay_buffer([path], [path], 42,
-            rank=0, world_size=1, batch_size=1, micro_batch_size=1, replay_threads=1,
+            samples="latest", rank=0, world_size=1, batch_size=1, micro_batch_size=1, replay_threads=1,
         )
         indices = np.flatnonzero(~data.validation)
         indices = indices[reference_sample(len(indices), len(indices), 42)]

@@ -8,6 +8,7 @@
 - train（新しいサイクル）：--init（すべての更新を終えたチェックポイント）、--data-list（リプレイバッファの
   MNSDファイルの列を保存したUTF-8のJSON配列のファイル）、
   --latest-data（最新サイクルのファイルの列で、読み込んだ配列の末尾と一致する）、
+  --samples（latestなら最新サイクルの訓練局面数、正の整数ならその数を抽出する）、
   --out-dir（存在しないか空）、--cycle、--seed、--batch-size（全体のバッチ）、--micro-batch-size、--lr、
   --momentum、--weight-decay、--clip-grad-norm、--value-lambda、--precision（bf16かfp32）、
   --checkpoint-steps、--device（cudaかcpu）、--replay-threads、--trainer-commit（40桁の16進数字）。
@@ -45,6 +46,18 @@ class _Parser(argparse.ArgumentParser):
         raise ValueError(message)
 
 
+def _samples(value: str) -> str | int:
+    if value == "latest":
+        return value
+    try:
+        count = int(value)
+    except ValueError:
+        raise argparse.ArgumentTypeError("samples must be 'latest' or a positive integer") from None
+    if count <= 0:
+        raise argparse.ArgumentTypeError("samples must be 'latest' or a positive integer")
+    return count
+
+
 def _parse(argv: list[str]) -> argparse.Namespace:
     parser = _Parser(description=__doc__, allow_abbrev=False)
     commands = parser.add_subparsers(dest="command", required=True)
@@ -67,6 +80,7 @@ def _parse(argv: list[str]) -> argparse.Namespace:
         train.add_argument("--init", required=True)
         train.add_argument("--data-list", type=Path, required=True)
         train.add_argument("--latest-data", nargs="+", required=True)
+        train.add_argument("--samples", type=_samples, required=True)
         train.add_argument("--out-dir", type=Path, required=True)
         for name in ("cycle", "seed", "batch-size", "micro-batch-size", "checkpoint-steps"):
             train.add_argument(f"--{name}", type=int, required=True)
