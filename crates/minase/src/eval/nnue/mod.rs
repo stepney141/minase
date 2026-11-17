@@ -18,9 +18,13 @@ mod file;
 mod format;
 pub use file::{NetworkFile, NetworkFileError, read_network_file};
 pub mod head;
+pub mod input;
 mod stats;
 #[cfg(test)]
 mod tests;
+// 探索の評価器へ接続するまでの一時的な許可。
+#[allow(dead_code)]
+pub(crate) mod transformer;
 
 use super::features::{FEATURE_COUNT, PIECE_STATE_COUNT, feature_index, piece_state};
 use feature_set::{FeatureSet, P};
