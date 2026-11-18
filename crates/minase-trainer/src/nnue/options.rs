@@ -22,16 +22,20 @@ pub enum DeviceKind {
 /// 学習、照合、計測で共用する最適化と教師の係数。
 #[derive(Clone, Copy, Debug, PartialEq, clap::Args, Serialize)]
 pub struct TrainingOptions {
-    /// 第1層の重みとPSQTの学習率を正の有限値で指定する。
+    /// ft群の学習率を正の有限値で指定する。
+    /// LayerStackでは第1層の重みとPSQT、Simpleでは第1層の実の行と特徴分解の仮想行に適用する。
     #[arg(long, default_value_t = 1e-3)]
     pub lr_ft: f64,
-    /// 第1層の重みとPSQTの重み減衰を非負の有限値で指定する。
+    /// ft群の重み減衰を非負の有限値で指定する。
+    /// LayerStackでは第1層の重みとPSQT、Simpleでは第1層の実の行と特徴分解の仮想行に適用する。
     #[arg(long, default_value_t = 0.0)]
     pub weight_decay_ft: f64,
-    /// 出力部の学習率を正の有限値で指定する。
+    /// head群の学習率を正の有限値で指定する。
+    /// 両構造とも、第1層のバイアスと後段の全パラメータに適用する。
     #[arg(long, default_value_t = 1e-3)]
     pub lr_head: f64,
-    /// 出力部の重み減衰を非負の有限値で指定する。
+    /// head群の重み減衰を非負の有限値で指定する。
+    /// 両構造とも、第1層のバイアスと後段の全パラメータに適用する。
     #[arg(long, default_value_t = 0.0)]
     pub weight_decay_head: f64,
     /// 自己対局の教師の混合比を有限な0以上1以下の値で指定する。実戦対局では0を使う。
@@ -63,7 +67,7 @@ impl TrainingOptions {
         Ok(())
     }
 
-    /// 第1層と出力部の2群へ係数を割り当てる。
+    /// ftとheadの2群へ係数を割り当てる。
     pub fn optimizer(&self) -> OptimizerConfig {
         OptimizerConfig {
             ft: AdamWGroup {

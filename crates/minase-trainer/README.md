@@ -28,15 +28,15 @@ GPU側では第1層の前進、全パラメータの勾配、部分和の縮約�
 | `pst train` | 鏡映共有PSTをCPUで学習する。 | [PSTとFMの学習手順](../../docs/guides/pst-training.md) | `src/pst/` |
 | `fm train`、`fm quarter`、`fm scale` | 固定PSTへ加えるFM補正をCPUで学習し、補正の縮小と倍率の焼き込みを行う。 | [PSTとFMの学習手順](../../docs/guides/pst-training.md#6-fmの補正を学習する) | `src/fm/` |
 | `joint train` | PSTとFMを同時学習する。 | [PSTとFMの学習手順](../../docs/guides/pst-training.md#6-fmの補正を学習する) | `src/joint/` |
-| `nnue train` | NNUEをCUDAまたはCPUで学習する。 | [NNUEの学習と診断の手順](../../docs/guides/nnue-training.md) | `src/nnue/train/`、`src/nnue/options.rs` |
-| `nnue fit-linear` | 学習済みのNNUEの線形の経路の序中盤の列を、対局結果へのロジスティック回帰で補正する。 | [NNUEの学習と診断の手順](../../docs/guides/nnue-training.md#線形の経路を対局結果で補正する) | `src/nnue/fit_linear/` |
-| `nnue check-equivalence`、`nnue bench-step` | GPUの計算をCPU参照と照合し、1更新の時間を測る。 | [NNUEの学習と診断の手順](../../docs/guides/nnue-training.md#学習器を変更したとき) | `src/nnue/gpu/equivalence.rs`、`src/nnue/gpu/bench.rs` |
+| `nnue train layerstack`、`nnue train simple` | P型のLayerStackとHalfKP_vmのSimpleのNNUEを、CUDAまたはCPUで学習する。 | [NNUEの学習と診断の手順](../../docs/guides/nnue-training.md) | `src/nnue/train/`（学習ループ）、`src/nnue/layerstack/`、`src/nnue/simple/`、`src/nnue/options.rs` |
+| `nnue export-handcrafted` | 手書きの評価関数v0を、tataraの形式のLayerStackのネットとして書き出す。 | [NNUEの学習と診断の手順](../../docs/guides/nnue-training.md#学習データと初期値を用意する) | `src/nnue/handcrafted.rs` |
+| `nnue check-equivalence <構造>`、`nnue bench-step <構造>` | GPUの計算をCPU参照と照合し、1更新の時間を測る。 | [NNUEの学習と診断の手順](../../docs/guides/nnue-training.md#学習器を変更したとき) | `src/nnue/layerstack/commands.rs`、`src/nnue/simple/commands.rs`、各構造の`bench.rs` |
 | `diag pst-compare` | 2つのPSTを教師分類と位相帯ごとに比較する。 | [PSTとFMの学習手順](../../docs/guides/pst-training.md#5-pstを診断する) | `src/diagnostics/pst_compare.rs`、`src/diagnostics/pst_statistics.rs` |
 | `diag nnue-distribution`、`diag nnue-removal`、`diag nnue-moves` | NNUEの評価分布、駒除去差分、合法手の評価差を診断する。 | [NNUEの学習と診断の手順](../../docs/guides/nnue-training.md#学習した重みを診断する) | `src/diagnostics/nnue_distribution.rs`、`src/diagnostics/nnue_removal.rs`、`src/diagnostics/nnue_moves.rs` |
 
-NNUEの経路の公開API、GPUの実装、およびテストの契約は`src/nnue/`の各モジュールとテストのdocコメントにあり、チェックポイントの形式は`src/nnue/model/checkpoint.rs`の`Checkpoint`のdocコメントにある。
+NNUEの経路の公開API、GPUの実装、およびテストの契約は`src/nnue/`の各モジュールとテストのdocコメントにあり、チェックポイントの形式は`src/nnue/layerstack/checkpoint.rs`と`src/nnue/simple/checkpoint.rs`のdocコメントにある。
 
-`nnue train`の学習の長さは、教師の量に依存しないsuperbatchで指定する。
+`nnue train layerstack`と`nnue train simple`の学習の長さは、教師の量に依存しないsuperbatchで指定する。
 `--superbatches N`、`--validation-superbatches V`、`--lr-schedule`を必須とし、1 superbatchの更新回数Bは`--batches-per-superbatch`で指定する。Bの既定値は6,104である。
 学習率の半減期と総長もsuperbatchで数え、N×B回の更新を終えた`latest.npz`から`nnue.bin`を書き出す。
 検証は学習前、V superbatchごと、および学習の最後に行い、損失は停止や重みの選択には使わない。
@@ -44,6 +44,6 @@ NNUEの経路の公開API、GPUの実装、およびテストの契約は`src/nn
 再開時はNとV、時間の上限、スレッド数、bucketの容量と作業ディレクトリを変更できるが、Bと学習率の予定は一致を要求する。
 
 NNUEの訓練損失と検証損失は、ネットの勝率pと教師値の勝率qの差の2乗(p−q)²の平均とする。
-`--teacher-cp-per-logit`を省略すると`--base`の勝率尺度を使い、`calibrate`または較正ファイルを指定するとその尺度を使う。
-第1層と出力部の重み減衰の既定値はいずれも0である。
-`nnue fit-linear`と教師尺度の較正は、二値交差エントロピーを使う。
+教師の勝率尺度は`--teacher-cp-per-logit`に正の実数で渡す必須の値であり、`data calibrate`で先に求める。規則セットは`--rules`で渡し、全ての教師ファイルのヘッダと照合する。
+`ft`群（第1層の重み）と`head`群（第1層のバイアスと後段）の重み減衰の既定値はいずれも0である。
+教師尺度の較正は、二値交差エントロピーを使う。

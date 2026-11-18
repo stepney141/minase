@@ -1,4 +1,4 @@
-//! 完了した更新回数から、3群に共通する学習率の倍率を求める。
+//! 完了した更新回数から、ftとheadの2群に共通する学習率の倍率を求める。
 
 use crate::nnue::layerstack::{Error, Result};
 use serde::Serialize;
