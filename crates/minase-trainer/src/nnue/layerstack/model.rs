@@ -131,9 +131,14 @@ impl Parameter {
     }
     /// 更新後の制限。第1層を±224/127に制限すると整数は絶対値224以下となり、
     /// 最大145特徴とバイアスの累算値は145×224＋224＝32,704でi16に収まる。
+    /// L1と共有L1の重みは各±127/128に制限し、和を64倍して丸めた値を±127以内にする。
+    /// tataraは各配列を±127/64に制限し、書き出し時にも和を8ビットへ切り詰めるが、
+    /// minaseは書き出し時に切り詰めないため、学習時の重みの制限を半分にする。
+    /// 両バイアスは±127/64のままとする。CPU参照とGPUはこの制限を共有する。
     pub(super) fn limit(self) -> Option<f32> {
         match self {
             Self::FtWeights | Self::FtBiases => Some(224.0 / 127.0),
+            Self::L1Weights | Self::L1SharedWeights => Some(127.0 / 128.0),
             Self::Psqt | Self::L3Bias => None,
             _ => Some(127.0 / 64.0),
         }

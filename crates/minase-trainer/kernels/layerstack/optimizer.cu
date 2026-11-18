@@ -1,6 +1,9 @@
 // All active elements update, including unobserved rows, as in CPU AdamW.
 // Bias correction denominators are computed once on the host, then divided
 // here (not multiplied by reciprocals) to preserve the reference arithmetic.
+// The host supplies Parameter::limit from the CPU reference. L1 and shared L1
+// weights each use 127/128, so round(64 * their sum) stays within +/-127.
+// Their biases retain 127/64. Unlike tatara, minase does not clip on export.
 extern "C" __global__ void ls_adamw(
     float* weights, const float* gradients, float* moment, float* variance,
     unsigned offset, unsigned count, float limit, unsigned bounded,

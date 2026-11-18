@@ -290,7 +290,13 @@ fn gpu_one_three_updates_reproducibility_and_snapshot_resume() {
         // Saturation/clipping for both groups, with both signs. Preserve enough
         // unsaturated units to exercise every downstream derivative.
         for p in Parameter::ALL {
-            if let Some(limit) = p.limit() {
+            let specified_limit = match p {
+                Parameter::FtWeights | Parameter::FtBiases => Some(224.0 / 127.0),
+                Parameter::L1Weights | Parameter::L1SharedWeights => Some(127.0 / 128.0),
+                Parameter::Psqt | Parameter::L3Bias => None,
+                _ => Some(127.0 / 64.0),
+            };
+            if let Some(limit) = specified_limit {
                 w[p][0] = limit + 0.01;
                 w[p][1] = -limit - 0.01;
             }
@@ -352,6 +358,15 @@ fn gpu_one_three_updates_reproducibility_and_snapshot_resume() {
                 assert_eq!(so.step, go.step);
             }
             if iteration == 1 {
+                for p in [Parameter::L1Weights, Parameter::L1SharedWeights] {
+                    assert_eq!(gw[p][0], 127.0 / 128.0);
+                    assert_eq!(gw[p][1], -127.0 / 128.0);
+                }
+                super::super::export(&gw, scale()).unwrap();
+                let q = super::super::quantize(&gw, scale()).unwrap();
+                assert_eq!(q.l1_weights[0], 127);
+                assert_eq!(q.l1_weights[1], -127);
+                assert!(q.l1_weights.iter().all(|&v| i16::from(v).abs() <= 127));
                 resumed = Some((
                     Step::new(device.clone(), &gw, &go, scale(), n).unwrap(),
                     HostRing::new(&device, FeatureSet::P, n).unwrap(),

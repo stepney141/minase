@@ -191,6 +191,8 @@ impl Step {
                     groups[usize::from(!matches!(p, Parameter::FtWeights | Parameter::Psqt))];
                 let offset = offset(p) as u32;
                 let length = p.active_len() as u32;
+                // Share CPU limits: L1 and shared L1 weights each use 127/128,
+                // keeping their summed export within i8 without clipping it.
                 let (limit, bounded) = match p.limit() {
                     Some(limit) => (limit, 1_u32),
                     None => (0.0, 0),

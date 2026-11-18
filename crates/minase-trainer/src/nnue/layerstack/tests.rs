@@ -349,6 +349,7 @@ fn adam_clips_only_the_required_arrays_and_rejects_bad_inputs_atomically() {
     for p in Parameter::ALL {
         let boundary = match p {
             FtWeights | FtBiases => 224.0 / 127.0,
+            L1Weights | L1SharedWeights => 127.0 / 128.0,
             Psqt | L3Bias => 10.0,
             _ => 127.0 / 64.0,
         };
@@ -364,6 +365,7 @@ fn adam_clips_only_the_required_arrays_and_rejects_bad_inputs_atomically() {
     for p in Parameter::ALL {
         let specified_limit = match p {
             FtWeights | FtBiases => Some(224.0 / 127.0),
+            L1Weights | L1SharedWeights => Some(127.0 / 128.0),
             Psqt | L3Bias => None,
             _ => Some(127.0 / 64.0),
         };
@@ -390,6 +392,38 @@ fn adam_clips_only_the_required_arrays_and_rejects_bad_inputs_atomically() {
     assert!(opt.update(&mut w, &g, 1.0).is_err());
     assert_eq!(w, original);
     assert_eq!(opt, state);
+}
+
+#[test]
+fn adam_l1_weight_boundaries_allow_export_of_shared_sums() {
+    let mut w = Parameters::zeros();
+    let mut g = Parameters::zeros();
+    for p in [L1Weights, L1SharedWeights] {
+        for (i, gradient) in g[p].iter_mut().enumerate() {
+            *gradient = if i % 2 == 0 { -1.0 } else { 1.0 };
+        }
+    }
+    let mut opt = AdamW::new(OptimizerConfig {
+        head: crate::nn::AdamWGroup {
+            lr: 2.0,
+            weight_decay: 0.0,
+        },
+        ..OptimizerConfig::default()
+    })
+    .unwrap();
+    // 同符号の更新で両配列を正負の境界まで動かし、和の書き出しを検査する。
+    opt.update(&mut w, &g, 1.0).unwrap();
+    let bytes = export(&w, scale()).unwrap();
+    Network::decode(&bytes).unwrap();
+    let q = quantize(&w, scale()).unwrap();
+    for (i, &value) in q.l1_weights.iter().enumerate() {
+        let sign = if i % 2 == 0 { 1.0 } else { -1.0 };
+        for p in [L1Weights, L1SharedWeights] {
+            assert_eq!(w[p][i], sign * (127.0 / 128.0));
+        }
+        assert_eq!(value, if i % 2 == 0 { 127 } else { -127 });
+        assert!(i16::from(value).abs() <= 127);
+    }
 }
 
 fn positions() -> Vec<Position> {
