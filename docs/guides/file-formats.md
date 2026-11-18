@@ -27,7 +27,8 @@ NPZはNumPyの配列を名前つきで収めた無圧縮のZIPであり、コン
 | 形式 | 識別と版 | 書き手 | 読み手 | 仕様 |
 |---|---|---|---|---|
 | MNSD（教師データと検証用データ） | `MNSD`、版3 | `minase data selfplay generate`、`minase data zero-selfplay`、`minase data lishogi games`、`minase data lishogi validation`、`minase-trainer diag pst-compare` | 学習器、AlphaZero型探索の学習器（拡張モジュール`minase_mnsd_reader`）、診断、`minase data selfplay inspect`、`minase-trainer fm scale --data`、`nnue bench-step` | `crates/minase/src/training/records.rs` |
-| MNUE（NNUEの重み） | `MNUE`、版5 | `minase-trainer nnue train`、`nnue fit-linear` | エンジン（オプション`EvalFile`）、`minase data selfplay generate`と`data lishogi`（`--eval-file`）、診断、`nnue train`（書き出した重みの検査）、`nnue fit-linear`（基点の重み） | `crates/minase/src/eval/nnue/format.rs` |
+| NNUEの重み（P型のLayerStack） | 版の番号`0x7AF32F21`と構造記述の文字列（tataraのLayerStackの形式） | `minase-trainer nnue train layerstack`、`nnue export-handcrafted` | エンジン（オプション`EvalFile`）、`minase data selfplay generate`と`data lishogi`（`--eval-file`）、診断 | `crates/minase/src/eval/nnue/network/layer_stack.rs` |
+| NNUEの重み（HalfKP_vmのSimple） | 版の番号`0x7AF32F16`と構造記述の文字列（tataraのSimpleの形式） | `minase-trainer nnue train simple` | 同上 | `crates/minase/src/eval/nnue/network/simple.rs` |
 | MNPT（PSTの重みとFMの補正） | `MNPT`、版3 | `minase-trainer pst train`、`fm train`、`joint train`、`fm quarter`、`fm scale` | エンジン、学習器、診断 | `crates/minase/src/eval/pst/format.rs` |
 | PSTの浮動小数点の重み`pst-float.npz`（2配列） | NPZ、版なし | `minase-trainer pst train` | `joint train --pst-init`、`diag pst-compare` | `crates/minase-trainer/src/pst/npz.rs` |
 | FMの浮動小数点の重み`fm-float.npz`（3配列） | NPZ、版なし | `minase-trainer fm train` | `joint train --fm-init` | `crates/minase-trainer/src/fm/npz.rs` |
@@ -37,9 +38,9 @@ NPZはNumPyの配列を名前つきで収めた無圧縮のZIPであり、コン
 `minase data selfplay generate`と`minase data zero-selfplay`は、出力先のディレクトリに、MNSDのほか、再開のときに照合する生成条件`config.json`、対局番号を固定の局数ごとに区切った塊のMNSDと集計JSON、および排他ロック用の空ファイルを置く。
 `selfplay generate`は、全塊がそろうと塊を1つの教師ファイル`teacher.mnsd`へ組み直し、学習器にはこのファイルを渡す。
 出力先の構成と各ファイルの欄は、`crates/minase/src/bin/minase/selfplay_gen/output.rs`と`crates/minase/src/bin/minase/zero_selfplay/output.rs`のdocコメントにある。
-MNSDのヘッダの`network_checksum`は、教師の探索に使ったNNUEのネットの識別子であり、`--eval-file`で読んだMNUEのファイル全体のSHA-256である（[識別子のADR](../adr/identify-nnue-networks-by-the-sha256-of-the-whole-file.md)）。
-MNUEのヘッダにあるチェックサムは本体だけを対象とし、復号のときに本体の破損を見つける検査に使うので、識別子とは値が異なる。
-外部ファイル化より前に作った教師ファイルの`network_checksum`は、MNUEの本体のチェックサムである。
+MNSDのヘッダの`network_checksum`は、教師の探索に使ったNNUEのネットの識別子であり、`--eval-file`で読んだネットのファイル全体のSHA-256である（[識別子のADR](../adr/identify-nnue-networks-by-the-sha256-of-the-whole-file.md)）。
+NNUEの重みのファイルはtataraの形式であり、ヘッダは版の番号、ネットのハッシュ、および構造記述の文字列だけでチェックサムを持たないので、取り違えと破損はファイル全体のSHA-256で見つける（[形式のADR](../adr/represent-nnue-feature-sets-and-structures-as-enums-and-select-the-structure-from-the-tatara-file.md)）。
+2026年11月18日より前に作った教師ファイルの`network_checksum`は、廃止したMNUEの形式のネットのものである。
 MNSDは1局ごとに開始局面を1回だけ書き、以後は1手ごとに指した手、価値、印、および方策を並べる対局単位の形式であり、読み手は手順を再生して各局面を復元する。
 教師の分類と検証集合は、MNSDのヘッダと対局の由来から決まる。
 
@@ -53,20 +54,20 @@ NNUEの学習器が`--buckets`を2以上にしたときに作業ディレクト�
 
 | 形式 | 識別と版 | 書き手 | 読み手 | 仕様 |
 |---|---|---|---|---|
-| NNUEのチェックポイント`latest.npz` | NPZ、`meta`の`kind = "nnue"`、進捗は完了したsuperbatch数 | `nnue train` | `nnue train`（終了時の書き出しと`--resume`）、`diag nnue-removal --float` | `crates/minase-trainer/src/nnue/model/checkpoint.rs` |
+| NNUEのLayerStackのチェックポイント`latest.npz` | NPZ、`meta`の`kind = "layerstack"`、進捗は完了したsuperbatch数 | `nnue train layerstack` | `nnue train layerstack`（終了時の書き出しと`--resume`）、`diag nnue-removal --float` | `crates/minase-trainer/src/nnue/layerstack/checkpoint.rs` |
+| NNUEのSimpleのチェックポイント`latest.npz` | NPZ、`meta`の`kind = "simple"`、進捗は完了したsuperbatch数 | `nnue train simple` | `nnue train simple`（終了時の書き出しと`--resume`）、`diag nnue-removal --float` | `crates/minase-trainer/src/nnue/simple/checkpoint.rs` |
 | PSTのチェックポイント`latest.npz`、`best.npz` | NPZ、`meta`の`kind = "pst"` | `pst train` | `pst train`（終了時の書き出しと`--resume`） | `crates/minase-trainer/src/pst/checkpoint.rs` |
 | FMのチェックポイント`latest.npz`、`best.npz` | NPZ、`meta`の`kind = "fm"` | `fm train` | `fm train`（終了時の書き出しと`--resume`） | `crates/minase-trainer/src/fm/checkpoint.rs` |
 | 同時学習のチェックポイント`latest.npz`、`best.npz` | NPZ、`meta`の`kind = "joint"` | `joint train` | `joint train`（終了時の書き出しと`--resume`） | `crates/minase-trainer/src/joint/checkpoint.rs` |
-| NNUEの学習の設定`config.json` | なし | `nnue train` | `nnue train --resume` | `crates/minase-trainer/src/nnue/train/record.rs` |
+| NNUEの学習の設定`config.json` | なし | `nnue train layerstack`、`nnue train simple` | 同じ命令の`--resume` | `crates/minase-trainer/src/nnue/train/record.rs` |
 | PSTの学習の設定`config.json` | なし | `pst train` | `pst train --resume` | `crates/minase-trainer/src/pst/record.rs` |
 | FMの学習の設定`config.json` | なし | `fm train` | `fm train --resume` | `crates/minase-trainer/src/fm/record.rs` |
 | 同時学習の設定`config.json` | なし | `joint train` | `joint train --resume` | `crates/minase-trainer/src/joint/record.rs` |
-| NNUEのsuperbatchの記録`training.jsonl` | なし | `nnue train` | `nnue train --resume` | `crates/minase-trainer/src/nnue/train/record.rs`の`SuperbatchRecord` |
+| NNUEのsuperbatchの記録`training.jsonl` | なし | `nnue train layerstack`、`nnue train simple` | 同じ命令の`--resume` | `crates/minase-trainer/src/nnue/train/record.rs`の`SuperbatchRecord` |
 | PSTのエポックの記録`training.jsonl` | なし | `pst train` | `pst train --resume` | `crates/minase-trainer/src/pst/record.rs`の`EpochRecord` |
 | FMのエポックの記録`training.jsonl` | なし | `fm train` | `fm train --resume` | `crates/minase-trainer/src/fm/record.rs`の`EpochRecord` |
 | 同時学習のエポックの記録`training.jsonl` | なし | `joint train` | `joint train --resume` | `crates/minase-trainer/src/joint/record.rs`の`EpochRecord` |
-| NNUEの終了報告`summary.json` | なし | `nnue train` | なし | `crates/minase-trainer/src/nnue/train/mod.rs`の`Summary` |
-| NNUEの線形の経路の結果回帰の報告`summary.json` | なし | `nnue fit-linear` | なし | `crates/minase-trainer/src/nnue/fit_linear/mod.rs`の`run` |
+| NNUEの終了報告`summary.json` | なし | `nnue train layerstack`、`nnue train simple` | なし | `crates/minase-trainer/src/nnue/train/mod.rs`の`Summary` |
 | PSTの終了報告`summary.json` | なし | `pst train` | なし | `crates/minase-trainer/src/pst/record.rs`の`Summary` |
 | FMの終了報告`summary.json` | なし | `fm train` | なし | `crates/minase-trainer/src/fm/record.rs`の`Summary` |
 | 同時学習の終了報告`summary.json` | なし | `joint train` | なし | `crates/minase-trainer/src/joint/record.rs`の`Summary` |
@@ -102,7 +103,7 @@ ONNXのネットはONNXが形式を定めるので載せない。
 | 合法手の評価差の診断の報告（`--output`で指定） | なし | `minase-trainer diag nnue-moves` | なし | `crates/minase-trainer/src/diagnostics/nnue_moves.rs`の`Report` |
 | FMの補正を縮める変換の報告`<出力の拡張子を除いた名前>.quarter.json` | なし | `minase-trainer fm quarter` | なし | `crates/minase-trainer/src/fm/convert.rs`の`QuarterReport` |
 | FMの倍率を焼き込む変換の報告`<出力の拡張子を除いた名前>.scale.json` | なし | `minase-trainer fm scale` | なし | `crates/minase-trainer/src/fm/convert.rs`の`ScaleReport` |
-| 教師の勝率尺度の較正ファイル（`--output`で指定） | `format = "minase-trainer-teacher-calibration"` | `minase-trainer data calibrate` | `nnue train`、`pst train`、`fm train`、`joint train`、`diag pst-compare`（`--teacher-cp-per-logit`） | `crates/minase-trainer/src/data/calibration.rs` |
+| 教師の勝率尺度の較正ファイル（`--output`で指定） | `format = "minase-trainer-teacher-calibration"` | `minase-trainer data calibrate` | `pst train`、`fm train`、`joint train`、`diag pst-compare`（`--teacher-cp-per-logit`）。NNUEの学習は較正した値を数値で`--teacher-cp-per-logit`に渡し、このファイルを読まない | `crates/minase-trainer/src/data/calibration.rs` |
 
 ## 対局ハーネスとSPSAの実行ディレクトリ
 
@@ -165,4 +166,4 @@ ONNXのネットそのものとTensorRTのエンジンのキャッシュは、ON
 - `summary.json`は、対局ハーネスでは累計実行時間と中断状態だけを持ち、学習器では学習の終了報告である。学習器の`summary.json`の欄は学習器ごとに異なり、AlphaZero型探索の学習器`minase_zero`の`summary.json`も`init`と`train`で欄が異なる。
 - `config.json`と`training.jsonl`は4種の学習器がそれぞれ書き、欄は学習器ごとに異なる。`config.json`は、教師の生成器`minase data selfplay generate`と`minase data zero-selfplay`の出力先にもあり、こちらは生成条件を持つ。
 - `pst-float.npz`は、PSTの学習器が書くと2つの配列、同時学習が書くと5つの配列を持つ。PSTの2つの配列だけを使う読み手は、5つの配列を持つファイルからも同じ名前の2つの配列を読む。
-- `latest.npz`は4種の学習器がそれぞれ書き、`best.npz`はPST、FM、同時学習の学習器だけが書く。収める配列と`meta`の進捗の欄は学習器ごとに異なり、`meta`の`kind`で学習器を見分ける。NNUEの学習器は、エポック数で進捗を表していた変更前の学習器のチェックポイントを読まない。
+- `latest.npz`はNNUEの2つの構造（LayerStackとSimple）とPST、FM、同時学習の学習器がそれぞれ書き、`best.npz`はPST、FM、同時学習の学習器だけが書く。収める配列と`meta`の進捗の欄は学習器ごとに異なり、`meta`の`kind`で学習器を見分ける。NNUEの学習器は、tataraの枠組みへ載せ替える前の学習器のチェックポイントを読まない。

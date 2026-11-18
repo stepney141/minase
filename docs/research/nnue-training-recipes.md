@@ -34,7 +34,7 @@ minaseの現行の学習は次のとおりである。
 最適化手法はAdamW（β1=0.9、β2=0.999、ε=1e-8）で、学習率は第1層と出力部が0.001、線形の経路が0.03、重み減衰は1e-4（線形の経路は0）である（[options.rs](../../crates/minase-trainer/src/nnue/options.rs)、[adam.rs](../../crates/minase-trainer/src/nn/adam.rs)）。
 バッチは16,384局面で、予定は`cosine:3:0.1`であり、3周で倍率を0.1まで下げて以後は0.1のままとする（[schedule.rs](../../crates/minase-trainer/src/nnue/schedule.rs)）。
 検証損失が5周続けて改善しなければ止め、検証損失が最良の周の重みを書き出す（[args.rs](../../crates/minase-trainer/src/nnue/train/args.rs)）。
-λ=1.0で学習した後に、線形の経路を対局結果へ補正する（[手引き](../guides/nnue-training.md#線形の経路を対局結果で補正する)）。
+λ=1.0で学習した後に、線形の経路を対局結果へ補正する（[ADR](../adr/archive/correct-the-nnue-linear-path-by-regressing-on-game-outcomes.md)。この補正は2026年11月18日に削除した）。
 第2世代の教師は訓練96,462,343局面、検証5,162,867局面、1周は5,888更新である。
 
 ## 要約

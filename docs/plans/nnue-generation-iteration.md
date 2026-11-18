@@ -50,7 +50,7 @@ HalfKP_vmの世代反復は、本書でP型の評価関数の癖をつかんだ�
 - **ADR**：設計判断の記録（architecture decision record）。`docs/adr/`に置く。
 - **v0のネット**：tatara化の設計書の書き出し処理で、v0をP型のネット（後段をすべて0にし、PSQTにv0の駒割と位置評価を入れたもの）として書き出したファイル。第0世代のネットであり、第1世代の教師の生成と、第1世代の判定の対照に使う。
 - **第N世代のネット**：第N世代の学習で書き出した重みのファイル。gitに入れず、ネットワークに接続した記憶装置（NAS）に置き、ファイル全体のSHA-256で特定する。
-- **教師の勝率尺度K_t**：教師の探索値（単位はセンチポーン、cp。歩兵1枚の100分の1）を勝率へ換算する尺度。探索値sの勝率をσ(s÷K_t)とする（σはシグモイド関数）。第1世代の最初の4本から一度だけ求め、全世代で同じ値を使う（[ADR](../adr/convert-nnue-teacher-values-with-the-network-win-rate-scale-by-default.md)）。ネットの出力をセンチポーンへ換算する尺度との分け方は、tatara化の設計書にある。
+- **教師の勝率尺度K_t**：教師の探索値（単位はセンチポーン、cp。歩兵1枚の100分の1）を勝率へ換算する尺度。探索値sの勝率をσ(s÷K_t)とする（σはシグモイド関数）。第1世代の最初の4本から一度だけ求め、全世代で同じ値を使う（[ADR](../adr/separate-the-nnue-teacher-win-rate-scale-from-the-output-scale.md)）。ネットの出力をセンチポーンへ換算する尺度との分け方は、tatara化の設計書にある。
 - **暫定最良世代**：棋力の判定で最後に`H1`を取った世代。判定を始める前は第0世代とする。
 - **旧基準**：中断した世代反復の前のmasterのコミット`5ea52649`（ブランチ`nnue-width128-regressed`）。ネットを埋め込んだ版であり、最終候補の対照である。
 - **配置の距離M**：全21駒種の配置の分布が、人間の上位者、既存の中将棋エンジンHaChu、およびAlphaZero型のネットの配置からどれだけ離れているかを1つにまとめた値。定義は[結果回帰の設計書](archived/nnue-outcome-regression.md#配置の距離)にある。
@@ -107,7 +107,7 @@ HalfKP_vmの世代反復は、本書でP型の評価関数の癖をつかんだ�
 | 規則セット | 教師の生成、世代の判定、および最終候補の対局を、規則セット`lishogi`で行う（2026年11月13日の利用者の決定）。学習器には規則セット`lishogi`を引数で渡し、学習器は教師ファイルのヘッダの規則セットと照合する。 | 判定を日本中将棋連盟の規則に基づく規則セット`JCSA`に残して過去の測定記録と比べられるようにする案は、学習した規則とは別の規則でネットの強さを測ることになる。 |
 | 反復のコミット | 全世代の生成、学習、および判定に、同じ反復のコミットを使い、世代はネットのファイル（SHA-256）で区別する。 | 世代ごとにネットを埋め込んだコミットを作る外部ファイル化より前の方式は、外部ファイル化の後はネットがgitに入らないので成り立たない。世代ごとにコードのコミットを替える案は、判定の対局にコードの違いが混ざる。 |
 | ネットの保管と記録 | 世代のネットはNASに、SHA-256の16進数をファイル名にして置く。連続生成スクリプトの世代の記録に、反復のコミット、ネットのパスとSHA-256、および世代の完了の状態を書く（外部ファイル化の設計書）。 | 世代のネットをgitに入れる案は、外部ファイル化が退けた。 |
-| 教師の勝率尺度 | 第1世代の最初の4本からK_tを一度だけ求め、全世代の学習器に引数で渡す。 | tatara化より前の手順（K_tを書き込んだv0のMNUEを`--base`に渡して引き継ぐ）は、tatara化で`--base`がなくなるので使えない。世代ごとに求め直す案は、K_tを固定する[ADR](../adr/convert-nnue-teacher-values-with-the-network-win-rate-scale-by-default.md)に反する。 |
+| 教師の勝率尺度 | 第1世代の最初の4本からK_tを一度だけ求め、全世代の学習器に引数で渡す。 | tatara化より前の手順（K_tを書き込んだv0のMNUEを`--base`に渡して引き継ぐ）は、tatara化で`--base`がなくなるので使えない。世代ごとに求め直す案は、K_tを固定する[ADR](../adr/separate-the-nnue-teacher-win-rate-scale-from-the-output-scale.md)に反する。 |
 | 反復の上限 | 第5世代までとする（2026年11月15日の利用者の決定）。第5世代も`H1`を取れば、延長するかと、延長する世代の学習の長さを利用者が決める。 | 上限を置かない案は、費用の見通しが立たない。上限を第4世代までとする案では、1世代の教師の量が予定の約5億局面に届く前に反復が終わる。 |
 | 判定で勝てなかった世代 | 暫定最良世代に`H1`を取れなければ、反復を止めて利用者へ報告する。量を増やした世代でも`H1`を取れないことは、自己生成の頭打ちの兆候とみる。 | 同じ前の世代のネットで教師を足して学び直す案（先行エンジンPruneの規則）は、世代を追って量を増やす規則に置き換えた（[世代の量のADR](../adr/grow-each-nnue-generation-by-the-teacher-files-for-100-million-positions.md)）。 |
 | 教師の生成 | 制御スクリプト`teacher_generation.py`で生成機を借りて生成する（[借り方のADR](../adr/rent-interruptible-instances-at-the-minimum-bid-for-teacher-generation.md)、[移行のADR](../adr/generate-teacher-files-on-one-rented-machine-and-continue-from-collected-chunks-on-another.md)）。 | 連続生成スクリプトでオンデマンドの機械を借り、生成から学習まで続ける従来の方式は、同じ量を生成する費用が高い（同じ2つのADR）。 |
@@ -120,9 +120,9 @@ HalfKP_vmの世代反復は、本書でP型の評価関数の癖をつかんだ�
 
 新しい系列は、外部ファイル化とtatara化の完了後のmasterから切ったブランチ`nnue-generation-iteration`の作業ツリー`data/worktrees/nnue-generation-iteration`で作る。
 データは`data/nnue-generation-iteration/gen-<N>/`に置き、世代のネットはNASに置いて、連続生成スクリプトの世代の記録で指す。
-連続生成スクリプトは世代ごとに`--first-generation N --last-generation N`で起動し、`--books-per-generation`にkN、`--superbatches`と`--lr-schedule`に第N世代の学習の長さを与える。
+連続生成スクリプトは世代ごとに`--first-generation N --last-generation N`で起動し、学習の構造を`--structure layerstack`で指定して、`--books-per-generation`にkN、`--superbatches`と`--lr-schedule`に第N世代の学習の長さを与える。
 シードの引数は`--seed-base 9000000000 --seed-generation-step 100000000 --seed-book-step 100000`とする。
-引数の名前は外部ファイル化とtatara化の実装で変わり得るので、フェーズ1の前に、両書の完了時の手引きと照らして本節を改める。
+本節の引数と手順は、tatara化の完了時（2026年11月18日）の手引きと連続生成スクリプトに照らして改めた。
 
 第N世代は次の順に作る。
 
@@ -229,7 +229,7 @@ tatara化の後の学習器では変わり得るので、第1世代の学習で�
 ### フェーズ1　連続生成スクリプトの変更
 
 外部ファイル化とtatara化の完了後のmasterから本書のブランチ`nnue-generation-iteration`を切る。
-最初に、「世代の手順」の引数と手順を、両書の完了時の手引きと照らして改める。
+最初に、「世代の手順」の引数と手順が、着手の時点の手引きと連続生成スクリプトに食い違わないことを確かめる。
 続けて、連続生成スクリプトを、教師がすべて作業機にある世代について、`--offer`で指定した出品を学習機として借りて学習だけを行えるように改める。
 いまのスクリプトは、生成機がなく生成も要らない世代では機械を借りずに進むので（`generation_chain.py`の`prepare_machine`）、`--train-place generator`では学習できる生成機がないとして止まる。
 また、生成の作業プロセス`generation_worker.py`は、本を生成するときにだけコミットを展開してビルドし（`prepare_commit`）、学習はその作業ツリー`/workspace/job/minase`で実行する。
