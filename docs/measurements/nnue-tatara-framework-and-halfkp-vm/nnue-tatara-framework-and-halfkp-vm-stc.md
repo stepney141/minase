@@ -18,7 +18,7 @@
 
 ## コマンドライン
 
-本体のリポジトリのルートで、`8b853b66`に固定したworktreeの`minase`を対局ツールとして、nice値19、メモリ上限12 GB、スワップなしの`systemd-run`のサービスで実行した。
+本体のリポジトリのルートで、`8b853b66`に固定したworktreeの`minase`を対局ツールとして、nice値19、メモリ上限12 GiB、スワップなしの`systemd-run`のサービスで実行した。
 
 ```console
 minase match run \
