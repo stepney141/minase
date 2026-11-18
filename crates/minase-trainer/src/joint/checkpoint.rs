@@ -97,57 +97,57 @@ impl Checkpoint {
         Ok(())
     }
     /// 全状態を型と浮動小数点のビット列を保ってNPZへ保存する。
-    pub fn encode(&self) -> Result<Vec<u8>> {
+    pub fn encode(&self, output: impl std::io::Write) -> Result<()> {
         self.validate()?;
-        let mut w = Writer::new("joint", &self.progress)?;
-        w.scalar("cp_per_logit", self.model.pst.cp_per_logit());
-        w.scalar("step", self.optimizer.step());
-        w.scalar("pst_lr", self.optimizer.pst.lr());
-        w.scalar("fm_lr", self.optimizer.fm.group.lr);
-        w.scalar("fm_weight_decay", self.optimizer.fm.group.weight_decay);
-        w.values("pst_weights", &[CANONICAL_ROWS, 2], &self.model.pst.weights);
-        w.values("pst_m", &[CANONICAL_ROWS, 2], &self.optimizer.pst.m);
-        w.values("pst_v", &[CANONICAL_ROWS, 2], &self.optimizer.pst.v);
+        let mut w = Writer::new(output, "joint", &self.progress)?;
+        w.scalar("cp_per_logit", self.model.pst.cp_per_logit())?;
+        w.scalar("step", self.optimizer.step())?;
+        w.scalar("pst_lr", self.optimizer.pst.lr())?;
+        w.scalar("fm_lr", self.optimizer.fm.group.lr)?;
+        w.scalar("fm_weight_decay", self.optimizer.fm.group.weight_decay)?;
+        w.values("pst_weights", &[CANONICAL_ROWS, 2], &self.model.pst.weights)?;
+        w.values("pst_m", &[CANONICAL_ROWS, 2], &self.optimizer.pst.m)?;
+        w.values("pst_v", &[CANONICAL_ROWS, 2], &self.optimizer.pst.v)?;
         w.values(
             "fm_weights_embedding",
             &[FEATURE_COUNT + 1, FM_RANK],
             &self.model.fm.weights[..(FEATURE_COUNT + 1) * FM_RANK],
-        );
+        )?;
         w.values(
             "fm_weights_a",
             &[FM_RANK],
             &self.model.fm.weights[(FEATURE_COUNT + 1) * FM_RANK..],
-        );
+        )?;
         w.values(
             "fm_m_embedding",
             &[FEATURE_COUNT + 1, FM_RANK],
             &self.optimizer.fm.m[..(FEATURE_COUNT + 1) * FM_RANK],
-        );
+        )?;
         w.values(
             "fm_m_a",
             &[FM_RANK],
             &self.optimizer.fm.m[(FEATURE_COUNT + 1) * FM_RANK..],
-        );
+        )?;
         w.values(
             "fm_v_embedding",
             &[FEATURE_COUNT + 1, FM_RANK],
             &self.optimizer.fm.v[..(FEATURE_COUNT + 1) * FM_RANK],
-        );
+        )?;
         w.values(
             "fm_v_a",
             &[FM_RANK],
             &self.optimizer.fm.v[(FEATURE_COUNT + 1) * FM_RANK..],
-        );
+        )?;
         w.values(
             "gradient_pst",
             &[self.gradients.len()],
             &self.gradients.iter().map(|g| g.pst).collect::<Vec<_>>(),
-        );
+        )?;
         w.values(
             "gradient_a",
             &[self.gradients.len()],
             &self.gradients.iter().map(|g| g.a).collect::<Vec<_>>(),
-        );
+        )?;
         w.values(
             "gradient_embedding",
             &[self.gradients.len()],
@@ -156,14 +156,17 @@ impl Checkpoint {
                 .iter()
                 .map(|g| g.embedding)
                 .collect::<Vec<_>>(),
-        );
-        w.mask("mask", &self.model.fm.mask);
-        Ok(w.encode()?)
+        )?;
+        w.mask("mask", &self.model.fm.mask)?;
+        Ok(w.finish()?)
     }
 
     /// 種別、配列の集合・型・形状とモデルの不変条件を検査する。
     pub fn decode(bytes: &[u8]) -> Result<Self> {
-        let (mut r, progress) = Reader::new(bytes, "joint")?;
+        Self::read_from(bytes)
+    }
+    fn read_from(input: impl std::io::Read) -> Result<Self> {
+        let (mut r, progress) = Reader::new(input, "joint")?;
         let cp_per_logit = r.scalar::<f32>("cp_per_logit")?;
         let step = r.scalar::<u64>("step")?;
         let pst_lr = r.scalar::<f64>("pst_lr")?;
@@ -233,8 +236,12 @@ impl Checkpoint {
         result.validate()?;
         Ok(result)
     }
+    /// 一時ファイルを同期し、改名でNPZチェックポイントを公開する。
+    pub fn write(&self, path: impl AsRef<Path>) -> Result<()> {
+        crate::nn::atomic_write_with(path.as_ref(), |output| self.encode(output))
+    }
     /// NPZチェックポイントを読み込む。
     pub fn read(path: impl AsRef<Path>) -> Result<Self> {
-        Self::decode(&std::fs::read(path)?)
+        Self::read_from(std::io::BufReader::new(std::fs::File::open(path)?))
     }
 }

@@ -72,6 +72,12 @@ impl Trainer {
             progress,
         ))
     }
+    fn weights(&self) -> train::Result<Parameters> {
+        Ok(match &self.execution {
+            Execution::Cpu { weights, .. } => (**weights).clone(),
+            Execution::Cuda(step) => step.weights()?,
+        })
+    }
     fn snapshot(&self) -> train::Result<(Parameters, AdamW)> {
         Ok(match &self.execution {
             Execution::Cpu { weights, optimizer } => ((**weights).clone(), (**optimizer).clone()),
@@ -250,7 +256,7 @@ impl TrainerBackend for Trainer {
     }
     fn export(&mut self, path: &Path, samples: &[(Position, Color)]) -> train::Result<Value> {
         self.flush_pending_loss()?;
-        let (weights, _) = self.snapshot()?;
+        let weights = self.weights()?;
         let borrowed: Vec<_> = samples.iter().map(|(p, c)| (p, *c)).collect();
         let report = quantization_report(&weights, self.settings.scale, &borrowed)?;
         crate::nn::atomic_write(path, &super::export(&weights, self.settings.scale)?)?;

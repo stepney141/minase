@@ -281,8 +281,16 @@ fn checkpoint_preserves_next_update_bits_and_checks_settings_and_arrays() {
     let (_, g) = backward(&cp.parameters, scale(), &f, &[0.2]).unwrap();
     cp.optimizer.update(&mut cp.parameters, &g, 1.0).unwrap();
     cp.progress.completed_steps = 1;
-    let bytes = cp.encode().unwrap();
-    let mut restored = Checkpoint::decode(&bytes).unwrap();
+    let mut bytes = Vec::new();
+    cp.encode(&mut bytes).unwrap();
+    let path = std::env::temp_dir().join(format!(
+        "minase-simple-checkpoint-{}.npz",
+        std::process::id()
+    ));
+    cp.write(&path).unwrap();
+    assert_eq!(std::fs::read(&path).unwrap(), bytes);
+    let mut restored = Checkpoint::read(&path).unwrap();
+    std::fs::remove_file(path).unwrap();
     assert_eq!(cp, restored);
     for change in 0..7 {
         let mut settings = cp.settings.clone();

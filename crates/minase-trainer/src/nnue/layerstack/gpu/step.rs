@@ -248,13 +248,17 @@ impl Step {
         check_status(&self.device, &self.forward.nonfinite)?;
         download(&self.device, &self.backward.gradients)
     }
-    pub fn snapshot(&self) -> Result<(Parameters, AdamW)> {
+    /// 更新完了と数値状態を検査し、重みだけをホストへ取り出す。
+    pub fn weights(&self) -> Result<Parameters> {
         if self.failed.load(Ordering::Relaxed) {
             return Err(invalid("LayerStack step has failed"));
         }
         // This also waits for all queued updates, independently of result collection.
         check_status(&self.device, &self.forward.nonfinite)?;
-        let weights = download(&self.device, &self.weights)?;
+        download(&self.device, &self.weights)
+    }
+    pub fn snapshot(&self) -> Result<(Parameters, AdamW)> {
+        let weights = self.weights()?;
         let optimizer = AdamW {
             m: download(&self.device, &self.moment)?,
             v: download(&self.device, &self.variance)?,

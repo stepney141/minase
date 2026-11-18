@@ -290,6 +290,7 @@ fn gpu_one_three_updates_reproducibility_and_snapshot_resume() {
                 .collect()
                 .unwrap();
             let (gw, go) = gpu.snapshot().unwrap();
+            assert_eq!(gpu.weights().unwrap(), gw);
             let (rw, ro) = repeat.snapshot().unwrap();
             compare(&gw, &w);
             compare(&go.m, &optimizer.m);
@@ -356,8 +357,10 @@ fn gpu_asynchronous_results_reject_reuse_and_nonfinite_snapshot() {
     let mut gpu = Step::new(device, &bad, &opt, scale(), 100).unwrap();
     let ticket = ring.upload(&batch).unwrap();
     let result = gpu.enqueue(&mut ring, &ticket, &values, 1.0).unwrap();
+    assert!(gpu.weights().is_err());
     assert!(gpu.snapshot().is_err());
     assert!(result.collect().is_err());
+    assert!(gpu.weights().is_err());
     assert!(gpu.snapshot().is_err());
 }
 

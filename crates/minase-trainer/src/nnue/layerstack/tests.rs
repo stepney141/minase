@@ -647,7 +647,10 @@ fn checkpoint_resume_preserves_next_update_bits() {
         .update(&mut checkpoint.parameters, &gradients, 0.7)
         .unwrap();
     checkpoint.progress.completed_steps = checkpoint.optimizer.step;
-    let mut resumed = Checkpoint::decode(&checkpoint.encode().unwrap()).unwrap();
+    let mut bytes = Vec::new();
+    checkpoint.encode(&mut bytes).unwrap();
+    let mut resumed = Checkpoint::decode(&bytes).unwrap();
+    assert_eq!(checkpoint, resumed);
     resumed.check_settings(&checkpoint.settings).unwrap();
     for c in [&mut checkpoint, &mut resumed] {
         c.optimizer
@@ -668,7 +671,9 @@ fn checkpoint_resume_preserves_next_update_bits() {
     }
     // 再開条件に予算や並列度を保存していないことを、配列とメタデータの双方で確かめる。
     checkpoint.progress.completed_steps = checkpoint.optimizer.step;
-    let arrays = crate::nn::npz::decode(&checkpoint.encode().unwrap()).unwrap();
+    bytes.clear();
+    checkpoint.encode(&mut bytes).unwrap();
+    let arrays = crate::nn::npz::decode(&bytes).unwrap();
     let meta: serde_json::Value = serde_json::from_slice(&arrays["meta"].data).unwrap();
     for key in ["total_superbatches", "time_limit", "threads"] {
         assert!(!arrays.contains_key(key));
@@ -700,7 +705,9 @@ fn checkpoint_rejects_missing_extra_wrong_shape_type_and_inconsistent_settings()
         optimizer: AdamW::new(settings.optimizer).unwrap(),
         settings,
     };
-    let arrays = npz::decode(&c.encode().unwrap()).unwrap();
+    let mut bytes = Vec::new();
+    c.encode(&mut bytes).unwrap();
+    let arrays = npz::decode(&bytes).unwrap();
     for mutation in 0..12 {
         let mut changed = arrays.clone();
         match mutation {

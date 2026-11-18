@@ -422,7 +422,8 @@ fn pst_checkpoint_roundtrip_validates_progress_padding_and_corruption() {
                 .collect::<Vec<_>>(),
         )
         .unwrap();
-    let bytes = ck.encode().unwrap();
+    let mut bytes = Vec::new();
+    ck.encode(&mut bytes).unwrap();
     checkpoint_contract::rejects_invalid_schema(&bytes, |bytes| Checkpoint::decode(bytes).is_ok());
     assert_eq!(Checkpoint::decode(&bytes).unwrap(), ck);
     assert!(minase_trainer::nnue::layerstack::Checkpoint::decode(&bytes).is_err());

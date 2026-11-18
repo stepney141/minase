@@ -83,6 +83,12 @@ impl Trainer {
             checkpoint.progress,
         ))
     }
+    fn weights(&self) -> train::Result<Parameters> {
+        Ok(match &self.execution {
+            Execution::Cpu { weights, .. } => (**weights).clone(),
+            Execution::Cuda(step) => step.weights()?,
+        })
+    }
     fn snapshot(&self) -> train::Result<(Parameters, AdamW)> {
         Ok(match &self.execution {
             Execution::Cpu { weights, optimizer } => ((**weights).clone(), (**optimizer).clone()),
@@ -199,7 +205,7 @@ impl TrainerBackend for Trainer {
             }
             Execution::Cuda(step) => {
                 if self.evaluator.is_none() {
-                    let (weights, _) = step.snapshot()?;
+                    let weights = step.weights()?;
                     self.evaluator = Some(Evaluator::new(
                         step.device().clone(),
                         &weights,
@@ -243,7 +249,7 @@ impl TrainerBackend for Trainer {
     }
     fn statistics(&mut self, validation: Option<&Validation>) -> train::Result<Value> {
         self.flush_pending_loss()?;
-        let (weights, _) = self.snapshot()?;
+        let weights = self.weights()?;
         let delta: Vec<_> = weights[Parameter::Psqt][..ROWS - 1]
             .iter()
             .zip(&self.initial_psqt)
@@ -303,7 +309,7 @@ impl TrainerBackend for Trainer {
     }
     fn export(&mut self, path: &Path, samples: &[(Position, Color)]) -> train::Result<Value> {
         self.flush_pending_loss()?;
-        let (weights, _) = self.snapshot()?;
+        let weights = self.weights()?;
         let borrowed: Vec<_> = samples.iter().map(|(p, c)| (p, *c)).collect();
         let report = quantization_report(&weights, self.settings.scale, &borrowed)?;
         crate::nn::atomic_write(path, &super::export(&weights, self.settings.scale)?)?;

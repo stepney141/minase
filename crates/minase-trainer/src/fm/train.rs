@@ -12,7 +12,7 @@ use super::{
 use crate::error::{ContractError, GradientGroup};
 use crate::{
     data::{Dataset, epoch_permutation},
-    nn::{atomic_write, patience_reached, pipeline, update_best, workers},
+    nn::{patience_reached, pipeline, update_best, workers},
 };
 use minase::eval::pst::Pst;
 use serde_json::{Value, json};
@@ -159,10 +159,8 @@ impl Session {
         self.previous_elapsed + self.started.elapsed().as_secs_f64()
     }
     fn save_latest(&self) -> Result<()> {
-        Ok(atomic_write(
-            &self.args.output_dir.join("latest.npz"),
-            &self.checkpoint.encode()?,
-        )?)
+        self.checkpoint
+            .write(self.args.output_dir.join("latest.npz"))
     }
 
     fn validate(&self) -> Result<(f64, Distribution)> {
@@ -303,10 +301,8 @@ impl Session {
         // latestを永続化した後、best公開直前の中断は再開時に復旧する。
         self.save_latest()?;
         if improved {
-            atomic_write(
-                &self.args.output_dir.join("best.npz"),
-                &self.checkpoint.encode()?,
-            )?;
+            self.checkpoint
+                .write(self.args.output_dir.join("best.npz"))?;
         }
         eprintln!(
             "epoch {epoch}: train_loss={:.9} regularization_loss={:.9} validation_loss={loss:.9}",
@@ -467,7 +463,7 @@ fn recover_best(directory: &Path, latest: &Checkpoint) -> Result<()> {
     if latest.progress.epoch != best.epoch {
         return Err("best checkpoint is missing or inconsistent".into());
     }
-    Ok(atomic_write(&path, &latest.encode()?)?)
+    latest.write(&path)
 }
 
 /// 初期検証、CPU学習、再開と最良FMの書き出しを行う。

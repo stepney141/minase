@@ -26,7 +26,10 @@
 //! 受理するdtypeは[`Array::validate`]に列挙し、ここでは値の変換や有限性の検査は行わない。
 
 use super::{Error, Result};
-use std::collections::BTreeMap;
+use std::{
+    collections::BTreeMap,
+    io::{Read, Write},
+};
 
 /// 行優先配列のdtype、形状とそのままのデータバイト列。
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -41,25 +44,26 @@ pub struct Array {
 impl Array {
     /// 数値dtypeと、形状から求めたデータ長だけを検査する。
     pub fn validate(&self) -> Result<()> {
-        let item_size = match self.dtype.as_bytes() {
-            [b'|' | b'<' | b'>' | b'=', b'b' | b'i' | b'u', b'1'] => 1,
-            [b'<' | b'>' | b'=', b'i' | b'u' | b'f', b'2'] => 2,
-            [b'<' | b'>' | b'=', b'i' | b'u' | b'f', b'4'] => 4,
-            [b'<' | b'>' | b'=', b'i' | b'u' | b'f' | b'c', b'8'] => 8,
-            [b'<' | b'>' | b'=', b'c', b'1', b'6'] => 16,
-            _ => return Err(Error::Format("unsupported numeric NPY dtype")),
-        };
-        let length = self
-            .shape
-            .iter()
-            .try_fold(item_size, |size: usize, &dimension| {
-                size.checked_mul(dimension)
-            });
-        if length != Some(self.data.len()) {
-            return Err(Error::Format("NPY array length"));
-        }
-        Ok(())
+        validate_layout(&self.dtype, &self.shape, self.data.len())
     }
+}
+
+fn validate_layout(dtype: &str, shape: &[usize], data_len: usize) -> Result<()> {
+    let item_size = match dtype.as_bytes() {
+        [b'|' | b'<' | b'>' | b'=', b'b' | b'i' | b'u', b'1'] => 1,
+        [b'<' | b'>' | b'=', b'i' | b'u' | b'f', b'2'] => 2,
+        [b'<' | b'>' | b'=', b'i' | b'u' | b'f', b'4'] => 4,
+        [b'<' | b'>' | b'=', b'i' | b'u' | b'f' | b'c', b'8'] => 8,
+        [b'<' | b'>' | b'=', b'c', b'1', b'6'] => 16,
+        _ => return Err(Error::Format("unsupported numeric NPY dtype")),
+    };
+    let length = shape.iter().try_fold(item_size, |size: usize, &dimension| {
+        size.checked_mul(dimension)
+    });
+    if length != Some(data_len) {
+        return Err(Error::Format("NPY array length"));
+    }
+    Ok(())
 }
 
 /// 指定したASCIIキーの順序で、配列をNPZへ符号化する。値の変換や有限性の検査はしない。
@@ -132,16 +136,19 @@ pub fn encode(arrays: &[(&str, Array)]) -> Result<Vec<u8>> {
 /// NPY 1.0へ符号化する。NumPyと同じ64バイト境界へヘッダを整列する。
 pub fn encode_npy(value: &Array) -> Result<Vec<u8>> {
     value.validate()?;
-    let shape = value
-        .shape
+    let mut bytes = npy_header(&value.dtype, &value.shape)?;
+    bytes.extend(&value.data);
+    Ok(bytes)
+}
+
+fn npy_header(dtype: &str, shape: &[usize]) -> Result<Vec<u8>> {
+    let shape = shape
         .iter()
         .map(|n| format!("{n},"))
         .collect::<Vec<_>>()
         .join(" ");
-    let mut header = format!(
-        "{{'descr': '{}', 'fortran_order': False, 'shape': ({shape}), }}",
-        value.dtype
-    );
+    let mut header =
+        format!("{{'descr': '{dtype}', 'fortran_order': False, 'shape': ({shape}), }}");
     while !(10 + header.len() + 1).is_multiple_of(64) {
         header.push(' ');
     }
@@ -153,8 +160,100 @@ pub fn encode_npy(value: &Array) -> Result<Vec<u8>> {
             .to_le_bytes(),
     );
     bytes.extend(header.as_bytes());
-    bytes.extend(&value.data);
     Ok(bytes)
+}
+
+pub(crate) struct Writer<W> {
+    output: W,
+    offset: u64,
+    central: Vec<u8>,
+    keys: std::collections::HashSet<String>,
+}
+impl<W: Write> Writer<W> {
+    pub(crate) fn new(output: W) -> Self {
+        Self {
+            output,
+            offset: 0,
+            central: Vec::new(),
+            keys: std::collections::HashSet::new(),
+        }
+    }
+    pub(crate) fn member(
+        &mut self,
+        key: &str,
+        dtype: &str,
+        shape: &[usize],
+        data_len: usize,
+        write_data: impl Fn(&mut dyn Write) -> std::io::Result<()>,
+    ) -> Result<()> {
+        if key.is_empty()
+            || !key.is_ascii()
+            || key.contains(['/', '\\', '\0'])
+            || !self.keys.insert(key.to_owned())
+        {
+            return Err(Error::Format("invalid or duplicate NPZ key"));
+        }
+        u16::try_from(self.keys.len()).map_err(|_| Error::Format("too many NPZ arrays"))?;
+        validate_layout(dtype, shape, data_len)?;
+        let name = format!("{key}.npy");
+        let name_len = u16::try_from(name.len()).map_err(|_| Error::Format("NPZ key too long"))?;
+        let header = npy_header(dtype, shape)?;
+        let offset =
+            u32::try_from(self.offset).map_err(|_| Error::Format("NPZ size exceeds u32"))?;
+        let size = header
+            .len()
+            .checked_add(data_len)
+            .and_then(|n| u32::try_from(n).ok())
+            .ok_or(Error::Format("NPY size exceeds u32"))?;
+        let mut crc = Crc32::new();
+        crc.write_all(&header)?;
+        write_data(&mut crc)?;
+        let checksum = crc.finish();
+        self.output.write_all(b"PK\x03\x04")?;
+        for value in [20_u16, 0, 0, 0, 33] {
+            self.output.write_all(&value.to_le_bytes())?;
+        }
+        for value in [checksum, size, size] {
+            self.output.write_all(&value.to_le_bytes())?;
+        }
+        self.output.write_all(&name_len.to_le_bytes())?;
+        self.output.write_all(&0_u16.to_le_bytes())?;
+        self.output.write_all(name.as_bytes())?;
+        self.output.write_all(&header)?;
+        write_data(&mut self.output)?;
+        self.offset += 30 + u64::from(name_len) + u64::from(size);
+        self.central.extend(b"PK\x01\x02");
+        for value in [20_u16, 20, 0, 0, 0, 33] {
+            self.central.extend(value.to_le_bytes());
+        }
+        for value in [checksum, size, size] {
+            self.central.extend(value.to_le_bytes());
+        }
+        for value in [name_len, 0, 0, 0, 0] {
+            self.central.extend(value.to_le_bytes());
+        }
+        self.central.extend(0_u32.to_le_bytes());
+        self.central.extend(offset.to_le_bytes());
+        self.central.extend(name.as_bytes());
+        Ok(())
+    }
+    pub(crate) fn finish(mut self) -> Result<()> {
+        let count =
+            u16::try_from(self.keys.len()).map_err(|_| Error::Format("too many NPZ arrays"))?;
+        let offset =
+            u32::try_from(self.offset).map_err(|_| Error::Format("NPZ size exceeds u32"))?;
+        let size = u32::try_from(self.central.len())
+            .map_err(|_| Error::Format("NPZ directory exceeds u32"))?;
+        self.output.write_all(&self.central)?;
+        self.output.write_all(b"PK\x05\x06")?;
+        for value in [0_u16, 0, count, count] {
+            self.output.write_all(&value.to_le_bytes())?;
+        }
+        self.output.write_all(&size.to_le_bytes())?;
+        self.output.write_all(&offset.to_le_bytes())?;
+        self.output.write_all(&0_u16.to_le_bytes())?;
+        Ok(())
+    }
 }
 
 /// ZIP64のローカルサイズも読み、検査和、dtype、形状と配列長を検査する。
@@ -168,18 +267,56 @@ pub fn decode_selected(bytes: &[u8], keys: &[&str]) -> Result<BTreeMap<String, A
     decode_members(bytes, |name| names.iter().any(|key| key.as_bytes() == name))
 }
 
+pub(crate) fn read(input: impl Read) -> Result<BTreeMap<String, Array>> {
+    decode_members(input, |_| true)
+}
+
+struct StreamReader<R> {
+    input: R,
+    position: u64,
+}
+impl<R: Read> StreamReader<R> {
+    fn take(&mut self, len: usize) -> Result<Vec<u8>> {
+        let mut bytes = Vec::new();
+        bytes
+            .try_reserve_exact(len)
+            .map_err(|_| Error::Format("ZIP size"))?;
+        // Read through a bounded stack buffer so truncated inputs do not touch a
+        // potentially huge allocation before discovering the missing payload.
+        let mut remaining = len;
+        let mut chunk = [0; 8192];
+        while remaining != 0 {
+            let count = remaining.min(chunk.len());
+            self.input.read_exact(&mut chunk[..count]).map_err(|e| {
+                if e.kind() == std::io::ErrorKind::UnexpectedEof {
+                    Error::Format("truncated input")
+                } else {
+                    Error::Io(e)
+                }
+            })?;
+            bytes.extend_from_slice(&chunk[..count]);
+            remaining -= count;
+        }
+        self.position += len as u64;
+        Ok(bytes)
+    }
+}
+
 fn decode_members(
-    bytes: &[u8],
+    input: impl Read,
     include: impl Fn(&[u8]) -> bool,
 ) -> Result<BTreeMap<String, Array>> {
-    let mut reader = Reader::new(bytes);
+    let mut reader = StreamReader { input, position: 0 };
     let mut arrays = BTreeMap::new();
     let mut members = 0_u16;
-    while reader.remaining().starts_with(b"PK\x03\x04") {
+    let mut signature = reader.take(4)?;
+    while signature == b"PK\x03\x04" {
         members = members
             .checked_add(1)
             .ok_or(Error::Format("too many NPZ members"))?;
-        let header = reader.take(30)?;
+        let mut header = signature;
+        header.extend(reader.take(26)?);
+        let header = header.as_slice();
         let version = u16_at(header, 4);
         if ![10, 20, 45].contains(&version) || u16_at(header, 6) != 0 || u16_at(header, 8) != 0 {
             return Err(Error::Format("ZIP must be stored with no flags"));
@@ -190,7 +327,7 @@ fn decode_members(
         let name = reader.take(u16_at(header, 26) as usize)?;
         let extra = reader.take(u16_at(header, 28) as usize)?;
         if compressed == u64::from(u32::MAX) || size == u64::from(u32::MAX) {
-            let mut extras = Reader::new(extra);
+            let mut extras = Reader::new(&extra);
             let mut found = false;
             while !extras.remaining().is_empty() {
                 let h = extras.take(4)?;
@@ -217,49 +354,58 @@ fn decode_members(
             return Err(Error::Format("stored ZIP sizes differ"));
         }
         let data = reader.take(usize::try_from(size).map_err(|_| Error::Format("ZIP size"))?)?;
-        if crc32(data) != crc {
+        if crc32(&data) != crc {
             return Err(Error::Format("ZIP CRC32"));
         }
-        if !include(name) {
+        if !include(&name) {
+            signature = reader.take(4)?;
             continue;
         }
-        let key = std::str::from_utf8(name)
+        let key = std::str::from_utf8(&name)
             .map_err(|_| Error::Format("NPZ key encoding"))?
             .strip_suffix(".npy")
             .ok_or(Error::Format("NPZ member is not NPY"))?;
         if key.is_empty()
             || !key.is_ascii()
             || key.contains(['/', '\\', '\0'])
-            || arrays.insert(key.to_owned(), decode_npy(data)?).is_some()
+            || arrays
+                .insert(key.to_owned(), decode_npy_owned(data)?)
+                .is_some()
         {
             return Err(Error::Format("invalid or duplicate NPZ key"));
         }
+        signature = reader.take(4)?;
     }
     // 読む内容はローカルヘッダで確定するが、切断されたzipは受け入れない。
-    let central_offset = bytes.len() - reader.remaining().len();
+    let central_offset = reader.position - 4;
     for _ in 0..members {
-        let header = reader.take(46)?;
+        let mut header = signature;
+        header.extend(reader.take(42)?);
+        let header = header.as_slice();
         if &header[..4] != b"PK\x01\x02" || u16_at(header, 8) != 0 || u16_at(header, 10) != 0 {
             return Err(Error::Format("ZIP central directory"));
         }
         reader.take(
             u16_at(header, 28) as usize + u16_at(header, 30) as usize + u16_at(header, 32) as usize,
         )?;
+        signature = reader.take(4)?;
     }
-    let central_size = bytes.len() - reader.remaining().len() - central_offset;
-    let end = reader.take(22)?;
+    let central_size = reader.position - 4 - central_offset;
+    let mut end = signature;
+    end.extend(reader.take(18)?);
+    let end = end.as_slice();
     if &end[..4] != b"PK\x05\x06"
         || u16_at(end, 4) != 0
         || u16_at(end, 6) != 0
         || u16_at(end, 8) != members
         || u16_at(end, 10) != members
-        || u32_at(end, 12) as usize != central_size
-        || u32_at(end, 16) as usize != central_offset
+        || u64::from(u32_at(end, 12)) != central_size
+        || u64::from(u32_at(end, 16)) != central_offset
     {
         return Err(Error::Format("ZIP end directory"));
     }
     reader.take(u16_at(end, 20) as usize)?;
-    if !reader.remaining().is_empty() {
+    if reader.input.read(&mut [0])? != 0 {
         return Err(Error::Format("trailing ZIP bytes"));
     }
     Ok(arrays)
@@ -267,6 +413,25 @@ fn decode_members(
 
 /// NPY 1.0の数値配列を検証し、値を変えずに復号する。
 pub fn decode_npy(bytes: &[u8]) -> Result<Array> {
+    let (dtype, shape, offset) = decode_npy_header(bytes)?;
+    Ok(Array {
+        dtype,
+        shape,
+        data: bytes[offset..].to_vec(),
+    })
+}
+
+fn decode_npy_owned(mut bytes: Vec<u8>) -> Result<Array> {
+    let (dtype, shape, offset) = decode_npy_header(&bytes)?;
+    bytes.drain(..offset);
+    Ok(Array {
+        dtype,
+        shape,
+        data: bytes,
+    })
+}
+
+fn decode_npy_header(bytes: &[u8]) -> Result<(String, Vec<usize>, usize)> {
     let mut r = Reader::new(bytes);
     if r.take(8)? != b"\x93NUMPY\x01\x00" {
         return Err(Error::Format("NPY version must be 1.0"));
@@ -330,13 +495,8 @@ pub fn decode_npy(bytes: &[u8]) -> Result<Array> {
     if seen.contains(&false) || !remaining.trim().is_empty() {
         return Err(Error::Format("missing or trailing NPY fields"));
     }
-    let array = Array {
-        dtype,
-        shape,
-        data: r.remaining().to_vec(),
-    };
-    array.validate()?;
-    Ok(array)
+    validate_layout(&dtype, &shape, r.remaining().len())?;
+    Ok((dtype, shape, bytes.len() - r.remaining().len()))
 }
 
 fn token(input: &mut &str, expected: &str) -> Result<()> {
@@ -392,15 +552,36 @@ impl<'a> Reader<'a> {
         ))
     }
 }
-fn crc32(bytes: &[u8]) -> u32 {
-    let mut crc = !0_u32;
-    for &byte in bytes {
-        crc ^= u32::from(byte);
-        for _ in 0..8 {
-            crc = (crc >> 1) ^ (0xedb8_8320 & 0_u32.wrapping_sub(crc & 1));
+struct Crc32(u32);
+impl Crc32 {
+    fn new() -> Self {
+        Self(!0)
+    }
+    fn update(&mut self, bytes: &[u8]) {
+        for &byte in bytes {
+            self.0 ^= u32::from(byte);
+            for _ in 0..8 {
+                self.0 = (self.0 >> 1) ^ (0xedb8_8320 & 0_u32.wrapping_sub(self.0 & 1));
+            }
         }
     }
-    !crc
+    fn finish(self) -> u32 {
+        !self.0
+    }
+}
+impl Write for Crc32 {
+    fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+        self.update(bytes);
+        Ok(bytes.len())
+    }
+    fn flush(&mut self) -> std::io::Result<()> {
+        Ok(())
+    }
+}
+fn crc32(bytes: &[u8]) -> u32 {
+    let mut crc = Crc32::new();
+    crc.update(bytes);
+    crc.finish()
 }
 
 #[cfg(test)]

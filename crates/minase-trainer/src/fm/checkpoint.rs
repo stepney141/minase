@@ -85,48 +85,48 @@ impl Checkpoint {
         Ok(())
     }
     /// 全状態を型と浮動小数点のビット列を保ってNPZへ保存する。
-    pub fn encode(&self) -> Result<Vec<u8>> {
+    pub fn encode(&self, output: impl std::io::Write) -> Result<()> {
         self.validate()?;
-        let mut w = Writer::new("fm", &self.progress)?;
-        w.scalar("cp_per_logit", self.model.cp_per_logit);
-        w.scalar("step", self.optimizer.step);
-        w.scalar("fm_lr", self.optimizer.group.lr);
-        w.scalar("fm_weight_decay", self.optimizer.group.weight_decay);
+        let mut w = Writer::new(output, "fm", &self.progress)?;
+        w.scalar("cp_per_logit", self.model.cp_per_logit)?;
+        w.scalar("step", self.optimizer.step)?;
+        w.scalar("fm_lr", self.optimizer.group.lr)?;
+        w.scalar("fm_weight_decay", self.optimizer.group.weight_decay)?;
         w.values(
             "fm_weights_embedding",
             &[FEATURE_COUNT + 1, FM_RANK],
             &self.model.weights[..(FEATURE_COUNT + 1) * FM_RANK],
-        );
+        )?;
         w.values(
             "fm_weights_a",
             &[FM_RANK],
             &self.model.weights[(FEATURE_COUNT + 1) * FM_RANK..],
-        );
+        )?;
         w.values(
             "fm_m_embedding",
             &[FEATURE_COUNT + 1, FM_RANK],
             &self.optimizer.m[..(FEATURE_COUNT + 1) * FM_RANK],
-        );
+        )?;
         w.values(
             "fm_m_a",
             &[FM_RANK],
             &self.optimizer.m[(FEATURE_COUNT + 1) * FM_RANK..],
-        );
+        )?;
         w.values(
             "fm_v_embedding",
             &[FEATURE_COUNT + 1, FM_RANK],
             &self.optimizer.v[..(FEATURE_COUNT + 1) * FM_RANK],
-        );
+        )?;
         w.values(
             "fm_v_a",
             &[FM_RANK],
             &self.optimizer.v[(FEATURE_COUNT + 1) * FM_RANK..],
-        );
+        )?;
         w.values(
             "gradient_a",
             &[self.gradients.len()],
             &self.gradients.iter().map(|g| g.a).collect::<Vec<_>>(),
-        );
+        )?;
         w.values(
             "gradient_embedding",
             &[self.gradients.len()],
@@ -135,14 +135,17 @@ impl Checkpoint {
                 .iter()
                 .map(|g| g.embedding)
                 .collect::<Vec<_>>(),
-        );
-        w.mask("mask", &self.model.mask);
-        Ok(w.encode()?)
+        )?;
+        w.mask("mask", &self.model.mask)?;
+        Ok(w.finish()?)
     }
 
     /// 種別、配列の集合・型・形状とモデルの不変条件を検査する。
     pub fn decode(bytes: &[u8]) -> Result<Self> {
-        let (mut r, progress) = Reader::new(bytes, "fm")?;
+        Self::read_from(bytes)
+    }
+    fn read_from(input: impl std::io::Read) -> Result<Self> {
+        let (mut r, progress) = Reader::new(input, "fm")?;
         let cp_per_logit = r.scalar::<f32>("cp_per_logit")?;
         let step = r.scalar::<u64>("step")?;
         let fm_lr = r.scalar::<f64>("fm_lr")?;
@@ -192,8 +195,12 @@ impl Checkpoint {
         result.validate()?;
         Ok(result)
     }
+    /// 一時ファイルを同期し、改名でNPZチェックポイントを公開する。
+    pub fn write(&self, path: impl AsRef<Path>) -> Result<()> {
+        crate::nn::atomic_write_with(path.as_ref(), |output| self.encode(output))
+    }
     /// NPZチェックポイントを読み込む。
     pub fn read(path: impl AsRef<Path>) -> Result<Self> {
-        Self::decode(&std::fs::read(path)?)
+        Self::read_from(std::io::BufReader::new(std::fs::File::open(path)?))
     }
 }

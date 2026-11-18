@@ -78,10 +78,11 @@ impl Checkpoint {
     /// 名前、型、形状を固定した無圧縮NPZへ保存する。
     /// weights、m、vの各接頭辞でParameterの全配列をf32の行優先で記録する。
     /// メタデータは構造、特徴集合、規則を持ち、残りの設定と更新数は数値配列に保存する。
-    pub fn encode(&self) -> Result<Vec<u8>> {
+    pub fn encode(&self, output: impl std::io::Write) -> Result<()> {
         self.validate()?;
         let s = &self.settings;
         let mut w = Writer::with_metadata(
+            output,
             "simple",
             &Metadata {
                 architecture: "Simple".into(),
@@ -90,12 +91,12 @@ impl Checkpoint {
                 progress: self.progress.clone(),
             },
         )?;
-        w.scalar("width", s.width as u64);
-        w.scalar("teacher_scale", s.scale.teacher());
-        w.scalar("fv_scale", s.scale.divisor() as u64);
-        w.scalar("lambda", s.lambda);
-        w.scalar("seed", s.seed);
-        w.scalar("step", self.optimizer.step);
+        w.scalar("width", s.width as u64)?;
+        w.scalar("teacher_scale", s.scale.teacher())?;
+        w.scalar("fv_scale", s.scale.divisor() as u64)?;
+        w.scalar("lambda", s.lambda)?;
+        w.scalar("seed", s.seed)?;
+        w.scalar("step", self.optimizer.step)?;
         w.values(
             "optimizer_groups",
             &[2, 2],
@@ -105,7 +106,7 @@ impl Checkpoint {
                 s.optimizer.head.lr,
                 s.optimizer.head.weight_decay,
             ],
-        );
+        )?;
         for (prefix, params) in [
             ("weights", &self.parameters),
             ("m", &self.optimizer.m),
@@ -116,14 +117,17 @@ impl Checkpoint {
                     &format!("{prefix}.{}", p.name()),
                     &p.dimensions(s.width),
                     &params[p],
-                );
+                )?;
             }
         }
-        Ok(w.encode()?)
+        Ok(w.finish()?)
     }
     /// 配列の集合、型、形状、数値、および設定の整合性を厳密に検査する。
     pub fn decode(bytes: &[u8]) -> Result<Self> {
-        let (mut r, meta): (_, Metadata) = Reader::with_metadata(bytes, "simple")?;
+        Self::read_from(bytes)
+    }
+    fn read_from(input: impl std::io::Read) -> Result<Self> {
+        let (mut r, meta): (_, Metadata) = Reader::with_metadata(input, "simple")?;
         let width = usize::try_from(r.scalar::<u64>("width")?)
             .map_err(|_| Error::Invalid("checkpoint width"))?;
         super::model::check_width(width)?;
@@ -191,10 +195,10 @@ impl Checkpoint {
     }
     /// 一時ファイルからの改名で原子的に書き込む。
     pub fn write(&self, path: impl AsRef<Path>) -> Result<()> {
-        Ok(crate::nn::atomic_write(path.as_ref(), &self.encode()?)?)
+        crate::nn::atomic_write_with(path.as_ref(), |output| self.encode(output))
     }
     /// ファイルを読み、decodeと同じ検査を行う。
     pub fn read(path: impl AsRef<Path>) -> Result<Self> {
-        Self::decode(&std::fs::read(path)?)
+        Self::read_from(std::io::BufReader::new(std::fs::File::open(path)?))
     }
 }

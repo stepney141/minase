@@ -53,21 +53,24 @@ impl Checkpoint {
     }
 
     /// 全状態を型と浮動小数点のビット列を保ってNPZへ保存する。
-    pub fn encode(&self) -> Result<Vec<u8>> {
+    pub fn encode(&self, output: impl std::io::Write) -> Result<()> {
         self.validate()?;
-        let mut w = Writer::new("pst", &self.progress)?;
-        w.scalar("cp_per_logit", self.model.cp_per_logit());
-        w.scalar("step", self.optimizer.step());
-        w.scalar("pst_lr", self.optimizer.lr());
-        w.values("pst_weights", &[CANONICAL_ROWS, 2], self.model.weights());
-        w.values("pst_m", &[CANONICAL_ROWS, 2], self.optimizer.m());
-        w.values("pst_v", &[CANONICAL_ROWS, 2], self.optimizer.v());
-        Ok(w.encode()?)
+        let mut w = Writer::new(output, "pst", &self.progress)?;
+        w.scalar("cp_per_logit", self.model.cp_per_logit())?;
+        w.scalar("step", self.optimizer.step())?;
+        w.scalar("pst_lr", self.optimizer.lr())?;
+        w.values("pst_weights", &[CANONICAL_ROWS, 2], self.model.weights())?;
+        w.values("pst_m", &[CANONICAL_ROWS, 2], self.optimizer.m())?;
+        w.values("pst_v", &[CANONICAL_ROWS, 2], self.optimizer.v())?;
+        Ok(w.finish()?)
     }
 
     /// 種別、配列の集合・型・形状とモデルの不変条件を検査する。
     pub fn decode(bytes: &[u8]) -> Result<Self> {
-        let (mut r, progress) = Reader::new(bytes, "pst")?;
+        Self::read_from(bytes)
+    }
+    fn read_from(input: impl std::io::Read) -> Result<Self> {
+        let (mut r, progress) = Reader::new(input, "pst")?;
         let cp_per_logit = r.scalar::<f32>("cp_per_logit")?;
         let step = r.scalar::<u64>("step")?;
         let pst_lr = r.scalar::<f64>("pst_lr")?;
@@ -93,8 +96,12 @@ impl Checkpoint {
         result.validate()?;
         Ok(result)
     }
+    /// 一時ファイルを同期し、改名でNPZチェックポイントを公開する。
+    pub fn write(&self, path: impl AsRef<Path>) -> Result<()> {
+        crate::nn::atomic_write_with(path.as_ref(), |output| self.encode(output))
+    }
     /// NPZチェックポイントを読み込む。
     pub fn read(path: impl AsRef<Path>) -> Result<Self> {
-        Self::decode(&std::fs::read(path)?)
+        Self::read_from(std::io::BufReader::new(std::fs::File::open(path)?))
     }
 }
