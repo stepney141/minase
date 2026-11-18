@@ -22,7 +22,8 @@ use serde::Serialize;
 
 pub use nnue_distribution::DistributionArgs;
 pub use nnue_moves::MovesArgs;
-pub use nnue_removal::RemovalArgs;
+pub(crate) use nnue_removal::measure_removal_sign;
+pub use nnue_removal::{RemovalArgs, RemovalSignReport};
 
 pub use pst_compare::PstCompareArgs;
 

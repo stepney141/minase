@@ -3,6 +3,9 @@ use Parameter as P;
 use minase::eval::nnue::{Network, SimpleParameters};
 use minase_core::Color;
 
+#[path = "../../../tests/common/removal.rs"]
+mod removal_contract;
+
 const WIDTH: usize = 16;
 fn scale() -> Scale {
     Scale::new(1072.65).unwrap()
@@ -510,6 +513,26 @@ fn cpu_loop_records_three_files_exports_and_resumes_with_larger_budget() {
     .unwrap();
     let path = directory.0.join("data.mnsd");
     let mut writer = Writer::new(std::fs::File::create(&path).unwrap(), header).unwrap();
+    // 黒の最後の太子は終局除外し、白の太子は王将が残るので評価する。
+    use minase_core::{PieceCode, PieceKind, PositionBuilder, Square};
+    let mut builder = PositionBuilder::new(Color::Black);
+    for (index, color, kind) in [
+        (0, Color::Black, PieceKind::CrownPrince),
+        (143, Color::White, PieceKind::King),
+        (142, Color::White, PieceKind::CrownPrince),
+        (30, Color::Black, PieceKind::Pawn),
+        (110, Color::White, PieceKind::Pawn),
+    ] {
+        let piece = if kind == PieceKind::CrownPrince {
+            PieceCode::new_promoted(color, kind).unwrap()
+        } else {
+            PieceCode::new(color, kind).unwrap()
+        };
+        builder
+            .put(Square::from_dense(index).unwrap(), piece)
+            .unwrap();
+    }
+    let position = builder.finish().unwrap();
     for game in 0..240 {
         let record = GameRecord::new(
             game,
@@ -519,7 +542,7 @@ fn cpu_loop_records_three_files_exports_and_resumes_with_larger_budget() {
                 reason: minase_core::WinReason::Resignation,
             }),
             0,
-            minase_core::Position::initial(),
+            position.clone(),
             vec![
                 Entry::new(
                     None,
@@ -569,6 +592,13 @@ fn cpu_loop_records_three_files_exports_and_resumes_with_larger_budget() {
     args.output_dir = directory.0.join("run");
     let summary = trainer::run_width(args.clone(), WIDTH).unwrap();
     assert_eq!(summary.completed_steps, 4);
+    let saved: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(args.output_dir.join("summary.json")).unwrap())
+            .unwrap();
+    assert_eq!(saved["removal_sign"]["positions"], 3);
+    assert_eq!(saved["removal_sign"]["removals"], 3 * 3);
+    assert_eq!(saved["removal_sign"]["reversals"]["total"], 3 * 3);
+    assert_eq!(saved["removal_sign"]["terminal_removal_count"], 3);
     args.resume = Some(args.output_dir.clone());
     args.superbatches = 3.try_into().unwrap();
     let summary = trainer::run_width(args.clone(), WIDTH).unwrap();
@@ -586,9 +616,43 @@ fn cpu_loop_records_three_files_exports_and_resumes_with_larger_budget() {
     assert_eq!(records.lines().count(), 4);
     let network =
         Network::decode(&std::fs::read(args.output_dir.join("nnue.bin")).unwrap()).unwrap();
-    assert!(
-        network
-            .evaluate_for(&minase_core::Position::initial(), Color::Black)
-            .is_ok()
+    let saved: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(args.output_dir.join("summary.json")).unwrap())
+            .unwrap();
+    assert_eq!(saved["status"], "candidate");
+    removal_contract::assert_report(
+        &saved["removal_sign"],
+        &network,
+        &vec![(position, Color::Black); 3],
+    );
+    #[derive(Parser)]
+    struct Diagnostic {
+        #[command(subcommand)]
+        command: crate::diagnostics::Command,
+    }
+    let report_path = directory.0.join("removal.json");
+    let diagnostic = Diagnostic::parse_from([
+        "diag",
+        "nnue-removal",
+        "--data",
+        args.data[0].to_str().unwrap(),
+        "--float",
+        args.output_dir.join("latest.npz").to_str().unwrap(),
+        "--net",
+        args.output_dir.join("nnue.bin").to_str().unwrap(),
+        "--sample",
+        "3",
+        "--seed",
+        "1",
+        "--output",
+        report_path.to_str().unwrap(),
+    ]);
+    crate::diagnostics::run(diagnostic.command).unwrap();
+    let diagnostic: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(report_path).unwrap()).unwrap();
+    assert_eq!(saved["removal_sign"]["reversals"], diagnostic["reversals"]);
+    assert_eq!(
+        saved["removal_sign"]["terminal_removal_count"],
+        diagnostic["terminal_removal_count"]
     );
 }

@@ -1,4 +1,7 @@
-use std::{collections::BTreeMap, path::PathBuf};
+use std::{
+    collections::BTreeMap,
+    path::{Path, PathBuf},
+};
 
 use clap::Args;
 use minase::eval::features::piece_state;
@@ -75,6 +78,97 @@ fn v0_sum(position: &Position, side: Color) -> i32 {
             }
         })
         .sum()
+}
+
+/// 量子化誤差と同じ検証標本で測った整数ネットの符号反転。合否の閾値は持たない。
+#[derive(Debug, Serialize)]
+pub struct RemovalSignReport {
+    /// 検査した局面数。除ける駒のない局面も含む。
+    pub positions: usize,
+    /// v0参照差分が非零の除去数。反転割合の母数。
+    pub removals: usize,
+    /// 静的評価を定義できず、集計から除いた除去数。
+    pub terminal_removal_count: usize,
+    /// 反転数・割合と、反転した整数差分の絶対値の平均・最大。
+    pub reversals: Reversals,
+}
+
+struct Removal {
+    square: Square,
+    piece: minase_core::PieceCode,
+    after: Position,
+    delta: i32,
+    reference: i32,
+}
+
+// 診断と学習後の記録で、対象駒、終局除外、整数差分とv0参照を共有する。
+fn integer_removals(
+    net: &IntegerNetwork,
+    before: &Position,
+    perspective: Color,
+) -> Result<(Vec<Removal>, usize)> {
+    let integer_before = net.evaluate(before, perspective)?;
+    let reference_before = v0_sum(before, perspective).clamp(-28_999, 28_999);
+    let mut removals = Vec::new();
+    let mut terminal_removal_count = 0;
+    for square in Square::all() {
+        let Some(piece) = before.piece_at(square) else {
+            continue;
+        };
+        let state = piece_state(piece);
+        if state == 11 || (net.feature_set() == FeatureSet::P && state == 21) {
+            continue;
+        }
+        let after = remove_piece(before, square)?;
+        if net.feature_set() == FeatureSet::HalfKpVm {
+            let mut terminal = false;
+            for side in Color::ALL {
+                match HalfKpVm::context(&after, side) {
+                    Ok(_) => {}
+                    Err(AnchorError::MissingRoyal { .. }) => terminal = true,
+                    Err(error) => return Err(error.into()),
+                }
+            }
+            if terminal {
+                terminal_removal_count += 1;
+                continue;
+            }
+        }
+        removals.push(Removal {
+            square,
+            piece,
+            delta: net.evaluate(&after, perspective)? - integer_before,
+            reference: v0_sum(&after, perspective).clamp(-28_999, 28_999) - reference_before,
+            after,
+        });
+    }
+    Ok((removals, terminal_removal_count))
+}
+
+/// 書き出したファイルを読み直し、標本の手番視点から除去差分を全再計算する。
+/// 参照差分が非零の除去がない場合は、旧学習器と同じく入力のエラーとする。
+pub(crate) fn measure_removal_sign(
+    path: &Path,
+    samples: &[(Position, Color)],
+) -> Result<RemovalSignReport> {
+    let net = IntegerNetwork::read(path)?;
+    let mut pairs = Vec::new();
+    let mut terminal_removal_count = 0;
+    for (position, perspective) in samples {
+        let (removals, terminal) = integer_removals(&net, position, *perspective)?;
+        terminal_removal_count += terminal;
+        pairs.extend(removals.into_iter().map(|r| (r.delta, r.reference)));
+    }
+    let reversals = reversal_statistics(pairs.into_iter());
+    if reversals.total == 0 {
+        return Err("sample contains no removals with nonzero reference differences".into());
+    }
+    Ok(RemovalSignReport {
+        positions: samples.len(),
+        removals: reversals.total,
+        terminal_removal_count,
+        reversals,
+    })
 }
 
 /// 検証集合の駒除去診断の引数。
@@ -173,45 +267,28 @@ pub(super) fn run(args: &RemovalArgs) -> Result<Report> {
         let sample = dataset.record(index)?;
         let before = sample.to_position()?;
         let perspective = sample.side_to_move();
-        let squares: Vec<_> = Square::all()
-            .filter_map(|square| {
-                before.piece_at(square).and_then(|piece| {
-                    let state = piece_state(piece);
-                    (state != 11 && (net.feature_set() == FeatureSet::HalfKpVm || state != 21))
-                        .then_some((square, state, piece))
-                })
-            })
-            .collect();
-        if squares.is_empty() {
+        let (removals, terminal) = integer_removals(&net, &before, perspective)?;
+        terminal_removal_count += terminal;
+        if removals.is_empty() {
             continue;
         }
         let accumulator = checkpoint.accumulator(&before, perspective)?;
         let floating_before = checkpoint.output(&accumulator)?;
-        let integer_before = net.evaluate(&before, perspective)?;
-        let reference_before = v0_sum(&before, perspective);
-        for &(square, state, piece) in &squares {
-            let after = remove_piece(&before, square)?;
-            if net.feature_set() == FeatureSet::HalfKpVm {
-                let mut terminal = false;
-                for side in Color::ALL {
-                    match HalfKpVm::context(&after, side) {
-                        Ok(_) => {}
-                        Err(AnchorError::MissingRoyal { .. }) => terminal = true,
-                        Err(error) => return Err(error.into()),
-                    }
-                }
-                if terminal {
-                    terminal_removal_count += 1;
-                    continue;
-                }
-            }
+        for Removal {
+            square,
+            piece,
+            after,
+            delta: integer_delta,
+            reference,
+        } in removals
+        {
+            let state = piece_state(piece);
             let batched = checkpoint.output_scale()
                 * (checkpoint.without(&accumulator, &before, perspective, piece, square)?
                     - floating_before);
             let floating_after =
                 checkpoint.output(&checkpoint.accumulator(&after, perspective)?)?;
             let float_delta = checkpoint.output_scale() * (floating_after - floating_before);
-            let integer_delta = net.evaluate(&after, perspective)? - integer_before;
             let batch_error = batched - float_delta;
             let integer_error = f64::from(integer_delta) - float_delta;
             if !batch_error.is_finite() || !integer_error.is_finite() {
@@ -220,11 +297,7 @@ pub(super) fn run(args: &RemovalArgs) -> Result<Report> {
             maximum = maximum.max(batch_error.abs());
             integer_max = integer_max.max(integer_error.abs());
             integer_sum += integer_error.abs();
-            let reference_after = v0_sum(&after, perspective);
-            let pair = (
-                integer_delta,
-                reference_after.clamp(-28_999, 28_999) - reference_before.clamp(-28_999, 28_999),
-            );
+            let pair = (integer_delta, reference);
             by_state.entry(state).or_default().push(pair);
             all_pairs.push(pair);
         }

@@ -19,7 +19,7 @@
 //! | training.jsonl | 学習前の検証と、完了したsuperbatchごとの[`SuperbatchRecord`]。 |
 //! | latest.npz | 確定した重み、最適化器の状態、superbatch数、更新数、累積時間。 |
 //! | nnue.bin | 予定の更新を終えたlatest.npzを量子化したtatara形式。 |
-//! | summary.json | 予定と完了のsuperbatch数と更新数、停止理由、検証と量子化の結果。 |
+//! | summary.json | 予定と完了のsuperbatch数と更新数、停止理由、検証と量子化の結果、駒除去差分の符号反転。 |
 //!
 //! 新規実行の出力先は存在しないか空でなければならない。
 //! 累積時間には前処理と検証、再開前の実行を含む。
@@ -139,6 +139,8 @@ pub struct Summary {
     pub elapsed_seconds: f64,
     /// 量子化誤差の検査結果。
     pub quantization: Option<Value>,
+    /// 同じ検証標本の駒除去差分の符号反転。合否の判定には使わない。
+    pub removal_sign: Option<crate::diagnostics::RemovalSignReport>,
 }
 
 /// 完了を優先し、予定に達していない場合だけ時間の上限を判定する。
@@ -580,6 +582,7 @@ impl<B: TrainerBackend> Session<B> {
             final_validation_loss: self.last_validation.map(|(_, loss)| loss),
             elapsed_seconds: self.progress.elapsed_seconds,
             quantization: None,
+            removal_sign: None,
         };
         if stopped_by == StopReason::TimeLimit {
             summary.status = "incomplete";
@@ -594,13 +597,15 @@ impl<B: TrainerBackend> Session<B> {
         let samples = self
             .dataset
             .validation_sample(self.args.validation_sample, self.args.seed)?;
-        match self
-            .backend
-            .export(&self.args.output_dir.join("nnue.bin"), &samples)
-        {
-            Ok(report) => {
+        let path = self.args.output_dir.join("nnue.bin");
+        let exported = (|| -> Result<()> {
+            summary.quantization = Some(self.backend.export(&path, &samples)?);
+            summary.removal_sign = Some(crate::diagnostics::measure_removal_sign(&path, &samples)?);
+            Ok(())
+        })();
+        match exported {
+            Ok(()) => {
                 summary.status = "candidate";
-                summary.quantization = Some(report);
             }
             Err(error) => {
                 summary.reason = Some(error.to_string());

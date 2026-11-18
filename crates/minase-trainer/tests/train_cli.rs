@@ -1,5 +1,7 @@
 //! フェーズ3c-2のCLI、入力検査、進捗と再開の受け入れ契約。
 mod common;
+#[path = "common/removal.rs"]
+mod removal_contract;
 use clap::Parser;
 use common::training::{document, logs};
 use minase_trainer::nnue::{
@@ -176,7 +178,7 @@ fn cpu_records_initial_validation_planned_updates_and_tatara_export() {
     let f = Fixture::new();
     let args = f.args("run", 3);
     let dir = args.output_dir.clone();
-    let summary = run(args).unwrap();
+    let summary = run(args.clone()).unwrap();
     assert_eq!(summary.completed_steps, 6);
     assert_eq!(summary.status, "candidate");
     let rows = logs(&dir);
@@ -195,6 +197,10 @@ fn cpu_records_initial_validation_planned_updates_and_tatara_export() {
     assert_eq!(config["architecture"]["m"], 8);
     assert_eq!(config["architecture"]["K_o"], 1016.0);
     let summary = document(dir.join("summary.json"));
+    assert_eq!(summary["removal_sign"]["positions"], 5);
+    assert_eq!(summary["removal_sign"]["removals"], 20);
+    assert_eq!(summary["removal_sign"]["reversals"]["total"], 20);
+    assert_eq!(summary["removal_sign"]["terminal_removal_count"], 0);
     for key in [
         "mean_absolute_cp",
         "mean_signed_cp",
@@ -206,9 +212,27 @@ fn cpu_records_initial_validation_planned_updates_and_tatara_export() {
     ] {
         assert!(summary["quantization"][key].is_number(), "{key}");
     }
-    let checkpoint = Checkpoint::read(dir.join("latest.npz")).unwrap();
+    let mut checkpoint = Checkpoint::read(dir.join("latest.npz")).unwrap();
     let network =
         minase::eval::nnue::Network::decode(&fs::read(dir.join("nnue.bin")).unwrap()).unwrap();
+    let dataset =
+        minase_trainer::data::Dataset::open(&args.data, None, 1.try_into().unwrap()).unwrap();
+    let selected = minase_trainer::data::floyd_sample(
+        dataset.validation_indices().len() as u64,
+        args.validation_sample,
+        args.seed,
+    )
+    .unwrap();
+    let samples: Vec<_> = selected
+        .iter()
+        .map(|&i| {
+            let sample = dataset
+                .record(dataset.validation_indices()[i as usize])
+                .unwrap();
+            (sample.to_position().unwrap(), sample.side_to_move())
+        })
+        .collect();
+    removal_contract::assert_report(&summary["removal_sign"], &network, &samples);
     let q = minase_trainer::nnue::layerstack::quantize(
         &checkpoint.parameters,
         checkpoint.settings.scale,
@@ -225,6 +249,58 @@ fn cpu_records_initial_validation_planned_updates_and_tatara_export() {
             );
         }
     }
+    // 反転を確実に作り、記録値が学習の成否を変えないことを確かめる。
+    for weight in
+        &mut checkpoint.parameters[Parameter::Psqt][..minase_trainer::nnue::layerstack::ROWS - 1]
+    {
+        *weight = -*weight;
+    }
+    checkpoint.write(dir.join("latest.npz")).unwrap();
+    let mut resumed = args;
+    resumed.resume = Some(dir.clone());
+    assert_eq!(run(resumed).unwrap().status, "candidate");
+    let reversed = document(dir.join("summary.json"));
+    assert_eq!(reversed["removal_sign"]["reversals"]["count"], 20);
+    let network =
+        minase::eval::nnue::Network::decode(&fs::read(dir.join("nnue.bin")).unwrap()).unwrap();
+    removal_contract::assert_report(&reversed["removal_sign"], &network, &samples);
+    // 診断は別の標本抽出方式を使うため、学習が選んだ標本だけを入力にする。
+    let records: Vec<_> = selected
+        .into_iter()
+        .map(|i| {
+            dataset
+                .record(dataset.validation_indices()[i as usize])
+                .unwrap()
+        })
+        .collect();
+    let selected_path = f.0.join("selected.mnsd");
+    fs::write(
+        &selected_path,
+        common::mnsd::independent(dataset.headers().next().unwrap().clone(), &records),
+    )
+    .unwrap();
+    let diagnostic_path = f.0.join("removal.json");
+    let output = Command::new(env!("CARGO_BIN_EXE_minase-trainer"))
+        .args(["diag", "nnue-removal", "--data"])
+        .arg(selected_path)
+        .arg("--float")
+        .arg(dir.join("latest.npz"))
+        .arg("--net")
+        .arg(dir.join("nnue.bin"))
+        .args(["--sample", "5", "--seed", "1", "--output"])
+        .arg(&diagnostic_path)
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let diagnostic = document(diagnostic_path);
+    assert_eq!(
+        reversed["removal_sign"]["reversals"],
+        diagnostic["reversals"]
+    );
 }
 fn resume_matches(device: DeviceKind) {
     let f = Fixture::new();
