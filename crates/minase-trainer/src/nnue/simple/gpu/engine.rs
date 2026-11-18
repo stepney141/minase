@@ -268,9 +268,10 @@ impl BackwardBuffers {
             .arg(&n)
             .arg(&h)
             .arg(&columns);
-        // SAFETY: grid indexes ceil(n/128)*head_len(width) initialized partials, with 128 lanes.
+        // SAFETY: each block owns up to 32 columns of one 128-position partial;
+        // padded columns are masked and all 128 threads reach the barriers.
         unsafe {
-            args.launch(grid(head_len(self.width), blocks as usize)?)?;
+            args.launch(grid(head_len(self.width).div_ceil(32), blocks as usize)?)?;
         }
         let mut args = device.compute.launch_builder(&k.head_reduce);
         args.arg(&self.head)
@@ -283,20 +284,31 @@ impl BackwardBuffers {
             .arg(&mut f.nonfinite);
         // SAFETY: each column owns distinct gradient elements, in the contiguous dense parameter region.
         unsafe {
-            args.launch(grid(head_len(self.width), 1)?)?;
+            args.launch(grid(head_len(self.width).div_ceil(32), 1)?)?;
         }
-        let mut args = device.compute.launch_builder(&k.sparse_reduce);
-        args.arg(&input.first_segment_starts)
-            .arg(&input.first_segment_offsets)
-            .arg(&input.first_entries)
-            .arg(&self.values)
-            .arg(&mut self.gradients)
-            .arg(&h)
-            .arg(&mut f.nonfinite);
-        // SAFETY: the validated inverse index bounds each row's occurrences;
-        // one block writes one row of the full gradient array, including empty rows.
-        unsafe {
-            args.launch(grid(SPEC.dimensions(), 1)?)?;
+        // AdamW reads every real row, including rows absent from this batch.
+        device
+            .compute
+            .memset_zeros(&mut self.gradients.slice_mut(..SPEC.dimensions() * self.width))?;
+        if input.first_segments != 0 {
+            let feature_columns = FEATURE_COLUMNS as u32;
+            let mut args = device.compute.launch_builder(&k.sparse_reduce);
+            args.arg(&input.first_segment_starts)
+                .arg(&input.first_segment_offsets)
+                .arg(&input.first_entries)
+                .arg(&input.features)
+                .arg(&self.values)
+                .arg(&mut self.gradients)
+                .arg(&h)
+                .arg(&feature_columns)
+                .arg(&mut f.nonfinite);
+            // SAFETY: each existing segment identifies a nonempty row via its
+            // first occurrence and the validated HalfKP_vm feature array;
+            // only its first segment writes that row. The validated inverse index
+            // bounds all reads. The real region was zeroed on this same stream.
+            unsafe {
+                args.launch(grid(input.first_segments, 1)?)?;
+            }
         }
         let mut args = device.compute.launch_builder(&k.virtual_reduce);
         args.arg(&mut self.gradients)

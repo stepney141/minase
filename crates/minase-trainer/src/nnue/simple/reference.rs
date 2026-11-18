@@ -160,8 +160,41 @@ pub fn loss(w: &Parameters, scale: Scale, features: &[Features], targets: &[f32]
         .sum::<f64>()
         / targets.len() as f64)
 }
+// The CUDA column reduction assigns four contiguous ranges to warps 0..3,
+// accumulates each range in ascending order in f64, then adds at distances 2, 1.
+fn sum_four(n: usize, value: impl Fn(usize) -> f64) -> f64 {
+    let chunk = n.div_ceil(4);
+    let mut sums: [f64; 4] = std::array::from_fn(|warp| {
+        (warp * chunk..((warp + 1) * chunk).min(n)).fold(0.0, |sum, i| sum + value(i))
+    });
+    sums[0] += sums[2];
+    sums[1] += sums[3];
+    sums[0] + sums[1]
+}
+// Dense gradients first reduce 128 positions (32 consecutive positions per
+// warp, zero-padding the last block), then reduce those partials with sum_four.
+fn sum_positions(n: usize, value: impl Fn(usize) -> f64) -> f64 {
+    let partials: Vec<_> = (0..n.div_ceil(128))
+        .map(|block| {
+            sum_four(128, |i| {
+                let b = block * 128 + i;
+                if b < n { value(b) } else { 0.0 }
+            })
+        })
+        .collect();
+    sum_four(partials.len(), |i| partials[i])
+}
+struct PositionGradient {
+    forward: Forward,
+    da: Vec<f32>,
+    dy: [f32; 32],
+    du: [f32; 32],
+    gy: f32,
+}
 /// 各局面の積はf32、局面方向の和はf64。活性化の両境界の微分は0。
-/// WとVには同じ出現のδを加算する。後段の勾配は局面数倍の配列を持たない。
+/// 後段は128局面ごとの部分和を取り、行は逆索引と同じ局面・視点・列の順で足す。
+/// どちらも4つの連続区間の和を距離2、1の木で合わせる。
+/// 仮想行は単精度に丸めた実の行を玉の区分順に倍精度で足す。
 pub fn backward(
     w: &Parameters,
     scale: Scale,
@@ -171,9 +204,10 @@ pub fn backward(
     w.validate()?;
     check_batch(features, targets)?;
     let h = w.width();
-    let mut gradients: [Vec<f64>; 9] = P::ALL.map(|p| vec![0.0; p.count(h)]);
+    let mut positions = Vec::with_capacity(features.len());
+    let mut rows = std::collections::BTreeMap::<usize, Vec<(usize, usize)>>::new();
     let mut total = 0.0;
-    for (features, &target) in features.iter().zip(targets) {
+    for (b, (features, &target)) in features.iter().zip(targets).enumerate() {
         let f = forward_validated(w, features);
         let sigma = sigmoid(scale.ratio() * f.output);
         total += (sigma - f64::from(target)).powi(2);
@@ -182,45 +216,70 @@ pub fn backward(
             * sigma
             * (1.0 - sigma)
             * scale.ratio()) as f32;
-        let mut add = |p: P, i: usize, x: f32| gradients[p as usize][i] += f64::from(x);
-        add(P::L3Bias, 0, gy);
         let du: [f32; 32] =
             std::array::from_fn(|k| gy * w[P::L3Weights][k] * derivative(f.u[k] as f32));
-        for (k, &du) in du.iter().enumerate() {
-            add(P::L3Weights, k, gy * f.h2[k] as f32);
-            add(P::L2Biases, k, du);
-            for j in 0..32 {
-                add(P::L2Weights, k * 32 + j, du * f.h1[j] as f32);
-            }
-        }
         let dy: [f32; 32] = std::array::from_fn(|j| {
             sum32(std::array::from_fn(|k| du[k] * w[P::L2Weights][k * 32 + j]))
                 * derivative(f.y[j] as f32)
         });
-        let mut dx = vec![0.0_f32; 2 * h];
-        // L1の逆伝播はLayerStackと同じく出力kの昇順で足す。
+        let mut da = vec![0.0_f32; 2 * h];
+        // L1の逆伝播は出力kの昇順で足す。
         for (k, &dy) in dy.iter().enumerate() {
-            add(P::L1Biases, k, dy);
-            for (j, dx) in dx.iter_mut().enumerate() {
-                add(P::L1Weights, k * 2 * h + j, dy * f.x[j] as f32);
-                *dx += dy * w[P::L1Weights][k * 2 * h + j];
+            for (j, da) in da.iter_mut().enumerate() {
+                *da += dy * w[P::L1Weights][k * 2 * h + j];
             }
         }
         for v in 0..2 {
             for j in 0..h {
-                let da = dx[v * h + j] * derivative(f.a[v][j] as f32);
-                add(P::FtBiases, j, da);
-                for &r in &features.views[v] {
-                    add(P::FtWeights, r * h + j, da);
-                    add(P::FtVirtual, (r % SPEC.piece_inputs()) * h + j, da);
-                }
+                da[v * h + j] *= derivative(f.a[v][j] as f32);
+            }
+            for &r in &features.views[v] {
+                rows.entry(r).or_default().push((b, v));
             }
         }
+        positions.push(PositionGradient {
+            forward: f,
+            da,
+            dy,
+            du,
+            gy,
+        });
     }
     let mut result = Parameters::zeros(h)?;
-    for p in P::ALL {
-        for (dst, &g) in result[p].iter_mut().zip(&gradients[p as usize]) {
-            *dst = g as f32;
+    for p in P::ALL.into_iter().skip(2) {
+        for (j, dst) in result[p].iter_mut().enumerate() {
+            *dst = sum_positions(positions.len(), |b| {
+                let g = &positions[b];
+                if p == P::FtBiases {
+                    return f64::from(g.da[j]) + f64::from(g.da[h + j]);
+                }
+                f64::from(match p {
+                    P::L1Weights => g.dy[j / (2 * h)] * g.forward.x[j % (2 * h)] as f32,
+                    P::L1Biases => g.dy[j],
+                    P::L2Weights => g.du[j / 32] * g.forward.h1[j % 32] as f32,
+                    P::L2Biases => g.du[j],
+                    P::L3Weights => g.gy * g.forward.h2[j] as f32,
+                    P::L3Bias => g.gy,
+                    P::FtWeights | P::FtVirtual | P::FtBiases => unreachable!("head parameter"),
+                })
+            }) as f32;
+        }
+    }
+    for (row, occurrences) in rows {
+        for j in 0..h {
+            result[P::FtWeights][row * h + j] = sum_four(occurrences.len(), |e| {
+                let (b, v) = occurrences[e];
+                f64::from(positions[b].da[v * h + j])
+            }) as f32;
+        }
+    }
+    for row in 0..SPEC.piece_inputs() {
+        for j in 0..h {
+            result[P::FtVirtual][row * h + j] = (row..SPEC.dimensions())
+                .step_by(SPEC.piece_inputs())
+                .fold(0.0, |sum, r| {
+                    sum + f64::from(result[P::FtWeights][r * h + j])
+                }) as f32;
         }
     }
     result.validate()?;

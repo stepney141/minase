@@ -1,5 +1,5 @@
 use super::{Error, Parameter, Parameters, Result};
-use crate::nn::{AdamCoefficients, AdamWGroup};
+use crate::nn::AdamWGroup;
 
 /// 第1層と後段のAdamWの係数。バイアスは全て後段群に属する。
 #[derive(Clone, Copy, Debug, PartialEq, serde::Serialize)]
@@ -27,6 +27,42 @@ impl OptimizerConfig {
         self.ft.validate()?;
         self.head.validate()?;
         Ok(())
+    }
+}
+
+// The GPU receives exactly these rounded step constants. Keep per-element
+// arithmetic in f32; only bias-correction powers and scaled rates use f64.
+pub(in crate::nnue::simple) struct Coefficients {
+    pub correction1: f32,
+    pub correction2: f32,
+    pub lr: f32,
+    pub decay: f32,
+}
+impl Coefficients {
+    pub fn new(step: u64, group: AdamWGroup, multiplier: f64) -> Result<Self> {
+        group.validate()?;
+        if !multiplier.is_finite() || multiplier <= 0.0 {
+            return Err(Error::Invalid("learning rate multiplier"));
+        }
+        let lr = group.lr * multiplier;
+        let decay = 1.0 - lr * group.weight_decay;
+        if !(lr as f32).is_finite() || lr as f32 <= 0.0 || !(decay as f32).is_finite() {
+            return Err(Error::Invalid(
+                "AdamW scaled learning rate or decay overflow",
+            ));
+        }
+        Ok(Self {
+            correction1: (1.0 - 0.9_f64.powf(step as f64)) as f32,
+            correction2: (1.0 - 0.999_f64.powf(step as f64)) as f32,
+            lr: lr as f32,
+            decay: decay as f32,
+        })
+    }
+    fn update(&self, value: &mut f32, g: f32, m: &mut f32, v: &mut f32) {
+        *value *= self.decay;
+        *m += (g - *m) * 0.1;
+        *v = *v * 0.999 + (g * g) * 0.001;
+        *value -= self.lr * (*m / self.correction1) / ((*v / self.correction2).sqrt() + 1e-8);
     }
 }
 
@@ -68,7 +104,7 @@ impl AdamW {
         }
         Ok(())
     }
-    /// 既存のAdamCoefficientsの算術で更新し、所定の配列だけを制限する。
+    /// GPUと同じ順の単精度のAdamWで全要素を更新し、所定の配列だけを制限する。
     /// 検査に失敗した場合は重みと最適化器を変更しない。倍率は正の有限数を要求する。
     pub fn update(
         &mut self,
@@ -92,20 +128,8 @@ impl AdamW {
             .step
             .checked_add(1)
             .ok_or(Error::Invalid("AdamW step overflow"))?;
-        let coefficients = |g: AdamWGroup| -> Result<AdamCoefficients> {
-            let g = AdamWGroup {
-                lr: g.lr * multiplier,
-                weight_decay: g.weight_decay,
-            };
-            if !(1.0 - g.lr * g.weight_decay).is_finite()
-                || (1.0 - g.lr * g.weight_decay).abs() > f64::from(f32::MAX)
-            {
-                return Err(Error::Invalid("AdamW decay overflow"));
-            }
-            Ok(AdamCoefficients::new(step, g)?)
-        };
-        let ft = coefficients(self.config.ft)?;
-        let head = coefficients(self.config.head)?;
+        let ft = Coefficients::new(step, self.config.ft, multiplier)?;
+        let head = Coefficients::new(step, self.config.head, multiplier)?;
         // 全要素を先に試算してから書き込む。外部入力やオーバーフローで部分更新を残さない。
         for commit in [false, true] {
             for p in Parameter::ALL {

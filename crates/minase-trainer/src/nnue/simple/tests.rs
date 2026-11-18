@@ -227,6 +227,28 @@ fn adam_two_steps_groups_and_clipping() {
             );
         }
     }
+    // A zero current gradient still decays both moments and updates every
+    // parameter, including real and virtual rows absent from the batch.
+    let before: Vec<_> = P::ALL.map(|p| w[p][0]).into();
+    for p in P::ALL {
+        g[p].fill(0.0);
+    }
+    adam.update(&mut w, &g, 1.0).unwrap();
+    for p in P::ALL {
+        let group = if matches!(p, P::FtWeights | P::FtVirtual) {
+            config.ft
+        } else {
+            config.head
+        };
+        let m = 0.5 * (1.0 - 0.9_f64.powi(2)) * 0.9;
+        let v = 0.25 * (1.0 - 0.999_f64.powi(2)) * 0.999;
+        let expected = f64::from(before[p as usize]) * (1.0 - group.lr * group.weight_decay)
+            - group.lr * (m / (1.0 - 0.9_f64.powi(3)))
+                / ((v / (1.0 - 0.999_f64.powi(3))).sqrt() + 1e-8);
+        close(f64::from(w[p][0]), expected, 2e-7);
+        close(f64::from(adam.m[p][0]), m, 1e-7);
+        close(f64::from(adam.v[p][0]), v, 1e-7);
+    }
     for p in P::ALL {
         w[p][0] = 10.0;
         w[p][1.min(g[p].len() - 1)] = -10.0;

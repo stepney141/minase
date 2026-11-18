@@ -180,7 +180,7 @@ fn gpu_forward_backward_validation_and_repeat_bits() {
         Color::Black,
     )
     .unwrap();
-    for batch in [batch(100), batch(4096), repeated] {
+    for batch in [batch(100), batch(4096), repeated, batch(129), batch(1)] {
         let n = batch.len();
         let targets: Vec<_> = (0..n).map(|i| (i % 11) as f32 / 10.0).collect();
         let features = Features::from_batch(&batch).unwrap();
@@ -488,4 +488,104 @@ fn gpu_width256_batch16384_memory_and_update() {
     let v = step.validate(&mut ring, &batch, &targets).unwrap();
     assert!(v.loss_sum.is_finite());
     assert_eq!(step.step(), 1);
+}
+
+// The specified gradient is the sum of per-position products. Binary-exact
+// factors give an independent analytic oracle; cancellation detects f32 sums.
+#[test]
+#[ignore = "requires a CUDA GPU and NVRTC"]
+fn gpu_head_tiles_preserve_f64_sums_and_partial_boundaries() {
+    use cudarc::driver::PushKernelArg;
+    let device = Device::new(0).unwrap();
+    let kernels = Kernels::new(&device).unwrap();
+    for (h, n) in [(16, 1), (48, 129), (256, 257), (16, 16385)] {
+        let mut f = vec![0.0_f32; n * forward_len(h)];
+        let mut d = vec![0.0_f32; n * backward_len(h)];
+        let mut sum = 0.0_f64;
+        for b in 0..n {
+            let factor = [16777216.0_f32, 1.0, -16777216.0][b % 3];
+            sum += f64::from(factor);
+            let f = &mut f[b * forward_len(h)..(b + 1) * forward_len(h)];
+            let d = &mut d[b * backward_len(h)..(b + 1) * backward_len(h)];
+            for j in 0..2 * h {
+                f[2 * h + j] = (j + 1) as f32 / 1024.0;
+                d[j] = factor * (j + 1) as f32 / 1024.0;
+            }
+            for j in 0..32 {
+                f[4 * h + 32 + j] = (j + 1) as f32 / 64.0;
+                f[4 * h + 96 + j] = (j + 1) as f32 / 128.0;
+                d[2 * h + j] = factor * (j + 1) as f32 / 32.0;
+                d[2 * h + 32 + j] = factor * (j + 1) as f32 / 64.0;
+            }
+            d[2 * h + 64] = factor / 128.0;
+        }
+        let f = device.compute.clone_htod(&f).unwrap();
+        let d = device.compute.clone_htod(&d).unwrap();
+        let blocks = n.div_ceil(128) as u32;
+        let columns = head_len(h) as u32;
+        let mut partials = device
+            .compute
+            .alloc_zeros::<f64>(blocks as usize * head_len(h))
+            .unwrap();
+        let mut gradients = device.compute.alloc_zeros::<f32>(head_len(h)).unwrap();
+        let mut status = device.compute.alloc_zeros::<u32>(1).unwrap();
+        let width = h as u32;
+        let mut args = device.compute.launch_builder(&kernels.head_partials);
+        let count = n as u32;
+        args.arg(&f)
+            .arg(&d)
+            .arg(&mut partials)
+            .arg(&count)
+            .arg(&width)
+            .arg(&columns);
+        // SAFETY: buffers cover n positions and ceil(n/128) head partials;
+        // the final column tile and position block are masked by the kernel.
+        unsafe {
+            args.launch(grid(head_len(h).div_ceil(32), blocks as usize).unwrap())
+                .unwrap();
+        }
+        let mut args = device.compute.launch_builder(&kernels.head_reduce);
+        // No feature rows are needed to test head reduction: R=K=0 makes
+        // Layout.ftb=0, so the entire writable region is exactly head_len(h).
+        let zero = 0_u32;
+        args.arg(&partials)
+            .arg(&mut gradients)
+            .arg(&blocks)
+            .arg(&width)
+            .arg(&zero)
+            .arg(&zero)
+            .arg(&columns)
+            .arg(&mut status);
+        // SAFETY: the zero-row layout places the head at offset 0, within
+        // gradients. All partials were initialized on the same compute stream.
+        unsafe {
+            args.launch(grid(head_len(h).div_ceil(32), 1).unwrap())
+                .unwrap();
+        }
+        check_status(&device, &status).unwrap();
+        let actual = device.compute.clone_dtoh(&gradients).unwrap();
+        let mut c = 0;
+        for p in Parameter::ALL.into_iter().skip(2) {
+            for j in 0..p.count(h) {
+                let coefficient = match p {
+                    Parameter::FtBiases => (2 * j + h + 2) as f64 / 1024.0,
+                    Parameter::L1Weights => {
+                        ((j / (2 * h) + 1) * (j % (2 * h) + 1)) as f64 / 32768.0
+                    }
+                    Parameter::L1Biases => (j + 1) as f64 / 32.0,
+                    Parameter::L2Weights => ((j / 32 + 1) * (j % 32 + 1)) as f64 / 4096.0,
+                    Parameter::L2Biases => (j + 1) as f64 / 64.0,
+                    Parameter::L3Weights => (j + 1) as f64 / 16384.0,
+                    Parameter::L3Bias => 1.0 / 128.0,
+                    _ => unreachable!(),
+                };
+                assert_eq!(
+                    actual[c],
+                    (sum * coefficient) as f32,
+                    "h={h}, n={n}, {p:?}[{j}]"
+                );
+                c += 1;
+            }
+        }
+    }
 }

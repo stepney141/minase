@@ -5,7 +5,7 @@ use super::{
 use crate::nnue::{
     data::FeatureSet,
     gpu::{BatchTicket, HostRing, device::pinned_zeros},
-    simple::{AdamW, OptimizerConfig, Scale},
+    simple::{AdamW, OptimizerConfig, Scale, optimizer::Coefficients},
 };
 use cudarc::driver::{CudaEvent, PinnedHostSlice, PushKernelArg, sys::CUevent_flags};
 use std::sync::{
@@ -162,9 +162,10 @@ impl Step {
             .count
             .checked_add(1)
             .ok_or_else(|| invalid("AdamW step overflow"))?;
-        let groups = coefficients(self.config, multiplier)?;
-        let correction1 = 1.0 - 0.9_f64.powf(count as f64);
-        let correction2 = 1.0 - 0.999_f64.powf(count as f64);
+        let groups = [
+            Coefficients::new(count, self.config.ft, multiplier)?,
+            Coefficients::new(count, self.config.head, multiplier)?,
+        ];
         let readback = Arc::get_mut(&mut self.readbacks[self.next])
             .ok_or_else(|| invalid("collect the oldest Simple result before slot reuse"))?;
         let submitted = (|| -> Result<()> {
@@ -191,8 +192,8 @@ impl Step {
             readback.events[2].record(&self.device.compute)?;
             ring.finish(ticket.clone())?;
             for p in Parameter::ALL {
-                let (lr, decay) =
-                    groups[usize::from(!matches!(p, Parameter::FtWeights | Parameter::FtVirtual))];
+                let coeff =
+                    &groups[usize::from(!matches!(p, Parameter::FtWeights | Parameter::FtVirtual))];
                 let offset = offset(p, self.width) as u32;
                 let length = p.count(self.width) as u32;
                 let (limit, bounded) = match p.limit() {
@@ -208,10 +209,10 @@ impl Step {
                     .arg(&length)
                     .arg(&limit)
                     .arg(&bounded)
-                    .arg(&correction1)
-                    .arg(&correction2)
-                    .arg(&lr)
-                    .arg(&decay)
+                    .arg(&coeff.correction1)
+                    .arg(&coeff.correction2)
+                    .arg(&coeff.lr)
+                    .arg(&coeff.decay)
                     .arg(&mut self.forward.nonfinite);
                 // SAFETY: offset/count select only this parameter's active region;
                 // all four arrays have parameter_count(width) elements. Kernel arguments
@@ -296,22 +297,6 @@ impl Step {
         Ok((weights, optimizer))
     }
 }
-fn coefficients(config: OptimizerConfig, multiplier: f64) -> Result<[(f64, f32); 2]> {
-    if !multiplier.is_finite() || multiplier <= 0.0 {
-        return Err(invalid("learning rate multiplier"));
-    }
-    let mut result = [(0.0, 0.0); 2];
-    for (out, group) in result.iter_mut().zip([config.ft, config.head]) {
-        let lr = group.lr * multiplier;
-        let decay = 1.0 - lr * group.weight_decay;
-        if !lr.is_finite() || lr <= 0.0 || !decay.is_finite() || decay.abs() > f64::from(f32::MAX) {
-            return Err(invalid("AdamW scaled learning rate or decay overflow"));
-        }
-        *out = (lr, decay as f32);
-    }
-    Ok(result)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -319,16 +304,18 @@ mod tests {
     #[test]
     fn scaled_adam_groups_reject_underflow_overflow_and_nonpositive_rates() {
         let config = OptimizerConfig::default();
-        for multiplier in [0.0, -1.0, f64::NAN, f64::INFINITY, f64::from_bits(1)] {
-            assert!(coefficients(config, multiplier).is_err());
+        for multiplier in [0.0, -1.0, f64::NAN, f64::INFINITY, f64::from_bits(1), 1e-60] {
+            assert!(Coefficients::new(1, config.ft, multiplier).is_err());
         }
         let mut overflow = config;
         overflow.ft.lr = f64::MAX;
-        assert!(coefficients(overflow, 2.0).is_err());
+        assert!(Coefficients::new(1, overflow.ft, 2.0).is_err());
+        overflow.ft.lr = 1e40;
+        assert!(Coefficients::new(1, overflow.ft, 1.0).is_err());
         overflow.ft.lr = 1.0;
         overflow.ft.weight_decay = f64::MAX;
-        assert!(coefficients(overflow, 1.0).is_err());
-        let groups = coefficients(config, 0.7).unwrap();
-        assert_eq!(groups, [(0.0007, 1.0); 2]);
+        assert!(Coefficients::new(1, overflow.ft, 1.0).is_err());
+        let coeff = Coefficients::new(1, config.ft, 0.7).unwrap();
+        assert_eq!((coeff.lr, coeff.decay), (0.0007, 1.0));
     }
 }
