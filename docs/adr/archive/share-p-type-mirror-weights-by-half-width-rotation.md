@@ -2,13 +2,13 @@
 
 ## ステータス
 
-承認済み。決定日は2026年10月12日。
+置き換え済み。[P型のNNUEは左右鏡映の対で、第1層の重みを半幅だけ回して共有し、PSQTを同じ値にする](../share-p-type-mirror-weights-in-the-first-layer-and-the-psqt.md)によって置き換えられた。
 
 ## コンテキスト
 
 置き換え前のPSTは、左右鏡映した升の組で重みを共有し、盤面全体を左右反転した局面に同じ評価を返していた。
-一方、FMは学習時に局面を確率的に鏡映するデータ拡張で鏡映を扱い、埋め込みを共有していなかったので、評価の厳密な鏡映不変性を持たなかった（[アーキテクチャの考察](../proposals/archived/nnue-architecture-discussion.md)）。
-[NNUEによるPST＋FMの完全代替](../plans/archived/nnue-replacement.md)は、NNUEでも盤面全体の左右鏡映に対して評価を厳密に不変にすることにした。
+一方、FMは学習時に局面を確率的に鏡映するデータ拡張で鏡映を扱い、埋め込みを共有していなかったので、評価の厳密な鏡映不変性を持たなかった（[アーキテクチャの考察](../../proposals/archived/nnue-architecture-discussion.md)）。
+[NNUEによるPST＋FMの完全代替](../../plans/archived/nnue-replacement.md)は、NNUEでも盤面全体の左右鏡映に対して評価を厳密に不変にすることにした。
 P型は王の位置で条件付けない入力特徴集合であり、HalfKP-hm-b8は自玉の位置で条件付ける入力特徴集合である。
 HalfKP-hm-b8は、基準の王駒が盤の左半分にあれば盤面全体を鏡映してから番号を付ける正規化で不変性を得られるが、P型には正規化に使える基準の駒がない。
 

@@ -2,11 +2,11 @@
 
 ## ステータス
 
-提案。[勝率尺度を重みファイルの1定数とし、NNUEの教師の探索値も既定ではその尺度で勝率へ換算する](convert-nnue-teacher-values-with-the-network-win-rate-scale-by-default.md)を置き換える案である。[tatara化とHalfKP_vmの設計書](../plans/nnue-tatara-framework-and-halfkp-vm.md)で載せ替えたP型が、載せ替えの確認のSTCで前のP型に約64 Elo負けたので、その原因の切り分けの結果を見てP型の扱いを決めるまで、決定しない。
+承認済み。決定日は2026年11月19日。[勝率尺度を重みファイルの1定数とし、NNUEの教師の探索値も既定ではその尺度で勝率へ換算する](archive/convert-nnue-teacher-values-with-the-network-win-rate-scale-by-default.md)を置き換える。
 
 ## コンテキスト
 
-[以前の決定](convert-nnue-teacher-values-with-the-network-win-rate-scale-by-default.md)は、ネットの評価値を勝率へ換算する勝率尺度をMNUEのヘッダの1定数とし、NNUEの学習では教師の探索値を、既定で`--base`のネットの勝率尺度で勝率へ換算するとした。
+[以前の決定](archive/convert-nnue-teacher-values-with-the-network-win-rate-scale-by-default.md)は、ネットの評価値を勝率へ換算する勝率尺度をMNUEのヘッダの1定数とし、NNUEの学習では教師の探索値を、既定で`--base`のネットの勝率尺度で勝率へ換算するとした。
 勝率尺度は、世代反復の第1世代で最初に生成した4本の教師ファイルから一度だけ推定して固定していた。
 
 tataraの形式には実数の勝率尺度の欄がなく、構造記述の末尾に、量子化したネットの整数の出力をセンチポーンへ換算する整数の除数`fv_scale`を書く。

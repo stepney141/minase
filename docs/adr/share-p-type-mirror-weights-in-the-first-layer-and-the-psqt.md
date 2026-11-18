@@ -2,12 +2,12 @@
 
 ## ステータス
 
-提案。[P型のNNUEは左右鏡映の対で第1層の重みを半幅だけ回して共有する](share-p-type-mirror-weights-by-half-width-rotation.md)を置き換える案である。[tatara化とHalfKP_vmの設計書](../plans/nnue-tatara-framework-and-halfkp-vm.md)で載せ替えたP型が、載せ替えの確認のSTCで前のP型に約64 Elo負けたので、その原因の切り分けの結果を見てP型の扱いを決めるまで、決定しない。
+承認済み。決定日は2026年11月19日。[P型のNNUEは左右鏡映の対で第1層の重みを半幅だけ回して共有する](archive/share-p-type-mirror-weights-by-half-width-rotation.md)を置き換える。
 
 ## コンテキスト
 
 P型は王の位置を使わないので、自玉の位置に応じて盤を鏡映してから番号を付ける正規化では、左右鏡映で評価値が変わらないことを保証できない。
-[以前の決定](share-p-type-mirror-weights-by-half-width-rotation.md)は、特徴fとその鏡映Mfの第1層の行を半幅H/2だけ回した位置で共有し、第1層のバイアスと出力重みもユニットjとj＋H/2で共有した。
+[以前の決定](archive/share-p-type-mirror-weights-by-half-width-rotation.md)は、特徴fとその鏡映Mfの第1層の行を半幅H/2だけ回した位置で共有し、第1層のバイアスと出力重みもユニットjとj＋H/2で共有した。
 以前の出力部は第1層の各視点を4分割して要素積を取っていたので、隠れ層を足すときは隠れ層の重みにも同じ半幅の共有を課す必要があった。
 
 P型はtataraのLayerStackへ載せ替えた（[構造のADR](compose-p-as-a-tatara-layerstack-with-a-psqt-and-halfkp-vm-as-a-simple-network.md)）。

@@ -2,22 +2,22 @@
 
 ## ステータス
 
-承認済み。決定日は2026年11月4日。
+置き換え済み。[P型をtataraのLayerStackにPSQTを足した構造で、HalfKP_vmを256x2-32-32のSimpleで組み、量子化をtataraにそろえる](../compose-p-as-a-tatara-layerstack-with-a-psqt-and-halfkp-vm-as-a-simple-network.md)によって置き換えられた。
 
 ## コンテキスト
 
-[旧ADR](archive/compose-the-nnue-of-a-piece-value-initialized-linear-path-and-a-direct-screlu-head.md)は、NNUEの評価を線形の経路と非線形の経路の和とし、非線形の経路を幅128の第1層の活性化と出力重みの直接内積にすると決めていた。
-[別のADR](archive/keep-the-direct-screlu-head-after-the-hidden-layer-candidates-did-not-lower-validation-loss.md)は、幅16の隠れ層の候補を検証損失の比較だけで見送っていた。
+[旧ADR](compose-the-nnue-of-a-piece-value-initialized-linear-path-and-a-direct-screlu-head.md)は、NNUEの評価を線形の経路と非線形の経路の和とし、非線形の経路を幅128の第1層の活性化と出力重みの直接内積にすると決めていた。
+[別のADR](keep-the-direct-screlu-head-after-the-hidden-layer-candidates-did-not-lower-validation-loss.md)は、幅16の隠れ層の候補を検証損失の比較だけで見送っていた。
 その比較で使った先読み教師は翌日に廃止されたので、隠れ層が不要だと確かめられたわけではない。
 
-2026年11月3日に開発者は、将棋より盤も駒も大きい中将棋のネットが将棋のネットより小さいことを問題にし、教師の世代反復の前に、隠れ層を加える前提で構成を見直すと決めた（[設計書](../plans/archived/nnue-architecture-revision.md)）。
+2026年11月3日に開発者は、将棋より盤も駒も大きい中将棋のネットが将棋のネットより小さいことを問題にし、教師の世代反復の前に、隠れ層を加える前提で構成を見直すと決めた（[設計書](../../plans/archived/nnue-architecture-revision.md)）。
 世代反復は最大8世代にわたって同じ構成を使うので、後で構成を変えると、それまでの世代のネットをすべて再学習することになる。
 
 作業の途中で次のことが分かった。
 
-- 累算値を16ビットにすると命令数が1.32%減り、隠れ層を除いた幅256の費用は命令数の増加で1.70%だった。差分更新を1回の走査へまとめる変更は速くならなかった（[速度の記録](../measurements/nnue-architecture-revision/nnue-architecture-revision-speed.md)）。
-- tataraやStockfishと同じi8の尺度64で隠れ層の重みを持つと、量子化誤差の平均が29.80 cpとなって学習器の検査の上限26.82 cpを超えた。誤差の大半はこの重みの丸めから来ており、尺度を256へ上げると再学習なしで9.45 cpへ下がった（[学習の記録](../measurements/nnue-architecture-revision/nnue-architecture-revision-training.md)）。勝率尺度が約1,072 cpあり、tataraの約290 cpより1刻みが粗くなるからである。
-- 第1層の初期値を標準偏差0.05から約0.00494へ下げると、最良の検証損失が0.457598から0.457554へ下がり、固定ノードの対局の結果が−34.2 Eloから−2.6 Eloへ改善した（[学習の記録](../measurements/nnue-architecture-revision/nnue-architecture-revision-init-training.md)、[固定ノードの記録](../measurements/nnue-architecture-revision/nnue-architecture-revision-init-fixed-nodes.md)）。
+- 累算値を16ビットにすると命令数が1.32%減り、隠れ層を除いた幅256の費用は命令数の増加で1.70%だった。差分更新を1回の走査へまとめる変更は速くならなかった（[速度の記録](../../measurements/nnue-architecture-revision/nnue-architecture-revision-speed.md)）。
+- tataraやStockfishと同じi8の尺度64で隠れ層の重みを持つと、量子化誤差の平均が29.80 cpとなって学習器の検査の上限26.82 cpを超えた。誤差の大半はこの重みの丸めから来ており、尺度を256へ上げると再学習なしで9.45 cpへ下がった（[学習の記録](../../measurements/nnue-architecture-revision/nnue-architecture-revision-training.md)）。勝率尺度が約1,072 cpあり、tataraの約290 cpより1刻みが粗くなるからである。
+- 第1層の初期値を標準偏差0.05から約0.00494へ下げると、最良の検証損失が0.457598から0.457554へ下がり、固定ノードの対局の結果が−34.2 Eloから−2.6 Eloへ改善した（[学習の記録](../../measurements/nnue-architecture-revision/nnue-architecture-revision-init-training.md)、[固定ノードの記録](../../measurements/nnue-architecture-revision/nnue-architecture-revision-init-fixed-nodes.md)）。
 
 幅128の基準に対する最終の候補の棋力は次のとおりである。
 同じ30ファイルの教師、同じ引数、および同じシードで学んだネットどうしの比較である。
@@ -25,7 +25,7 @@
 | 測定 | 結果 |
 |---|---|
 | 最良の検証損失 | 候補0.457554、基準0.457586 |
-| [STC](../measurements/nnue-architecture-revision/nnue-architecture-revision-init-stc.md) | `H0`（306ペア、得点率43.6%、約−44 Elo） |
+| [STC](../../measurements/nnue-architecture-revision/nnue-architecture-revision-init-stc.md) | `H0`（306ペア、得点率43.6%、約−44 Elo） |
 | 固定ノードの対局（1手10万ノード） | −2.6 Elo（95%区間−35.8〜+30.5） |
 | 探索速度 | 基準の約0.91倍（16局同時でも同じ） |
 | 対局で現れた局面での、教師の探索値との平均絶対誤差 | 候補253.0 cp、基準261.8 cp |
@@ -77,7 +77,7 @@ tataraの記録では要素積のほうが強い（+29.5 ±13.2 nElo）ので、
 先に高速化する案は、削れる費用が数%と見込まれ、`H0`を覆すには足りないと考えて選ばなかった。
 
 線形の経路を廃止する案（StockfishのSFNNv17に相当）は、手の順序付けの同点破りとUSIの評価の内訳表示が線形の経路の重みを参照し、世代反復の出発点である手書きの評価関数v0を表す経路でもあるので採らなかった。
-線形の経路の他の代案は[旧ADR](archive/compose-the-nnue-of-a-piece-value-initialized-linear-path-and-a-direct-screlu-head.md)にある。
+線形の経路の他の代案は[旧ADR](compose-the-nnue-of-a-piece-value-initialized-linear-path-and-a-direct-screlu-head.md)にある。
 
 ## 結果
 

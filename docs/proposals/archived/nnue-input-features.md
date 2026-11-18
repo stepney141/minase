@@ -1,6 +1,6 @@
 # NNUEの13,680入力を採る根拠と限界
 
-本提案は、2026年10月12日に、幅128で同じデータと設定から学んだP型とHalfKP-hm-b8をSTCで比べてHalfKP-hm-b8が`H0`となり、[NNUEの入力特徴集合に王の位置で条件付けないP型を使う](../../adr/use-p-type-input-features-for-the-nnue.md)が定まったことで決着した。
+本提案は、2026年10月12日に、幅128で同じデータと設定から学んだP型とHalfKP-hm-b8をSTCで比べてHalfKP-hm-b8が`H0`となり、[NNUEの入力特徴集合に王の位置で条件付けないP型を使う](../../adr/archive/use-p-type-input-features-for-the-nnue.md)が定まったことで決着した。
 2026年10月17日に現行の学習器で再学習したHalfKP-hm-b8も、P型に大差で負けた（[現行の学習器で再学習したHalfKP-hm-b8と現行のP型のSTC](../../measurements/nnue-early-best-epoch/halfkp-retrain-stc.md)）。
 
 13,680特徴は、駒配置を保持しながら差分更新する出発点として説明できるが、幅64または128のネットで目標の棋力に届くことは未検証である。

@@ -9,7 +9,7 @@ PSTとFMの評価関数は比較用のコードとしてソースに残ってい
 NNUEの入力の基底特徴と教師値の作り方はPSTと共通なので、[PSTとFMによる評価関数と学習の目的関数](evaluation-pst-fm.md)を先に読むと理解しやすい。
 
 minaseのNNUEの構成は、将棋のNNUEの学習器tataraの重みの形式、量子化、および学習器の設計に倣っている。
-この構成は、[NNUEをtataraに倣った枠組みへ載せ替え、HalfKP_vmを加える設計書](../plans/nnue-tatara-framework-and-halfkp-vm.md)が定めたものであり、以下ではこの設計書をtatara化の設計書と呼ぶ。
+この構成は、[NNUEをtataraに倣った枠組みへ載せ替え、HalfKP_vmを加える設計書](../plans/archived/nnue-tatara-framework-and-halfkp-vm.md)が定めたものであり、以下ではこの設計書をtatara化の設計書と呼ぶ。
 本書の式は、仕様の正である`crates/minase/src/eval/nnue/`と`crates/minase-trainer/src/nnue/`のdocコメントに合わせて記す。
 方式を選んだ理由は、各節で示すADR（architecture decision record、設計判断の記録）にある。
 
@@ -57,7 +57,7 @@ NNUEという名前が指すのは第1層を差分で更新できる構造のこ
 一方でチェスエンジンのStockfishは、第1層と同じ入力から線形の出力も計算し、隠れ層を通した出力との和を評価値にしている（[2つの出力の和](https://github.com/official-stockfish/Stockfish/blob/17a6c8f1eb0da45c2ca405321919519bf4e211ba/src/evaluate.cpp#L50-L52)）。
 この線形の出力は、自玉の位置、駒、および升の組ごとの点数を、盤上の駒数で8区分した表から引いて足し合わせたものであり、tataraのPSQTも同じ役割を持つ（[線形の出力の計算](https://github.com/official-stockfish/Stockfish/blob/17a6c8f1eb0da45c2ca405321919519bf4e211ba/src/nnue/nnue_feature_transformer.h#L233-L236)）。
 minaseのPSQTは区分が1つであり、王駒の位置で条件付けない。
-tatara化の前のP型は、序中盤と終盤の2組の点数を駒数で補間する線形の経路と、minase独自の要素積の出力部を持っていたが、tataraの形式で表せないので置き換えた（[以前の構造のADR](../adr/compose-the-nnue-of-a-piece-value-initialized-linear-path-and-pairwise-products-with-two-hidden-layers.md)）。
+tatara化の前のP型は、序中盤と終盤の2組の点数を駒数で補間する線形の経路と、minase独自の要素積の出力部を持っていたが、tataraの形式で表せないので置き換えた（[以前の構造のADR](../adr/archive/compose-the-nnue-of-a-piece-value-initialized-linear-path-and-pairwise-products-with-two-hidden-layers.md)）。
 
 学習した実数の重みは、整数へ丸めて（量子化して）重みファイルに保存し、エンジンは整数演算だけで評価する。
 重みファイルはtataraの形式であり、学習器が書き出すファイルの名前は`nnue.bin`である。
@@ -655,9 +655,9 @@ tatara化の前の学習器は、平均絶対値が勝率尺度の1/40を超え�
 
 ### 探索の測定に使う標準のネット
 
-本書の構成の標準のネットは、まだ定めていない。
-tatara化の設計書の載せ替えの確認で学んだ、載せ替えた後のP型のネット（`/mnt/synology_nas/minase/nnue/nets/37054c9e49c9218bb18efdd1814fe1b298de5cbfc9c14352f6ad6eaecbb70dea.bin`）は、STCで載せ替える前のP型に約64 Elo負けたので（[測定記録](../measurements/nnue-tatara-framework-and-halfkp-vm/nnue-tatara-framework-and-halfkp-vm-stc.md)）、P型の扱いが決まるまで標準にしない。
-それまでこの構成で探索を測るときは、このネットを使い、SHA-256を測定記録に書く。
+本書の構成で標準とするネットは、[tatara化の設計書](../plans/archived/nnue-tatara-framework-and-halfkp-vm.md)で載せ替えを確かめるために学んだP型のネット（`/mnt/synology_nas/minase/nnue/nets/37054c9e49c9218bb18efdd1814fe1b298de5cbfc9c14352f6ad6eaecbb70dea.bin`）である。
+教師、学習の条件、および書き出しの結果は[学習の記録](../measurements/nnue-tatara-framework-and-halfkp-vm/nnue-tatara-framework-and-halfkp-vm-training.md)にある。
+このネットはSTCで載せ替える前のP型に約64 Elo負けたが（[測定記録](../measurements/nnue-tatara-framework-and-halfkp-vm/nnue-tatara-framework-and-halfkp-vm-stc.md)）、2026年11月19日に開発者は、載せ替えたP型を採用すると決めた（[構造のADR](../adr/compose-p-as-a-tatara-layerstack-with-a-psqt-and-halfkp-vm-as-a-simple-network.md)）。
 
 ## 損失で決めないもの
 
@@ -688,7 +688,7 @@ GPUの学習器を設計した理由は、[NNUEの学習器をRustのホスト�
 ## 参考資料
 
 - [PSTとFMによる評価関数と学習の目的関数](evaluation-pst-fm.md)
-- [NNUEをtataraに倣った枠組みへ載せ替え、HalfKP_vmを加える設計書](../plans/nnue-tatara-framework-and-halfkp-vm.md)
+- [NNUEをtataraに倣った枠組みへ載せ替え、HalfKP_vmを加える設計書](../plans/archived/nnue-tatara-framework-and-halfkp-vm.md)
 - [NNUEの入力特徴集合と構造を取り得る値を固定した列挙型で表し、tataraの形式のファイルの構造記述から構造を選ぶ](../adr/represent-nnue-feature-sets-and-structures-as-enums-and-select-the-structure-from-the-tatara-file.md)
 - [P型をtataraのLayerStackにPSQTを足した構造で、HalfKP_vmを256x2-32-32のSimpleで組み、量子化をtataraにそろえる](../adr/compose-p-as-a-tatara-layerstack-with-a-psqt-and-halfkp-vm-as-a-simple-network.md)
 - [探索は、EvalFileで読んだNNUEだけを使い、その構造を読み込みのときに選んで、評価器の列挙型で着手ごとに分岐する](../adr/search-with-an-evalfile-nnue-whose-structure-is-chosen-on-load.md)

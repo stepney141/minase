@@ -2,7 +2,7 @@
 
 本書は、駒の種類と位置に応じた評価表であるPSTと、PSTに加える2駒関係の補正FM（Factorization Machine）を学習する手順を定める。
 学習には、学習器のクレート`crates/minase-trainer`の実行ファイル`minase-trainer`のサブコマンドを使う。
-エンジンが探索に使う既定の評価関数は、2026年10月12日からNNUEである（[探索が使う評価関数をNNUEの1つにし、PSTとFMのコードは比較用に残す](../adr/use-an-nnue-read-from-evalfile-as-the-only-search-evaluation.md)）。
+エンジンが探索に使う既定の評価関数は、2026年10月12日からNNUEである（[探索が使う評価関数をNNUEの1つにし、PSTとFMのコードは比較用に残す](../adr/archive/use-an-nnue-read-from-evalfile-as-the-only-search-evaluation.md)）。
 PSTとFMの学習器は、NNUEの線形経路の初期値を作る場合や、PSTを土台にした研究の計画で使う。
 
 本書は、実行者が従う手順、判断規則、および標準コマンドだけを記す。

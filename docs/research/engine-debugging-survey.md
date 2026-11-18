@@ -2,7 +2,7 @@
 
 本書のminaseに関する記述は2026年9月27日時点のものである。
 結論でminaseが持たないとした局面と評価値の表示、置換表の照会、入出力のログ、および探索統計は、同日の[デバッグ機能の整備の設計書](../plans/archived/debugging-tools.md)により、USIの独自コマンド`d`、`eval`、`tt`、起動引数`--io-log`、およびCargoフィーチャ`search-stats`として加わった。
-評価関数は2026年10月12日にNNUEへ替わり、[P型のNNUEは左右鏡映の対で第1層の重みを半幅だけ回して共有する](../adr/share-p-type-mirror-weights-by-half-width-rotation.md)ので、「minaseへの適用の可否」の第3点と異なり、現行の評価は左右鏡映でも変わらない。
+評価関数は2026年10月12日にNNUEへ替わり、[P型のNNUEは左右鏡映の対で第1層の重みを半幅だけ回して共有する](../adr/archive/share-p-type-mirror-weights-by-half-width-rotation.md)ので、「minaseへの適用の可否」の第3点と異なり、現行の評価は左右鏡映でも変わらない。
 「PV-MCTS型エンジンのデバッグ」の節と、「minaseへの適用の可否」の第4点および第5点は2026年11月16日に加えたもので、そこでのminaseに関する記述は同日時点のものである。
 2026年11月17日に、[PV-MCTSのデバッグ道具の設計書](../plans/archived/mcts-debugging-tools.md)の起案のためにふかうら王のソースを読み直し、`DebugMessage`の出力についての記述を訂正した。
 第5点でminaseにないとした3つの道具は、同日に同書により、USIのオプション`VerboseMoveStats`、フィーチャ`invariants`の下の探索木の検査`Tree::validate`、および`--search mcts`で起動したときの`bench`として加わった。

@@ -2,12 +2,12 @@
 
 ## ステータス
 
-提案。[NNUEを入力特徴集合と出力部の型引数で組み立て、型の合わないネットのファイルは読み込みで拒否する](parameterize-the-nnue-by-types-and-reject-mismatched-network-files-on-load.md)を置き換える案である。[tatara化とHalfKP_vmの設計書](../plans/nnue-tatara-framework-and-halfkp-vm.md)で載せ替えたP型が、載せ替えの確認のSTCで前のP型に約64 Elo負けたので、その原因の切り分けの結果を見てP型の扱いを決めるまで、決定しない。
+承認済み。決定日は2026年11月19日。[NNUEを入力特徴集合と出力部の型引数で組み立て、型の合わないネットのファイルは読み込みで拒否する](archive/parameterize-the-nnue-by-types-and-reject-mismatched-network-files-on-load.md)を置き換える。
 
 ## コンテキスト
 
 入力特徴集合は、局面と視点から第1層のどの行を発火させるかを定める規則であり、構造は、両視点の第1層の出力から評価値を計算する後段の形である。
-[以前の決定](parameterize-the-nnue-by-types-and-reject-mismatched-network-files-on-load.md)は、NNUEを`FeatureSet`トレイトと`Head`トレイトの型引数で総称化し、探索は型の別名で具体化した1組だけを使うとした。
+[以前の決定](archive/parameterize-the-nnue-by-types-and-reject-mismatched-network-files-on-load.md)は、NNUEを`FeatureSet`トレイトと`Head`トレイトの型引数で総称化し、探索は型の別名で具体化した1組だけを使うとした。
 重みのファイルはminase独自のMNUEの形式で、ファイルのヘッダの構造記述の文字列を、型から組み立てた文字列と照合していた。
 
 エンジンの開発者は2026年11月15日に、自玉の升ごとに別の重みを引くHalfKP_vmを、王の位置を使わないP型と同じコミットのエンジンと学習器で扱えるようにすると決めた。
@@ -15,7 +15,7 @@
 同じ日に開発者は、NNUEの抽象化、学習器の構成、重みの形式、および量子化を、将棋のNNUEの学習器tataraに倣うと決めた（[調査メモ](../research/tatara-nnue-transfer.md)）。
 tataraは、公開する入力特徴集合を列挙型`FeatureSet`で表し、次元や特徴のハッシュなどを1つの仕様の値`FeatureSetSpec`から引く。
 構造は列挙型`ArchKind`（LayerStackとSimple）で表し、重みのファイルの先頭に版の番号、ネットのハッシュ、および構造記述の文字列を置く。
-決定は[tatara化とHalfKP_vmの設計書](../plans/nnue-tatara-framework-and-halfkp-vm.md)で下した。
+決定は[tatara化とHalfKP_vmの設計書](../plans/archived/nnue-tatara-framework-and-halfkp-vm.md)で下した。
 
 ## 決定
 

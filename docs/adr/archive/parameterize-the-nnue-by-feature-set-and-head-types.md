@@ -2,7 +2,7 @@
 
 ## ステータス
 
-置き換え済み。決定日は2026年10月12日。[NNUEを入力特徴集合と出力部の型引数で組み立て、型の合わないネットのファイルは読み込みで拒否する](../parameterize-the-nnue-by-types-and-reject-mismatched-network-files-on-load.md)によって置き換えられた。
+置き換え済み。決定日は2026年10月12日。[NNUEを入力特徴集合と出力部の型引数で組み立て、型の合わないネットのファイルは読み込みで拒否する](parameterize-the-nnue-by-types-and-reject-mismatched-network-files-on-load.md)によって置き換えられた。
 
 ## コンテキスト
 

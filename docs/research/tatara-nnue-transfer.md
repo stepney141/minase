@@ -245,7 +245,7 @@ Stockfishは[SFNNv17](https://github.com/official-stockfish/Stockfish/commit/a17
 (c) 仮想の行は「王の位置を外した駒と升の組」であり、これはminaseのP型そのものである。
 したがってP型には特徴分解は意味を持たない。
 HalfKP-hm-b8用の仮想行は、minaseの学習器に既に実装されている（[feature_set.rs](../../crates/minase/src/eval/nnue/feature_set.rs) 44行、[model/mod.rs](../../crates/minase-trainer/src/nnue/model/mod.rs) 398行）。
-HalfKP-hm-b8はSTCでP型に2回大敗しており（[ADR](../adr/use-p-type-input-features-for-the-nnue.md)）、ADRは教師の量か幅が大きく変わったときだけ測り直すとしている。
+HalfKP-hm-b8はSTCでP型に2回大敗しており（[ADR](../adr/archive/use-p-type-input-features-for-the-nnue.md)）、ADRは教師の量か幅が大きく変わったときだけ測り直すとしている。
 
 (d) 本書は再提案しない。
 2回の対局の棋譜で配置を集計していないので、偏りへの影響は分からない。

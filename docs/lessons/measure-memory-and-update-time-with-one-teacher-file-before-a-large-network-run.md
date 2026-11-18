@@ -2,7 +2,7 @@
 
 ## 症状
 
-2026年11月18日、[tatara化とHalfKP_vmの設計書](../plans/nnue-tatara-framework-and-halfkp-vm.md)で、HalfKP_vmのSimple（第1層の幅256）を教師37本で学び始めたところ、2つの問題が本番の学習の中で初めて表に出た。
+2026年11月18日、[tatara化とHalfKP_vmの設計書](../plans/archived/nnue-tatara-framework-and-halfkp-vm.md)で、HalfKP_vmのSimple（第1層の幅256）を教師37本で学び始めたところ、2つの問題が本番の学習の中で初めて表に出た。
 
 1つ目はメモリである。
 メモリの上限を18 GiBにしたサービスで動かすと、最初の検証の直後に、cgroupのメモリが上限の18 GiBに達して、メモリ不足（OOM）で止められた。

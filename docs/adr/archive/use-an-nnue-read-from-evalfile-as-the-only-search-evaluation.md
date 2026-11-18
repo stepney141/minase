@@ -2,19 +2,19 @@
 
 ## ステータス
 
-承認済み。決定日は2026年11月17日。[探索が使う評価関数をNNUEの1つにし、PSTとFMのコードは比較用に残す](archive/use-nnue-as-the-only-search-evaluation.md)を置き換える。
+置き換え済み。[探索は、EvalFileで読んだNNUEだけを使い、その構造を読み込みのときに選んで、評価器の列挙型で着手ごとに分岐する](../search-with-an-evalfile-nnue-whose-structure-is-chosen-on-load.md)によって置き換えられた。
 
 ## コンテキスト
 
-[以前の決定](archive/use-nnue-as-the-only-search-evaluation.md)は、αβ探索が使う評価関数を、`crates/minase/nets/nnue.bin`を`include_bytes!`で実行ファイルに埋め込んだNNUE（着手ごとに差分で更新できる小さなニューラルネットワーク）だけにしていた。
+[以前の決定](use-nnue-as-the-only-search-evaluation.md)は、αβ探索が使う評価関数を、`crates/minase/nets/nnue.bin`を`include_bytes!`で実行ファイルに埋め込んだNNUE（着手ごとに差分で更新できる小さなニューラルネットワーク）だけにしていた。
 NNUEだけを使う根拠は、幅128のNNUEがPST＋FMに対してSTCとLTCの両方で`H1`になったことであり、PSTとFMのコードは学習した評価関数を比べる基準として残していた。
 
-次に試す入力特徴集合HalfKP_vmは、自玉の升ごとに別の第1層の行を引くので、ネットは約500 MBになる（[tatara化とHalfKP_vmの設計書](../plans/nnue-tatara-framework-and-halfkp-vm.md)）。
+次に試す入力特徴集合HalfKP_vmは、自玉の升ごとに別の第1層の行を引くので、ネットは約500 MBになる（[tatara化とHalfKP_vmの設計書](../../plans/archived/nnue-tatara-framework-and-halfkp-vm.md)）。
 GitHubはgitの1ファイルに100 MiBまでしか許さないので、このネットはgitに入れることも、ビルドのときに埋め込むこともできない。
 世代反復の連続生成スクリプトも、世代ごとのネットをgitにコミットし、教師を作る計算機でそのコミットからエンジンをビルドしていたので、大きなネットでは回せなかった。
 PV-MCTS（ニューラルネットで木を広げるモンテカルロ木探索）は、すでにONNXのネットのファイルをUSIのオプション`NnModel`で受け取り、`isready`で読んでいた。
 2026年11月15日にエンジンの開発者は、ネットを実行ファイルに埋め込まず、既定のネットも持たないと決めた。
-この判断は[NNUEの外部ファイル化の設計書](../plans/archived/nnue-external-network-file.md)で下した。
+この判断は[NNUEの外部ファイル化の設計書](../../plans/archived/nnue-external-network-file.md)で下した。
 
 ## 決定
 
@@ -47,7 +47,7 @@ PV-MCTSにもNNUEのネットを`EvalFile`で要求する案は採らなかっ�
 勝率尺度を定数にする案は、学習で決まる値を手で固定するので採らなかった。
 
 PSTとFMのコードを削除する案は、学習した評価関数の比較の基準を失うので採らなかった。
-PST＋FMをNNUEへ蒸留する案は、ネットを旧い評価へ縛るので採らなかった（[アーキテクチャの考察](../proposals/archived/nnue-architecture-discussion.md)）。
+PST＋FMをNNUEへ蒸留する案は、ネットを旧い評価へ縛るので採らなかった（[アーキテクチャの考察](../../proposals/archived/nnue-architecture-discussion.md)）。
 駒得評価v0、PST、NNUEを実行時に切り替える案は、どのコミットでも探索が使う評価関数を1つに保ち、評価関数の比較をコミット対コミットの対局で行うという方針に反するので採らなかった。
 
 ## 結果
@@ -60,5 +60,5 @@ crates.ioへ公開するパッケージには本番のネットが入らず、�
 
 エンジンを起動する側は、αβ探索の`isready`の前に`EvalFile`を、PV-MCTSの`isready`の前に`NnModel`と`NnCpPerLogit`を送る必要がある。
 開発用GUIとlishogi Botは、この変更を含む版へ移るときに追従する。
-ネットをファイル全体のSHA-256で識別する決定は[ネットの識別子のADR](identify-nnue-networks-by-the-sha256-of-the-whole-file.md)にある。
+ネットをファイル全体のSHA-256で識別する決定は[ネットの識別子のADR](../identify-nnue-networks-by-the-sha256-of-the-whole-file.md)にある。
 比較用のコードを残すことは、未使用のコードを温存しないというプロジェクトの方針の例外であり、エンジンの開発者が2026年10月9日に決めた。

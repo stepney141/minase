@@ -2,17 +2,17 @@
 
 ## ステータス
 
-提案。[NNUEの入力特徴集合に王の位置で条件付けないP型を使う](use-p-type-input-features-for-the-nnue.md)を置き換える案である。[tatara化とHalfKP_vmの設計書](../plans/nnue-tatara-framework-and-halfkp-vm.md)で載せ替えたP型が、載せ替えの確認のSTCで前のP型に約64 Elo負けたので、その原因の切り分けの結果を見てP型の扱いを決めるまで、決定しない。
+承認済み。決定日は2026年11月19日。[NNUEの入力特徴集合に王の位置で条件付けないP型を使う](archive/use-p-type-input-features-for-the-nnue.md)を置き換える。
 
 ## コンテキスト
 
 基底特徴は、47種類の駒状態と2陣営と144升の組の13,536個に、先獅子（獅子の取り合いを制限する中将棋の規則）の対象升144個を加えた13,680個の特徴である。
 P型は基底特徴をそのまま入力にし、HalfKP-hm-b8は自陣の王将（なければ太子）の位置を8区分にまとめて区分ごとに別の行を引く。
-[以前の決定](use-p-type-input-features-for-the-nnue.md)は、HalfKP-hm-b8がP型にSTCで2回大差で負けたので（[1回目](../measurements/nnue-replacement/nnue-replacement-features-stc.md)、[2回目](../measurements/nnue-early-best-epoch/halfkp-retrain-stc.md)）、P型を使い、HalfKP-hm-b8を再比較のために残すとした。
+[以前の決定](archive/use-p-type-input-features-for-the-nnue.md)は、HalfKP-hm-b8がP型にSTCで2回大差で負けたので（[1回目](../measurements/nnue-replacement/nnue-replacement-features-stc.md)、[2回目](../measurements/nnue-early-best-epoch/halfkp-retrain-stc.md)）、P型を使い、HalfKP-hm-b8を再比較のために残すとした。
 2回とも、第1層の幅128、隠れ層のない出力部、および約30本の教師ファイルという条件だった。
 
 エンジンの開発者は2026年11月15日に、大敗の原因を8区分という独自の区分、隠れ層がないこと、および教師の少なさと見た。
-そのうえで、将棋エンジンやねうら王の`HalfKP_vm`と後段`halfkpvm_256x2-32-32`に合わせた構成で、王の位置で条件付ける入力を試し直すと決めた（[設計書の目的](../plans/nnue-tatara-framework-and-halfkp-vm.md#目的)）。
+そのうえで、将棋エンジンやねうら王の`HalfKP_vm`と後段`halfkpvm_256x2-32-32`に合わせた構成で、王の位置で条件付ける入力を試し直すと決めた（[設計書の目的](../plans/archived/nnue-tatara-framework-and-halfkp-vm.md#目的)）。
 やねうら王の`HalfKP_vm`は、自玉の升を左右鏡映して半分にまとめ、区分ごとに別の行を引き、玉そのものは入力の駒から除く。
 中将棋は王将と太子（醉象が成った王駒）が併存し得るので、何を区分の基準にし、何を入力の駒から除くかを決める必要があった。
 

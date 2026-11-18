@@ -5,7 +5,7 @@
 中将棋エンジンminaseは、評価関数NNUE（着手ごとに差分で更新できる小さなニューラルネット）を、自己対局の局面に探索値と対局結果を付けた教師から学ばせ、学んだネットで次の教師を作る世代反復（self-play generation loop）で強くする。
 [中断した世代反復](archived/nnue-generation-reset.md)は第2世代で止まり、その後に、教師の生成と学習の標準の条件（標準レシピv1）を[別の設計書](archived/nnue-standard-recipe.md)で決め直した。
 本書は、v1のうち1世代の教師の量と学習の長さを世代の番号で決まる値に改めた標準レシピv2で、手書きの評価関数v0を第0世代とし、王の位置を使わない入力P型（駒と升の組をそのまま入力にする形）のNNUEの世代反復をやり直す。
-前提のうち、ネットを外部のファイルから読む[外部ファイル化](archived/nnue-external-network-file.md)は完了しており、着手は、NNUEを将棋の学習器tataraに倣った枠組みへ載せ替えて自玉の升ごとに重みを引くHalfKP_vmを使える状態にする[tatara化](nnue-tatara-framework-and-halfkp-vm.md)が完了した後とする。
+前提のうち、ネットを外部のファイルから読む[外部ファイル化](archived/nnue-external-network-file.md)は完了しており、着手は、NNUEを将棋の学習器tataraに倣った枠組みへ載せ替えて自玉の升ごとに重みを引くHalfKP_vmを使える状態にする[tatara化](archived/nnue-tatara-framework-and-halfkp-vm.md)が完了した後とする。
 外部ファイル化を前提とするので、世代のネットはgitに入れず、ファイル全体のSHA-256で特定し、生成、学習、および判定はすべて同じコードのコミットで行う。
 第N世代の教師は約N億局面（見込みでは37N本の教師ファイル）とし、学習の長さは第1世代から第4世代で64 superbatch、第5世代で80 superbatchとする。
 1世代ごとに、vast.aiの中断可能インスタンス（生成機）で教師ファイルを生成し、学習のためだけに別のGPUつきの機械（学習機）を借りてネットを学習させ、それまでに最も強いと判定された世代と短時間の対局で比べる。
@@ -18,7 +18,7 @@ HalfKP_vmの世代反復は、本書でP型の評価関数の癖をつかんだ�
 状態は起案である。
 2026年11月14日に起案し、2026年11月15日に、標準レシピv2と、教師を生成機で生成して学習機で学ぶ手順へ改めた。
 同じ日に、外部ファイル化とtatara化の後に着手し、P型の系統だけを扱う形へ改めた。
-前提のうち[外部ファイル化](archived/nnue-external-network-file.md)は2026年11月17日に完了し、着手は[tatara化](nnue-tatara-framework-and-halfkp-vm.md)の完了を待つ。
+前提のうち[外部ファイル化](archived/nnue-external-network-file.md)は2026年11月17日に完了し、着手は[tatara化](archived/nnue-tatara-framework-and-halfkp-vm.md)の完了を待つ。
 次の一手は、tatara化の完了の後に利用者の着手の指示を得て本書のブランチを切り、フェーズ1の連続生成スクリプトの変更を行うことである。
 
 ## 目的
@@ -79,7 +79,7 @@ HalfKP_vmの世代反復は、本書でP型の評価関数の癖をつかんだ�
 | 前提の設計書 | 本書が使う成果 |
 |---|---|
 | [ネットの外部ファイル化](archived/nnue-external-network-file.md) | エンジンがネットをUSIのオプション`EvalFile`で外部のファイルから読み、ファイル全体のSHA-256を報告すること。教師生成と連続生成のスクリプトがネットのファイルを生成機へ転送し、世代のネットをgitにコミットしないこと。対局の実行器が候補と基準に別々のネットを渡し、SHA-256を記録して照合すること。 |
-| [tatara化とHalfKP_vm](nnue-tatara-framework-and-halfkp-vm.md) | P型を、tataraのLayerStackおよびPSQTの構造とtataraの形式で学び、書き出すこと。v0のネットを書き出すこと。学習器が教師の勝率尺度K_tと規則セットを引数で受け取ること。探索用駒価値をコード上の定数とすること。HalfKP_vmをいつでも使える状態にしていること。 |
+| [tatara化とHalfKP_vm](archived/nnue-tatara-framework-and-halfkp-vm.md) | P型を、tataraのLayerStackおよびPSQTの構造とtataraの形式で学び、書き出すこと。v0のネットを書き出すこと。学習器が教師の勝率尺度K_tと規則セットを引数で受け取ること。探索用駒価値をコード上の定数とすること。HalfKP_vmをいつでも使える状態にしていること。 |
 
 本書は、外部ファイル化とtatara化の成果に加えて、[標準レシピv1の設計書](archived/nnue-standard-recipe.md)が改めた学習器と教師の生成器、連続生成スクリプト`scripts/vast/generation_chain.py`、および[中断可能な計算機での教師生成の設計書](archived/interruptible-teacher-generation.md)が作った制御スクリプト`scripts/vast/teacher_generation.py`を使う。
 標準レシピv1の設計書と、中断可能な計算機での教師生成の設計書は、どちらも完了し、masterへ統合されている。
@@ -291,7 +291,7 @@ LTCのシードは、STCの基本シードからペア数以上離れた値と�
 - [標準レシピv1の設計書](archived/nnue-standard-recipe.md)
 - [中断した世代反復の設計書](archived/nnue-generation-reset.md)とその[測定記録](../measurements/nnue-generation-reset/)
 - [中断可能な計算機での教師生成の設計書](archived/interruptible-teacher-generation.md)
-- [ネットの外部ファイル化の設計書](archived/nnue-external-network-file.md)と[tatara化とHalfKP_vmの設計書](nnue-tatara-framework-and-halfkp-vm.md)
+- [ネットの外部ファイル化の設計書](archived/nnue-external-network-file.md)と[tatara化とHalfKP_vmの設計書](archived/nnue-tatara-framework-and-halfkp-vm.md)
 - [強豪エンジンの教師生成の調査](../research/teacher-generation-strong-engines.md)と付録の[自己生成で育てたチェスエンジンと変種](../research/teacher-generation-strong-engines/zero-chess-and-variants.md)
 - Saplingのネットごとの学習条件（[log.txt](https://github.com/Timmoth/Sapling/blob/2b43285d97fa4a9e49ce1d08fd4155a1fa950724/src/Sapling.Engine/Resources/WeightsHistory/log.txt)、コミット`2b43285`）。第1層の幅256のネットは、1.1億〜3.8億局面を64 superbatch、6億局面を80 superbatchで学んだ。
 - Pruneの世代の回し方（[TRAINING.md](https://github.com/Arzam18/Prune/blob/493632de645c7fe17a635b7de42d132e1024bd38/TRAINING.md)、コミット`493632d`）。最初の反復は約10万局を生成し、新しいネットが前のネットより強くなければ生成する対局を増やす。

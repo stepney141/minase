@@ -304,7 +304,7 @@ USIオプションは`--candidate-option '名前=値'`と`--baseline-option '名
 αβ探索のminaseには、`--candidate-option EvalFile=<ネット>`と`--baseline-option EvalFile=<ネット>`でNNUEのネットを渡す。
 `EvalFile`を宣言する版のminaseは、指定がないと`isready`でエラーになって終了するので、ハーネスは対局を始める前に各エンジンを1回ずつ起動する段階（事前の起動）で止まる。
 エンジンが`isready`で返すネットのチェックサムは`manifest.json`のエンジンごとの欄`network_sha256`に記録され、再開時と各対局の開始時に照合される（[チェックサムの照合のADR](../adr/record-and-verify-the-network-checksum-reported-by-match-and-spsa-engines.md)）。
-ネットを実行ファイルに埋め込んでいた版（[外部ファイル化のADR](../adr/use-an-nnue-read-from-evalfile-as-the-only-search-evaluation.md)より前のコミット）は`EvalFile`を宣言しないので、その版を測る側には`EvalFile`を指定しない。
+ネットを実行ファイルに埋め込んでいた版（[外部ファイル化のADR](../adr/archive/use-an-nnue-read-from-evalfile-as-the-only-search-evaluation.md)より前のコミット）は`EvalFile`を宣言しないので、その版を測る側には`EvalFile`を指定しない。
 ハーネスはエンジンが宣言しないオプションを送る前に拒否するからである。
 その側は埋め込んだネットで対局し、`manifest.json`の`network_sha256`の欄は`null`になる。
 

@@ -2,7 +2,7 @@
 
 ## ステータス
 
-提案。[tatara化とHalfKP_vmの設計書](../plans/nnue-tatara-framework-and-halfkp-vm.md)で載せ替えたP型が、載せ替えの確認のSTCで前のP型に約64 Elo負けたので、その原因の切り分けの結果を見てP型の扱いを決めるまで、決定しない。
+承認済み。決定日は2026年11月19日。
 
 ## コンテキスト
 
@@ -13,7 +13,7 @@ NNUEの学習器は、1種類の構造（P型またはHalfKP-hm-b8の入力と�
 P型のLayerStackとHalfKP_vmのSimpleを同じ学習器で学ぶことになった（[構造のADR](compose-p-as-a-tatara-layerstack-with-a-psqt-and-halfkp-vm-as-a-simple-network.md)）。
 いまの1つのモデルに構造の分岐を足していくと、構造ごとのパラメータの配列とカーネルが1つのモデルに混ざる。
 tataraは、学習率の予定、教師の供給、検証、記録、および保存の時期を受け持つ学習ループから、構造ごとの実装をトレイト`TrainerBackend`越しに呼ぶ（コミット`87f1955`の`crates/nnue-train/src/trainer.rs`）、コマンドも構造ごとのサブコマンドに分ける。
-学習器の記録をtataraの`experiment.json`に揃えるかについては、2026年11月18日にエンジンの開発者が、いまの3つのファイル（`training.jsonl`、`summary.json`、`config.json`）を保つと決めた（[設計書の依存関係](../plans/nnue-tatara-framework-and-halfkp-vm.md#依存関係)）。
+学習器の記録をtataraの`experiment.json`に揃えるかについては、2026年11月18日にエンジンの開発者が、いまの3つのファイル（`training.jsonl`、`summary.json`、`config.json`）を保つと決めた（[設計書の依存関係](../plans/archived/nnue-tatara-framework-and-halfkp-vm.md#依存関係)）。
 
 ## 決定
 

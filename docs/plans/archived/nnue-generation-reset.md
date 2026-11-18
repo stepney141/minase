@@ -118,7 +118,7 @@
 統合後のmasterには、構成の見直しの候補のネットが入っている。
 これは同じ教師で学んだ幅128のネットに`H1`を取っていないので、比較の基準にしない。
 masterの探索のコードは変えないので、世代ごとのコミットの差は埋め込みのネットだけになる。
-本書の幅、出力部、および学習の引数は、[NNUEの構成の見直し](nnue-architecture-revision.md)で確定した構成（[ADR](../../adr/compose-the-nnue-of-a-piece-value-initialized-linear-path-and-pairwise-products-with-two-hidden-layers.md)）を使う。
+本書の幅、出力部、および学習の引数は、[NNUEの構成の見直し](nnue-architecture-revision.md)で確定した構成（[ADR](../../adr/archive/compose-the-nnue-of-a-piece-value-initialized-linear-path-and-pairwise-products-with-two-hidden-layers.md)）を使う。
 この構成は同じ教師で学んだ幅128のネットに`H1`を取らないまま確定した（固定ノードで−2.6 Elo、STCで`H0`）。
 2026年11月4日の開発者の決定により、世代の判定と最終候補の判定が、この構成の検証を兼ねる。
 
@@ -135,7 +135,7 @@ masterの探索のコードは変えないので、世代ごとのコミット�
 いずれも採用した場合にだけ、新しいADRで置き換える。
 
 - [NNUEは探索値だけの教師で学ぶ](../../adr/archive/train-the-nnue-on-search-value-teachers-without-lookahead.md)。このADRはλ<1を対局で測らずに、対局の記憶の危険を理由に退けた。本書の第1世代は、その危険が棋力にも現れることを対局で確かめた。
-- [探索用駒価値は学習PSTから導いた値に固定する](../../adr/derive-search-piece-values-from-the-learned-pst.md)。本書の候補はv0の値を使う。
+- [探索用駒価値は学習PSTから導いた値に固定する](../../adr/archive/derive-search-piece-values-from-the-learned-pst.md)。本書の候補はv0の値を使う。
 
 ## 設計判断
 

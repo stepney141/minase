@@ -23,7 +23,7 @@ StockfishやtataraのNNUEは第1層の後に全結合の隠れ層を持ってお
 > 本書は完了時点で凍結した記録であり、以後の変更を反映しない。現行の仕様はコードのdocコメントに、設計判断は[docs/adr/](../../adr/README.md)にある。
 
 完了（一部不採用）。2026年11月3日に起案して着手し、2026年11月4日に完了した。
-幅256の第1層、要素積、2段の隠れ層、skip接続、第1層の尺度255、および累算値の16ビット化を採用し、世代反復で使う構成として確定した（[ADR](../../adr/compose-the-nnue-of-a-piece-value-initialized-linear-path-and-pairwise-products-with-two-hidden-layers.md)）。
+幅256の第1層、要素積、2段の隠れ層、skip接続、第1層の尺度255、および累算値の16ビット化を採用し、世代反復で使う構成として確定した（[ADR](../../adr/archive/compose-the-nnue-of-a-piece-value-initialized-linear-path-and-pairwise-products-with-two-hidden-layers.md)）。
 候補は幅128の基準に`H1`を取っていない。
 第1層の初期値を小さくした最終の候補は、[STC](../../measurements/nnue-architecture-revision/nnue-architecture-revision-init-stc.md)が`H0`（306ペア、得点率43.6%）で、[固定ノードの対局](../../measurements/nnue-architecture-revision/nnue-architecture-revision-init-fixed-nodes.md)が−2.6 Elo（95%区間−35.8〜+30.5）であり、探索速度は基準の約0.91倍である。
 2026年11月4日の開発者の決定により、この構成を`H1`なしで確定し、[世代反復](nnue-generation-reset.md)で検証する。

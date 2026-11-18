@@ -116,7 +116,7 @@ minase自身の対局の測定が先行例と食い違う項目は、測定に�
 連続生成スクリプトには塊の局数`--chunk-games 250`を与える。
 生成機のワーカーは生成器を新しい引数（`--output-dir`と`--chunk-games`）で呼ぶので、各世代の生成に使うコミット（第1世代では第0世代のコミット）は、この変更を含まなければならない。
 
-ネットの構成と学習の引数の大半は、[NNUEの構成の見直し](nnue-architecture-revision.md)で確定した構成（[ADR](../../adr/compose-the-nnue-of-a-piece-value-initialized-linear-path-and-pairwise-products-with-two-hidden-layers.md)）と、中断した系列の第2世代の学習の引数をそのまま使う。
+ネットの構成と学習の引数の大半は、[NNUEの構成の見直し](nnue-architecture-revision.md)で確定した構成（[ADR](../../adr/archive/compose-the-nnue-of-a-piece-value-initialized-linear-path-and-pairwise-products-with-two-hidden-layers.md)）と、中断した系列の第2世代の学習の引数をそのまま使う。
 
 本書の測定2の結果により、[線形の経路の結果回帰](../../adr/archive/correct-the-nnue-linear-path-by-regressing-on-game-outcomes.md)を毎世代の手順に含める決定は改める。
 本書の完了のときに、フェーズ6でこのADRを新しいADRに置き換える。

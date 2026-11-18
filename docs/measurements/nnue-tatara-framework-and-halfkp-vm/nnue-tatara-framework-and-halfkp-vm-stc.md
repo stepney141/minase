@@ -2,7 +2,7 @@
 
 ## 目的
 
-[tatara化とHalfKP_vmの設計書](../../plans/nnue-tatara-framework-and-halfkp-vm.md)の「載せ替えの確認」の節に従い、王の位置を使わない入力特徴集合P型のNNUEについて、tataraのLayerStackへ載せ替える前の版を候補、載せ替えた後の版を基準として、短時間条件（STC）の一般化逐次確率比検定（GSPRT）を行う。
+[tatara化とHalfKP_vmの設計書](../../plans/archived/nnue-tatara-framework-and-halfkp-vm.md)の「載せ替えの確認」の節に従い、王の位置を使わない入力特徴集合P型のNNUEについて、tataraのLayerStackへ載せ替える前の版を候補、載せ替えた後の版を基準として、短時間条件（STC）の一般化逐次確率比検定（GSPRT）を行う。
 このGSPRTは、候補（前のP型）が基準（後のP型）より0 Elo強いという仮説`H0`と、10 Elo強いという仮説`H1`のどちらに近いかを判定する。
 設計書は、STCと長時間条件（LTC）がどちらも`H0`なら載せ替えを採り、どちらかが`H1`（前のP型が強い）なら設計書を待機中にして利用者へ報告すると定めている。
 

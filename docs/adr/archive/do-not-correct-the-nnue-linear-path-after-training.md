@@ -2,7 +2,7 @@
 
 ## ステータス
 
-置き換え済み。決定日は2026年11月7日。[NNUEの世代反復では、線形の経路を学習の後に対局結果で補正せず、学習したネットをgitの外に置いてそのまま次の世代に使う](../use-each-trained-nnue-uncorrected-and-outside-git-for-the-next-generation.md)によって置き換えられた。
+置き換え済み。決定日は2026年11月7日。[NNUEの世代反復では、線形の経路を学習の後に対局結果で補正せず、学習したネットをgitの外に置いてそのまま次の世代に使う](use-each-trained-nnue-uncorrected-and-outside-git-for-the-next-generation.md)によって置き換えられた。
 
 ## コンテキスト
 

@@ -2,11 +2,11 @@
 
 ## ステータス
 
-提案。[NNUEの世代反復では、線形の経路を学習の後に対局結果で補正せず、学習したネットをgitの外に置いてそのまま次の世代に使う](use-each-trained-nnue-uncorrected-and-outside-git-for-the-next-generation.md)を置き換える案である。[tatara化とHalfKP_vmの設計書](../plans/nnue-tatara-framework-and-halfkp-vm.md)で載せ替えたP型が、載せ替えの確認のSTCで前のP型に約64 Elo負けたので、その原因の切り分けの結果を見てP型の扱いを決めるまで、決定しない。
+承認済み。決定日は2026年11月19日。[NNUEの世代反復では、線形の経路を学習の後に対局結果で補正せず、学習したネットをgitの外に置いてそのまま次の世代に使う](archive/use-each-trained-nnue-uncorrected-and-outside-git-for-the-next-generation.md)を置き換える。
 
 ## コンテキスト
 
-[以前の決定](use-each-trained-nnue-uncorrected-and-outside-git-for-the-next-generation.md)は、世代反復で学習したネットをそのまま次の世代に使い、線形の経路を学習の後に対局結果で補正しないとした。
+[以前の決定](archive/use-each-trained-nnue-uncorrected-and-outside-git-for-the-next-generation.md)は、世代反復で学習したネットをそのまま次の世代に使い、線形の経路を学習の後に対局結果で補正しないとした。
 補正の命令`nnue fit-linear`は、教師や`--lambda`（探索値と対局結果を混ぜる比率λ）を変えたときに残る偏りを調べる診断としてだけ残していた。
 補正を続ける案を退けた理由は、第2世代の教師で学んだネットで補正したネットが補正しないネットより弱かったこと、および学習後に線形の経路を補正する先行例が見つからなかったことである。
 

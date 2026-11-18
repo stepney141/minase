@@ -54,14 +54,14 @@ Finny tables（accumulator cache、refresh tableとも呼ぶ）は、自玉の�
 `update_accumulator_after_move`は着手のたびに両視点の文脈を求め直し、文脈が変わった視点だけ第1層をバイアスから全再計算する（`crates/minase/src/eval/nnue/accumulator.rs`）。
 探索は、通常の探索でも静止探索でも、局面を進めるたびにこの関数（null moveでは`update_accumulator_after_null`）で子の累算器を親から作るので、計算済みの親を持たない累算器は根以外に現れない。
 P型の文脈は1種類なので、この全再計算は起きない。
-[P型を採るADR](../adr/use-p-type-input-features-for-the-nnue.md)（設計判断の記録）が再比較のために実装を残すと決めた`HalfKpHmB8`の文脈は、自陣の王将（なければ太子）の段と筋から決まる8区分と、左右鏡映の有無の組である。
+[P型を採るADR](../adr/archive/use-p-type-input-features-for-the-nnue.md)（設計判断の記録）が再比較のために実装を残すと決めた`HalfKpHmB8`の文脈は、自陣の王将（なければ太子）の段と筋から決まる8区分と、左右鏡映の有無の組である。
 この文脈は、王将または太子の移動、醉象の成り、および王駒の捕獲のときだけ求め直される（`crates/minase/src/eval/nnue/feature_set.rs`）。
 全再計算の回数は`AccumulatorStats`が数え、USIの独自コマンド`bench`の`accumulators:`行が`refresh_fraction`として出力する。
 `invariants`機能を有効にしたビルドでは、探索中に静的評価を求める局面で、差分更新の累算値を全再計算と照合する（`Network::assert_accumulator`）。
 現行の学習器で再学習したHalfKP-hm-b8のネットは、ブランチ`halfkp-retrain`のコミット`ae1b384c`に埋め込まれている（[記録](../measurements/nnue-early-best-epoch/halfkp-retrain-stc.md)）。
 探索木を変えない高速化のNPSの比較には、`scripts/bench_compare.py`を使う。
 
-[tatara化とHalfKP_vm](nnue-tatara-framework-and-halfkp-vm.md)は、`FeatureSet`トレイトとHalfKP-hm-b8を削除し、自玉の72区分と鏡映の有無を文脈とするHalfKP_vmを加える。
+[tatara化とHalfKP_vm](archived/nnue-tatara-framework-and-halfkp-vm.md)は、`FeatureSet`トレイトとHalfKP-hm-b8を削除し、自玉の72区分と鏡映の有無を文脈とするHalfKP_vmを加える。
 本書は8区分の文脈を前提に書かれているので、着手の前にHalfKP_vmに合わせて改める。
 着手するかは、tatara化の設計書の「HalfKP_vmの動作の確認」で測る全再計算の頻度と探索の速さを見て、HalfKP_vmの世代反復の設計書を起案するときに決める。
 
@@ -261,6 +261,6 @@ scripts/bench_compare.py --reference <表を入れる前の候補> --baseline <�
 - Fairy-Stockfish（`https://github.com/fairy-stockfish/Fairy-Stockfish`、確認したmasterは`2e591089558a5afa72ab5a22192208e71848a30c`）。移植はブランチ`sf19-merge`の`5d78e936281f0f7c69770afe7de3a0a31b949634`である。
 - [NNUEの13,680入力を採る根拠と限界](../proposals/archived/nnue-input-features.md)は、自玉が動く着手の割合を教師データで数え、Finny tablesに触れている。
 - [NNUEの入力特徴集合の比較（HalfKP-hm-b8対P型、幅128、STC）](../measurements/nnue-replacement/nnue-replacement-features-stc.md)と[再学習したHalfKP-hm-b8のSTC](../measurements/nnue-early-best-epoch/halfkp-retrain-stc.md)は、HalfKP-hm-b8が負けた記録である。
-- [P型を採るADR](../adr/use-p-type-input-features-for-the-nnue.md)は、入力特徴集合の決定と、HalfKP型を再提案する前の条件を記す。
+- [P型を採るADR](../adr/archive/use-p-type-input-features-for-the-nnue.md)は、入力特徴集合の決定と、HalfKP型を再提案する前の条件を記す。
 - [NNUEの出力部の計算時間の記録](../measurements/nnue-hidden-layer/nnue-hidden-layer-bench.md)は、深さ9のbenchの累算器の更新回数と全再計算の回数を含む。
 - [持ち時間2倍の感度測定](../measurements/evaluation-gen1/sensitivity-time2x.md)は、自己対局で持ち時間2倍が約216 Elo（95%信頼区間181〜257）に相当することを示す。別のコミットで得た目安であり、線形性は仮定しない。

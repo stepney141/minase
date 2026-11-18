@@ -19,5 +19,5 @@ GPUも局面方向の和を倍精度で固定の木の順に足し、カーネ�
 
 ## 出典
 
-- [tatara化とHalfKP_vmの設計書](../plans/nnue-tatara-framework-and-halfkp-vm.md)のフェーズ3
+- [tatara化とHalfKP_vmの設計書](../plans/archived/nnue-tatara-framework-and-halfkp-vm.md)のフェーズ3
 - `crates/minase-trainer/src/nnue/layerstack/reference.rs`と`layerstack/gpu/tests.rs`の`gpu_one_three_updates_reproducibility_and_snapshot_resume`

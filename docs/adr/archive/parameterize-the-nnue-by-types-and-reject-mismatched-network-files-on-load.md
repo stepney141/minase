@@ -2,20 +2,20 @@
 
 ## ステータス
 
-承認済み。決定日は2026年11月17日。[NNUEを入力特徴集合と出力部の型引数で組み立てる](archive/parameterize-the-nnue-by-feature-set-and-head-types.md)を置き換える。
+置き換え済み。[NNUEの入力特徴集合と構造を列挙型で表し、tataraの形式の重みのファイルの構造記述から構造を選ぶ](../represent-nnue-feature-sets-and-structures-as-enums-and-select-the-structure-from-the-tatara-file.md)によって置き換えられた。
 
 ## コンテキスト
 
 入力特徴集合とは、局面と視点から第1層のどの行を発火させるかを定める規則であり、出力部とは、両視点の第1層の出力から評価値を計算する部分である。
 基底特徴は駒状態、陣営、および升の組に先獅子の対象升を加えた13,680個の特徴であり、文脈は視点ごとに特徴の番号付けを決める値である。
-[NNUEによるPST＋FMの完全代替](../plans/archived/nnue-replacement.md)を始めた時点のNNUEの推論は、王の位置で条件付けないP型の入力特徴集合に固定されていた。
+[NNUEによるPST＋FMの完全代替](../../plans/archived/nnue-replacement.md)を始めた時点のNNUEの推論は、王の位置で条件付けないP型の入力特徴集合に固定されていた。
 同計画は、P型と自玉の位置で条件付けるHalfKP-hm-b8の2つを比べる必要があり、後続の計画も別の入力特徴集合や出力部を試す可能性があった。
 入力特徴集合を変えるたびに、推論、重みファイルの形式、および学習器を作り直すと、比較のたびに実装の誤りが入り得る。
-[設計書の参考資料](../plans/archived/nnue-replacement.md#参考資料)に挙げたtataraは、入力特徴集合を1つの仕様として表し、重みファイルのヘッダに構造を表す文字列（構造記述文字列）を入れて読み込み時に照合する。
-型引数で組み立てる方式は2026年10月12日に決めた（[以前の決定](archive/parameterize-the-nnue-by-feature-set-and-head-types.md)）。
+[設計書の参考資料](../../plans/archived/nnue-replacement.md#参考資料)に挙げたtataraは、入力特徴集合を1つの仕様として表し、重みファイルのヘッダに構造を表す文字列（構造記述文字列）を入れて読み込み時に照合する。
+型引数で組み立てる方式は2026年10月12日に決めた（[以前の決定](parameterize-the-nnue-by-feature-set-and-head-types.md)）。
 以前の決定の時点では、ネットを実行ファイルに埋め込み、起動時に検証していた。
 その後、ネットは埋め込まず、オプション`EvalFile`で指定した外部のファイルを`isready`で読むようになった（[外部ファイル化のADR](use-an-nnue-read-from-evalfile-as-the-only-search-evaluation.md)）。
-この改訂は[NNUEの外部ファイル化の設計書](../plans/archived/nnue-external-network-file.md)で下した。
+この改訂は[NNUEの外部ファイル化の設計書](../../plans/archived/nnue-external-network-file.md)で下した。
 
 ## 決定
 

@@ -21,5 +21,5 @@ NNUEをtataraの形式へ載せ替えたとき、探索の試験が使う固定�
 
 ## 出典
 
-- [tatara化とHalfKP_vmの設計書](../plans/nnue-tatara-framework-and-halfkp-vm.md)のフェーズ2
+- [tatara化とHalfKP_vmの設計書](../plans/archived/nnue-tatara-framework-and-halfkp-vm.md)のフェーズ2
 - `crates/minase/src/eval/nnue/network/test_util.rs`の`fixed_layer_stack`と、`network/tests.rs`の`fixed_layer_stack_dense_contribution_is_visible_and_bounded`

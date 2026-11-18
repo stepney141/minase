@@ -105,7 +105,7 @@ impl FeatureSetSpec {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Mirror {
     /// P型では左右鏡映の対の特徴の第1層の行を半幅回して共有する。
-    /// 設計の根拠は`docs/adr/share-p-type-mirror-weights-by-half-width-rotation.md`にある。
+    /// 設計の根拠は`docs/adr/share-p-type-mirror-weights-in-the-first-layer-and-the-psqt.md`にある。
     HalfWidthRotation,
     /// HalfKP_vmでは基準の王駒の筋で盤を左右鏡映して番号を付ける。
     KingFile,

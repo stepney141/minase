@@ -2,18 +2,18 @@
 
 ## ステータス
 
-提案。[NNUEを、探索用駒価値で初期化した線形の経路と、要素積と2段の隠れ層を持つ非線形の経路で組み立てる](compose-the-nnue-of-a-piece-value-initialized-linear-path-and-pairwise-products-with-two-hidden-layers.md)と、[NNUEの線形の経路の学習率を0.03に保ち、第1層と同じ学習率にそろえない](keep-the-nnue-linear-path-learning-rate-at-0-03.md)を置き換える案である。[tatara化とHalfKP_vmの設計書](../plans/nnue-tatara-framework-and-halfkp-vm.md)で載せ替えたP型が、載せ替えの確認のSTCで前のP型に約64 Elo負けたので、その原因の切り分けの結果を見てP型の扱いを決めるまで、決定しない。
+承認済み。決定日は2026年11月19日。[NNUEを、探索用駒価値で初期化した線形の経路と、要素積と2段の隠れ層を持つ非線形の経路で組み立てる](archive/compose-the-nnue-of-a-piece-value-initialized-linear-path-and-pairwise-products-with-two-hidden-layers.md)と、[NNUEの線形の経路の学習率を0.03に保ち、第1層と同じ学習率にそろえない](archive/keep-the-nnue-linear-path-learning-rate-at-0-03.md)を置き換える。
 
 ## コンテキスト
 
-[以前の決定](compose-the-nnue-of-a-piece-value-initialized-linear-path-and-pairwise-products-with-two-hidden-layers.md)は、P型のNNUEを、序中盤と終盤の2列を駒数で補間する線形の経路と、第1層を4分割する独自の要素積と2段の隠れ層を持つ非線形の経路の和で組み、後段を16ビット（尺度256と4,096）で量子化した。
-線形の経路の学習率は0.03に保っていた（[ADR](keep-the-nnue-linear-path-learning-rate-at-0-03.md)）。
+[以前の決定](archive/compose-the-nnue-of-a-piece-value-initialized-linear-path-and-pairwise-products-with-two-hidden-layers.md)は、P型のNNUEを、序中盤と終盤の2列を駒数で補間する線形の経路と、第1層を4分割する独自の要素積と2段の隠れ層を持つ非線形の経路の和で組み、後段を16ビット（尺度256と4,096）で量子化した。
+線形の経路の学習率は0.03に保っていた（[ADR](archive/keep-the-nnue-linear-path-learning-rate-at-0-03.md)）。
 
 エンジンの開発者は2026年11月15日に、P型もtataraの枠組みへ載せ替え、重みをtataraの形式にすると決めた。
 tataraの形式は、補間つきの線形の経路を表せない。
 tataraのLayerStackは、第1層（幅H）の出力の成分jとj＋H/2の積、16出力の第1後段層（最後の1成分を出力へ直接足す）、2乗とそのままの2つの活性化、32出力の層、および出力からなり、駒と升ごとの点数を足す表PSQT（piece-square table）を並べられる。
 Simpleは、両視点の第1層の出力を連結して隠れ層へ通す、区分もPSQTもない形である。
-HalfKP_vmと後段256x2-32-32は、将棋エンジンやねうら王が使ってきた構成であり、開発者はHalfKP-hm-b8の大敗の原因を独自の区分、隠れ層がないこと、および教師の少なさと見て、実績のある構成で試し直すと決めた（[設計書の目的](../plans/nnue-tatara-framework-and-halfkp-vm.md#目的)）。
+HalfKP_vmと後段256x2-32-32は、将棋エンジンやねうら王が使ってきた構成であり、開発者はHalfKP-hm-b8の大敗の原因を独自の区分、隠れ層がないこと、および教師の少なさと見て、実績のある構成で試し直すと決めた（[設計書の目的](../plans/archived/nnue-tatara-framework-and-halfkp-vm.md#目的)）。
 
 ## 決定
 
@@ -43,4 +43,7 @@ v0は序盤と終盤に同じ値を置いているので、区分1つのPSQTで�
 LayerStackの区分ごとのL1と、全区分に共通のtataraの`L1 shared`は、区分が1つでも別に学び、書き出しで足してから1回だけ量子化する。
 書き出しで量子化の範囲を超える値はエラーで止め、tataraのように切り詰めない。
 載せ替えたP型は、載せ替えの確認のSTCで`H1`となり、載せ替える前のP型が+64.4 Elo（95%信頼区間+37.2〜+92.4）強かった（[測定記録](../measurements/nnue-tatara-framework-and-halfkp-vm/nnue-tatara-framework-and-halfkp-vm-stc.md)）。
-同じ教師で学んだ載せ替え前のP型を相手にすると、載せ替え後のP型は全層を実数で計算した方が得点率が高かった。後段の重みを通常どおり8ビットに量子化した載せ替え後のP型を相手にすると、この改善は見られなかった。[棋力低下の調査報告](../audits/tatara-p-regression-2026-11-19.md)
+載せ替え後のP型は、同じ教師で学んだ載せ替え前のP型を相手にすると、後段の重みを通常どおり8ビットに量子化するより全層を実数で計算した方が得点率が高かった。
+一方、8ビットに量子化した載せ替え後のP型を相手にすると、全層を実数で計算しても優位は見られなかった（[棋力低下の調査報告](../audits/tatara-p-regression-2026-11-19.md)）。
+2026年11月19日に開発者は、このSTCの結果と調査報告を踏まえ、載せ替えたP型を採用すると決めた。
+[設計書](../plans/archived/nnue-tatara-framework-and-halfkp-vm.md)は「載せ替える前のP型より10 Elo以上弱いとは言えないこと」を採用の条件にしていたが、この決定はその条件を満たさないまま下した。

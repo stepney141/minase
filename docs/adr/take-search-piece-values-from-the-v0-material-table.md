@@ -2,12 +2,12 @@
 
 ## ステータス
 
-提案。[探索用駒価値は学習PSTから導いた値に固定する](derive-search-piece-values-from-the-learned-pst.md)を置き換える案である。[tatara化とHalfKP_vmの設計書](../plans/nnue-tatara-framework-and-halfkp-vm.md)で載せ替えたP型が、載せ替えの確認のSTCで前のP型に約64 Elo負けたので、その原因の切り分けの結果を見てP型の扱いを決めるまで、決定しない。
+承認済み。決定日は2026年11月19日。[探索用駒価値は学習PSTから導いた値に固定する](archive/derive-search-piece-values-from-the-learned-pst.md)を置き換える。
 
 ## コンテキスト
 
 探索は、静的交換評価、捕獲の手の並べ替え、静止探索の余裕値、歩兵の価値を単位とする枝刈りの幅、および成りの得の最大値に、47の駒状態ごとの駒価値を使う。
-[以前の決定](derive-search-piece-values-from-the-learned-pst.md)は、学習したPST（駒と升ごとの点数だけの、NNUEより前の評価関数）から導いた47個の値を重みのファイルに格納し、評価関数を学び直しても導き直さない固定値とした。
+[以前の決定](archive/derive-search-piece-values-from-the-learned-pst.md)は、学習したPST（駒と升ごとの点数だけの、NNUEより前の評価関数）から導いた47個の値を重みのファイルに格納し、評価関数を学び直しても導き直さない固定値とした。
 NNUEの重みのファイルも、この値を写して持っていた。
 
 tataraの形式には駒価値の欄がない（[入力特徴集合と構造のADR](represent-nnue-feature-sets-and-structures-as-enums-and-select-the-structure-from-the-tatara-file.md)）。

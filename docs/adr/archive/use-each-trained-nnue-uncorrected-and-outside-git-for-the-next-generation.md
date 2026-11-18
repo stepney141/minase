@@ -2,21 +2,21 @@
 
 ## ステータス
 
-承認済み。決定日は2026年11月17日。[NNUEの線形の経路を、学習の後に対局結果で補正しない](archive/do-not-correct-the-nnue-linear-path-after-training.md)を置き換える。
+置き換え済み。[NNUEの世代反復では、学習したネットをgitの外に置いてそのまま次の世代の教師の生成に使い、学習の後に補正しない](../use-each-trained-nnue-outside-git-for-the-next-generation.md)によって置き換えられた。
 
 ## コンテキスト
 
-[2026年11月7日より前の決定](archive/correct-the-nnue-linear-path-by-regressing-on-game-outcomes.md)は、世代反復の各世代で、学習したネットの第1層と出力部を固定し、線形の経路（駒と升ごとの点数の表）の序中盤の列を対局結果へのロジスティック回帰（Texel tuningと同種、`minase-trainer nnue fit-linear`）で補正すると定めていた。
-[中断した世代反復](../plans/archived/nnue-generation-reset.md)の第1世代の教師で学んだネットでは、補正したネットが補正しないネットに対してSTCで`H1`（得点率92.1%）だった。
+[2026年11月7日より前の決定](correct-the-nnue-linear-path-by-regressing-on-game-outcomes.md)は、世代反復の各世代で、学習したネットの第1層と出力部を固定し、線形の経路（駒と升ごとの点数の表）の序中盤の列を対局結果へのロジスティック回帰（Texel tuningと同種、`minase-trainer nnue fit-linear`）で補正すると定めていた。
+[中断した世代反復](../../plans/archived/nnue-generation-reset.md)の第1世代の教師で学んだネットでは、補正したネットが補正しないネットに対してSTCで`H1`（得点率92.1%）だった。
 
-[標準レシピv1の設計書](../plans/archived/nnue-standard-recipe.md)では、同じ系列の第2世代の教師で学んだネットについて、補正前のネットを候補、補正後のネットを対照としてSTCで比べた（[測定記録](../measurements/nnue-standard-recipe/nnue-standard-recipe-fit-stc.md)）。
+[標準レシピv1の設計書](../../plans/archived/nnue-standard-recipe.md)では、同じ系列の第2世代の教師で学んだネットについて、補正前のネットを候補、補正後のネットを対照としてSTCで比べた（[測定記録](../../measurements/nnue-standard-recipe/nnue-standard-recipe-fit-stc.md)）。
 補正前のネットは、376ペアで`H1`（得点率57.1%）となった。
 補正後のネットでは、盤上の仲人を取り除いたときに駒を失った側の評価がかえって上がる局面の割合が、0.2%から55.9%へ増えていた。
-この結果から、補正しない決定を2026年11月7日に下した（[以前の決定](archive/do-not-correct-the-nnue-linear-path-after-training.md)）。
-さらに2026年11月14日にエンジンの開発者は、学習の後に線形の経路を補正する先行例がないことを確かめ、先行の複数のエンジンに共通する方法に合わせると決めた（[学習レシピの調査](../research/nnue-training-recipes.md)）。
+この結果から、補正しない決定を2026年11月7日に下した（[以前の決定](do-not-correct-the-nnue-linear-path-after-training.md)）。
+さらに2026年11月14日にエンジンの開発者は、学習の後に線形の経路を補正する先行例がないことを確かめ、先行の複数のエンジンに共通する方法に合わせると決めた（[学習レシピの調査](../../research/nnue-training-recipes.md)）。
 以前の決定は、学習したネットをgitにコミットして次の世代の初期値にすると書いていた。
 その後、ネットは実行ファイルに埋め込まず、外部のファイルから読むようになり（[外部ファイル化のADR](use-an-nnue-read-from-evalfile-as-the-only-search-evaluation.md)）、連続生成スクリプトは世代のネットをgitにコミットしなくなった。
-この改訂は[NNUEの外部ファイル化の設計書](../plans/archived/nnue-external-network-file.md)で下した。
+この改訂は[NNUEの外部ファイル化の設計書](../../plans/archived/nnue-external-network-file.md)で下した。
 
 ## 決定
 
@@ -35,4 +35,4 @@ NNUEの世代反復では、学習したネットをそのまま次の世代の�
 連続生成スクリプトは、補正の有無を`--fit`で選べるが、標準レシピv1では`--fit no`を指定し、学習の出力`train/nnue.bin`を次の世代の教師の生成と学習の初期値にする。
 世代のネットは手元の機械へ回収し、SHA-256の16進数をファイル名にしてNASに置く。
 補正を行わないので、対局結果は教師の勝率尺度の推定を除いて学習に入らない。
-この条件で世代を重ねて強くなるかは、[世代反復の設計書](../plans/nnue-generation-iteration.md)の世代の判定で確かめる。
+この条件で世代を重ねて強くなるかは、[世代反復の設計書](../../plans/nnue-generation-iteration.md)の世代の判定で確かめる。

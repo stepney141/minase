@@ -2,15 +2,15 @@
 
 ## ステータス
 
-提案。[探索が使う評価関数を、USIのオプションEvalFileで指定した外部のファイルのNNUEの1つにし、PSTとFMのコードは比較用に残す](use-an-nnue-read-from-evalfile-as-the-only-search-evaluation.md)を置き換える案である。[tatara化とHalfKP_vmの設計書](../plans/nnue-tatara-framework-and-halfkp-vm.md)で載せ替えたP型が、載せ替えの確認のSTCで前のP型に約64 Elo負けたので、その原因の切り分けの結果を見てP型の扱いを決めるまで、決定しない。
+承認済み。決定日は2026年11月19日。[探索が使う評価関数を、USIのオプションEvalFileで指定した外部のファイルのNNUEの1つにし、PSTとFMのコードは比較用に残す](archive/use-an-nnue-read-from-evalfile-as-the-only-search-evaluation.md)を置き換える。
 
 ## コンテキスト
 
-[以前の決定](use-an-nnue-read-from-evalfile-as-the-only-search-evaluation.md)は、探索が使う評価関数をNNUEだけとし、ネットを実行ファイルに埋め込まず、USIのオプション`EvalFile`で指定した外部のファイルを読むとした。
+[以前の決定](archive/use-an-nnue-read-from-evalfile-as-the-only-search-evaluation.md)は、探索が使う評価関数をNNUEだけとし、ネットを実行ファイルに埋め込まず、USIのオプション`EvalFile`で指定した外部のファイルを読むとした。
 同じ決定は、どのコミットでも探索が使う評価関数を1つに保ち、ネットの構造はコンパイル時の型の別名で1つに固定していた。
 [入力特徴集合と構造を列挙型で表すADR](represent-nnue-feature-sets-and-structures-as-enums-and-select-the-structure-from-the-tatara-file.md)で、P型のLayerStackとHalfKP_vmのSimpleを同じコミットで扱うことになり、探索は読み込んだネットの構造に合わせて評価器を選ぶ必要が生じた。
 tataraと同じ作者の将棋エンジンrshogiは、ネットと累算器の組を1つの列挙型`SearchEvaluator`で持ち、着手、着手の取り消し、および評価のたびに列挙子を照合して分岐する（コミット`a8e2b6b`の`crates/rshogi-core/src/nnue/search_evaluator.rs`）。
-決定は[tatara化とHalfKP_vmの設計書](../plans/nnue-tatara-framework-and-halfkp-vm.md)で下した。
+決定は[tatara化とHalfKP_vmの設計書](../plans/archived/nnue-tatara-framework-and-halfkp-vm.md)で下した。
 
 ## 決定
 

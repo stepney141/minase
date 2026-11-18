@@ -2,7 +2,7 @@
 
 ## 目的
 
-[tatara化とHalfKP_vmの設計書](../../plans/nnue-tatara-framework-and-halfkp-vm.md)の「載せ替えの確認」の節に従い、載せ替える前のP型と、tataraのLayerStackへ載せ替えた後のP型を、同じ教師から同じ条件で1本ずつ学び、学習の経過、書き出しの量子化誤差、および学習の速さを記録する。
+[tatara化とHalfKP_vmの設計書](../../plans/archived/nnue-tatara-framework-and-halfkp-vm.md)の「載せ替えの確認」の節に従い、載せ替える前のP型と、tataraのLayerStackへ載せ替えた後のP型を、同じ教師から同じ条件で1本ずつ学び、学習の経過、書き出しの量子化誤差、および学習の速さを記録する。
 2本の強さは、別の測定のGSPRT（[STC](nnue-tatara-framework-and-halfkp-vm-stc.md)とLTC）で比べる。
 
 ## 教師と共通の条件

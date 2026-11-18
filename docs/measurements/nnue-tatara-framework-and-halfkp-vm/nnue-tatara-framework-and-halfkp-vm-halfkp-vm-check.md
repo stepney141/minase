@@ -2,7 +2,7 @@
 
 ## 目的
 
-[tatara化とHalfKP_vmの設計書](../../plans/nnue-tatara-framework-and-halfkp-vm.md)の「HalfKP_vmの動作の確認」の節に従い、自玉の位置で条件付ける入力特徴集合HalfKP_vmのネット（将棋のNNUE学習器tataraのSimpleの構造、256x2-32-32）を、王の位置を使わない入力特徴集合P型と同じ教師37本から64 superbatch学び、学習、書き出し、エンジン、教師生成、および連続生成スクリプトで使えることを確かめる。
+[tatara化とHalfKP_vmの設計書](../../plans/archived/nnue-tatara-framework-and-halfkp-vm.md)の「HalfKP_vmの動作の確認」の節に従い、自玉の位置で条件付ける入力特徴集合HalfKP_vmのネット（将棋のNNUE学習器tataraのSimpleの構造、256x2-32-32）を、王の位置を使わない入力特徴集合P型と同じ教師37本から64 superbatch学び、学習、書き出し、エンジン、教師生成、および連続生成スクリプトで使えることを確かめる。
 このネットの棋力は採否に使わない。
 
 ## 本番の学習の前に見つかった問題
