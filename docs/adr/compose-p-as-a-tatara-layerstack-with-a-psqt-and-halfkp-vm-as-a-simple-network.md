@@ -43,4 +43,4 @@ v0は序盤と終盤に同じ値を置いているので、区分1つのPSQTで�
 LayerStackの区分ごとのL1と、全区分に共通のtataraの`L1 shared`は、区分が1つでも別に学び、書き出しで足してから1回だけ量子化する。
 書き出しで量子化の範囲を超える値はエラーで止め、tataraのように切り詰めない。
 載せ替えたP型は、載せ替えの確認のSTCで`H1`となり、載せ替える前のP型が+64.4 Elo（95%信頼区間+37.2〜+92.4）強かった（[測定記録](../measurements/nnue-tatara-framework-and-halfkp-vm/nnue-tatara-framework-and-halfkp-vm-stc.md)）。
-原因は[切り分けの設計書](../plans/nnue-layerstack-p-regression-diagnosis.md)で調べる。
+同じ教師で学んだ載せ替え前のP型を相手にすると、載せ替え後のP型は全層を実数で計算した方が得点率が高かった。後段の重みを通常どおり8ビットに量子化した載せ替え後のP型を相手にすると、この改善は見られなかった。[棋力低下の調査報告](../audits/tatara-p-regression-2026-11-19.md)

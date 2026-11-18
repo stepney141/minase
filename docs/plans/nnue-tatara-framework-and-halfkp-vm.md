@@ -20,7 +20,7 @@ P型は、第1層の出力どうしの積と2段の隠れ層を持つtataraのLa
 載せ替えの確認のSTCは、2026年11月18日に`H1`（前のP型が強い）で終わった（[測定](../measurements/nnue-tatara-framework-and-halfkp-vm/nnue-tatara-framework-and-halfkp-vm-stc.md)）。
 有効な281ペアの得点率から求めると、前のP型は後のP型より+64.4 Elo（95%信頼区間+37.2〜+92.4）強い。
 「載せ替えの確認」の節の規則により、LTCを行わずに本書を待機中にした。
-原因は[切り分けの設計書](nnue-layerstack-p-regression-diagnosis.md)で調べ、再開の条件は、その結果を見て利用者が載せ替えの扱いを決めることである。
+[棋力低下の調査報告](../audits/tatara-p-regression-2026-11-19.md)を踏まえて利用者がP型の載せ替えの扱いを決めた時点で再開する。
 HalfKP_vmの動作の確認は、P型の載せ替えの採否によらないので続け、2026年11月19日に終えた（[記録](../measurements/nnue-tatara-framework-and-halfkp-vm/nnue-tatara-framework-and-halfkp-vm-halfkp-vm-check.md)）。
 教師37本から64 superbatch学んだネットは、学習、書き出し、エンジン、教師生成、連続生成スクリプト、および学習器の2つの診断で使えた。
 
