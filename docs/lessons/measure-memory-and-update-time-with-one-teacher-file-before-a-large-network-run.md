@@ -46,4 +46,5 @@ cgroupの値は`memory.stat`の`anon`と`file`を分けて読み、`MemoryCurren
 ## 出典
 
 - [載せ替えの確認の学習の記録](../measurements/nnue-tatara-framework-and-halfkp-vm/nnue-tatara-framework-and-halfkp-vm-training.md)
+- [HalfKP_vmの動作の確認の記録](../measurements/nnue-tatara-framework-and-halfkp-vm/nnue-tatara-framework-and-halfkp-vm-halfkp-vm-check.md)
 - [対局と並行する処理はメモリの上限を課したサービスで動かす](cap-memory-of-work-beside-a-running-match.md)
