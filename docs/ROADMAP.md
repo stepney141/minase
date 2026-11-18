@@ -147,7 +147,7 @@
 | 中断可能な計算機での教師生成 | [plans/archived/interruptible-teacher-generation.md](plans/archived/interruptible-teacher-generation.md) | 完了（採用） | 2026年11月14日 |
 | 複数の読み筋を同時に示すMultiPV | [plans/archived/multipv.md](plans/archived/multipv.md) | 完了（採用） | 2026年11月17日 |
 | NNUEのネットを埋め込まず、USIのオプションEvalFileで外部のファイルから読む | [plans/archived/nnue-external-network-file.md](plans/archived/nnue-external-network-file.md) | 完了（採用） | 2026年11月17日 |
-| NNUEをtataraに倣った枠組みへ載せ替え、HalfKP_vm（256x2-32-32）を加える | [plans/nnue-tatara-framework-and-halfkp-vm.md](plans/nnue-tatara-framework-and-halfkp-vm.md) | 着手 | |
+| NNUEをtataraに倣った枠組みへ載せ替え、HalfKP_vm（256x2-32-32）を加える | [plans/nnue-tatara-framework-and-halfkp-vm.md](plans/nnue-tatara-framework-and-halfkp-vm.md) | 待機中 | |
 | PV-MCTSのデバッグ道具（根の統計の表示、探索木の不変条件の検査、PV-MCTSのbench） | [plans/archived/mcts-debugging-tools.md](plans/archived/mcts-debugging-tools.md) | 完了（採用） | 2026年11月17日 |
 
 ## 現在地
@@ -172,7 +172,7 @@ HalfKP_vmの世代反復は、P型の世代反復で評価関数の癖をつか�
 
 | 設計書 | 内容 | 状態と次の判断 | 前提 |
 |---|---|---|---|
-| [tatara化とHalfKP_vm](plans/nnue-tatara-framework-and-halfkp-vm.md) | NNUEを将棋の学習器tataraに倣った枠組みへ載せ替え、HalfKP_vm（256x2-32-32）をエンジン、学習器、および教師生成でいつでも使える状態にする。 | 2026年11月18日に着手し、フェーズ1（入力特徴集合の仕様の値と番号付け）とフェーズ2（推論と探索の切り替え）を終え、フェーズ3（学習器）を進めている。 | なし（外部ファイル化は完了した） |
+| [tatara化とHalfKP_vm](plans/nnue-tatara-framework-and-halfkp-vm.md) | NNUEを将棋の学習器tataraに倣った枠組みへ載せ替え、HalfKP_vm（256x2-32-32）をエンジン、学習器、および教師生成でいつでも使える状態にする。 | 待機中である。2026年11月18日に着手してフェーズ1から5（実装）を終えたが、載せ替えの確認のSTCが`H1`（前のP型が+64.4 Elo強い）で終わったので、原因の調べ方と載せ替えの扱いについて利用者の判断を待つ。HalfKP_vmの動作の確認は続けている。 | なし（外部ファイル化は完了した） |
 | [P型の世代反復](plans/nnue-generation-iteration.md) | 標準レシピv2で、第n世代に約n億局面の教師を使い、v0から最大第5世代までP型の世代反復を行う。教師の生成と学習に借りる計算機の費用は、約280米ドルと見込む。 | 起案の段階である。計算機を借りるので、前提の完了の後に利用者の着手の指示を待つ。 | tatara化の完了（外部ファイル化は完了した） |
 | [先読みなしの教師での間引きの比較](plans/nnue-subsample-no-lookahead.md) | 同じ局面数を少数の対局から採る学習と多数の対局から採る学習を比べ、対局数が多いほど良いという効果が、後続の局面の探索値を混ぜない現行の教師でも残るかを確かめる。 | 起案の段階である。世代反復の結果を見て、続けるかを決める。 | なし |
 | [記録する局面の間引き](plans/sparse-teacher-recording.md) | 4手に1手だけを2万ノードで探索して記録し、残りの手を少ないノード数で指して、同じ計算量で対局数を増やす。 | 起案の段階である。日本中将棋連盟の規則に基づく規則セット`JCSA`の教師と、いまの学習器の引数を前提に書かれているので、着手の前に`lishogi`の規則とtatara化の後の引数に合わせて改める。 | 「間引きの比較」の判定1が「支持」であること、および世代反復の完了（標準レシピv2が固定した教師の作り方を変えるため） |
