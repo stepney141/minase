@@ -9,8 +9,8 @@
 第1世代の学習と各世代の診断には、その世代の本だけを使う。
 --structure layerstack|simpleで学習の構造を選び、学習したネットを保管する。
 第1世代の教師から較正した勝率尺度K_tを世代の記録へ保存し、全世代の学習へ渡す。
---superbatchesで学習の長さ、--validation-superbatchesで検証の間隔を指定する。
---lr-scheduleの期間はsuperbatchで指定し、学び終えた最後のネットを使う。
+--superbatchesで学習の上限、--validation-superbatchesで検証の間隔を指定する。
+--lr-scheduleの期間はsuperbatchで指定する。--validation-patienceを指定すると、検証損失が最小のネットを使う。
 --train-place generatorは生成機で学習と診断し、localは作業機で実行する。
 生成機の障害後はlocalを明示して再開する。ネットの保管とbenchはどちらも作業機で行う。
 作業機では--run-dirに接続先とgen-<N>/{received,teacher,logs,train}を置く。
@@ -594,9 +594,13 @@ class Chain:
                    '--seed', str(args.train_seed), '--threads', str(args.train_threads), '--output-dir', str(train)]
         for key in ('batch', 'superbatches', 'validation_superbatches', 'device', 'lr_schedule'):
             command.extend(['--' + key.replace('_', '-'), str(getattr(args, key))])
+        for key in ('batches_per_superbatch', 'validation_patience', 'train_subsample'):
+            if hasattr(args, key):
+                command.extend(['--' + key.replace('_', '-'), str(getattr(args, key))])
+        checkpoint = 'best.npz' if hasattr(args, 'validation_patience') else 'latest.npz'
         commands = {
             'train': command,
-            'removal': [str(trainer), 'diag', 'nnue-removal', '--float', str(train / 'latest.npz'),
+            'removal': [str(trainer), 'diag', 'nnue-removal', '--float', str(train / checkpoint),
                         '--net', str(train / 'nnue.bin'), '--data', *map(str, current_books),
                         '--sample', str(args.removal_sample), '--seed', str(args.removal_seed),
                         '--output', str(directory / 'removal.json')],
@@ -883,6 +887,15 @@ def nonnegative_int(value: str) -> int:
     return result
 
 
+def train_subsample(value: str) -> str:
+    match = re.fullmatch(r'(?:games|positions):([0-9]+):([0-9]+)', value)
+    if match:
+        k, r = map(int, match.groups())
+        if 2 <= k < 2**64 and r < k:
+            return value
+    raise argparse.ArgumentTypeError('games:k:rまたはpositions:k:rで2 ≤ k < 2^64、0 ≤ r < kを指定してください')
+
+
 def positive_float(value: str) -> float:
     result = float(value)
     if not math.isfinite(result) or result <= 0:
@@ -912,7 +925,10 @@ def arguments(argv: list[str]) -> argparse.Namespace:
                  'train-threads', 'removal-sample', 'bench-depth',
                  'disk', 'min-cpu-cores'):
         run.add_argument('--' + name, required=True, type=positive_int, help='正の整数')
-    run.add_argument('--superbatches', required=True, type=positive_int, help='学習を終えるsuperbatch数。1以上の整数')
+    run.add_argument('--superbatches', required=True, type=positive_int, help='学習するsuperbatch数の上限。1以上の整数')
+    run.add_argument('--batches-per-superbatch', type=positive_int, help='1 superbatchの更新回数')
+    run.add_argument('--train-subsample', type=train_subsample, help='訓練に使う対局または局面の抽出条件')
+    run.add_argument('--validation-patience', type=positive_int, help='検証損失が改善せずにこの回数連続すると学習を止める')
     run.add_argument('--validation-superbatches', required=True, type=positive_int,
                      help='全検証集合を評価するsuperbatchの間隔。1以上の整数。学習の最後にも評価する')
     run.add_argument('--lr-schedule', required=True,
@@ -937,6 +953,8 @@ def arguments(argv: list[str]) -> argparse.Namespace:
         parser.error('first-generationはlast-generation以下にしてください')
     if not math.isfinite(args.mix) or not 0 <= args.mix <= 1:
         parser.error('lambdaは0以上1以下の有限値にしてください')
+    if hasattr(args, 'validation_patience') and args.superbatches % args.validation_superbatches:
+        parser.error('検証で重みを選ぶ場合はsuperbatchesをvalidation-superbatchesの倍数にしてください')
     if args.calibration_books > args.books_per_generation:
         parser.error('calibration-booksはbooks-per-generation以下にしてください')
     if args.min_reliability > 1:

@@ -542,6 +542,18 @@ class ChainTests(ChainTestCase):
         self.assertEqual(option_values(commands['train'], '--teacher-cp-per-logit'), ['1234'])
         self.assertEqual(option_values(commands['removal'], '--float'), [str(directory / 'train/latest.npz')])
 
+    def test_validation_selection_diagnoses_the_exported_checkpoint(self) -> None:
+        directory = self.root / 'run/gen-1'
+        self.values.update({'validation-patience': '2', 'batches-per-superbatch': '763',
+                            'train-subsample': 'positions:4:0'})
+        runner = chain.Chain(chain.arguments(argv(self.values)))
+        books = [self.root / 'book.mnsd']
+        commands = runner.training_commands(self.root / 'trainer', books, books, 1234, directory)
+        self.assertEqual(option_values(commands['train'], '--train-subsample'), ['positions:4:0'])
+        self.assertEqual(option_values(commands['train'], '--validation-patience'), ['2'])
+        self.assertEqual(option_values(commands['train'], '--batches-per-superbatch'), ['763'])
+        self.assertEqual(option_values(commands['removal'], '--float'), [str(directory / 'train/best.npz')])
+
     def test_removed_training_arguments_are_rejected(self) -> None:
         for flag in ('epochs', 'patience', 'export-epoch', 'validation-interval'):
             with self.subTest(flag=flag), self.assertRaises(SystemExit) as raised:
