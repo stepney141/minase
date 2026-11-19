@@ -22,11 +22,10 @@ use minase::{
 use minase_core::{Color, Game, PieceCode, PieceKind, Position, PositionBuilder, Rules, Square};
 use minase_trainer::diagnostics;
 use minase_trainer::error::ContractError;
-use minase_trainer::nnue::{
-    data::InputFeatureSet,
-    model::{Checkpoint, Model, Parameter, Progress, Shape, quantize},
-    reference::{AdamW, AdamWConfig, v0_piece_values},
+use minase_trainer::nnue::layerstack::{
+    self, AdamW, Checkpoint, H, OptimizerConfig, Parameter, Parameters, ROWS, Scale, Settings,
 };
+use minase_trainer::pst::v0_piece_values;
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 
@@ -129,34 +128,29 @@ impl Fixture {
         path
     }
 
-    fn network(&self, name: &str, model: &Model) -> PathBuf {
+    fn network(&self, name: &str, model: &TestModel) -> PathBuf {
         let path = self.path(name);
         fs::write(
             &path,
-            quantize(model)
-                .unwrap()
-                .encode(&v0_piece_values(), "JCSA")
-                .unwrap(),
+            layerstack::export(&model.parameters, model.scale).unwrap(),
         )
         .unwrap();
         path
     }
 
-    fn checkpoint(&self, model: Model) -> PathBuf {
+    fn checkpoint(&self, model: TestModel) -> PathBuf {
         let path = self.path("best.npz");
+        let config = OptimizerConfig::default();
         Checkpoint {
-            optimizer: AdamW::new(model.shape(), AdamWConfig::default()).unwrap(),
-            model,
-            lambda: 1.0,
-            progress: Progress {
-                completed_superbatches: 0,
-                elapsed_seconds: 0.0,
+            progress: progress(),
+            optimizer: AdamW::new(config).unwrap(),
+            parameters: model.parameters,
+            settings: Settings {
+                scale: model.scale,
+                rules: Rules::JCSA,
+                lambda: 1.0,
                 seed: 1,
-                config: minase_trainer::nn::checkpoint::Configuration {
-                    settings: serde_json::json!({}),
-                    inputs: serde_json::json!({}),
-                    preprocessing: serde_json::json!({}),
-                },
+                optimizer: config,
             },
         }
         .write(&path)
@@ -221,28 +215,23 @@ impl Drop for Fixture {
     }
 }
 
-fn model(set: InputFeatureSet, linear: &[[f32; 2]], cp_per_logit: f32) -> Model {
-    model_with_head(
-        set,
-        linear,
-        cp_per_logit,
-        minase_trainer::nnue::model::HeadKind::PairwiseL16L32,
-    )
+struct TestModel {
+    parameters: Parameters,
+    scale: Scale,
 }
-fn model_with_head(
-    set: InputFeatureSet,
-    linear: &[[f32; 2]],
-    cp_per_logit: f32,
-    head: minase_trainer::nnue::model::HeadKind,
-) -> Model {
-    Model::initialize(
-        Shape::new(set, 4, cp_per_logit, head).unwrap(),
-        linear,
-        common::all_observed(set),
-        1,
-        0.0,
-    )
-    .unwrap()
+fn model(linear: &[[f32; 2]], teacher: f64) -> TestModel {
+    let scale = Scale::new(teacher).unwrap();
+    let mut parameters = Parameters::initialize(1, scale);
+    for p in Parameter::ALL {
+        parameters[p].fill(0.0);
+    }
+    // 試験のPSQTは両端点が等しい駒升評価をK_oで割って構築する。
+    for (f, values) in linear.iter().enumerate() {
+        assert_eq!(values[0], values[1]);
+        let row = f / 144 * 72 + f % 144 / 12 * 6 + (f % 12).min(11 - f % 12);
+        parameters[Parameter::Psqt][row] = (f64::from(values[0]) / scale.output()) as f32;
+    }
+    TestModel { parameters, scale }
 }
 
 fn pawn_linear(cp: f32) -> Vec<[f32; 2]> {
@@ -350,11 +339,8 @@ fn distribution_preserves_python_schema_order_statistics_and_identities() {
         f.records(name, &records, seed, "JCSA");
     }
     f.baseline("base.bin", &pawn_linear(50.0), 0);
-    for (set, name) in [
-        (InputFeatureSet::P, "p.bin"),
-        (InputFeatureSet::HalfKpHmB8, "half.bin"),
-    ] {
-        f.network(name, &model(set, &pawn_linear(100.0), 1016.0));
+    for name in ["p.bin", "second.bin"] {
+        f.network(name, &model(&pawn_linear(100.0), 1016.0));
     }
     // 全局面を標本にして、各位相帯と評価帯の既知の分布を検査する。
     let args = [
@@ -367,9 +353,9 @@ fn distribution_preserves_python_schema_order_statistics_and_identities() {
         "--seed",
         "7",
         "--pair",
-        "half",
+        "second",
         "base.bin",
-        "half.bin",
+        "second.bin",
         "--pair",
         "p",
         "base.bin",
@@ -416,7 +402,7 @@ fn distribution_preserves_python_schema_order_statistics_and_identities() {
             fs::metadata(f.path(name)).unwrap().len()
         );
     }
-    assert_eq!(report["pairs"][0]["name"], "half");
+    assert_eq!(report["pairs"][0]["name"], "second");
     assert_eq!(report["pairs"][1]["name"], "p");
     for pair in report["pairs"].as_array().unwrap() {
         assert_close(&pair["baseline_statistics"]["mean_cp"], 375.0, 1e-12);
@@ -446,10 +432,7 @@ fn distribution_sampling_is_deterministic_and_invalid_inputs_create_no_report() 
     let positions = distribution_positions();
     f.data("data.mnsd", &positions, 11, &[4; 24], "JCSA");
     f.baseline("base.bin", &pawn_linear(50.0), 0);
-    f.network(
-        "net.bin",
-        &model(InputFeatureSet::P, &pawn_linear(50.0), 1016.0),
-    );
+    f.network("net.bin", &model(&pawn_linear(50.0), 1016.0));
     let args = [
         "nnue-distribution",
         "--data",
@@ -481,7 +464,7 @@ fn distribution_sampling_is_deterministic_and_invalid_inputs_create_no_report() 
     // 空の帯や分散0は報告を作成せずに拒否する。
     f.network(
         "constant.bin",
-        &model(InputFeatureSet::P, &vec![[0.0; 2]; FEATURE_COUNT], 1016.0),
+        &model(&vec![[0.0; 2]; FEATURE_COUNT], 1016.0),
     );
     let mut constant = args;
     constant[10] = "constant.bin";
@@ -509,169 +492,97 @@ fn removal_args(sample: &str) -> Vec<&str> {
 
 #[test]
 fn removal_reports_known_reversals_and_keeps_the_lion_square_when_its_piece_is_removed() {
-    for set in [InputFeatureSet::P, InputFeatureSet::HalfKpHmB8] {
-        let f = Fixture::new();
-        let mut builder = PositionBuilder::new(Color::Black);
-        for (index, side, kind, promoted) in [
-            (0, Color::Black, PieceKind::King, false),
-            (143, Color::White, PieceKind::King, false),
-            (1, Color::Black, PieceKind::CrownPrince, true),
-            (50, Color::Black, PieceKind::Pawn, false),
-            (60, Color::White, PieceKind::Pawn, false),
-            (70, Color::White, PieceKind::Lion, true),
-        ] {
-            let piece = if promoted {
-                PieceCode::new_promoted(side, kind)
-            } else {
-                PieceCode::new(side, kind)
-            }
+    let f = Fixture::new();
+    let mut builder = PositionBuilder::new(Color::Black);
+    for (index, side, kind, promoted) in [
+        (0, Color::Black, PieceKind::King, false),
+        (143, Color::White, PieceKind::King, false),
+        (1, Color::Black, PieceKind::CrownPrince, true),
+        (50, Color::Black, PieceKind::Pawn, false),
+        (60, Color::White, PieceKind::Pawn, false),
+        (70, Color::White, PieceKind::Lion, true),
+    ] {
+        let piece = if promoted {
+            PieceCode::new_promoted(side, kind)
+        } else {
+            PieceCode::new(side, kind)
+        }
+        .unwrap();
+        builder
+            .put(Square::from_dense(index).unwrap(), piece)
             .unwrap();
-            builder
-                .put(Square::from_dense(index).unwrap(), piece)
-                .unwrap();
-        }
-        let mut position = builder.finish().unwrap();
-        position.set_lion_capture(Square::from_dense(70)).unwrap();
-        let record = Sample::from_position(
-            &position,
-            0,
-            Outcome::Draw,
-            4,
-            0,
-            minase::training::records::Origin::RandomSelfplay,
-        )
-        .unwrap();
-        assert!(record.lion_by_kirin_promotion());
-        assert_eq!(record.to_position().unwrap(), position);
-        f.records("data.mnsd", &[record], 11, "JCSA");
-        let values = v0_piece_values();
-        let linear: Vec<_> = (0..FEATURE_COUNT)
-            .map(|feature| {
-                if feature >= 2 * PIECE_STATE_COUNT * 144 {
-                    [37.0; 2]
+    }
+    let mut position = builder.finish().unwrap();
+    position.set_lion_capture(Square::from_dense(70)).unwrap();
+    let record = Sample::from_position(
+        &position,
+        0,
+        Outcome::Draw,
+        4,
+        0,
+        minase::training::records::Origin::RandomSelfplay,
+    )
+    .unwrap();
+    assert!(record.lion_by_kirin_promotion());
+    assert_eq!(record.to_position().unwrap(), position);
+    f.records("data.mnsd", &[record], 11, "JCSA");
+    let values = v0_piece_values();
+    let linear: Vec<_> = (0..FEATURE_COUNT)
+        .map(|feature| {
+            if feature >= 2 * PIECE_STATE_COUNT * 144 {
+                [37.0; 2]
+            } else {
+                [if feature / (PIECE_STATE_COUNT * 144) == 0 {
+                    -(values[feature / 144 % PIECE_STATE_COUNT] as f32)
                 } else {
-                    [if feature / (PIECE_STATE_COUNT * 144) == 0 {
-                        -(values[feature / 144 % PIECE_STATE_COUNT] as f32)
-                    } else {
-                        values[feature / 144 % PIECE_STATE_COUNT] as f32
-                    }; 2]
-                }
-            })
-            .collect();
-        let m = model(set, &linear, 1016.0);
-        f.network("net.bin", &m);
-        f.checkpoint(m);
-        let args = removal_args("1");
-        let report = f.success(&args, "report.json");
-        assert_eq!(
-            root_keys(&f, "report.json"),
-            [
-                "sample_count",
-                "seed",
-                "sample_indices_sha256_le_i64",
-                "input_files",
-                "split",
-                "population_count",
-                "float",
-                "net",
-                "removal_count",
-                "reference",
-                "float_batch_vs_recomputed",
-                "float_vs_integer_recomputed",
-                "reversals",
-                "by_piece_state"
-            ]
-        );
-        assert_eq!(report["removal_count"], 3);
-        assert_eq!(
-            report["reversals"],
-            serde_json::json!({ "count": 3, "total": 3, "fraction": 1.0, "mean_absolute_cp": 900.0, "max_absolute_cp": 2500.0 })
-        );
-        assert_eq!(report["by_piece_state"]["20"]["count"], 1);
-        assert_eq!(report["by_piece_state"]["29"]["count"], 2);
-        assert!(report["by_piece_state"].get("11").is_none());
-        assert!(report["by_piece_state"].get("21").is_none());
-        assert_eq!(report["float_batch_vs_recomputed"]["passed"], true);
-        assert_close(
-            &report["float_vs_integer_recomputed"]["max_absolute_cp"],
-            0.0,
-            1e-9,
-        );
-        let text = fs::read_to_string(f.path("report.json")).unwrap();
-        assert_eq!(json_nested_keys(&text, "by_piece_state"), ["20", "29"]);
-    }
-}
-
-#[test]
-fn removal_uses_f64_recomputation_and_the_integer_network_cp_per_logit() {
-    for set in [InputFeatureSet::P, InputFeatureSet::HalfKpHmB8] {
-        let f = Fixture::new();
-        let position =
-            common::position(&[(2, 4, Color::Black, PieceKind::Pawn)], Color::Black, None);
-        f.data("data.mnsd", &[position], 11, &[4], "JCSA");
-        let mut linear = pawn_linear(80.0);
-        for row in &mut linear {
-            row[0] /= 2.0;
-        }
-        let mut m = model(set, &linear, 500.0);
-        let h = m.shape().width();
-        let first = m.parameter_mut(Parameter::FirstLayer);
-        let end = first.len() - h;
-        for row in first[..end].chunks_mut(h) {
-            row.copy_from_slice(&[0.1, 0.2, 0.1, 0.2]);
-        }
-        m.parameter_mut(Parameter::Biases).fill(0.3);
-        let units = m.shape().output_units();
-        m.parameter_mut(Parameter::OutputWeights)[..units].fill(0.125);
-        m.parameter_mut(Parameter::OutputBias)[0] = 0.1;
-        f.checkpoint(m);
-        // 整数側は0評価、cp_per_logit=1000。チェックポイントのcp_per_logit=500を使うとこの既知差分に合わない。
-        f.network(
-            "net.bin",
-            &model(set, &vec![[0.0; 2]; FEATURE_COUNT], 1000.0),
-        );
-        let report = f.success(&removal_args("1"), "report.json");
-        // 実数の差分は -80 +1000*0.125*2*(0.3²-0.4*0.5) = -107.5 cp。
-        assert_close(
-            &report["float_vs_integer_recomputed"]["mean_absolute_cp"],
-            107.5,
-            1e-4,
-        );
-        assert_close(
-            &report["float_vs_integer_recomputed"]["max_absolute_cp"],
-            107.5,
-            1e-4,
-        );
-        assert_eq!(report["float_batch_vs_recomputed"]["passed"], true);
-        assert_eq!(report["reversals"]["count"], 0);
-        assert_eq!(report["reversals"]["total"], 1);
-        assert!(report["reversals"]["mean_absolute_cp"].is_null());
-
-        let position =
-            common::position(&[(2, 4, Color::Black, PieceKind::Pawn)], Color::Black, None);
-        let mut position = position;
-        position.set_lion_capture(Square::from_dense(51)).unwrap();
-        let record = Sample::from_position(
-            &position,
-            0,
-            Outcome::Draw,
-            4,
-            0,
-            minase::training::records::Origin::RandomSelfplay,
-        )
-        .unwrap();
-        assert_eq!(record.to_position().unwrap(), position);
-        f.records("data.mnsd", &[record], 11, "JCSA");
-        fs::remove_file(f.path("report.json")).unwrap();
-        let report = f.success(&removal_args("1"), "report.json");
-        // 先獅子の特徴は除去後も残り、-80+1000*0.125*2*(0.4*0.5-0.5*0.7)=-117.5。
-        assert_close(
-            &report["float_vs_integer_recomputed"]["mean_absolute_cp"],
-            117.5,
-            1e-4,
-        );
-        assert_eq!(report["float_batch_vs_recomputed"]["passed"], true);
-    }
+                    values[feature / 144 % PIECE_STATE_COUNT] as f32
+                }; 2]
+            }
+        })
+        .collect();
+    let m = model(&linear, 1016.0);
+    f.network("net.bin", &m);
+    f.checkpoint(m);
+    let args = removal_args("1");
+    let report = f.success(&args, "report.json");
+    assert_eq!(
+        root_keys(&f, "report.json"),
+        [
+            "sample_count",
+            "seed",
+            "sample_indices_sha256_le_i64",
+            "input_files",
+            "split",
+            "population_count",
+            "float",
+            "net",
+            "removal_count",
+            "terminal_removal_count",
+            "reference",
+            "float_batch_vs_recomputed",
+            "float_vs_integer_recomputed",
+            "reversals",
+            "by_piece_state"
+        ]
+    );
+    assert_eq!(report["removal_count"], 3);
+    assert_eq!(
+        report["reversals"],
+        serde_json::json!({ "count": 3, "total": 3, "fraction": 1.0, "mean_absolute_cp": 900.0, "max_absolute_cp": 2500.0 })
+    );
+    assert_eq!(report["by_piece_state"]["20"]["count"], 1);
+    assert_eq!(report["by_piece_state"]["29"]["count"], 2);
+    assert!(report["by_piece_state"].get("11").is_none());
+    assert!(report["by_piece_state"].get("21").is_none());
+    assert_eq!(report["float_batch_vs_recomputed"]["passed"], true);
+    assert_close(
+        &report["float_vs_integer_recomputed"]["max_absolute_cp"],
+        0.0,
+        // PSQTのf32表現による誤差は最大駒価値のf32相対精度以内。
+        2500.0 * f64::from(f32::EPSILON),
+    );
+    let text = fs::read_to_string(f.path("report.json")).unwrap();
+    assert_eq!(json_nested_keys(&text, "by_piece_state"), ["20", "29"]);
 }
 
 #[test]
@@ -679,7 +590,7 @@ fn removal_samples_without_replacement_using_the_existing_splitmix64_sequence() 
     let f = Fixture::new();
     let pawn = common::position(&[(2, 4, Color::Black, PieceKind::Pawn)], Color::Black, None);
     f.data("data.mnsd", &vec![pawn; 12], 11, &[4; 12], "JCSA");
-    let m = model(InputFeatureSet::P, &pawn_linear(100.0), 1016.0);
+    let m = model(&pawn_linear(100.0), 1016.0);
     f.network("net.bin", &m);
     f.checkpoint(m);
     let mut args = removal_args("4");
@@ -699,99 +610,6 @@ fn removal_samples_without_replacement_using_the_existing_splitmix64_sequence() 
     assert_eq!(report["population_count"], 12);
 }
 
-#[test]
-fn failed_removal_is_saved_before_the_command_returns_exit_code_one() {
-    let f = Fixture::new();
-    let pawn = common::position(&[(2, 4, Color::Black, PieceKind::Pawn)], Color::Black, None);
-    f.data("data.mnsd", &[pawn], 11, &[4], "JCSA");
-    let mut m = model(InputFeatureSet::P, &pawn_linear(100.0), 1000.0);
-    // 有限だが極端な定数項により、独立再計算では100 cpが桁落ちする。一括差分は-100 cp。
-    m.parameter_mut(Parameter::OutputBias)[0] = 1e20;
-    f.checkpoint(m);
-    f.network(
-        "net.bin",
-        &model(InputFeatureSet::P, &vec![[0.0; 2]; FEATURE_COUNT], 1000.0),
-    );
-    let mut args = removal_args("1");
-    let last = args.len() - 1;
-    args[last] = "nested/report.json";
-    let output = f.run(&args);
-    assert_eq!(output.status.code(), Some(1));
-    let saved = fs::read(f.path("nested/report.json")).unwrap();
-    let report: Value = serde_json::from_slice(&saved).unwrap();
-    assert_eq!(report["float_batch_vs_recomputed"]["passed"], false);
-    assert_close(
-        &report["float_batch_vs_recomputed"]["max_absolute_cp"],
-        100.0,
-        1e-12,
-    );
-    assert!(String::from_utf8_lossy(&output.stderr).contains(report["error"].as_str().unwrap()));
-    assert!(f.diagnose(&args).is_err());
-    assert_eq!(fs::read(f.path("nested/report.json")).unwrap(), saved);
-}
-
-#[test]
-fn removal_checks_phase_boundaries_and_both_sides_with_nonlinear_weights() {
-    for set in [InputFeatureSet::P, InputFeatureSet::HalfKpHmB8] {
-        let f = Fixture::new();
-        let mut positions = Vec::new();
-        for side in Color::ALL {
-            for count in [1, 2, 3, 91, 92, 93] {
-                let mut builder = PositionBuilder::new(side);
-                for i in 0..count {
-                    let color = if i % 2 == 0 {
-                        Color::Black
-                    } else {
-                        Color::White
-                    };
-                    let pawn = PieceCode::new(color, PieceKind::Pawn).unwrap();
-                    let piece = if i % 4 >= 2 {
-                        pawn.promote().unwrap()
-                    } else {
-                        pawn
-                    };
-                    builder.put(Square::from_dense(i).unwrap(), piece).unwrap();
-                }
-                let mut position = builder.finish().unwrap();
-                position.set_lion_capture(Square::from_dense(140)).unwrap();
-                positions.push(position);
-            }
-        }
-        f.data("data.mnsd", &positions, 11, &[4; 12], "JCSA");
-        let mut linear = pawn_linear(40.0);
-        for row in &mut linear {
-            row[1] *= 0.9;
-        }
-        let mut m = model(set, &linear, 1000.0);
-        let h = m.shape().width();
-        let rows = m.parameter_mut(Parameter::FirstLayer);
-        let end = rows.len() - h;
-        rows[..end].fill(0.0625);
-        m.parameter_mut(Parameter::Biases).fill(0.125);
-        m.parameter_mut(Parameter::OutputWeights).fill(0.125);
-        m.parameter_mut(Parameter::OutputBias)[0] = 0.125;
-        // 整数側を0にし、実数の除去差分を直接照合する。
-        f.network(
-            "net.bin",
-            &model(set, &vec![[0.0; 2]; FEATURE_COUNT], 1000.0),
-        );
-        f.checkpoint(m);
-        let report = f.success(&removal_args("12"), "report.json");
-        assert_eq!(report["removal_count"], 564);
-        assert_eq!(report["float_batch_vs_recomputed"]["passed"], true);
-        // 先獅子を含むn+1特徴により、隠れ値は(n+3)/16、要素積4個の出力係数の総和は0.5。
-        // 最大は3駒局面の自分の歩の除去。線形差分は-36 cp、非線形差分は
-        // 500*((5/16)^2-(6/16)^2)=-21.484375 cpで、合計の絶対値は57.484375 cp。
-        // 1,2駒ではそれぞれ49.671875,53.578125 cp以下。91駒以上では活性化が飽和し、差分は40 cp以下。
-        assert_close(
-            &report["float_vs_integer_recomputed"]["max_absolute_cp"],
-            57.484375,
-            1e-9,
-        );
-        assert!(report["error"].is_null());
-    }
-}
-
 fn moves_args() -> [&'static str; 9] {
     [
         "nnue-moves",
@@ -806,87 +624,88 @@ fn moves_args() -> [&'static str; 9] {
     ]
 }
 
-fn tempo_model(set: InputFeatureSet) -> Model {
-    let mut m = model(set, &vec![[0.0; 2]; FEATURE_COUNT], 1016.0);
-    m.parameter_mut(Parameter::OutputBias)[0] = 0.125;
+fn tempo_model() -> TestModel {
+    let mut m = model(&vec![[0.0; 2]; FEATURE_COUNT], 1016.0);
+    m.parameters[Parameter::L3Bias][0] = 0.125;
     m
 }
 
 #[test]
 fn moves_use_negamax_and_include_fm_while_empty_positions_have_null_statistics() {
-    for set in [InputFeatureSet::P, InputFeatureSet::HalfKpHmB8] {
-        let f = Fixture::new();
-        let kings = [
-            (0, 0, Color::Black, PieceKind::King),
-            (11, 11, Color::White, PieceKind::King),
-        ];
-        let positions = [
-            common::position(&kings, Color::Black, None),
-            common::position(&kings, Color::White, None),
-            Position::empty(Color::Black),
-        ];
-        f.data("data.mnsd", &positions, 11, &[1; 3], "L1,L2,P0,P3,R1,E1,E3");
-        f.baseline("base.bin", &vec![[0.0; 2]; FEATURE_COUNT], 2);
-        f.network("net.bin", &tempo_model(set));
-        let report = f.success(&moves_args(), "report.json");
-        assert_eq!(
-            root_keys(&f, "report.json"),
-            [
-                "net",
-                "base",
-                "positions",
-                "position_count",
-                "evaluation_perspective",
-                "standard_deviation_ddof",
-                "candidate_only_count",
-                "baseline_only_count",
-                "by_position"
-            ]
-        );
-        assert_eq!(report["candidate_only_count"], 0);
-        assert_eq!(report["baseline_only_count"], 0);
-        for i in 0..2 {
-            let row = &report["by_position"][i];
-            assert_eq!(row["matched_count"], 3);
-            // NNUEは両視点で127 cp、FMは両視点で4 cpなので、それぞれ-254と-8。
-            for (key, expected) in [
-                ("candidate", -254.0),
-                ("baseline", -8.0),
-                ("candidate_minus_baseline", -246.0),
-                ("candidate_minus_baseline_pst", -254.0),
-            ] {
-                assert_eq!(row[key]["count"], 3);
-                assert_close(&row[key]["mean_cp"], expected, 0.0);
-                assert_close(&row[key]["std_cp"], 0.0, 0.0);
-            }
-        }
-        assert_eq!(report["by_position"][2]["matched_count"], 0);
-        for key in [
-            "candidate",
-            "baseline",
-            "candidate_minus_baseline",
-            "candidate_minus_baseline_pst",
+    let f = Fixture::new();
+    let kings = [
+        (0, 0, Color::Black, PieceKind::King),
+        (11, 11, Color::White, PieceKind::King),
+        (2, 2, Color::Black, PieceKind::Pawn),
+        (9, 9, Color::White, PieceKind::Pawn),
+    ];
+    let positions = [
+        common::position(&kings, Color::Black, None),
+        common::position(&kings, Color::White, None),
+        Position::empty(Color::Black),
+    ];
+    f.data("data.mnsd", &positions, 11, &[1; 3], "L1,L2,P0,P3,R1,E1,E3");
+    f.baseline("base.bin", &vec![[0.0; 2]; FEATURE_COUNT], 2);
+    f.network("net.bin", &tempo_model());
+    let report = f.success(&moves_args(), "report.json");
+    assert_eq!(
+        root_keys(&f, "report.json"),
+        [
+            "net",
+            "base",
+            "positions",
+            "position_count",
+            "terminal_count",
+            "evaluation_perspective",
+            "standard_deviation_ddof",
+            "candidate_only_count",
+            "baseline_only_count",
+            "by_position"
+        ]
+    );
+    assert_eq!(report["candidate_only_count"], 0);
+    assert_eq!(report["baseline_only_count"], 0);
+    for i in 0..2 {
+        let row = &report["by_position"][i];
+        assert_eq!(row["matched_count"], 4);
+        // NNUEは両視点で127 cp、FMは両視点で24 cpなので、それぞれ-254と-48。
+        for (key, expected) in [
+            ("candidate", -254.0),
+            ("baseline", -48.0),
+            ("candidate_minus_baseline", -206.0),
+            ("candidate_minus_baseline_pst", -254.0),
         ] {
-            let stats = &report["by_position"][2][key];
-            assert_eq!(stats["count"], 0);
-            for field in ["mean_cp", "std_cp", "mean_absolute_cp", "max_absolute_cp"] {
-                assert!(stats[field].is_null());
-            }
+            assert_eq!(row[key]["count"], 4);
+            assert_close(&row[key]["mean_cp"], expected, 0.0);
+            assert_close(&row[key]["std_cp"], 0.0, 0.0);
         }
-        fn assert_no_probe_keys(value: &Value) {
-            match value {
-                Value::Object(fields) => {
-                    for (key, value) in fields {
-                        assert!(!key.starts_with("probe_"), "unexpected key: {key}");
-                        assert_no_probe_keys(value);
-                    }
-                }
-                Value::Array(values) => values.iter().for_each(assert_no_probe_keys),
-                _ => {}
-            }
-        }
-        assert_no_probe_keys(&report);
     }
+    assert_eq!(report["by_position"][2]["matched_count"], 0);
+    for key in [
+        "candidate",
+        "baseline",
+        "candidate_minus_baseline",
+        "candidate_minus_baseline_pst",
+    ] {
+        let stats = &report["by_position"][2][key];
+        assert_eq!(stats["count"], 0);
+        for field in ["mean_cp", "std_cp", "mean_absolute_cp", "max_absolute_cp"] {
+            assert!(stats[field].is_null());
+        }
+    }
+    fn assert_no_probe_keys(value: &Value) {
+        match value {
+            Value::Object(fields) => {
+                for (key, value) in fields {
+                    assert!(!key.starts_with("probe_"), "unexpected key: {key}");
+                    assert_no_probe_keys(value);
+                }
+            }
+            Value::Array(values) => values.iter().for_each(assert_no_probe_keys),
+            _ => {}
+        }
+    }
+    assert_no_probe_keys(&report);
 }
 
 #[test]
@@ -914,22 +733,28 @@ fn moves_cover_captures_promotions_and_terminal_moves_using_library_games() {
     ];
     f.data("data.mnsd", &positions, 11, &[1; 2], "lishogi");
     f.baseline("base.bin", &pawn_linear(50.0), 2);
-    f.network("net.bin", &tempo_model(InputFeatureSet::P));
+    f.network("net.bin", &tempo_model());
     let report = f.success(&moves_args(), "report.json");
     let mut capture = false;
     let mut promotion = false;
     let mut terminal = false;
+    let mut total_terminal = 0;
     for (i, position) in positions.iter().enumerate() {
         let game = Game::from_position(Rules::LISHOGI, position.clone());
         let mut deltas = Vec::new();
         let mut pst_deltas = Vec::new();
         let before = if i == 0 { 50.0 } else { 0.0 };
+        let mut terminal_count = 0;
         for mv in game.legal_moves() {
             let mut after = game.clone();
             after.play(mv).unwrap();
             capture |= after.position().occupied().popcount() < 3;
             promotion |= mv.promote;
             terminal |= after.result().is_some();
+            if after.result().is_some() {
+                terminal_count += 1;
+                continue;
+            }
             let n = f64::from(after.position().occupied().popcount());
             // 唯一の歩が成るとPSTは50から0へ変わる。FMは3駒で12、n駒で2n(n-1)。
             let placement = if i == 0 && mv.promote { -before } else { 0.0 };
@@ -937,6 +762,8 @@ fn moves_cover_captures_promotions_and_terminal_moves_using_library_games() {
             pst_deltas.push(placement);
         }
         let row = &report["by_position"][i];
+        assert_eq!(row["terminal_count"], terminal_count);
+        total_terminal += terminal_count;
         assert_eq!(row["matched_count"], deltas.len());
         let mean = deltas.iter().sum::<f64>() / deltas.len() as f64;
         let std =
@@ -955,13 +782,14 @@ fn moves_cover_captures_promotions_and_terminal_moves_using_library_games() {
         );
     }
     assert!(capture && promotion && terminal);
+    assert_eq!(report["terminal_count"], total_terminal);
 }
 
 #[test]
 fn moves_reject_nondefault_rules_and_empty_input() {
     let f = Fixture::new();
     f.baseline("base.bin", &vec![[0.0; 2]; FEATURE_COUNT], 0);
-    f.network("net.bin", &tempo_model(InputFeatureSet::P));
+    f.network("net.bin", &tempo_model());
     f.data("data.mnsd", &[Position::initial()], 11, &[1], "JCSA");
     let error = f.diagnose(&moves_args()).unwrap_err();
     assert_eq!(
@@ -1018,69 +846,487 @@ fn json_nested_keys(json: &str, field: &str) -> Vec<String> {
     keys
 }
 
-#[test]
-fn all_heads_support_distribution_moves_and_float_removal_diagnostics() {
-    use minase_trainer::nnue::model::HeadKind;
-    for set in [InputFeatureSet::P, InputFeatureSet::HalfKpHmB8] {
-        for head in HeadKind::ALL {
-            let fixture = Fixture::new();
-            let positions = common::positions();
-            fixture.data("data.mnsd", &positions, 11, &[4; 3], "lishogi");
-            fixture.baseline("base.bin", &pawn_linear(50.0), 0);
-            fixture.data(
-                "distribution.mnsd",
-                &distribution_positions(),
-                22,
-                &[4; 24],
-                "L0,P0,R1,E0",
-            );
-            let mut model = model_with_head(set, &pawn_linear(100.0), 1016.0, head);
-            model.parameter_mut(Parameter::FirstLayer).fill(0.01);
-            model.fix_unobserved();
-            model.parameter_mut(Parameter::Biases).fill(0.3);
-            model.parameter_mut(Parameter::Hidden1Weights).fill(0.01);
-            model.parameter_mut(Parameter::Hidden1Biases).fill(0.2);
-            for (p, value) in [
-                (Parameter::OutputWeights, 0.02),
-                (Parameter::OutputBias, 0.03),
-                (Parameter::Hidden2Output, 0.01),
-                (Parameter::Hidden2Weights, 0.03),
-                (Parameter::Hidden2Biases, 0.2),
-            ] {
-                model.parameter_mut(p).fill(value);
-            }
-            fixture.network("net.bin", &model);
-            fixture.checkpoint(model);
-            let removal = fixture.success(&removal_args("3"), "report.json");
-            assert_eq!(
-                removal["float_batch_vs_recomputed"]["passed"], true,
-                "{set:?} {head:?}"
-            );
-            let distribution = fixture.success(
-                &[
-                    "nnue-distribution",
-                    "--data",
-                    "distribution.mnsd",
-                    "--sample",
-                    "24",
-                    "--seed",
-                    "7",
-                    "--pair",
-                    "candidate",
-                    "base.bin",
-                    "net.bin",
-                    "--output",
-                    "distribution.json",
-                ],
-                "distribution.json",
-            );
-            assert_eq!(distribution["sample_count"], 24);
-            let mut args = moves_args();
-            args[8] = "moves.json";
-            let moves = fixture.success(&args, "moves.json");
-            assert_eq!(moves["position_count"], 3);
-            assert_eq!(moves["candidate_only_count"], 0);
-            assert_eq!(moves["baseline_only_count"], 0);
+// 全特徴の第1層を同じ値にし、後段の全ての枝を手計算できるようにする。
+fn nonlinear_model() -> TestModel {
+    // K_t=1000からm=8、K_o=1016を求める。教師尺度を直接掛ける誤りも検出する。
+    let mut m = model(&vec![[0.0; 2]; FEATURE_COUNT], 1000.0);
+    let w = &mut m.parameters;
+    w[Parameter::FtWeights][..(ROWS - 1) * H].fill(1.0 / 1024.0);
+    w[Parameter::FtBiases].fill(0.125);
+    for row in 0..94 * 72 {
+        if ![11, 21].contains(&(row / 72 % 47)) {
+            w[Parameter::Psqt][row] = if row < 47 * 72 { 0.03125 } else { -0.03125 };
         }
     }
+    w[Parameter::L1Weights][..H].fill(1.0 / 256.0);
+    w[Parameter::L1SharedWeights][..H].fill(1.0 / 512.0);
+    w[Parameter::L1Biases][0] = 0.0625;
+    w[Parameter::L1SharedBiases][0] = 0.0625;
+    w[Parameter::L1Weights][15 * H..15 * H + H / 2].fill(1.0 / 512.0);
+    w[Parameter::L1Biases][15] = 0.0625;
+    w[Parameter::L2Weights][0] = 0.5;
+    w[Parameter::L2Weights][15] = 0.25;
+    w[Parameter::L2Biases][0] = 0.125;
+    w[Parameter::L3Weights][0] = 0.5;
+    w[Parameter::L3Bias][0] = 0.0625;
+    m
+}
+
+// この試験ネットの式を、配列と順伝播の実装から独立したスカラー式で計算する。
+fn nonlinear_output(features: usize) -> f64 {
+    let alpha = 127.0 / 128.0;
+    let a = (0.125 + features as f64 / 1024.0).clamp(0.0, 1.0);
+    let p = alpha * a * a;
+    let y = 0.125 + 1.5 * p;
+    let u =
+        (0.125 + 0.5 * (alpha * y * y).clamp(0.0, 1.0) + 0.25 * y.clamp(0.0, 1.0)).clamp(0.0, 1.0);
+    0.0625 + 0.0625 + 0.25 * p + 0.5 * u
+}
+
+#[test]
+fn removal_matches_layerstack_formula_and_engine_deltas_in_both_views() {
+    use minase::eval::nnue::Network;
+    let f = Fixture::new();
+    let mut positions = Vec::new();
+    for side in Color::ALL {
+        for count in [1, 2, 3, 91, 92, 93] {
+            let mut builder = PositionBuilder::new(side);
+            for i in 0..count {
+                let color = if i % 2 == 0 {
+                    Color::Black
+                } else {
+                    Color::White
+                };
+                let pawn = PieceCode::new(color, PieceKind::Pawn).unwrap();
+                let piece = if i % 4 >= 2 {
+                    pawn.promote().unwrap()
+                } else {
+                    pawn
+                };
+                builder.put(Square::from_dense(i).unwrap(), piece).unwrap();
+            }
+            let mut position = builder.finish().unwrap();
+            // 先獅子は盤上駒と別の入力行として残る。
+            position.set_lion_capture(Square::from_dense(140)).unwrap();
+            positions.push(position);
+        }
+    }
+    f.data("data.mnsd", &positions, 11, &[4; 12], "JCSA");
+    let m = nonlinear_model();
+    let net = Network::decode(&fs::read(f.network("net.bin", &m)).unwrap()).unwrap();
+    f.checkpoint(m);
+    let report = f.success(&removal_args("12"), "report.json");
+    let mut errors = Vec::new();
+    let mut reversals = Vec::new();
+    for position in &positions {
+        let side = position.side_to_move();
+        let count = position.occupied().popcount() as usize;
+        let before = net.evaluate_for(position, side).unwrap();
+        for square in Square::all() {
+            let Some(piece) = position.piece_at(square) else {
+                continue;
+            };
+            let sign = if piece.color() == Some(side) {
+                1.0
+            } else {
+                -1.0
+            };
+            let expected =
+                1016.0 * (nonlinear_output(count) - nonlinear_output(count + 1) - sign * 0.03125);
+            let mut builder = PositionBuilder::new(side);
+            for s in Square::all().filter(|&s| s != square) {
+                if let Some(p) = position.piece_at(s) {
+                    builder.put(s, p).unwrap();
+                }
+            }
+            let mut after = builder.finish().unwrap();
+            after
+                .set_lion_capture(position.lion_capture_square())
+                .unwrap();
+            let delta = net.evaluate_for(&after, side).unwrap() - before;
+            errors.push((f64::from(delta) - expected).abs());
+            if f64::from(delta) * -sign < 0.0 {
+                reversals.push(f64::from(delta).abs());
+            }
+        }
+    }
+    assert_eq!(report["removal_count"], 564);
+    assert_eq!(report["reversals"]["total"], 564);
+    assert_eq!(report["reversals"]["count"], reversals.len());
+    assert_eq!(report["float_batch_vs_recomputed"]["passed"], true);
+    assert_close(
+        &report["float_vs_integer_recomputed"]["mean_absolute_cp"],
+        errors.iter().sum::<f64>() / errors.len() as f64,
+        1e-10,
+    );
+    assert_close(
+        &report["float_vs_integer_recomputed"]["max_absolute_cp"],
+        errors.iter().copied().fold(0.0, f64::max),
+        1e-10,
+    );
+    assert!(report["by_piece_state"].as_object().unwrap().len() >= 2);
+}
+
+#[test]
+fn removal_rejects_scale_mismatch_and_empty_removals_without_report() {
+    let f = Fixture::new();
+    f.data("data.mnsd", &[Position::initial()], 11, &[4], "JCSA");
+    f.checkpoint(model(&pawn_linear(100.0), 679.03));
+    f.network("net.bin", &model(&pawn_linear(100.0), 1016.0));
+    let error = f.diagnose(&removal_args("1")).unwrap_err();
+    assert_eq!(
+        error.to_string(),
+        "NNUE fv_scale mismatch: checkpoint=12, network=8"
+    );
+    assert!(!f.path("report.json").exists());
+    f.checkpoint(model(&pawn_linear(100.0), 1016.0));
+    let mut narrow =
+        layerstack::quantize(&Parameters::zeros(), Scale::new(1016.0).unwrap()).unwrap();
+    narrow.width = 2;
+    narrow.ft_biases = vec![0; 2];
+    narrow.ft_weights = vec![0; FEATURE_COUNT * 2];
+    narrow.l1_weights = vec![0; 16 * 2];
+    let narrow = minase::eval::nnue::LayerStackNetwork::new(narrow).unwrap();
+    fs::write(f.path("net.bin"), narrow.encode()).unwrap();
+    assert_eq!(
+        f.diagnose(&removal_args("1")).unwrap_err().to_string(),
+        "NNUE width mismatch: checkpoint=256, network=2"
+    );
+    assert!(!f.path("report.json").exists());
+    f.network("net.bin", &model(&pawn_linear(100.0), 1016.0));
+    f.data(
+        "data.mnsd",
+        &[common::position(
+            &[(0, 0, Color::Black, PieceKind::King)],
+            Color::Black,
+            None,
+        )],
+        11,
+        &[4],
+        "JCSA",
+    );
+    assert_eq!(
+        f.diagnose(&removal_args("1")).unwrap_err().to_string(),
+        "sample contains no non-royal removals"
+    );
+    assert!(!f.path("report.json").exists());
+}
+
+#[test]
+fn failed_removal_is_saved_before_the_command_returns_exit_code_one() {
+    let f = Fixture::new();
+    let position = common::position(
+        &[
+            (0, 0, Color::Black, PieceKind::Pawn),
+            (1, 0, Color::Black, PieceKind::SilverGeneral),
+        ],
+        Color::Black,
+        None,
+    );
+    f.data("data.mnsd", &[position], 11, &[4], "JCSA");
+    let mut m = nonlinear_model();
+    // 巨大な行を引くと小さな行とバイアスが失われ、局面からの再計算との差が残る。
+    m.parameters[Parameter::FtWeights][29 * 72 * H..(29 * 72 + 1) * H].fill(1e20);
+    f.checkpoint(m);
+    f.network("net.bin", &model(&vec![[0.0; 2]; FEATURE_COUNT], 1016.0));
+    let mut args = removal_args("1");
+    *args.last_mut().unwrap() = "nested/report.json";
+    let output = f.run(&args);
+    assert_eq!(output.status.code(), Some(1));
+    let saved = fs::read(f.path("nested/report.json")).unwrap();
+    let report: Value = serde_json::from_slice(&saved).unwrap();
+    assert_eq!(report["float_batch_vs_recomputed"]["passed"], false);
+    assert!(
+        report["float_batch_vs_recomputed"]["max_absolute_cp"]
+            .as_f64()
+            .unwrap()
+            > 1e-6
+    );
+    assert!(String::from_utf8_lossy(&output.stderr).contains(report["error"].as_str().unwrap()));
+    assert!(f.diagnose(&args).is_err());
+    assert_eq!(fs::read(f.path("nested/report.json")).unwrap(), saved);
+}
+
+#[test]
+fn moves_record_all_terminal_moves_without_delta_statistics() {
+    let f = Fixture::new();
+    let position = common::position(
+        &[
+            (0, 0, Color::Black, PieceKind::King),
+            (11, 11, Color::White, PieceKind::King),
+        ],
+        Color::Black,
+        None,
+    );
+    f.data("data.mnsd", &[position], 11, &[4], "lishogi");
+    f.baseline("base.bin", &pawn_linear(50.0), 0);
+    f.network("net.bin", &tempo_model());
+    let report = f.success(&moves_args(), "report.json");
+    // lishogiの王駒だけの裁定は、これら3手をすべて終局にする。
+    assert_eq!(report["terminal_count"], 3);
+    let row = &report["by_position"][0];
+    assert_eq!(row["terminal_count"], 3);
+    assert_eq!(row["matched_count"], 0);
+    assert_eq!(row["candidate"]["count"], 0);
+    assert!(row["candidate"]["mean_cp"].is_null());
+}
+
+#[test]
+fn removals_after_captures_and_promotions_recompute_mirrored_features() {
+    let f = Fixture::new();
+    let initial = common::position(
+        &[
+            (0, 0, Color::Black, PieceKind::King),
+            (11, 11, Color::White, PieceKind::King),
+            (2, 7, Color::Black, PieceKind::Pawn),
+            (5, 5, Color::Black, PieceKind::Rook),
+            (5, 6, Color::White, PieceKind::SilverGeneral),
+            (9, 9, Color::White, PieceKind::Pawn),
+        ],
+        Color::Black,
+        None,
+    );
+    let game = Game::from_position(Rules::LISHOGI, initial.clone());
+    let mut positions = vec![initial];
+    let (mut captured, mut promoted) = (false, false);
+    for mv in game.legal_moves() {
+        let mut after = game.clone();
+        after.play(mv).unwrap();
+        if after.result().is_some() {
+            continue;
+        }
+        let capture = after.position().occupied().popcount() < 6;
+        if capture || mv.promote {
+            positions.push(after.position().clone());
+            captured |= capture;
+            promoted |= mv.promote;
+        }
+    }
+    assert!(captured && promoted);
+    let scale = Scale::new(679.03).unwrap();
+    let mut parameters = Parameters::initialize(91, scale);
+    parameters[Parameter::FtBiases].fill(0.25);
+    parameters[Parameter::L1Biases].fill(0.25);
+    parameters[Parameter::L2Biases].fill(0.25);
+    let model = TestModel { parameters, scale };
+    f.network("net.bin", &model);
+    f.checkpoint(model);
+    f.data(
+        "data.mnsd",
+        &positions,
+        11,
+        &vec![4; positions.len()],
+        "JCSA",
+    );
+    let count = positions.len().to_string();
+    let report = f.success(&removal_args(&count), "report.json");
+    assert_eq!(report["float_batch_vs_recomputed"]["passed"], true);
+    assert_eq!(
+        report["removal_count"],
+        positions
+            .iter()
+            .map(|p| p.occupied().popcount() - 2)
+            .sum::<u32>()
+    );
+    assert!(
+        report["float_vs_integer_recomputed"]["mean_absolute_cp"]
+            .as_f64()
+            .unwrap()
+            .is_finite()
+    );
+}
+
+#[test]
+fn removal_reference_excludes_deltas_clipped_to_zero() {
+    let f = Fixture::new();
+    let positions: Vec<_> = Color::ALL
+        .into_iter()
+        .map(|side| {
+            let mut builder = PositionBuilder::new(side);
+            for i in 0..13 {
+                builder
+                    .put(
+                        Square::from_dense(i).unwrap(),
+                        PieceCode::new(Color::Black, PieceKind::Lion).unwrap(),
+                    )
+                    .unwrap();
+            }
+            builder.finish().unwrap()
+        })
+        .collect();
+    f.data("data.mnsd", &positions, 11, &[4; 2], "JCSA");
+    let model = nonlinear_model();
+    f.network("net.bin", &model);
+    f.checkpoint(model);
+    let report = f.success(&removal_args("2"), "report.json");
+    // v0の獅子13枚は32,500 cp、除去後も30,000 cpなので、両端が±28,999に切り詰められる。
+    assert_eq!(report["removal_count"], 26);
+    assert_eq!(report["reversals"]["total"], 0);
+    assert!(report["reversals"]["fraction"].is_null());
+    assert_eq!(report["by_piece_state"]["20"]["total"], 0);
+}
+
+fn progress() -> minase_trainer::nnue::train::Progress {
+    minase_trainer::nnue::train::Progress {
+        completed_superbatches: 0,
+        completed_steps: 0,
+        elapsed_seconds: 0.0,
+        config: minase_trainer::nn::checkpoint::Configuration {
+            settings: serde_json::json!({}),
+            inputs: serde_json::json!({}),
+            preprocessing: serde_json::json!({}),
+        },
+    }
+}
+
+fn simple_files(f: &Fixture) {
+    use minase_trainer::nnue::simple as s;
+    let mut parameters = s::Parameters::initialize(7, 16).unwrap();
+    parameters[s::Parameter::FtBiases].fill(0.25);
+    parameters[s::Parameter::L1Biases].fill(0.25);
+    parameters[s::Parameter::L2Biases].fill(0.25);
+    let scale = s::Scale::new(1016.0).unwrap();
+    fs::write(f.path("net.bin"), s::export(&parameters, scale).unwrap()).unwrap();
+    s::Checkpoint {
+        parameters,
+        optimizer: s::AdamW::new(s::OptimizerConfig::default(), 16).unwrap(),
+        settings: s::Settings {
+            width: 16,
+            scale,
+            rules: Rules::JCSA,
+            lambda: 0.75,
+            seed: 7,
+            optimizer: s::OptimizerConfig::default(),
+        },
+        progress: progress(),
+    }
+    .write(f.path("best.npz"))
+    .unwrap();
+}
+#[test]
+fn simple_removal_includes_prince_and_records_last_royal_removal() {
+    let f = Fixture::new();
+    simple_files(&f);
+    let positions = [
+        common::position(
+            &[
+                (0, 0, Color::Black, PieceKind::King),
+                (1, 0, Color::Black, PieceKind::CrownPrince),
+                (11, 11, Color::White, PieceKind::King),
+                (2, 3, Color::Black, PieceKind::Pawn),
+            ],
+            Color::Black,
+            None,
+        ),
+        common::position(
+            &[
+                (1, 0, Color::Black, PieceKind::CrownPrince),
+                (11, 11, Color::White, PieceKind::King),
+                (2, 3, Color::Black, PieceKind::Pawn),
+            ],
+            Color::Black,
+            None,
+        ),
+    ];
+    f.data("data.mnsd", &positions, 11, &[4, 4], "JCSA");
+    let report = f.success(&removal_args("2"), "report.json");
+    assert_eq!(report["removal_count"], 3);
+    assert_eq!(report["terminal_removal_count"], 1);
+    assert!(report["by_piece_state"].get("21").is_some());
+    assert!(report["by_piece_state"].get("11").is_none());
+    assert_eq!(report["float_batch_vs_recomputed"]["passed"], true);
+}
+#[test]
+fn simple_moves_record_capture_of_last_king_without_static_evaluation() {
+    let f = Fixture::new();
+    simple_files(&f);
+    let position = common::position(
+        &[
+            (0, 0, Color::Black, PieceKind::King),
+            (11, 11, Color::White, PieceKind::King),
+            (11, 8, Color::Black, PieceKind::Rook),
+        ],
+        Color::Black,
+        None,
+    );
+    f.data(
+        "data.mnsd",
+        std::slice::from_ref(&position),
+        11,
+        &[4],
+        "lishogi",
+    );
+    f.baseline("base.bin", &pawn_linear(50.0), 0);
+    let game = Game::from_position(Rules::LISHOGI, position);
+    let terminal = game
+        .legal_moves()
+        .iter()
+        .filter(|&&mv| {
+            let mut after = game.clone();
+            after.play(mv).unwrap();
+            after.result().is_some()
+        })
+        .count();
+    assert!(terminal > 0);
+    let report = f.success(&moves_args(), "report.json");
+    assert_eq!(report["terminal_count"], terminal);
+    assert!(report["by_position"][0]["matched_count"].as_u64().unwrap() > 0);
+}
+
+#[test]
+fn simple_distribution_uses_integer_evaluation_in_all_intervals() {
+    use minase_trainer::nnue::simple as s;
+    let f = Fixture::new();
+    let positions = distribution_positions();
+    f.data(
+        "data.mnsd",
+        &positions,
+        11,
+        &vec![4; positions.len()],
+        "JCSA",
+    );
+    f.baseline("base.bin", &pawn_linear(50.0), 0);
+    let mut w = s::Parameters::zeros(16).unwrap();
+    // Relative own pawns have compressed state 28. Only the first component and
+    // the us half reach the output: FT=4 per pawn, dense weights=64, m=8.
+    for row in 28 * 144..29 * 144 {
+        w[s::Parameter::FtVirtual][row * 16] = 1.0 / 32.0;
+    }
+    for p in [
+        s::Parameter::L1Weights,
+        s::Parameter::L2Weights,
+        s::Parameter::L3Weights,
+    ] {
+        w[p][0] = 1.0;
+    }
+    fs::write(
+        f.path("net.bin"),
+        s::export(&w, s::Scale::new(1016.0).unwrap()).unwrap(),
+    )
+    .unwrap();
+    let report = f.success(
+        &[
+            "nnue-distribution",
+            "--data",
+            "data.mnsd",
+            "--sample",
+            "24",
+            "--seed",
+            "7",
+            "--pair",
+            "simple",
+            "base.bin",
+            "net.bin",
+            "--output",
+            "report.json",
+        ],
+        "report.json",
+    );
+    assert_eq!(report["sample_count"], 24);
+    assert_close(
+        &report["pairs"][0]["candidate_statistics"]["mean_cp"],
+        240.0,
+        1e-12,
+    );
+    assert_close(&report["pairs"][0]["regression_slope"], 0.64, 1e-12);
 }

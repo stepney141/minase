@@ -4,8 +4,6 @@ use std::cell::{Cell, RefCell};
 use std::ops::AddAssign;
 use std::sync::{Arc, Mutex};
 
-use super::{Network, feature_set::FeatureSet, head::Head};
-
 /// 両視点を1組とした累算器の更新回数。整合性検査の再計算は含めない。
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct AccumulatorStats {
@@ -79,27 +77,17 @@ pub(super) fn record(refresh: bool) {
     });
 }
 
-impl<F: FeatureSet, H: Head> Network<F, H> {
-    /// 終了済みの探索スレッドと呼び出し元スレッドの計数を回収し、0に戻す。
-    ///
-    /// 全探索ワーカーをjoinした後に呼ぶ。各スレッドは根を作ったネットへ計数を送る。
-    ///
-    /// # Panics
-    ///
-    /// 計数の回収中に別スレッドがパニックし、Mutexがpoisonedになった場合にパニックする。
-    pub fn take_accumulator_stats(&self) -> AccumulatorStats {
-        DESTINATION.with_borrow(|current| {
-            if let Some(current) = current
-                && Arc::ptr_eq(&current.0, &self.accumulator_stats)
-            {
-                current.collect();
-            }
-        });
-        std::mem::take(
-            &mut *self
-                .accumulator_stats
-                .lock()
-                .expect("accumulator statistics mutex poisoned"),
-        )
-    }
+pub(super) fn take(destination: &SharedStats) -> AccumulatorStats {
+    DESTINATION.with_borrow(|current| {
+        if let Some(current) = current
+            && Arc::ptr_eq(&current.0, destination)
+        {
+            current.collect();
+        }
+    });
+    std::mem::take(
+        &mut *destination
+            .lock()
+            .expect("accumulator statistics mutex poisoned"),
+    )
 }

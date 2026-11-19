@@ -653,7 +653,7 @@ fn quantization_failure_keeps_both_exports_and_records_failure() {
     checkpoint.model =
         Model::from_weights(&v, [0.5; FM_RANK], mask, checkpoint.model.cp_per_logit()).unwrap();
     for name in ["latest.npz", "best.npz"] {
-        fs::write(args.output_dir.join(name), checkpoint.encode().unwrap()).unwrap();
+        checkpoint.write(args.output_dir.join(name)).unwrap();
     }
     args.resume = Some(args.output_dir.clone());
     assert_eq!(
@@ -683,7 +683,12 @@ fn checkpoint_rejects_corruption_and_output_directory_must_be_empty() {
     args.epochs = 1;
     fm::train(args.clone()).unwrap();
     let bytes = fs::read(args.output_dir.join("latest.npz")).unwrap();
-    assert_eq!(bytes, Checkpoint::decode(&bytes).unwrap().encode().unwrap());
+    let mut encoded = Vec::new();
+    Checkpoint::decode(&bytes)
+        .unwrap()
+        .encode(&mut encoded)
+        .unwrap();
+    assert_eq!(bytes, encoded);
     for index in [0, 8, 14, bytes.len() / 2, bytes.len() - 1] {
         let mut changed = bytes.clone();
         changed[index] ^= 1;

@@ -8,7 +8,8 @@
 use core::cmp::Reverse;
 use std::cell::OnceCell;
 
-use crate::eval::{Nnue, PIECE_STATE_COUNT, piece_state_of};
+use crate::eval::nnue::Network;
+use crate::eval::{PIECE_STATE_COUNT, piece_state_of};
 use minase_core::MoveGenerator;
 use minase_core::board::{BOARD_SQUARE_COUNT, Bitboard, Square};
 use minase_core::mv::Move;
@@ -185,7 +186,6 @@ impl DirectCheckSquares {
 pub(super) fn qualifies_for_check_bonus(
     position: &Position,
     generator: &MoveGenerator,
-    nnue: &Nnue,
     direct_checks: &mut DirectCheckSquares,
     moving_kind: PieceKind,
     mv: Move,
@@ -201,9 +201,8 @@ pub(super) fn qualifies_for_check_bonus(
         && !see_prunes(
             position,
             generator.rules(),
-            nnue,
             mv,
-            -i32::try_from(i64::from(nnue.pawn_value()) * 75 / 208)
+            -i32::try_from(i64::from(crate::eval::piece_values::pawn_value()) * 75 / 208)
                 .expect("ordering check SEE margin must fit i32"),
         )
 }
@@ -521,7 +520,7 @@ impl Searcher<'_> {
         let killers = self.killers[ply as usize];
         let color = position.side_to_move().index();
         moves.sort_by_cached_key(|&mv| {
-            if let Some(key) = move_order_key(position, self.nnue, mv) {
+            if let Some(key) = move_order_key(position, mv) {
                 OrderedMoveKey::Capture {
                     captured_value: Reverse(key.captured_value),
                     attacker_value: key.attacker_value,
@@ -681,7 +680,7 @@ impl Searcher<'_> {
         let updates = eval_difference_history_updates(
             self.static_evals[previous_ply as usize],
             static_eval,
-            self.nnue.pawn_value(),
+            crate::eval::piece_values::pawn_value(),
             params::history_eval_diff(),
         );
         self.update_butterfly(previous, updates.butterfly);
@@ -743,7 +742,7 @@ impl Searcher<'_> {
                 previous_static_eval: self.static_evals[previous_ply as usize],
                 previous_stat_score: self.stat_scores[previous_ply as usize],
                 previous_move_count: self.move_counts[previous_ply as usize],
-                pawn_value: self.nnue.pawn_value(),
+                pawn_value: crate::eval::piece_values::pawn_value(),
             },
             params::history_prior_bonus(),
         );
@@ -790,9 +789,9 @@ impl Searcher<'_> {
     ) -> i32 {
         if capture {
             capture_stat_score(
-                captured_value(position, self.nnue, mv),
-                self.nnue.pawn_value(),
-                self.capture_history.read(position, self.nnue, mv),
+                captured_value(position, mv),
+                crate::eval::piece_values::pawn_value(),
+                self.capture_history.read(position, mv),
             )
         } else {
             let piece = piece_at_for_ordering(position, mv.from);
@@ -823,7 +822,7 @@ impl Searcher<'_> {
         let ply = u32::try_from(self.path_moves.len()).expect("search ply must fit u32");
         if best_capture {
             self.capture_history
-                .update(position, self.nnue, best, updates.capture_bonus());
+                .update(position, best, updates.capture_bonus());
         } else {
             self.update_quiet_histories(
                 ply,
@@ -845,8 +844,7 @@ impl Searcher<'_> {
 
         let capture_malus = updates.capture_malus();
         for &mv in searched_captures {
-            self.capture_history
-                .update(position, self.nnue, mv, -capture_malus);
+            self.capture_history.update(position, mv, -capture_malus);
         }
     }
 }
@@ -918,18 +916,17 @@ struct QuietPiece<'a> {
 impl<'a> QuietPiece<'a> {
     fn new(
         position: &Position,
-        nnue: &Nnue,
         context: MovePickerContext<'a>,
         threats: &LesserPieceThreats,
         from: Square,
     ) -> Self {
         let piece = piece_at_for_ordering(position, from);
-        let value = nnue.piece_value(piece);
+        let value = crate::eval::piece_values::piece_value(piece);
         let kind = piece.kind().expect("quiet ordering mover kind");
         Self {
             piece,
             threat_value: i64::from(value) * i64::from(context.coefficients.threat_weight)
-                / i64::from(nnue.pawn_value()),
+                / i64::from(crate::eval::piece_values::pawn_value()),
             kind,
             continuation_kind_offset: kind.index() * BOARD_SQUARE_COUNT,
             butterfly: &context.history[piece.color().expect("quiet ordering mover color").index()]
@@ -943,7 +940,6 @@ impl<'a> QuietPiece<'a> {
 #[allow(clippy::too_many_arguments)]
 fn quiet_move_ordering_value(
     position: &Position,
-    nnue: &Nnue,
     generator: &MoveGenerator,
     context: MovePickerContext<'_>,
     continuation_offsets: &[Option<usize>; CONTINUATION_WEIGHTS.len()],
@@ -972,14 +968,7 @@ fn quiet_move_ordering_value(
             ply: context.ply,
             from: mv.from,
             to: mv.to,
-            check: qualifies_for_check_bonus(
-                position,
-                generator,
-                nnue,
-                direct_checks,
-                piece.kind,
-                mv,
-            ),
+            check: qualifies_for_check_bonus(position, generator, direct_checks, piece.kind, mv),
             threat_value: piece.threat_value,
             threat_delta: lesser_threat_delta(piece.kind, piece.threats, mv),
         },
@@ -1008,8 +997,9 @@ pub(super) struct MovePicker {
     skip_quiets: bool,
     skipped_quiets: usize,
     base_moves: Vec<Move>,
-    /// 静かな手の並べ替え値の降順、線形経路の移動差分の降順、生成順の整列キー。
-    /// 差分は[`Nnue::quiet_move_pst_delta`]で求め、成る手は到達升を成り後の駒で引く。
+    /// 静かな手の並べ替え値の降順、PSQT差分の降順、生成順の整列キー。
+    /// SimpleのPSQT差分は0なので、同点なら生成順を保つ。
+    /// 差分は[`Network::quiet_move_delta`]で求め、成る手は到達升を成り後の駒で引く。
     /// 同点破りの理由は`docs/adr/order-quiets-by-the-stockfish-history-sum-and-update-histories-in-stockfish-form.md`にある。
     quiet_order: Vec<(Reverse<i64>, Reverse<i64>, usize)>,
     used_quiets: [Option<Move>; KILLER_COUNT],
@@ -1088,7 +1078,7 @@ impl MovePicker {
     pub(super) fn next(
         &mut self,
         position: &Position,
-        nnue: &Nnue,
+        nnue: &Network,
         generator: &MoveGenerator,
         context: MovePickerContext<'_>,
         tt_capture: &OnceCell<Option<bool>>,
@@ -1106,7 +1096,7 @@ impl MovePicker {
                                     &mut self.base_moves,
                                     &mut self.quiets,
                                 )
-                                .then(|| move_order_key(position, nnue, tt_move).is_some())
+                                .then(|| move_order_key(position, tt_move).is_some())
                         })
                     {
                         return Some((tt_move, capture));
@@ -1125,7 +1115,7 @@ impl MovePicker {
                                 .drain(..)
                                 .filter(|&mv| Some(mv) != self.tt_move)
                                 .map(|mv| {
-                                    let info = CaptureInfo::new(position, nnue, mv);
+                                    let info = CaptureInfo::new(position, mv);
                                     let history = context.capture_history.read_parts(
                                         info.mover,
                                         mv.to,
@@ -1133,8 +1123,10 @@ impl MovePicker {
                                     );
                                     let key = MoveOrderKey {
                                         captured_value: info.value
-                                            + CaptureHistory::adjustment(nnue, history),
-                                        attacker_value: nnue.piece_value(info.mover),
+                                            + CaptureHistory::adjustment(history),
+                                        attacker_value: crate::eval::piece_values::piece_value(
+                                            info.mover,
+                                        ),
                                     };
                                     (mv, key)
                                 }),
@@ -1147,7 +1139,7 @@ impl MovePicker {
                         if self.killers_before_losing_capture
                             && let Some(&(mv, _)) = self.captures.first()
                             && !captures_last_royal(position, mv)
-                            && see_prunes(position, generator.rules(), nnue, mv, 0)
+                            && see_prunes(position, generator.rules(), mv, 0)
                         {
                             self.stage = MovePickerStage::EarlyKiller0;
                             continue;
@@ -1216,8 +1208,7 @@ impl MovePicker {
                     let mut direct_checks = DirectCheckSquares::new(position);
                     let mut offset = 0;
                     for moves in self.quiets.chunk_by(|a, b| a.from == b.from) {
-                        let piece =
-                            QuietPiece::new(position, nnue, context, &threats, moves[0].from);
+                        let piece = QuietPiece::new(position, context, &threats, moves[0].from);
                         for (local_index, &mv) in moves.iter().enumerate() {
                             let index = offset + local_index;
                             if self.used_quiets.contains(&Some(mv)) {
@@ -1226,7 +1217,6 @@ impl MovePicker {
                             self.quiet_order.push((
                                 Reverse(quiet_move_ordering_value(
                                     position,
-                                    nnue,
                                     generator,
                                     context,
                                     &continuation_offsets,
@@ -1234,7 +1224,7 @@ impl MovePicker {
                                     &mut direct_checks,
                                     mv,
                                 )),
-                                Reverse(nnue.quiet_move_pst_delta(position, mv)),
+                                Reverse(nnue.quiet_move_delta(position, mv)),
                                 index,
                             ));
                         }
@@ -1311,13 +1301,13 @@ pub(super) struct CaptureInfo {
 
 impl CaptureInfo {
     /// 合法な捕獲手の情報を返す。2枚取りの同値では、従来どおり到達升の駒種を選ぶ。
-    pub(super) fn new(position: &Position, nnue: &Nnue, mv: Move) -> Self {
+    pub(super) fn new(position: &Position, mv: Move) -> Self {
         let captured = position.captured_squares(mv);
         let mut value = 0;
         let mut victim = None;
         for square in captured.into_iter().flatten() {
             let piece = piece_at_for_ordering(position, square);
-            let piece_value = nnue.piece_value(piece);
+            let piece_value = crate::eval::piece_values::piece_value(piece);
             value += piece_value;
             if victim.is_none_or(|(_, highest)| piece_value >= highest) {
                 victim = Some((
@@ -1337,24 +1327,28 @@ impl CaptureInfo {
 
 /// 捕獲手なら駒価値だけの整列キーを返し、非捕獲手なら`None`を返す。
 ///
-/// 捕獲価値の合計が正であることを判定に使うので、この同値は[`Nnue::piece_value`]の正値性に依存する。
+/// 捕獲価値の合計が正であることを判定に使うので、この同値は[`crate::eval::piece_values::piece_value`]の正値性に依存する。
 /// [`MovePicker::next`]が捕獲手かどうかを分類するためにこの関数を使うのは置換表の記録手だけである。
 /// 捕獲段では捕獲専用生成が分類を保証し、この関数は整列キーの取得に使う。
-pub(super) fn move_order_key(position: &Position, nnue: &Nnue, mv: Move) -> Option<MoveOrderKey> {
-    let captured_value = captured_value(position, nnue, mv);
+pub(super) fn move_order_key(position: &Position, mv: Move) -> Option<MoveOrderKey> {
+    let captured_value = captured_value(position, mv);
     (captured_value > 0).then(|| MoveOrderKey {
         captured_value,
-        attacker_value: nnue.piece_value(piece_at_for_ordering(position, mv.from)),
+        attacker_value: crate::eval::piece_values::piece_value(piece_at_for_ordering(
+            position, mv.from,
+        )),
     })
 }
 
 /// 2枚取りを含む、手が取る駒の価値の合計を返す。
-fn captured_value(position: &Position, nnue: &Nnue, mv: Move) -> i32 {
+fn captured_value(position: &Position, mv: Move) -> i32 {
     position
         .captured_squares(mv)
         .into_iter()
         .flatten()
-        .map(|square| nnue.piece_value(piece_at_for_ordering(position, square)))
+        .map(|square| {
+            crate::eval::piece_values::piece_value(piece_at_for_ordering(position, square))
+        })
         .sum()
 }
 

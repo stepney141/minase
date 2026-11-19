@@ -2,8 +2,8 @@ use super::{Error, Result};
 use crate::{
     data::Lookahead,
     nnue::{
-        data::{InputFeatureSet, MAX_BATCH_SIZE},
-        model::Shape,
+        data::MAX_BATCH_SIZE,
+        layerstack::Scale,
         options::{DeviceKind, TrainingOptions},
         schedule::LrSchedule,
     },
@@ -34,15 +34,6 @@ pub struct Args {
     /// 更新ごとに学習率へ掛ける倍率。`constant:<c>`、`exponential:<半減期superbatch>:<下限>`、`cosine:<総長superbatch>:<下限>`。
     #[arg(long, value_parser = clap::value_parser!(LrSchedule))]
     pub lr_schedule: LrSchedule,
-    /// 入力の特徴集合を指定する。
-    #[arg(long, value_enum)]
-    pub feature_set: InputFeatureSet,
-    /// 出力部を指定する。学習の再開時にも一致を要求する。
-    #[arg(long, value_enum, default_value = "pairwise-l16-l32")]
-    pub head: crate::nnue::model::HeadKind,
-    /// 第1層の幅を4以上512以下の4の倍数で指定する。
-    #[arg(long)]
-    pub width: usize,
     /// MNSDファイルを、全体のレコード順に指定する。
     #[arg(long, required = true, num_args = 1..)]
     pub data: Vec<PathBuf>,
@@ -51,12 +42,12 @@ pub struct Args {
     #[arg(long, value_name = "SPEC")]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub train_subsample: Option<crate::data::TrainSubsample>,
-    /// 教師の勝率尺度をcalibrateで推定するか、較正JSONのパスで指定する。省略時はbaseの尺度を使う。
-    #[arg(long, value_name = "calibrate|FILE")]
-    pub teacher_cp_per_logit: Option<crate::data::TeacherCpPerLogitSource>,
-    /// 線形初期値に使う探索用駒価値、勝率尺度（1ロジットあたりのcp）、規則セット名を持つMNUEファイルを指定する。
+    /// 教師の勝率尺度を正の有限なcp/ロジットで指定する。
     #[arg(long)]
-    pub base: PathBuf,
+    pub teacher_cp_per_logit: f64,
+    /// 全教師のヘッダと照合する規則セット名または規則コード列。
+    #[arg(long)]
+    pub rules: String,
     /// 設定、ログ、チェックポイント、学習済みネットワークの保存先を指定する。
     #[arg(long)]
     pub output_dir: PathBuf,
@@ -78,6 +69,10 @@ pub struct Args {
     /// 全検証集合を評価するsuperbatchの間隔を1以上で指定する。学習の最後にも評価する。
     #[arg(long)]
     pub validation_superbatches: NonZeroU64,
+    /// 検証損失が連続して改善しない検証回数。指定すると最小損失の重みを書き出す。
+    #[arg(long)]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub validation_patience: Option<NonZeroU64>,
     /// 初期化、順列作成、検証標本抽出の乱数シードを指定する。
     #[arg(long, default_value_t = 1)]
     pub seed: u64,
@@ -87,7 +82,7 @@ pub struct Args {
     /// 量子化誤差の検査に使う検証局面数の上限を指定する。
     #[arg(long, default_value_t = 10_000)]
     pub validation_sample: usize,
-    /// バッチ供給とCPU更新のスレッド数を指定する。省略時は物理コア数から2を引き、最小値を1とする。
+    /// バッチ供給のスレッド数を指定する。省略時は物理コア数から2を引き、最小値を1とする。
     #[arg(long)]
     pub threads: Option<usize>,
     /// 指定ディレクトリの最新チェックポイントから再開する。--output-dirと同じ場所を指定する。
@@ -123,7 +118,8 @@ impl Args {
         }
         self.training.validate()?;
         self.lr_schedule.validate()?;
-        Shape::new(self.feature_set, self.width, 1.0, self.head)?;
+        Scale::new(self.teacher_cp_per_logit)?;
+        self.parsed_rules()?;
         if self.data.is_empty() {
             return Err(Error::Invalid("--data requires at least one file").into());
         }
@@ -133,6 +129,17 @@ impl Args {
             );
         }
         self.planned_steps()?;
+        if self.validation_patience.is_some()
+            && !self
+                .superbatches
+                .get()
+                .is_multiple_of(self.validation_superbatches.get())
+        {
+            return Err(Error::Invalid(
+                "with validation patience the budget must end on a validation interval",
+            )
+            .into());
+        }
         if self.validation_sample == 0 || self.threads == Some(0) {
             return Err(
                 Error::Invalid("--validation-sample and --threads must be positive").into(),
@@ -145,6 +152,12 @@ impl Args {
         }
         self.lookahead()?;
         Ok(())
+    }
+
+    /// 名前とコード列を同じ規則の値へ正規化する。
+    pub fn parsed_rules(&self) -> Result<minase_core::rules::Rules> {
+        let codes = minase_core::rules::parse_rule_set(&self.rules)?;
+        Ok(minase_core::rules::Rules::from_codes(&codes)?)
     }
 
     /// 更新予算の積を、桁あふれを拒否して求める。

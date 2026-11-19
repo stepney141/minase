@@ -92,16 +92,13 @@ fn teacher_commands_require_lambda_and_cli_rejects_missing_or_invalid_values() {
         &[
             "nnue",
             "train",
-            "--feature-set",
-            "P",
-            "--width",
-            "8",
+            "layerstack",
+            "--rules",
+            "JCSA",
             "--data",
             "missing.mnsd",
-            "--base",
-            "missing.bin",
             "--teacher-cp-per-logit",
-            "calibrate",
+            "1072.65",
             "--output-dir",
             "unused",
             "--superbatches",
@@ -114,14 +111,15 @@ fn teacher_commands_require_lambda_and_cli_rejects_missing_or_invalid_values() {
         &[
             "nnue",
             "bench-step",
-            "--feature-set",
-            "P",
-            "--width",
-            "8",
+            "layerstack",
             "--batch",
             "2",
             "--steps",
             "2",
+            "--seed",
+            "1",
+            "--teacher-cp-per-logit",
+            "1072.65",
             "--data",
             "missing.mnsd",
         ],
@@ -145,8 +143,8 @@ fn teacher_commands_require_lambda_and_cli_rejects_missing_or_invalid_values() {
     requires_lambda::<pst::Args>(&commands[0][2..]);
     requires_lambda::<fm::Args>(&commands[1][2..]);
     requires_lambda::<joint::Args>(&commands[2][2..]);
-    requires_lambda::<nnue::train::Args>(&commands[3][2..]);
-    requires_lambda::<nnue::gpu::bench::Args>(&commands[4][2..]);
+    requires_lambda::<nnue::train::Args>(&commands[3][3..]);
+    requires_lambda::<nnue::layerstack::commands::BenchArgs>(&commands[4][3..]);
     // check-equivalenceはmain.rs内の引数型にTrainingOptionsを平坦化する。
     requires_lambda::<nnue::options::TrainingOptions>(&[]);
     requires_lambda::<diagnostics::PstCompareArgs>(&commands[5][2..]);

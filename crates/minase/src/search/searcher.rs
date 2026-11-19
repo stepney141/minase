@@ -231,6 +231,8 @@ impl std::error::Error for PrepareError {
 /// 探索スレッドを開始する前の準備に失敗した理由。
 #[derive(Clone, Debug)]
 pub enum StartError {
+    /// ネットが探索の根の王駒構成に対応しない。
+    UnsupportedRoot(crate::eval::nnue::input::AnchorError),
     /// ネットが準備されていない。
     NotPrepared,
     /// MCTSの入力または設定が不正。
@@ -242,6 +244,7 @@ pub enum StartError {
 impl fmt::Display for StartError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            Self::UnsupportedRoot(error) => error.fmt(formatter),
             Self::NotPrepared => formatter.write_str("go requires isready"),
             Self::Mcts(error) => error.fmt(formatter),
             Self::TranspositionTable(error) => error.fmt(formatter),
@@ -252,6 +255,7 @@ impl fmt::Display for StartError {
 impl std::error::Error for StartError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
+            Self::UnsupportedRoot(error) => Some(error),
             Self::NotPrepared => None,
             Self::Mcts(error) => Some(error),
             Self::TranspositionTable(error) => Some(error),
@@ -366,7 +370,7 @@ impl Searcher {
     }
 
     /// 診断用に準備済みのNNUEを借りる。未準備またはMCTSなら`None`。
-    pub fn nnue(&self) -> Option<&std::sync::Arc<crate::eval::Nnue>> {
+    pub fn network(&self) -> Option<&std::sync::Arc<crate::eval::nnue::Network>> {
         match self {
             Self::AlphaBeta(engine) => engine.network.as_ref().map(|file| file.network()),
             Self::Mcts(_) => None,
@@ -415,7 +419,7 @@ impl Searcher {
     /// MCTSの推論が失敗した場合も`Finished`を送らず、`join`が元の`NnError`を返す。
     ///
     /// # Errors
-    /// αβ探索はネットの準備済み状態、置換表の確保の順に検査する。
+    /// αβ探索はネットの準備済み状態、根の王駒構成、置換表の確保の順に検査する。
     /// MCTSは推論器、深さ制限、および設定を検査する。
     /// 失敗した場合は探索を始めず、探索器と原因を返す。
     #[allow(clippy::result_large_err)] // 再試行に必要な探索状態を所有権ごと返す。

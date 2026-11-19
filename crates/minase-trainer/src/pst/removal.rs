@@ -6,25 +6,16 @@ use super::{
 };
 use crate::error::ContractError;
 use minase::eval::{
-    features::{FEATURE_COUNT, PIECE_STATE_COUNT, mirror_feature, piece_state},
-    handcrafted,
+    features::{FEATURE_COUNT, PIECE_STATE_COUNT, mirror_feature},
+    piece_values::piece_value_of_state,
 };
-use minase_core::{Color, PieceCode, PieceKind};
 
 const PHASE_DIVISOR: i64 = 90;
 const EVALUATION_LIMIT: i64 = 28_999;
 
-/// v0の駒価値を[`handcrafted::piece_value`]から取り、駒状態ごとに並べる。
+/// エンジンと共有するv0の駒価値を駒状態順に返す。
 pub fn v0_piece_values() -> [i32; PIECE_STATE_COUNT] {
-    let mut values = [0; PIECE_STATE_COUNT];
-    for kind in PieceKind::ALL {
-        let value = handcrafted::piece_value(kind);
-        values[kind.index()] = value;
-        if let Some(piece) = PieceCode::new(Color::Black, kind) {
-            values[piece_state(piece)] = value;
-        }
-    }
-    values
+    std::array::from_fn(piece_value_of_state)
 }
 
 /// 鏡映共有の整数PST。1/8センチポーンの2端点を正準行で保持する。
@@ -95,5 +86,29 @@ impl RemovalReference {
             magnitude[col] = ((after - before) as f64 / (PHASE_DIVISOR * 8) as f64).abs();
         }
         Ok((deltas, magnitude))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use minase::eval::{features::piece_state, handcrafted};
+    use minase_core::{Color, PieceCode, PieceKind};
+
+    #[test]
+    fn shared_piece_values_preserve_all_pst_reference_states() {
+        // PSTのv0参照の契約は、現在の駒種の駒割を全47状態へ並べた表である。
+        let values = v0_piece_values();
+        for color in Color::ALL {
+            for kind in PieceKind::ALL {
+                assert_eq!(values[kind.index()], handcrafted::piece_value(kind));
+                if let Some(piece) = PieceCode::new(color, kind) {
+                    for p in std::iter::once(piece).chain(piece.promote()) {
+                        let state = piece_state(p);
+                        assert_eq!(values[state], handcrafted::piece_value(p.kind().unwrap()));
+                    }
+                }
+            }
+        }
     }
 }

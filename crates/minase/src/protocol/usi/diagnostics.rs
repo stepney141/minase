@@ -320,7 +320,7 @@ impl UsiProtocol {
             Ok(arguments) => arguments,
             Err(error) => return write_error(output, &error.to_string()),
         };
-        let Some(network) = self.searcher.as_ref().and_then(Searcher::nnue) else {
+        let Some(network) = self.searcher.as_ref().and_then(Searcher::network) else {
             return write_error(output, "bench requires isready");
         };
         #[cfg(feature = "tuning")]

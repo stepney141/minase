@@ -2,7 +2,7 @@
 
 ## ステータス
 
-置き換え済み。決定日は2026年10月16日。[勝率尺度を重みファイルの1定数とし、NNUEの教師の探索値も既定ではその尺度で勝率へ換算する](../convert-nnue-teacher-values-with-the-network-win-rate-scale-by-default.md)によって置き換えられた。[学習する評価関数の出力Kを初期値の重みファイルの値に固定し、データから推定し直さない](fix-the-output-k-of-trained-weights.md)を置き換える。
+置き換え済み。決定日は2026年10月16日。[勝率尺度を重みファイルの1定数とし、NNUEの教師の探索値も既定ではその尺度で勝率へ換算する](convert-nnue-teacher-values-with-the-network-win-rate-scale-by-default.md)によって置き換えられた。[学習する評価関数の出力Kを初期値の重みファイルの値に固定し、データから推定し直さない](fix-the-output-k-of-trained-weights.md)を置き換える。
 
 ## コンテキスト
 

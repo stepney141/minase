@@ -12,7 +12,7 @@ Stockfishの測定基盤fishtestは、テストを2つのgitリビジョンで�
 [対局ハーネスのバイナリ対戦化](../plans/archived/match-harness.md)はこの構造をminaseへ移し、[以前の決定](archive/compare-commits-as-separate-engine-processes.md)は測定の対象をコミットで固定した。
 
 当時のαβ探索は、NNUEのネットを実行ファイルに埋め込んでいたので、コミットがコードとネットの両方を決めていた。
-その後、ネットは埋め込まず、オプション`EvalFile`で外部のファイルから読むようになり（[外部ファイル化のADR](use-an-nnue-read-from-evalfile-as-the-only-search-evaluation.md)）、コミットはネットを決めなくなった。
+その後、ネットは埋め込まず、オプション`EvalFile`で外部のファイルから読むようになり（[外部ファイル化のADR](archive/use-an-nnue-read-from-evalfile-as-the-only-search-evaluation.md)）、コミットはネットを決めなくなった。
 エンジンは読み込んだネットのファイル全体のSHA-256を`isready`で報告し、ハーネスはそれを実行条件に記録して照合する（[チェックサムの記録のADR](record-and-verify-the-network-checksum-reported-by-match-and-spsa-engines.md)）。
 この改訂は[NNUEの外部ファイル化の設計書](../plans/archived/nnue-external-network-file.md)で下した。
 

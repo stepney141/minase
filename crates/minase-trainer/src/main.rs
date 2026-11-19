@@ -55,34 +55,32 @@ enum PstCommand {
 
 #[derive(Subcommand)]
 enum NnueCommand {
-    /// 手書き評価v0を線形の経路だけで表したMNUEへ書き出す。
+    /// 手書き評価v0をPSQTで表したtatara形式のLayerStackへ書き出す。
     ExportHandcrafted(minase_trainer::nnue::handcrafted::Args),
-    /// 自己対局の結果への回帰で、線形の経路の序中盤の列を補正する。
-    FitLinear(minase_trainer::nnue::fit_linear::Args),
-    /// CUDAまたはCPUで指定したsuperbatch数を学習し、最後の重みを書き出す。
-    Train(Box<minase_trainer::nnue::train::Args>),
-    /// GPUの前進計算、全勾配、更新、検証をCPU参照と照合する。
-    CheckEquivalence {
-        #[command(flatten)]
-        training: minase_trainer::nnue::options::TrainingOptions,
-        /// 入力の特徴集合を指定する。
-        #[arg(long, value_enum)]
-        feature_set: minase_trainer::nnue::data::InputFeatureSet,
-        /// CUDAで検査する出力部pairwise-l16-l32を指定する。
-        #[arg(long, value_enum, default_value = "pairwise-l16-l32")]
-        head: minase_trainer::nnue::model::HeadKind,
-        /// 第1層の幅を4以上512以下の4の倍数で指定する。
-        #[arg(long)]
-        width: usize,
-        /// バッチの局面数を指定する。
-        #[arg(long)]
-        batch: usize,
-        /// モデルの初期化と合成入力の生成に使う乱数シードを指定する。
-        #[arg(long)]
-        seed: u64,
-    },
-    /// 指定デバイスで更新と供給の時間を測り、CUDAでは転送とメモリも測る。
-    BenchStep(minase_trainer::nnue::gpu::bench::Args),
+    /// 構造を選んで学習する。
+    #[command(subcommand)]
+    Train(TrainCommand),
+    /// CPUとCUDAの計算を照合する。
+    #[command(subcommand)]
+    CheckEquivalence(CheckCommand),
+    /// 更新の時間を計測する。
+    #[command(subcommand)]
+    BenchStep(BenchCommand),
+}
+#[derive(Subcommand)]
+enum TrainCommand {
+    Layerstack(Box<minase_trainer::nnue::train::Args>),
+    Simple(Box<minase_trainer::nnue::train::Args>),
+}
+#[derive(Subcommand)]
+enum CheckCommand {
+    Layerstack(minase_trainer::nnue::layerstack::commands::CheckArgs),
+    Simple(minase_trainer::nnue::simple::commands::CheckArgs),
+}
+#[derive(Subcommand)]
+enum BenchCommand {
+    Layerstack(minase_trainer::nnue::layerstack::commands::BenchArgs),
+    Simple(minase_trainer::nnue::simple::commands::BenchArgs),
 }
 
 fn main() -> std::process::ExitCode {
@@ -123,29 +121,50 @@ fn main() -> std::process::ExitCode {
 
 fn run_nnue(command: NnueCommand) -> Result<(), Box<dyn std::error::Error>> {
     match command {
-        NnueCommand::ExportHandcrafted(args) => minase_trainer::nnue::handcrafted::run(args).map_err(Into::into),
-        NnueCommand::FitLinear(args) => minase_trainer::nnue::fit_linear::run(args).map_err(Into::into),
-        NnueCommand::Train(args) => minase_trainer::nnue::train::run(*args).map(|summary| {
-            eprintln!("superbatches: {}; updates: {}; stopped_by: {}; status: {}",
-                summary.completed_superbatches, summary.completed_steps, summary.stopped_by, summary.status);
-        }),
-        NnueCommand::CheckEquivalence { feature_set, width, batch, seed, training, head } => {
-            minase_trainer::nnue::gpu::equivalence::run(feature_set, width, batch, seed, training, head)
-                .map(|r| println!("一致: {feature_set:?}, 幅{width}, バッチ{batch}, GPU={}, 比較数={}, 最大絶対誤差={:.3e}, 最大相対誤差={:.3e}, 許容誤差=1e-6+1e-5×|CPU|, 全勾配、1更新と連続3更新の全状態、反復ビット一致", r.device_name, r.comparisons, r.max_absolute_error, r.max_relative_error))
-                .map_err(Into::into)
+        NnueCommand::ExportHandcrafted(args) => {
+            minase_trainer::nnue::handcrafted::run(args).map_err(Into::into)
         }
-        NnueCommand::BenchStep(args) => minase_trainer::nnue::gpu::bench::run(args)
-            .map(|r| {
-                println!("デバイス={}、{:?}、幅{}、シード{}、{}更新、{}局面/バッチ、{}スレッドで測定しました。", r.device_name, r.feature_set, r.width, r.seed, r.steps, r.batch, r.threads);
-                println!("1更新は平均 {:.3} ms、1バッチの転送は平均 {:.3} ms、入力転送量は {} bytes/バッチでした。", r.compute_ms, r.transfer_ms, r.transfer_bytes);
-                println!("ワーカーの供給速度は {:.0} 局面/s、全体の経過時間は {:.3} s、実効速度は {:.0} 局面/sでした。", r.worker_positions_per_second, r.elapsed_seconds, r.steps as f64 * r.batch as f64 / r.elapsed_seconds);
-                if let (Some(used), Some(total), Some(allocated)) = (r.gpu_used_bytes, r.gpu_total_bytes, r.gpu_allocation_bytes) {
-                    println!("GPUメモリ使用量は {used} / {total} bytes、入力面と更新器の確保前後の差は {allocated} bytesでした。");
-                }
-                println!("平均損失は {:.8} でした。計測用の設定として埋め草を除く全行を観測済みとし、出力と教師値に共通の cp_per_logit={} を使いました。", r.losses.loss, r.cp_per_logit);
-                if let Some(profile) = r.profile {
-                    println!("{profile}");
-                }
-            }),
+        NnueCommand::Train(TrainCommand::Layerstack(args)) => {
+            minase_trainer::nnue::layerstack::trainer::run(*args).map(|summary| {
+                eprintln!(
+                    "superbatches: {}; updates: {}; stopped_by: {}; status: {}",
+                    summary.completed_superbatches,
+                    summary.completed_steps,
+                    summary.stopped_by,
+                    summary.status
+                );
+            })
+        }
+        NnueCommand::CheckEquivalence(CheckCommand::Layerstack(args)) => {
+            let report = minase_trainer::nnue::layerstack::commands::check(args)?;
+            println!("{}", serde_json::to_string_pretty(&report)?);
+            Ok(())
+        }
+        NnueCommand::BenchStep(BenchCommand::Layerstack(args)) => {
+            let report = minase_trainer::nnue::layerstack::commands::bench(args)?;
+            println!("{}", serde_json::to_string_pretty(&report)?);
+            Ok(())
+        }
+        NnueCommand::Train(TrainCommand::Simple(args)) => {
+            minase_trainer::nnue::simple::trainer::run(*args).map(|summary| {
+                eprintln!(
+                    "superbatches: {}; updates: {}; stopped_by: {}; status: {}",
+                    summary.completed_superbatches,
+                    summary.completed_steps,
+                    summary.stopped_by,
+                    summary.status
+                );
+            })
+        }
+        NnueCommand::CheckEquivalence(CheckCommand::Simple(args)) => {
+            let report = minase_trainer::nnue::simple::commands::check(args)?;
+            println!("{}", serde_json::to_string_pretty(&report)?);
+            Ok(())
+        }
+        NnueCommand::BenchStep(BenchCommand::Simple(args)) => {
+            let report = minase_trainer::nnue::simple::commands::bench(args)?;
+            println!("{}", serde_json::to_string_pretty(&report)?);
+            Ok(())
+        }
     }
 }

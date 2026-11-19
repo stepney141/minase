@@ -60,7 +60,7 @@
 学習は測定機（Intel Core Ultra 7 265KF、20コア、RTX 3060 Ti）のGPUで、前計画と同じく`systemd-run`のscope（nice値19、CPUスレッド4本、メモリ上限13 GB）で動かす。
 前計画では1本あたり約23分、最大常駐メモリ約10.4 GBだった。
 
-本書の学習は固定の学習器のバイナリと既存の教師を使い、対局を行わないので、[ネットの外部ファイル化](archived/nnue-external-network-file.md)と[tatara化とHalfKP_vm](nnue-tatara-framework-and-halfkp-vm.md)の影響を受けない。
+本書の学習は固定の学習器のバイナリと既存の教師を使い、対局を行わないので、[ネットの外部ファイル化](archived/nnue-external-network-file.md)と[tatara化とHalfKP_vm](archived/nnue-tatara-framework-and-halfkp-vm.md)の影響を受けない。
 ただし、集計のプログラム`teacherstat`は作業ツリーの`minase`に依存し、いまの形式のネット（`Network<P, DirectScrelu>`）を読むので、tatara化の後に着手するなら、その依存をtatara化より前のコミットに固定してからビルドする。
 
 ## 設計判断

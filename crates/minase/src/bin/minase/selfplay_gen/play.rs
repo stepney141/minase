@@ -7,7 +7,7 @@ use minase::datagen::statistics::Statistics;
 use minase::datagen::{
     MATE_BAND_START, best_move_is_tactical, current_position_is_repeated, data_error, invalid_data,
 };
-use minase::eval::Nnue;
+use minase::eval::nnue::Network;
 use minase::search::{
     DEFAULT_THREADS, HistoryTables, SearchError, SearchLimits, SearchResult, SearchSnapshot,
     TranspositionTable, search,
@@ -101,7 +101,7 @@ impl EvaluationAdjudication {
 
 /// 実際に行った探索だけを、候補の採否と記録の有無によらず集計する。
 fn search_position(
-    nnue: &Nnue,
+    nnue: &Network,
     game: &Game,
     nodes: u32,
     table: &mut TranspositionTable,
@@ -117,8 +117,8 @@ fn search_position(
     })?;
     let limits = SearchLimits::new(None, Some(u64::from(nodes)), None, None)
         .map_err(|error| invalid_data(format!("{context} invalid search limits: {error}")))?;
-    let result = search(nnue, &snapshot, &limits, DEFAULT_THREADS, table, histories)
-        .map_err(|error| invalid_data(format!("{context} search failed: {error}")))?;
+    let result =
+        search(nnue, &snapshot, &limits, DEFAULT_THREADS, table, histories).map_err(data_error)?;
     stats.searched_positions += 1;
     stats.searched_nodes = stats
         .searched_nodes
@@ -158,7 +158,7 @@ struct InjectionPlan {
 
 /// 1局をランダム序盤から終局まで進め、対局記録と採用局面の統計を返す。
 pub(super) fn play_game(
-    nnue: &Nnue,
+    nnue: &Network,
     rules: Rules,
     game_number: u32,
     settings: PlaySettings,
@@ -205,7 +205,7 @@ pub(super) fn play_game(
 /// 除外理由を付けて記録する判断は`docs/adr/record-excluded-positions-with-a-reason.md`にある。
 /// 王手の除外、開始局面の選別、評価値による裁定の判断は`docs/adr/exclude-checks-screen-openings-and-adjudicate-decided-games-in-teacher-generation.md`にある。
 pub(super) fn play_game_from_opening(
-    nnue: &Nnue,
+    nnue: &Network,
     rules: Rules,
     game_number: u32,
     settings: PlaySettings,
@@ -539,7 +539,7 @@ mod tests {
             ),
         ] {
             let error = search_position(
-                &crate::selfplay_gen::test_support::epoch_zero_nnue(),
+                &crate::selfplay_gen::test_support::fixed_network(),
                 game,
                 100,
                 &mut test_table(),
@@ -568,7 +568,7 @@ mod tests {
             ),
         ] {
             let error = play_game_from_opening(
-                &crate::selfplay_gen::test_support::epoch_zero_nnue(),
+                &crate::selfplay_gen::test_support::fixed_network(),
                 Rules::LISHOGI,
                 37,
                 PlaySettings {
@@ -603,7 +603,7 @@ mod tests {
     #[test]
     fn play_game_is_deterministic_for_same_seed_and_arguments() {
         let rules = Rules::LISHOGI;
-        let nnue = crate::selfplay_gen::test_support::epoch_zero_nnue();
+        let nnue = crate::selfplay_gen::test_support::fixed_network();
         let mut first_table = test_table();
         let mut second_table = test_table();
         // 固定重みで終局まで進め、未終局の打ち切りによる記録の欠落も検出する。
@@ -675,7 +675,7 @@ mod tests {
     #[test]
     fn injection_counts_and_offsets_stay_within_configured_bounds() {
         let rules = Rules::LISHOGI;
-        let nnue = crate::selfplay_gen::test_support::epoch_zero_nnue();
+        let nnue = crate::selfplay_gen::test_support::fixed_network();
         let maximum = 80;
 
         let game_number = 1;
@@ -921,16 +921,17 @@ mod tests {
     fn adjudication_saves_both_winners_without_the_fifth_move_or_value() {
         use minase_core::{
             Color::{Black, White},
-            PieceKind::{King, Pawn, Rook},
+            PieceKind::{GoldGeneral, King, Pawn},
             test_util::{position, reflect_ranks_and_swap_colors, sq},
         };
+        // 金将は4手以内に相手の王駒へ届かず、5回目の評価による裁定まで対局が続く。
         let black_ahead = position(
             Black,
             &[
                 (sq(0, 0), Black, King),
                 (sq(11, 11), White, King),
-                (sq(2, 2), Black, Rook),
-                (sq(3, 2), Black, Rook),
+                (sq(2, 2), Black, GoldGeneral),
+                (sq(3, 2), Black, GoldGeneral),
                 (sq(10, 9), White, Pawn),
             ],
         );
@@ -950,7 +951,7 @@ mod tests {
                 ..test_settings(7, 0, 100)
             };
             let completed = play_game_from_opening(
-                &crate::selfplay_gen::test_support::epoch_zero_nnue(),
+                &crate::selfplay_gen::test_support::fixed_network(),
                 Rules::LISHOGI,
                 1,
                 settings,
@@ -998,7 +999,7 @@ mod tests {
             ],
         );
         let openings = opening_for_position(&board, 60);
-        let nnue = crate::selfplay_gen::test_support::epoch_zero_nnue();
+        let nnue = crate::selfplay_gen::test_support::fixed_network();
         let policy = GenerationPolicy {
             adjudication_score: 1,
             adjudication_plies: 1,
@@ -1046,7 +1047,7 @@ mod tests {
     #[test]
     fn accepted_opening_is_searched_once_even_when_first_move_is_injected() {
         let rules = Rules::LISHOGI;
-        let nnue = crate::selfplay_gen::test_support::epoch_zero_nnue();
+        let nnue = crate::selfplay_gen::test_support::fixed_network();
         let (number, opening_ply) = (1..=512)
             .find_map(|number| {
                 let (ply, plan) = opening_and_plan(rules, 19, number, 80);

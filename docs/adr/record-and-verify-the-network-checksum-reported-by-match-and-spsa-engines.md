@@ -11,7 +11,7 @@
 当時この行を返したのは、ONNXのネットをオプション`NnModel`で受け取るPV-MCTSのエンジンだけだった。
 係数調整`minase spsa`は、ネットを埋め込んだαβ探索の調整用のビルドだけを対局させていたので、記録に欄を足していなかった。
 
-その後、αβ探索もNNUEのネットをオプション`EvalFile`で外部のファイルから読み、同じ行でファイル全体のSHA-256を返すようになった（[外部ファイル化のADR](use-an-nnue-read-from-evalfile-as-the-only-search-evaluation.md)、[識別子のADR](identify-nnue-networks-by-the-sha256-of-the-whole-file.md)）。
+その後、αβ探索もNNUEのネットをオプション`EvalFile`で外部のファイルから読み、同じ行でファイル全体のSHA-256を返すようになった（[外部ファイル化のADR](archive/use-an-nnue-read-from-evalfile-as-the-only-search-evaluation.md)、[識別子のADR](identify-nnue-networks-by-the-sha256-of-the-whole-file.md)）。
 係数調整でも、同じパスのネットのファイルを調整の途中や再開の前に書き換えると、記録と実際に対局したネットの対応が失われる。
 CECPで起動するminaseも`option EvalFile=`でネットを受け取るので、対局ハーネスはCECPのエンジンにも追加のオプションを送るようになった。
 この改訂は[NNUEの外部ファイル化の設計書](../plans/archived/nnue-external-network-file.md)で下した。

@@ -110,6 +110,51 @@ pub fn active_features_for(perspective: Color, position: &Position, mut f: impl 
     }
 }
 
+/// 着手による基底特徴の増減を、移動元の除去、移動先の追加、捕獲駒の除去、
+/// 旧先獅子の除去、新先獅子の追加の順に列挙する。符号は追加が1、除去が−1。
+/// 居喰いとじっとでは移動元と移動先の特徴が打ち消し合う。
+///
+/// # Panics
+/// `position_after`と`undo`が対応せず、移動先に駒がなければパニックする。
+pub fn for_each_move_change(
+    perspective: Color,
+    position_after: &Position,
+    undo: &minase_core::position::Undo,
+    mut f: impl FnMut(usize, i32),
+) {
+    let moved = position_after
+        .piece_at(undo.mv.to)
+        .expect("move destination contains moved piece");
+    f(
+        feature_index(perspective, undo.moved_piece_before, undo.mv.from),
+        -1,
+    );
+    f(feature_index(perspective, moved, undo.mv.to), 1);
+    for captured in undo.captured.iter().flatten() {
+        f(
+            feature_index(perspective, captured.piece, captured.square),
+            -1,
+        );
+    }
+    if let Some(trigger) = undo.previous_lion_taken {
+        f(lion_feature_index(perspective, trigger.square), -1);
+    }
+    if let Some(trigger) = position_after.lion_taken_by_non_lion() {
+        f(lion_feature_index(perspective, trigger.square), 1);
+    }
+}
+
+/// null moveで消える先獅子の特徴を符号−1で列挙する。
+pub fn for_each_null_change(
+    perspective: Color,
+    lion_before: Option<Square>,
+    mut f: impl FnMut(usize, i32),
+) {
+    if let Some(square) = lion_before {
+        f(lion_feature_index(perspective, square), -1);
+    }
+}
+
 /// 特徴を盤面の左右鏡映で対応する番号へ写す。
 /// `feature`には[`FEATURE_COUNT`]未満の基底特徴番号を渡す。
 pub const fn mirror_feature(feature: usize) -> usize {
@@ -209,6 +254,135 @@ mod tests {
             active_features(&reflected, |feature| black_features.push(feature));
             black_features.sort_unstable();
             assert_eq!(white_features, black_features);
+        }
+    }
+
+    #[test]
+    fn article_12_and_18_move_changes_preserve_specified_order() {
+        use minase_core::{Move, MoveGenerator, MoveRules};
+        let black_king = PieceCode::new(Color::Black, PieceKind::King).unwrap();
+        let white_king = PieceCode::new(Color::White, PieceKind::King).unwrap();
+        let pawn = PieceCode::new(Color::Black, PieceKind::Pawn).unwrap();
+        let victim = PieceCode::new(Color::White, PieceKind::Pawn).unwrap();
+        let lion = PieceCode::new(Color::Black, PieceKind::Lion).unwrap();
+        let gold = PieceCode::new_promoted(Color::Black, PieceKind::GoldGeneral).unwrap();
+        for (mover, result, mv, captures) in [
+            (
+                pawn,
+                gold,
+                Move {
+                    from: sq(5, 7),
+                    mid: None,
+                    to: sq(5, 8),
+                    promote: true,
+                },
+                vec![sq(5, 8)],
+            ),
+            (
+                lion,
+                lion,
+                Move {
+                    from: sq(5, 5),
+                    mid: Some(sq(5, 4)),
+                    to: sq(5, 3),
+                    promote: false,
+                },
+                vec![sq(5, 4), sq(5, 3)],
+            ),
+        ] {
+            let mut pieces = vec![
+                (sq(0, 11), black_king),
+                (sq(11, 0), white_king),
+                (mv.from, mover),
+            ];
+            pieces.extend(captures.iter().map(|&square| (square, victim)));
+            let mut position = position_from_codes(Color::Black, &pieces);
+            // 旧先獅子は捕獲の後に除去される。
+            position.set_lion_capture(Some(sq(8, 8))).unwrap();
+            let mut moves = Vec::new();
+            MoveGenerator::new(MoveRules::standard()).generate_moves(&position, &mut moves);
+            assert!(moves.contains(&mv));
+            let undo = position.make_move_unchecked(mv, MoveRules::standard());
+            for perspective in Color::ALL {
+                let mut expected = vec![
+                    (feature_index(perspective, mover, mv.from), -1),
+                    (feature_index(perspective, result, mv.to), 1),
+                ];
+                expected.extend(
+                    captures
+                        .iter()
+                        .map(|&square| (feature_index(perspective, victim, square), -1)),
+                );
+                expected.push((lion_feature_index(perspective, sq(8, 8)), -1));
+                let mut actual = Vec::new();
+                for_each_move_change(perspective, &position, &undo, |base, sign| {
+                    actual.push((base, sign))
+                });
+                assert_eq!(actual, expected);
+            }
+        }
+    }
+
+    #[test]
+    fn article_15_lion_capture_and_null_changes_preserve_specified_order() {
+        use minase_core::{Move, MoveGenerator, MoveRules};
+        let rook = PieceCode::new(Color::Black, PieceKind::Rook).unwrap();
+        let lion = PieceCode::new(Color::White, PieceKind::Lion).unwrap();
+        let mut position = position_from_codes(
+            Color::Black,
+            &[
+                (
+                    sq(0, 11),
+                    PieceCode::new(Color::Black, PieceKind::King).unwrap(),
+                ),
+                (
+                    sq(11, 0),
+                    PieceCode::new(Color::White, PieceKind::King).unwrap(),
+                ),
+                (sq(5, 5), rook),
+                (sq(5, 3), lion),
+            ],
+        );
+        let mv = Move {
+            from: sq(5, 5),
+            mid: None,
+            to: sq(5, 3),
+            promote: false,
+        };
+        let mut moves = Vec::new();
+        MoveGenerator::new(MoveRules::standard()).generate_moves(&position, &mut moves);
+        assert!(moves.contains(&mv));
+        let undo = position.make_move_unchecked(mv, MoveRules::standard());
+        for perspective in Color::ALL {
+            let mut actual = Vec::new();
+            for_each_move_change(perspective, &position, &undo, |base, sign| {
+                actual.push((base, sign))
+            });
+            assert_eq!(
+                actual,
+                [
+                    (feature_index(perspective, rook, sq(5, 5)), -1),
+                    (feature_index(perspective, rook, sq(5, 3)), 1),
+                    (feature_index(perspective, lion, sq(5, 3)), -1),
+                    (lion_feature_index(perspective, sq(5, 3)), 1),
+                ]
+            );
+        }
+        let lion_before = position
+            .lion_taken_by_non_lion()
+            .map(|trigger| trigger.square);
+        assert_eq!(lion_before, Some(sq(5, 3)));
+        position.make_null_move();
+        assert!(position.lion_taken_by_non_lion().is_none());
+        for perspective in Color::ALL {
+            let mut actual = Vec::new();
+            for_each_null_change(perspective, lion_before, |base, sign| {
+                actual.push((base, sign))
+            });
+            assert_eq!(actual, [(lion_feature_index(perspective, sq(5, 3)), -1)]);
+            actual.clear();
+            for_each_null_change(perspective, None, |base, sign| actual.push((base, sign)));
+            assert!(actual.is_empty());
         }
     }
 }

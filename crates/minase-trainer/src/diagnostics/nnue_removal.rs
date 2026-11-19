@@ -1,4 +1,7 @@
-use std::{collections::BTreeMap, path::PathBuf};
+use std::{
+    collections::BTreeMap,
+    path::{Path, PathBuf},
+};
 
 use clap::Args;
 use minase::eval::features::piece_state;
@@ -7,23 +10,174 @@ use serde::Serialize;
 
 use super::{
     Result,
-    network::IntegerNetwork,
+    network::{FloatCheckpoint, IntegerNetwork},
     sample::{FileIdentity, SampleArgs, SampleIdentity, file_identity, sample_identity},
     statistics::{Reversals, reversal_statistics},
 };
-use crate::nnue::{
-    data::{BatchSlot, FEATURE_COLUMNS},
-    model::{Checkpoint, Model},
-    reference::{self, RemovalReference, linear_row, remove_piece, row_value},
+use minase::eval::{
+    nnue::input::{AnchorError, FeatureSet, HalfKpVm, Indexer},
+    piece_values::piece_value,
 };
+use minase_core::{Color, Position, PositionBuilder};
+
+#[derive(Debug)]
+enum Error {
+    WidthMismatch { checkpoint: usize, network: usize },
+    ScaleMismatch { checkpoint: i32, network: i32 },
+    NonFiniteDifference,
+    NoRemovals,
+}
+impl std::fmt::Display for Error {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::WidthMismatch {
+                checkpoint,
+                network,
+            } => write!(
+                f,
+                "NNUE width mismatch: checkpoint={checkpoint}, network={network}"
+            ),
+            Self::ScaleMismatch {
+                checkpoint,
+                network,
+            } => write!(
+                f,
+                "NNUE fv_scale mismatch: checkpoint={checkpoint}, network={network}"
+            ),
+            Self::NonFiniteDifference => f.write_str("non-finite removal difference"),
+            Self::NoRemovals => f.write_str("sample contains no non-royal removals"),
+        }
+    }
+}
+impl std::error::Error for Error {}
+
+/// 駒だけを除き、空升になった場合も先獅子の対象升を保持する。
+fn remove_piece(position: &Position, removed: Square) -> Result<Position> {
+    let mut builder = PositionBuilder::new(position.side_to_move());
+    for square in Square::all() {
+        if square != removed
+            && let Some(piece) = position.piece_at(square)
+        {
+            builder.put(square, piece)?;
+        }
+    }
+    let mut after = builder.finish()?;
+    after.set_lion_capture(position.lion_capture_square())?;
+    Ok(after)
+}
+
+// v0は両端点が同一なので、位相補間は駒価値の符号付き和に等しい。
+fn v0_sum(position: &Position, side: Color) -> i32 {
+    Square::all()
+        .filter_map(|s| position.piece_at(s))
+        .map(|p| {
+            if p.color() == Some(side) {
+                piece_value(p)
+            } else {
+                -piece_value(p)
+            }
+        })
+        .sum()
+}
+
+/// 量子化誤差と同じ検証標本で測った整数ネットの符号反転。合否の閾値は持たない。
+#[derive(Debug, Serialize)]
+pub struct RemovalSignReport {
+    /// 検査した局面数。除ける駒のない局面も含む。
+    pub positions: usize,
+    /// v0参照差分が非零の除去数。反転割合の母数。
+    pub removals: usize,
+    /// 静的評価を定義できず、集計から除いた除去数。
+    pub terminal_removal_count: usize,
+    /// 反転数・割合と、反転した整数差分の絶対値の平均・最大。
+    pub reversals: Reversals,
+}
+
+struct Removal {
+    square: Square,
+    piece: minase_core::PieceCode,
+    after: Position,
+    delta: i32,
+    reference: i32,
+}
+
+// 診断と学習後の記録で、対象駒、終局除外、整数差分とv0参照を共有する。
+fn integer_removals(
+    net: &IntegerNetwork,
+    before: &Position,
+    perspective: Color,
+) -> Result<(Vec<Removal>, usize)> {
+    let integer_before = net.evaluate(before, perspective)?;
+    let reference_before = v0_sum(before, perspective).clamp(-28_999, 28_999);
+    let mut removals = Vec::new();
+    let mut terminal_removal_count = 0;
+    for square in Square::all() {
+        let Some(piece) = before.piece_at(square) else {
+            continue;
+        };
+        let state = piece_state(piece);
+        if state == 11 || (net.feature_set() == FeatureSet::P && state == 21) {
+            continue;
+        }
+        let after = remove_piece(before, square)?;
+        if net.feature_set() == FeatureSet::HalfKpVm {
+            let mut terminal = false;
+            for side in Color::ALL {
+                match HalfKpVm::context(&after, side) {
+                    Ok(_) => {}
+                    Err(AnchorError::MissingRoyal { .. }) => terminal = true,
+                    Err(error) => return Err(error.into()),
+                }
+            }
+            if terminal {
+                terminal_removal_count += 1;
+                continue;
+            }
+        }
+        removals.push(Removal {
+            square,
+            piece,
+            delta: net.evaluate(&after, perspective)? - integer_before,
+            reference: v0_sum(&after, perspective).clamp(-28_999, 28_999) - reference_before,
+            after,
+        });
+    }
+    Ok((removals, terminal_removal_count))
+}
+
+/// 書き出したファイルを読み直し、標本の手番視点から除去差分を全再計算する。
+/// 参照差分が非零の除去がない場合は、旧学習器と同じく入力のエラーとする。
+pub(crate) fn measure_removal_sign(
+    path: &Path,
+    samples: &[(Position, Color)],
+) -> Result<RemovalSignReport> {
+    let net = IntegerNetwork::read(path)?;
+    let mut pairs = Vec::new();
+    let mut terminal_removal_count = 0;
+    for (position, perspective) in samples {
+        let (removals, terminal) = integer_removals(&net, position, *perspective)?;
+        terminal_removal_count += terminal;
+        pairs.extend(removals.into_iter().map(|r| (r.delta, r.reference)));
+    }
+    let reversals = reversal_statistics(pairs.into_iter());
+    if reversals.total == 0 {
+        return Err("sample contains no removals with nonzero reference differences".into());
+    }
+    Ok(RemovalSignReport {
+        positions: samples.len(),
+        removals: reversals.total,
+        terminal_removal_count,
+        reversals,
+    })
+}
 
 /// 検証集合の駒除去診断の引数。
 #[derive(Args)]
 pub struct RemovalArgs {
-    /// 学習器が保存したbest.npzチェックポイント。
+    /// LayerStackまたはSimpleのNPZチェックポイント。
     #[arg(long = "float")]
     float_path: PathBuf,
-    /// 比較するMNUE版5。
+    /// 比較するtatara形式のLayerStackまたはSimple。
     #[arg(long)]
     net: PathBuf,
     #[command(flatten)]
@@ -67,6 +221,7 @@ pub(super) struct Report {
     float: FileIdentity,
     net: FileIdentity,
     removal_count: usize,
+    terminal_removal_count: usize,
     reference: &'static str,
     float_batch_vs_recomputed: BatchCheck,
     float_vs_integer_recomputed: IntegerCheck,
@@ -76,90 +231,33 @@ pub(super) struct Report {
     pub(super) error: Option<String>,
 }
 
-/// 1局面の全駒の除去差分を、局面を作り直さずに累算器からの行の減算で一括して求める。
-/// 渡されたf32の重みをf64へ広げて計算し、学習用のf32計算は使わない。
-///
-/// 線形の全特徴の和を端点ごとに`S_mg`、`S_eg`、盤上駒数をnとする。
-/// 除去前は`q·S_mg + (1−q)·S_eg`で、`q = min(max(n−2, 0), 90)/90`である。
-/// 駒の行rを除いた後は`q′·(S_mg−r_mg) + (1−q′)·(S_eg−r_eg)`で、
-/// `q′ = min(max(n−3, 0), 90)/90`とし、除去後から除去前を引く。
-///
-/// 非線形では2つの視点vごとに`h_j = Σ 行の値 + b_j`を作る。
-/// `cp_per_logit`には整数ネットの勝率尺度（1ロジットあたりのcp）を使う。
-/// 除去後の累算値を作り、要素積と2段の隠れ層を持つ参照実装の出力部へ渡す。
-/// 除去前後の非線形出力の差へ勝率尺度を掛け、線形差分へ加える。
-fn float_removal_deltas(
-    model: &Model,
-    weights: &[f32],
-    batch: &BatchSlot,
-    cp_per_logit: f64,
-) -> Vec<f64> {
-    let h = model.shape().width();
-    let rows: Vec<_> = batch.linear_features()[..FEATURE_COLUMNS]
-        .iter()
-        .map(|&feature| linear_row(model, feature).map(f64::from))
-        .collect();
-    let sums: [f64; 2] = std::array::from_fn(|e| rows.iter().map(|row| row[e]).sum());
-    let count = batch.piece_counts()[0];
-    let q = f64::from(count.saturating_sub(2).min(90)) / 90.0;
-    let after_q = f64::from(count.saturating_sub(3).min(90)) / 90.0;
-    let before = q * sums[0] + (1.0 - q) * sums[1];
-    let mut delta: Vec<_> = rows[..144]
-        .iter()
-        .map(|row| after_q * (sums[0] - row[0]) + (1.0 - after_q) * (sums[1] - row[1]) - before)
-        .collect();
-    let biases = model.expanded_biases();
-    let acc: Vec<_> = (0..2 * h)
-        .map(|i| {
-            let features =
-                &batch.features()[i / h * FEATURE_COLUMNS..(i / h + 1) * FEATURE_COLUMNS];
-            features
-                .iter()
-                .map(|&feature| f64::from(row_value(model, weights, feature, i % h)))
-                .sum::<f64>()
-                + f64::from(biases[i % h])
-        })
-        .collect();
-    let before_head = reference::head_f64(model, &acc);
-    for (col, value) in delta.iter_mut().enumerate() {
-        let after_acc: Vec<_> = acc
-            .iter()
-            .enumerate()
-            .map(|(i, &x)| {
-                x - f64::from(row_value(
-                    model,
-                    weights,
-                    batch.features()[i / h * FEATURE_COLUMNS + col],
-                    i % h,
-                ))
-            })
-            .collect();
-        *value += cp_per_logit * (reference::head_f64(model, &after_acc) - before_head);
-    }
-    delta
-}
-
-/// 検証集合の標本について、王駒以外の各1枚の除去差分を比較する。
-/// `--float`のチェックポイントと`--net`のMNUE版5は入力特徴の型と幅が一致しなければならない。
-/// 各記録を[`Sample::to_position`](crate::data::Sample::to_position)で復元し、記録された手番側を視点とする。
-/// 王将と玉将の駒状態11、および太子の駒状態21を除く盤上の全駒を1枚ずつ除く。
-/// 除いた駒が先獅子の対象升にあっても、その対象升は残す。
-/// 除ける駒がない局面は飛ばし、標本全体で除去が0件なら報告を作らずにエラーにする。
-///
-/// 実数の差分は[`reference::evaluate_f64_with_weights`]による除去後の評価から除去前の評価を引く。
-/// 整数の差分も整数ネットの除去後から除去前を引き、実数計算にも整数ネットの勝率尺度を使う。
-/// 参照差分は[`RemovalReference::v0`]から得る。
-/// 除去差分の比較に非有限値が現れた場合は、報告を作らずにエラーにする。
+/// Simpleでは王将は入力に含まれないため除去しない。太子は除去対象に含む。
+/// 王将のない側の最後の太子を除くと静的評価が定義できないため、終局の除去として
+/// terminal_removal_countに数え、差分統計から除く。LayerStackでは王駒を除去しない。
+/// 対象駒を1枚ずつ除き、K_o×(Y_after−Y_before)を整数のevaluate_for差分と比較する。
+/// 両視点の累算値とPSQTから行を引く方法と、除去後局面からのf64再計算を照合する。
+/// K_o=8128/mはチェックポイントから取り、ネットの幅とfv_scale=mの一致を要求する。
+/// v0参照はエンジンの固定駒価値を合計し、両局面を±28,999 cpへ制限してから引く。
 pub(super) fn run(args: &RemovalArgs) -> Result<Report> {
     let dataset = args.sample.open()?;
     let indices = args.sample.select(&dataset, true)?;
     let net = IntegerNetwork::read(&args.net)?;
-    let model = Checkpoint::read(&args.float_path)?.model;
-    if model.shape().feature_set() != net.feature_set() || model.shape().width() != net.width() {
-        return Err("float checkpoint and MNUE must have the same feature set and width".into());
+    let checkpoint = FloatCheckpoint::read(&args.float_path, net.feature_set())?;
+    if net.width() != checkpoint.width() {
+        return Err(Error::WidthMismatch {
+            checkpoint: checkpoint.width(),
+            network: net.width(),
+        }
+        .into());
     }
-    let weights = reference::fold(&model)?;
-    let v0 = RemovalReference::v0();
+    if checkpoint.divisor() != net.fv_scale() {
+        return Err(Error::ScaleMismatch {
+            checkpoint: checkpoint.divisor(),
+            network: net.fv_scale(),
+        }
+        .into());
+    }
+    let mut terminal_removal_count = 0;
     let mut by_state: BTreeMap<usize, Vec<(i32, i32)>> = BTreeMap::new();
     let mut all_pairs = Vec::new();
     let mut maximum = 0.0_f64;
@@ -169,51 +267,43 @@ pub(super) fn run(args: &RemovalArgs) -> Result<Report> {
         let sample = dataset.record(index)?;
         let before = sample.to_position()?;
         let perspective = sample.side_to_move();
-        let squares: Vec<_> = Square::all()
-            .filter_map(|square| {
-                before.piece_at(square).and_then(|piece| {
-                    let state = piece_state(piece);
-                    (!matches!(state, 11 | 21)).then_some((square, state))
-                })
-            })
-            .collect();
-        if squares.is_empty() {
+        let (removals, terminal) = integer_removals(&net, &before, perspective)?;
+        terminal_removal_count += terminal;
+        if removals.is_empty() {
             continue;
         }
-        let mut positions = Vec::with_capacity(squares.len() + 1);
-        positions.push(before);
-        for &(square, _) in &squares {
-            positions.push(remove_piece(&positions[0], square)?);
-        }
-        let batch = BatchSlot::from_evaluation_positions(
-            model.shape().feature_set(),
-            &positions,
-            perspective,
-        )?;
-        let batched = float_removal_deltas(&model, &weights, &batch, net.cp_per_logit());
-        let floating =
-            reference::evaluate_f64_with_weights(&model, &batch, &weights, net.cp_per_logit())?;
-        let integer_before = net.evaluate(&positions[0], perspective);
-        let (references, _) = v0.deltas(&batch, 0)?;
-        for (j, &(square, state)) in squares.iter().enumerate() {
-            let after = &positions[j + 1];
-            let float_delta = floating[j + 1] - floating[0];
-            let integer_delta = net.evaluate(after, perspective) - integer_before;
-            let batch_error = batched[square.dense_index()] - float_delta;
+        let accumulator = checkpoint.accumulator(&before, perspective)?;
+        let floating_before = checkpoint.output(&accumulator)?;
+        for Removal {
+            square,
+            piece,
+            after,
+            delta: integer_delta,
+            reference,
+        } in removals
+        {
+            let state = piece_state(piece);
+            let batched = checkpoint.output_scale()
+                * (checkpoint.without(&accumulator, &before, perspective, piece, square)?
+                    - floating_before);
+            let floating_after =
+                checkpoint.output(&checkpoint.accumulator(&after, perspective)?)?;
+            let float_delta = checkpoint.output_scale() * (floating_after - floating_before);
+            let batch_error = batched - float_delta;
             let integer_error = f64::from(integer_delta) - float_delta;
             if !batch_error.is_finite() || !integer_error.is_finite() {
-                return Err("non-finite removal difference".into());
+                return Err(Error::NonFiniteDifference.into());
             }
             maximum = maximum.max(batch_error.abs());
             integer_max = integer_max.max(integer_error.abs());
             integer_sum += integer_error.abs();
-            let pair = (integer_delta, references[square.dense_index()]);
+            let pair = (integer_delta, reference);
             by_state.entry(state).or_default().push(pair);
             all_pairs.push(pair);
         }
     }
     if all_pairs.is_empty() {
-        return Err("sample contains no non-royal removals".into());
+        return Err(Error::NoRemovals.into());
     }
     Ok(Report {
         identity: sample_identity(&dataset, &indices, args.sample.seed)?,
@@ -222,6 +312,7 @@ pub(super) fn run(args: &RemovalArgs) -> Result<Report> {
         float: file_identity(&args.float_path)?,
         net: file_identity(&args.net)?,
         removal_count: all_pairs.len(),
+        terminal_removal_count,
         reference: "v0 initial_weights at both endpoints",
         float_batch_vs_recomputed: BatchCheck {
             max_absolute_cp: maximum,

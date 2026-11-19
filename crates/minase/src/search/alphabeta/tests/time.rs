@@ -60,7 +60,7 @@ fn iteration_boundary_rereads_the_clock_after_progress() {
     let (sender, receiver) = mpsc::channel();
     let mut histories = crate::search::HistoryTables::new(DEFAULT_THREADS);
     let outcome = run_main_worker(
-        test_nnue(),
+        test_network(),
         &position,
         engine_rules(),
         SearchRepetition::R1 {
@@ -129,7 +129,7 @@ fn increase_depth_uses_the_refreshed_iteration_boundary_time() {
     };
     let mut histories = crate::search::HistoryTables::new(DEFAULT_THREADS);
     let outcome = run_main_worker(
-        test_nnue(),
+        test_network(),
         &position,
         engine_rules(),
         SearchRepetition::R1 {
@@ -205,7 +205,7 @@ fn mate_early_stop_stops_a_timed_search_inside_the_budget() {
     assert!(Duration::ZERO < budget.soft);
 
     let outcome = run_search_team(
-        test_nnue(),
+        test_network(),
         &position,
         engine_rules(),
         SearchRepetition::R1 {
@@ -605,7 +605,7 @@ pub(super) fn instability_scaling_starts_an_iteration_that_the_base_soft_rejects
     let run = |limits: &SearchLimits| {
         let mut histories = crate::search::HistoryTables::new(DEFAULT_THREADS);
         run_search_team(
-            test_nnue(),
+            test_network(),
             &position,
             engine_rules(),
             SearchRepetition::R1 {
@@ -676,7 +676,7 @@ pub(super) fn initial_previous_time_reduction_controls_the_first_scaled_budget()
 
     let run = |histories: &mut crate::search::HistoryTables| {
         run_search_team(
-            test_nnue(),
+            test_network(),
             &position,
             engine_rules(),
             SearchRepetition::R1 {
@@ -721,7 +721,7 @@ fn run_ponder_bonus_test_search(
     histories: &mut crate::search::HistoryTables,
 ) -> (u32, StopReason) {
     let outcome = run_search_team(
-        test_nnue(),
+        test_network(),
         position,
         engine_rules(),
         SearchRepetition::R1 {
@@ -922,7 +922,7 @@ pub(super) fn best_move_effort_scaling_ignores_shared_auxiliary_nodes() {
     let mut histories = crate::search::HistoryTables::new(DEFAULT_THREADS);
 
     let outcome = run_main_worker(
-        test_nnue(),
+        test_network(),
         &position,
         engine_rules(),
         SearchRepetition::R1 {
@@ -978,7 +978,7 @@ pub(super) fn single_root_move_scaling_stops_at_500_millis_boundary() {
     };
 
     let outcome = run_search_team(
-        test_nnue(),
+        test_network(),
         &position,
         engine_rules(),
         SearchRepetition::R1 {
@@ -1018,7 +1018,7 @@ fn increase_depth_state_resets_and_preserves_main_progress_depths() {
             SearchLimits::new(Some(depth), None, None, Some(clock(10_000_000, 0, 0))).unwrap();
         let (sender, receiver) = mpsc::channel();
         let outcome = run_search_team(
-            test_nnue(),
+            test_network(),
             &position,
             engine_rules(),
             SearchRepetition::R1 {
@@ -1084,7 +1084,7 @@ fn auxiliary_worker_counts_only_the_iterations_it_starts() {
     assert_eq!(auxiliary_depths(1, 6).collect::<Vec<_>>(), [1, 3, 5, 6]);
 
     let outcome = run_auxiliary_worker(
-        test_nnue(),
+        test_network(),
         &position,
         engine_rules(),
         SearchRepetition::R1 {
@@ -1167,7 +1167,7 @@ fn next_iteration_gate_stops_main_worker_with_a_legal_best_move() {
             hit_ns: &hard_limit_hit_ns,
         }),
     };
-    let nnue = test_nnue();
+    let nnue = test_network();
     let tt = small_tt();
     let mut histories = crate::search::HistoryTables::new(DEFAULT_THREADS);
 
@@ -1216,7 +1216,7 @@ fn movetime_search_respects_the_hard_limit_and_returns_a_legal_move() {
             histories: crate::search::HistoryTables::new(DEFAULT_THREADS),
             threads: DEFAULT_THREADS,
         },
-        Arc::clone(shared_test_nnue()),
+        Arc::clone(shared_test_network()),
         snapshot_for(&initial),
         movetime_limits(30),
         61,
@@ -1295,7 +1295,7 @@ fn assert_starts_iterations_before_deadline(limits: SearchLimits, adopt_partial:
         ],
     );
     let root_moves = legal_moves(&position);
-    let nnue = test_nnue();
+    let nnue = test_network();
     let budget = time_budget(&limits).unwrap();
     let mut histories = crate::search::HistoryTables::new(DEFAULT_THREADS);
     for (ponder, hit, elapsed_secs) in [

@@ -26,7 +26,7 @@ fn root_reverse_margin(depth: u32, tt_hit: bool) -> i32 {
         + params::reverse_futility_mult_slope() * depth as i32)
         .min(41)
         - params::reverse_futility_no_tt_hit() * i32::from(!tt_hit);
-    (test_nnue().pawn_value()
+    (crate::eval::piece_values::pawn_value()
         * mult
         * (100 * depth as i32 - params::reverse_futility_opponent_worsening())
         / 10000)
@@ -79,7 +79,7 @@ fn razoring_margin_matches_numeric_examples() {
 #[test]
 fn seek_mate_limits_reverse_futility_to_depth_five() {
     let board = bare_kings();
-    let value = evaluate(test_nnue(), &board);
+    let value = evaluate(test_network(), &board);
     // 深さ5と6の両方で余裕値を満たす窓にする。
     let beta = value
         - root_reverse_margin(5, false)
@@ -110,9 +110,9 @@ fn seek_mate_limits_reverse_futility_to_depth_five() {
 #[test]
 fn seek_mate_disables_razoring() {
     let board = bare_kings();
-    let value = evaluate(test_nnue(), &board);
+    let value = evaluate(test_network(), &board);
     for depth in [1, 4] {
-        let alpha = value + razoring_margin(test_nnue().pawn_value(), depth) + 1;
+        let alpha = value + razoring_margin(crate::eval::piece_values::pawn_value(), depth) + 1;
         let (quiet_score, quiet_nodes) = run_quiesce(&board, alpha, alpha + 1, 0, &small_tt());
         for seek_mate in [false, true] {
             with_root_searcher(&board, &[], |searcher| {
@@ -928,17 +928,17 @@ pub(super) fn lmr_max_reduction_parameter_sets_cap() {
 #[test]
 fn futility_prunes_pv_quiets_without_false_mate_except_on_follow_pv() {
     let board = bare_kings();
-    let nnue = test_nnue();
+    let nnue = test_network();
     let static_eval = evaluate(nnue, &board);
     let moves = legal_moves(&board);
     let history = repeated_root_children(&board, &moves);
-    let alpha = static_eval + 10 * nnue.pawn_value();
+    let alpha = static_eval + 10 * crate::eval::piece_values::pawn_value();
 
     assert!(!royal_under_attack(&board));
     assert!(
         moves
             .iter()
-            .all(|&mv| { !mv.promote && move_order_key(&board, nnue, mv).is_none() })
+            .all(|&mv| { !mv.promote && move_order_key(&board, mv).is_none() })
     );
     for depth in [1, 4] {
         let mut results = Vec::new();
@@ -993,7 +993,7 @@ pub(super) fn futility_protects_quiet_checks_before_late_move_limit() {
     assert!(
         moves
             .iter()
-            .all(|&mv| !mv.promote && move_order_key(&board, test_nnue(), mv).is_none())
+            .all(|&mv| !mv.promote && move_order_key(&board, mv).is_none())
     );
     let checking: Vec<_> = moves
         .iter()
@@ -1008,7 +1008,7 @@ pub(super) fn futility_protects_quiet_checks_before_late_move_limit() {
         let mut ordered = Vec::new();
         while let Some((mv, capture)) = picker.next(
             &board,
-            searcher.nnue,
+            searcher.network,
             &searcher.generator,
             searcher_move_picker_context(searcher, 0),
             &std::cell::OnceCell::new(),
@@ -1040,7 +1040,8 @@ pub(super) fn futility_protects_quiet_checks_before_late_move_limit() {
             0,
             true,
         );
-        let alpha = evaluate(searcher.nnue, &board) + 10 * searcher.nnue.pawn_value();
+        let alpha =
+            evaluate(searcher.network, &board) + 10 * crate::eval::piece_values::pawn_value();
         let score = searcher
             .negamax(&mut board.clone(), 1, alpha, alpha + 2, 0, false)
             .unwrap();
@@ -1061,8 +1062,8 @@ fn futility_searches_safe_quiets_after_losing_tt_move() {
             (sq(11, 0), Color::Black, PieceKind::King),
         ],
     );
-    let nnue = test_nnue();
-    let alpha = evaluate(nnue, &position) + 3 * nnue.pawn_value();
+    let nnue = test_network();
+    let alpha = evaluate(nnue, &position) + 3 * crate::eval::piece_values::pawn_value();
     let losing_move = Move {
         from: sq(11, 0),
         mid: None,
@@ -1074,7 +1075,7 @@ fn futility_searches_safe_quiets_after_losing_tt_move() {
     assert!(
         legal_moves(&position)
             .iter()
-            .all(|&mv| { !mv.promote && move_order_key(&position, nnue, mv).is_none() })
+            .all(|&mv| { !mv.promote && move_order_key(&position, mv).is_none() })
     );
     let ply = 5;
     let mut child = position.clone();
@@ -1144,8 +1145,8 @@ fn futility_searches_checking_captures_and_promotions_after_quiet_tt_move() {
         ),
     ] {
         let position = board;
-        let nnue = test_nnue();
-        let alpha = evaluate(nnue, &position) + 3 * nnue.pawn_value();
+        let nnue = test_network();
+        let alpha = evaluate(nnue, &position) + 3 * crate::eval::piece_values::pawn_value();
         let tt_move = Move {
             from: sq(11, 0),
             mid: None,
@@ -1158,9 +1159,9 @@ fn futility_searches_checking_captures_and_promotions_after_quiet_tt_move() {
             .into_iter()
             .filter(|&mv| {
                 if promotion {
-                    mv.promote && move_order_key(&position, nnue, mv).is_none()
+                    mv.promote && move_order_key(&position, mv).is_none()
                 } else {
-                    move_order_key(&position, nnue, mv).is_some()
+                    move_order_key(&position, mv).is_some()
                 }
             })
             .collect();
@@ -1196,14 +1197,14 @@ fn capture_futility_context(
     tt_move: Move,
     depth: u32,
 ) -> (i32, i32) {
-    let nnue = test_nnue();
+    let nnue = test_network();
     let mut target_index = None;
     with_root_searcher(board, &[], |searcher| {
         let mut picker = MovePicker::new(Some(tt_move), [None; KILLER_COUNT]);
         let mut index = 0;
         while let Some((mv, _)) = picker.next(
             board,
-            searcher.nnue,
+            searcher.network,
             &searcher.generator,
             searcher_move_picker_context(searcher, 0),
             &std::cell::OnceCell::new(),
@@ -1221,10 +1222,10 @@ fn capture_futility_context(
         .captured_squares(target)
         .into_iter()
         .flatten()
-        .map(|square| nnue.piece_value(board.piece_at(square).unwrap()))
+        .map(|square| crate::eval::piece_values::piece_value(board.piece_at(square).unwrap()))
         .sum();
     let value = super::super::pruning::capture_futility_value(
-        nnue.pawn_value(),
+        crate::eval::piece_values::pawn_value(),
         evaluate(nnue, board),
         lmr_depth,
         captured_value,
@@ -1247,11 +1248,11 @@ fn assert_capture_futility_search(
     expected_check: bool,
     searched: bool,
 ) -> i32 {
-    let nnue = test_nnue();
+    let nnue = test_network();
     let moves = legal_moves(board);
     assert!(moves.contains(&target));
     assert!(moves.contains(&tt_move));
-    assert!(move_order_key(board, nnue, target).is_some());
+    assert!(move_order_key(board, target).is_some());
     assert!(!captures_last_royal(board, target));
     assert!(!royal_under_attack(board));
     assert_eq!(
@@ -1267,9 +1268,8 @@ fn assert_capture_futility_search(
     assert!(!see_prunes(
         board,
         engine_rules(),
-        nnue,
         target,
-        -super::super::pruning::see_margin(nnue.pawn_value(), depth, 0),
+        -super::super::pruning::see_margin(crate::eval::piece_values::pawn_value(), depth, 0),
     ));
 
     let mut target_child = board.clone();
@@ -1421,7 +1421,7 @@ fn capture_futility_searches_promoting_checking_and_tt_captures() {
         promotion,
         quiet,
         1,
-        evaluate(test_nnue(), &promotion_board) + CAPTURE_FUTILITY_TEST_ALPHA_MARGIN,
+        evaluate(test_network(), &promotion_board) + CAPTURE_FUTILITY_TEST_ALPHA_MARGIN,
         false,
         true,
     );
@@ -1432,7 +1432,7 @@ fn capture_futility_searches_promoting_checking_and_tt_captures() {
         checking,
         quiet,
         1,
-        evaluate(test_nnue(), &checking_board) + CAPTURE_FUTILITY_TEST_ALPHA_MARGIN,
+        evaluate(test_network(), &checking_board) + CAPTURE_FUTILITY_TEST_ALPHA_MARGIN,
         true,
         true,
     );
@@ -1443,7 +1443,7 @@ fn capture_futility_searches_promoting_checking_and_tt_captures() {
         tt_capture,
         tt_capture,
         1,
-        evaluate(test_nnue(), &tt_board) + CAPTURE_FUTILITY_TEST_ALPHA_MARGIN,
+        evaluate(test_network(), &tt_board) + CAPTURE_FUTILITY_TEST_ALPHA_MARGIN,
         false,
         true,
     );
@@ -1492,13 +1492,13 @@ fn capture_futility_applies_to_two_stage_captures_and_sums_both_victims() {
         .captured_squares(target)
         .into_iter()
         .flatten()
-        .map(|square| test_nnue().piece_value(board.piece_at(square).unwrap()))
+        .map(|square| crate::eval::piece_values::piece_value(board.piece_at(square).unwrap()))
         .collect();
     assert_eq!(victim_values.len(), 2);
     let (lmr_depth, both) = capture_futility_context(&board, target, tt_move, 1);
     let first_only = super::super::pruning::capture_futility_value(
-        test_nnue().pawn_value(),
-        evaluate(test_nnue(), &board),
+        crate::eval::piece_values::pawn_value(),
+        evaluate(test_network(), &board),
         lmr_depth,
         victim_values[0],
         0,
@@ -1510,7 +1510,7 @@ fn capture_futility_applies_to_two_stage_captures_and_sums_both_victims() {
         target,
         tt_move,
         1,
-        evaluate(test_nnue(), &board) + CAPTURE_FUTILITY_TEST_ALPHA_MARGIN,
+        evaluate(test_network(), &board) + CAPTURE_FUTILITY_TEST_ALPHA_MARGIN,
         false,
         false,
     );
@@ -1536,13 +1536,12 @@ pub(super) fn see_pruning_searches_first_capture_without_false_mate() {
             (sq(5, 7), Color::White, PieceKind::Pawn),
         ],
     );
-    let nnue = test_nnue();
+    let nnue = test_network();
     let moves = legal_moves(&board);
     assert_eq!(moves.len(), 2);
     assert!(!royal_under_attack(&board));
     assert!(moves.iter().all(|&mv| {
-        move_order_key(&board, nnue, mv).is_some()
-            && see_prunes(&board, engine_rules(), nnue, mv, 0)
+        move_order_key(&board, mv).is_some() && see_prunes(&board, engine_rules(), mv, 0)
     }));
     let alpha = moves
         .iter()
@@ -1554,13 +1553,12 @@ pub(super) fn see_pruning_searches_first_capture_without_false_mate() {
         .max()
         .unwrap()
         .max(evaluate(nnue, &board))
-        + 1;
+        + CAPTURE_FUTILITY_TEST_ALPHA_MARGIN;
     let table = small_tt();
     let ply = MAX_PLY - 1;
     let mut result = None;
     with_root_searcher(&board, &[], |searcher| {
         searcher.seek_mate = true;
-        searcher.accumulators[ply as usize] = searcher.accumulators[0].clone();
         searcher.material_keys[ply as usize] = searcher.material_keys[0];
         searcher.pawn_keys[ply as usize] = searcher.pawn_keys[0];
         set_test_path_ply(searcher, ply);
@@ -1603,11 +1601,11 @@ pub(super) fn see_pruning_searches_first_capture_without_false_mate() {
             .captured_squares(mv)
             .into_iter()
             .flatten()
-            .map(|square| nnue.piece_value(board.piece_at(square).unwrap()))
+            .map(|square| crate::eval::piece_values::piece_value(board.piece_at(square).unwrap()))
             .sum();
         assert!(
             super::super::pruning::capture_futility_value(
-                nnue.pawn_value(),
+                crate::eval::piece_values::pawn_value(),
                 static_eval,
                 lmr_depth,
                 captured_value,
@@ -1637,7 +1635,7 @@ fn see_pruning_searches_safe_capture_after_losing_tt_move() {
             (sq(11, 11), Color::White, PieceKind::King),
         ],
     );
-    let nnue = test_nnue();
+    let nnue = test_network();
     let losing_move = Move {
         from: sq(5, 3),
         mid: None,
@@ -1652,8 +1650,8 @@ fn see_pruning_searches_safe_capture_after_losing_tt_move() {
     assert!(moves.contains(&losing_move));
     assert!(moves.contains(&safe_capture));
     assert!(!royal_under_attack(&board));
-    assert!(see_prunes(&board, engine_rules(), nnue, safe_capture, -200));
-    let alpha = evaluate(nnue, &board) + 3 * nnue.pawn_value();
+    assert!(see_prunes(&board, engine_rules(), safe_capture, -200));
+    let alpha = evaluate(nnue, &board) + 3 * crate::eval::piece_values::pawn_value();
     let ply = 5;
     let mut child = board.clone();
     child.make_move_unchecked(losing_move, engine_rules());
@@ -1705,7 +1703,7 @@ fn see_pruning_searches_safe_capture_after_losing_tt_move() {
 // SEEがPVノードと残り深さ4にも適用され、記録手と王駒への利きは除かれることを検査する。
 #[cfg(feature = "tuning")]
 pub(super) fn see_pruning_applies_without_depth_or_zero_window_limits() {
-    let nnue = test_nnue();
+    let nnue = test_network();
     for (depth, width, capture_is_tt, attacked, attacker, victim) in [
         (2, 1, false, false, PieceKind::Phoenix, PieceKind::Pawn),
         (3, 1, false, false, PieceKind::Phoenix, PieceKind::Pawn),
@@ -1756,9 +1754,9 @@ pub(super) fn see_pruning_applies_without_depth_or_zero_window_limits() {
         assert_eq!(royal_under_attack(&board), attacked);
         assert!(legal_moves(&board).contains(&capture));
         assert!(legal_moves(&board).contains(&quiet));
-        assert!(see_prunes(&board, engine_rules(), nnue, capture, 0));
+        assert!(see_prunes(&board, engine_rules(), capture, 0));
         assert_eq!(
-            see_prunes(&board, engine_rules(), nnue, capture, -200),
+            see_prunes(&board, engine_rules(), capture, -200),
             victim == PieceKind::Pawn,
         );
         let expanded = capture_is_tt
@@ -1766,11 +1764,14 @@ pub(super) fn see_pruning_applies_without_depth_or_zero_window_limits() {
             || !see_prunes(
                 &board,
                 engine_rules(),
-                nnue,
                 capture,
-                -super::super::pruning::see_margin(nnue.pawn_value(), depth, 0),
+                -super::super::pruning::see_margin(
+                    crate::eval::piece_values::pawn_value(),
+                    depth,
+                    0,
+                ),
             );
-        let alpha = evaluate(nnue, &board) + 3 * nnue.pawn_value();
+        let alpha = evaluate(nnue, &board) + 3 * crate::eval::piece_values::pawn_value();
         let table = small_tt();
         let tt_move = if capture_is_tt { capture } else { quiet };
         table.store(
@@ -1824,7 +1825,7 @@ fn assert_continuation_pruning_search(
     follow_pv: bool,
     searched: bool,
 ) {
-    let nnue = test_nnue();
+    let nnue = test_network();
     let moves = legal_moves(board);
     let leading_quiet = step(sq(11, 0), sq(10, 0));
     assert!(moves.contains(&leading_quiet));
@@ -1921,7 +1922,7 @@ fn assert_quiet_see_search(
     target_is_tt_move: bool,
     searched: bool,
 ) {
-    let nnue = test_nnue();
+    let nnue = test_network();
     let moves = legal_moves(board);
     let leading_quiet = Move {
         from: sq(11, 0),
@@ -1931,11 +1932,7 @@ fn assert_quiet_see_search(
     };
     assert!(moves.contains(&leading_quiet));
     assert!(moves.contains(&target));
-    assert!(
-        moves
-            .iter()
-            .all(|&mv| move_order_key(board, nnue, mv).is_none())
-    );
+    assert!(moves.iter().all(|&mv| move_order_key(board, mv).is_none()));
     assert!(!royal_under_attack(board));
     assert_eq!(
         board.gives_check(&MoveGenerator::new(engine_rules()), target),
@@ -1944,18 +1941,16 @@ fn assert_quiet_see_search(
     assert!(see_prunes(
         board,
         engine_rules(),
-        nnue,
         target,
-        -super::super::pruning::see_margin(nnue.pawn_value(), 1, 0),
+        -super::super::pruning::see_margin(crate::eval::piece_values::pawn_value(), 1, 0),
     ));
     let lmr_depth = pruning_lmr_depth(1, usize::from(!target_is_tt_move), false, true, true);
     if !expected_check && !target.promote && target.mid.is_none() {
         assert!(see_prunes(
             board,
             engine_rules(),
-            nnue,
             target,
-            -quiet_see_margin(nnue.pawn_value(), lmr_depth),
+            -quiet_see_margin(crate::eval::piece_values::pawn_value(), lmr_depth),
         ));
     }
 
@@ -1974,7 +1969,7 @@ fn assert_quiet_see_search(
     if !follow_pv && !target_is_tt_move && !target.promote {
         assert_eq!(
             super::super::pruning::futility_pruning_value(
-                nnue.pawn_value(),
+                crate::eval::piece_values::pawn_value(),
                 evaluate(nnue, board),
                 alpha,
                 lmr_depth,
@@ -2083,7 +2078,7 @@ pub(super) fn quiet_check_rechecks_see_when_the_second_threshold_is_higher() {
         to: sq(10, 0),
         promote: false,
     };
-    let nnue = test_nnue();
+    let nnue = test_network();
     let moves = legal_moves(&board);
     assert!(moves.contains(&target) && moves.contains(&leading));
     assert!(board.gives_check(&MoveGenerator::new(engine_rules()), target));
@@ -2099,16 +2094,14 @@ pub(super) fn quiet_check_rechecks_see_when_the_second_threshold_is_higher() {
     assert!(!see_prunes(
         &board,
         engine_rules(),
-        nnue,
         target,
-        -quiet_see_margin(nnue.pawn_value(), lmr_depth)
+        -quiet_see_margin(crate::eval::piece_values::pawn_value(), lmr_depth)
     ));
     assert!(see_prunes(
         &board,
         engine_rules(),
-        nnue,
         target,
-        -super::super::pruning::see_margin(nnue.pawn_value(), depth, 0)
+        -super::super::pruning::see_margin(crate::eval::piece_values::pawn_value(), depth, 0)
     ));
     let alpha = moves
         .iter()
@@ -2214,7 +2207,6 @@ fn quiet_see_is_monotone_and_check_evaluation_order_is_irrelevant() {
     use minase_core::movegen::CheckContext;
     use minase_core::test_util::{bench_positions, sampled_random_positions};
 
-    let nnue = test_nnue();
     let mut pruned_count = 0;
     let mut retained_count = 0;
     for text in [
@@ -2256,7 +2248,7 @@ fn quiet_see_is_monotone_and_check_evaluation_order_is_irrelevant() {
                     10_000,
                     i32::MAX,
                 ] {
-                    let pruned = see_prunes(&board, rules, nnue, mv, threshold);
+                    let pruned = see_prunes(&board, rules, mv, threshold);
                     assert!(
                         !previously_pruned || pruned,
                         "{text}: {mv:?}, threshold={threshold}"
@@ -2321,9 +2313,9 @@ pub(super) fn see_pruning_searches_rule_dependent_capture() {
         to: sq(10, 0),
         promote: false,
     };
-    let nnue = test_nnue();
+    let nnue = test_network();
     assert!(legal_moves(&board).contains(&capture));
-    assert!(!see_prunes(&board, engine_rules(), nnue, capture, -200));
+    assert!(!see_prunes(&board, engine_rules(), capture, -200));
     assert!(!royal_under_attack(&board));
     let static_eval = evaluate(nnue, &board);
     // S4の見積りを1だけ上回らせず、判定不能の手がS3へ進むことを検査する。
@@ -2401,7 +2393,7 @@ fn capture_futility_searches_last_royal_capture_after_quiet_tt_move() {
     let ply = 0;
     let (lmr_depth, futility_value) = capture_futility_context(&board, capture, quiet, 1);
     assert!(lmr_depth < super::super::pruning::CAPTURE_FUTILITY_LMR_DEPTH_LIMIT);
-    let alpha = futility_value.max(evaluate(test_nnue(), &board) + 1);
+    let alpha = futility_value.max(evaluate(test_network(), &board) + 1);
     assert!(alpha.abs() < REPETITION_BAND_START && (alpha + 1).abs() < REPETITION_BAND_START);
     let table = small_tt();
     let mut quiet_child = board.clone();
@@ -2419,7 +2411,7 @@ fn capture_futility_searches_last_royal_capture_after_quiet_tt_move() {
     table.store(
         search_key(&board),
         0,
-        evaluate(test_nnue(), &board),
+        evaluate(test_network(), &board),
         None,
         Bound::Upper,
         Some(quiet),
@@ -2436,7 +2428,7 @@ fn capture_futility_searches_last_royal_capture_after_quiet_tt_move() {
 // F1の仕様表の数値例。2項の独立した丸めとi64の積も検査する。
 #[test]
 fn reverse_futility_margin_matches_numeric_examples() {
-    let pawn = test_nnue().pawn_value();
+    let pawn = crate::eval::piece_values::pawn_value();
     assert_eq!(pawn, 100);
     for (depth, tt_hit, improving, opponent_worsening, correction, expected) in [
         (1, true, false, false, 0, 41),
@@ -2499,7 +2491,7 @@ fn opponent_worsening_compares_previous_ply_and_is_true_at_root() {
 #[test]
 fn reverse_futility_returns_weighted_value_at_margin_after_storing_static_eval() {
     let board = bare_kings();
-    let value = evaluate(test_nnue(), &board);
+    let value = evaluate(test_network(), &board);
     // F5ではallNodeにIIRを適用しないので、要求深さをそのまま使う。
     for requested_depth in [1, 2, 4, 18] {
         let margin = root_reverse_margin(requested_depth, false);
@@ -2528,7 +2520,7 @@ fn reverse_futility_returns_weighted_value_at_margin_after_storing_static_eval()
 fn reverse_futility_exclusions_search_children() {
     use crate::search::REPETITION_BAND_START as B;
     let board = bare_kings();
-    let value = evaluate(test_nnue(), &board);
+    let value = evaluate(test_network(), &board);
     let beta = value - root_reverse_margin(1, false).max(0);
     let attacked = position(
         Color::Black,
@@ -2538,7 +2530,7 @@ fn reverse_futility_exclusions_search_children() {
             (sq(11, 0), Color::Black, PieceKind::King),
         ],
     );
-    let attacked_beta = evaluate(test_nnue(), &attacked) - 9;
+    let attacked_beta = evaluate(test_network(), &attacked) - 9;
     for (position, attacked, depth, alpha, beta, reason) in [
         (&board, false, 1, beta - 2, beta, "幅2のPV窓"),
         (
@@ -2604,7 +2596,7 @@ fn reverse_futility_validates_tt_move_and_excludes_tt_pv() {
     assert!(!legal_moves(&board).contains(&invalid));
     assert!(!legal_moves(&board).contains(&invalid_quiet));
     assert!(!royal_under_attack(&board));
-    let value = evaluate(test_nnue(), &board);
+    let value = evaluate(test_network(), &board);
     // 深さ1、照合成功、opponentWorseningありの余裕値を使う。
     let beta = value - root_reverse_margin(1, true);
     for (mv, is_pv, pruned) in [
@@ -2658,8 +2650,8 @@ fn reverse_futility_requires_eval_at_least_beta_with_negative_margin() {
         with_root_searcher(&board, &[], |searcher| {
             searcher.seek_mate = true;
             zero_position_correction(searcher, &board);
-            let value = evaluate(searcher.nnue, &board);
-            searcher.accumulators[2] = searcher.accumulators[0].clone();
+            let value = evaluate(searcher.network, &board);
+            searcher.evaluator.refresh_for_test(&board, 2);
             searcher.material_keys[2] = searcher.material_keys[0];
             searcher.static_evals[0] = value - 1;
             searcher.static_evals[1] = -value;
@@ -2686,7 +2678,7 @@ fn reverse_futility_requires_eval_at_least_beta_with_negative_margin() {
 #[test]
 fn reverse_futility_preserves_tt_cutoff_priority() {
     let board = bare_kings();
-    let beta = evaluate(test_nnue(), &board) - 16;
+    let beta = evaluate(test_network(), &board) - 16;
     let table = small_tt();
     table.store(
         search_key(&board),
@@ -2708,13 +2700,17 @@ fn reverse_futility_preserves_tt_cutoff_priority() {
 // 捕獲候補のない局面では静的評価を返し、静止探索の通常出口から置換表へ保存する。
 #[test]
 fn razoring_uses_a_strict_boundary_without_a_depth_limit() {
-    assert_eq!(test_nnue().pawn_value(), 100, "固定ネットの歩兵価値");
+    assert_eq!(
+        crate::eval::piece_values::pawn_value(),
+        100,
+        "固定ネットの歩兵価値"
+    );
     let position = bare_kings();
-    let nnue = test_nnue();
+    let nnue = test_network();
     let static_eval = evaluate(nnue, &position);
     assert!(!royal_under_attack(&position));
     for depth in [1, 2, 4] {
-        let margin = razoring_margin(nnue.pawn_value(), depth);
+        let margin = razoring_margin(crate::eval::piece_values::pawn_value(), depth);
         let boundary_alpha = static_eval + margin;
         let (_, quiet_nodes) = run_quiesce(
             &position,
@@ -2759,9 +2755,11 @@ fn razoring_uses_a_strict_boundary_without_a_depth_limit() {
 #[test]
 fn razoring_only_applies_to_all_nodes() {
     let position = bare_kings();
-    let nnue = test_nnue();
+    let nnue = test_network();
     let depth = 1;
-    let alpha = evaluate(nnue, &position) + razoring_margin(nnue.pawn_value(), depth) + 1;
+    let alpha = evaluate(nnue, &position)
+        + razoring_margin(crate::eval::piece_values::pawn_value(), depth)
+        + 1;
     let (quiet_score, quiet_nodes) = run_quiesce(&position, alpha, alpha + 1, 0, &small_tt());
     assert_eq!(
         run_negamax(&position, depth, alpha, alpha + 1, 0, &small_tt()),
@@ -2781,7 +2779,7 @@ fn razoring_only_applies_to_all_nodes() {
 // 王駒に相手の疑似利きが届く場合は通常探索を行う。
 #[test]
 fn razoring_does_not_run_when_a_royal_is_attacked() {
-    let nnue = test_nnue();
+    let nnue = test_network();
     let position = minase_core::test_util::position(
         Color::Black,
         &[
@@ -2792,7 +2790,9 @@ fn razoring_does_not_run_when_a_royal_is_attacked() {
     );
     assert!(royal_under_attack(&position));
     let depth = 1;
-    let alpha = evaluate(nnue, &position) + razoring_margin(nnue.pawn_value(), depth) + 1;
+    let alpha = evaluate(nnue, &position)
+        + razoring_margin(crate::eval::piece_values::pawn_value(), depth)
+        + 1;
     let (_, quiet_nodes) = run_quiesce(&position, alpha, alpha + 1, 0, &small_tt());
     let (_, nodes) = run_negamax(&position, depth, alpha, alpha + 1, 0, &small_tt());
     assert!(nodes > quiet_nodes, "王駒への利きがあれば通常探索する");
@@ -2802,12 +2802,12 @@ fn razoring_does_not_run_when_a_royal_is_attacked() {
 #[test]
 fn razoring_reuses_the_tt_upper_bound_in_zero_window_quiescence() {
     let position = bare_kings();
-    let nnue = test_nnue();
+    let nnue = test_network();
     let raw = evaluate(nnue, &position);
     let depth = 1;
     let alpha = raw - 1;
     let beta = raw;
-    let tt_eval = alpha - razoring_margin(nnue.pawn_value(), depth) - 1;
+    let tt_eval = alpha - razoring_margin(crate::eval::piece_values::pawn_value(), depth) - 1;
     assert!(!royal_under_attack(&position));
     let table = small_tt();
     table.store(
@@ -2870,15 +2870,19 @@ fn null_move_condition_matches_s7_numeric_examples() {
 // 補正が判定用の評価値を動かすと、補正前の値では成立した枝刈りも抑止する。
 #[test]
 fn correction_can_prevent_reverse_futility_and_razoring() {
-    assert_eq!(test_nnue().pawn_value(), 100, "固定ネットの歩兵価値");
+    assert_eq!(
+        crate::eval::piece_values::pawn_value(),
+        100,
+        "固定ネットの歩兵価値"
+    );
     let position = bare_kings();
-    let raw = evaluate(test_nnue(), &position);
+    let raw = evaluate(test_network(), &position);
     for (reverse, correction, alpha) in [
         (true, -1, raw - root_reverse_margin(1, true) - 1),
         (
             false,
             1,
-            raw + razoring_margin(test_nnue().pawn_value(), 1) + 1,
+            raw + razoring_margin(crate::eval::piece_values::pawn_value(), 1) + 1,
         ),
     ] {
         let corrected = corrected_static_eval(raw, correction);
@@ -2991,13 +2995,13 @@ fn one_point_correction_crosses_all_reverse_futility_and_razoring_margins() {
 
 #[test]
 fn reverse_futility_uses_shallow_tt_lower_bound_but_not_upper_bound() {
-    assert_eq!(test_nnue().pawn_value(), 100);
+    assert_eq!(crate::eval::piece_values::pawn_value(), 100);
     let board = bare_kings();
     for bound in [Bound::Lower, Bound::Upper] {
         with_root_searcher(&board, &[], |searcher| {
             zero_position_correction(searcher, &board);
             searcher.seek_mate = true;
-            let raw = evaluate(searcher.nnue, &board);
+            let raw = evaluate(searcher.network, &board);
             let value = raw + 500;
             // 照合成功の余裕値を使い、下界を採る場合だけβに達する。
             let beta = value - root_reverse_margin(1, true);
@@ -3019,14 +3023,14 @@ fn reverse_futility_uses_shallow_tt_lower_bound_but_not_upper_bound() {
 
 #[test]
 fn razoring_uses_shallow_tt_upper_bound_but_not_lower_bound() {
-    assert_eq!(test_nnue().pawn_value(), 100);
+    assert_eq!(crate::eval::piece_values::pawn_value(), 100);
     let board = bare_kings();
     for bound in [Bound::Upper, Bound::Lower] {
         with_root_searcher(&board, &[], |searcher| {
             zero_position_correction(searcher, &board);
-            let raw = evaluate(searcher.nnue, &board);
+            let raw = evaluate(searcher.network, &board);
             // 静的評価では余裕値に1足りず、低い上界を採れば静止探索へ移る。
-            let alpha = raw + razoring_margin(searcher.nnue.pawn_value(), 1) - 1;
+            let alpha = raw + razoring_margin(crate::eval::piece_values::pawn_value(), 1) - 1;
             let tt_value = raw - 18;
             searcher
                 .tt
@@ -3047,7 +3051,7 @@ fn razoring_uses_shallow_tt_upper_bound_but_not_lower_bound() {
 
 #[cfg(feature = "tuning")]
 pub(super) fn null_move_reduction_uses_corrected_static_eval_not_tt_value() {
-    assert_eq!(test_nnue().pawn_value(), 100);
+    assert_eq!(crate::eval::piece_values::pawn_value(), 100);
     let boundary = (20_000 + params::null_move_eval_scale() - 1) / params::null_move_eval_scale();
     let depth: u32 = 15;
     let board = position(
@@ -3060,10 +3064,10 @@ pub(super) fn null_move_reduction_uses_corrected_static_eval_not_tt_value() {
     );
     for corrected in [false, true] {
         with_root_searcher(&board, &[], |searcher| {
-            let raw = evaluate(searcher.nnue, &board);
+            let raw = evaluate(searcher.network, &board);
             let beta = raw - (boundary - 1);
             let base_child_depth = depth.saturating_sub(
-                1 + null_move_reduction(depth, beta, beta, searcher.nnue.pawn_value()),
+                1 + null_move_reduction(depth, beta, beta, crate::eval::piece_values::pawn_value()),
             );
             assert!(base_child_depth >= 1, "対照ではnull moveの子を1手以上読む");
             zero_position_correction(searcher, &board);

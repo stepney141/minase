@@ -84,7 +84,7 @@ mod tests {
     use minase::training::records::Reader;
     use std::path::Path;
 
-    const NETWORK: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/nets/nnue-epoch0.bin");
+    const NETWORK: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/nets/test-layer-stack.bin");
 
     fn arguments(directory: &Path) -> GenerateArguments {
         let Operation::Generate(mut args) = Arguments::try_parse_from([
@@ -134,6 +134,46 @@ mod tests {
         assert_eq!(config["network_checksum"], hex(&expected));
         let reader =
             Reader::new(fs::File::open(args.output_dir.join("teacher.mnsd")).unwrap()).unwrap();
+        assert_eq!(reader.header().network_checksum(), &expected);
+    }
+
+    #[test]
+    fn simple_generation_records_entire_network_file_checksum() {
+        let temporary = TemporaryDirectory::new();
+        let mut args = arguments(&temporary.0);
+        let bytes = minase::eval::nnue::test_util::fixed_simple().encode();
+        args.eval_file = temporary.0.join("simple.bin");
+        fs::write(&args.eval_file, &bytes).unwrap();
+        // 1手で王将を取れる実戦開始形式の局面により、ネットの棋力に終局を依存させない。
+        use minase_core::{
+            Color::{Black, White},
+            PieceKind::{King, Pawn, Rook},
+            test_util::{position, sq},
+        };
+        let start = position(
+            Black,
+            &[
+                (sq(0, 0), Black, King),
+                (sq(5, 8), White, King),
+                (sq(5, 5), Black, Rook),
+                (sq(0, 1), Black, Rook),
+                (sq(11, 9), White, Pawn),
+            ],
+        );
+        let opening = temporary.0.join("opening.txt");
+        fs::write(
+            &opening,
+            format!("simple 60 {} - 61\n", minase_core::to_sfen(&start)),
+        )
+        .unwrap();
+        args.openings = Some(opening);
+        args.nodes = 100;
+        args.max_ply = 61;
+        generate(&args).unwrap();
+        let expected: [u8; 32] = Sha256::digest(&bytes).into();
+        let reader =
+            Reader::new(fs::File::open(args.output_dir.join("teacher.mnsd")).unwrap()).unwrap();
+        assert!(reader.header().game_count() >= 1);
         assert_eq!(reader.header().network_checksum(), &expected);
     }
 

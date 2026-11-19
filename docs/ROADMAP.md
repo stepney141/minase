@@ -147,7 +147,7 @@
 | 中断可能な計算機での教師生成 | [plans/archived/interruptible-teacher-generation.md](plans/archived/interruptible-teacher-generation.md) | 完了（採用） | 2026年11月14日 |
 | 複数の読み筋を同時に示すMultiPV | [plans/archived/multipv.md](plans/archived/multipv.md) | 完了（採用） | 2026年11月17日 |
 | NNUEのネットを埋め込まず、USIのオプションEvalFileで外部のファイルから読む | [plans/archived/nnue-external-network-file.md](plans/archived/nnue-external-network-file.md) | 完了（採用） | 2026年11月17日 |
-| NNUEをtataraに倣った枠組みへ載せ替え、HalfKP_vm（256x2-32-32）を加える | [plans/nnue-tatara-framework-and-halfkp-vm.md](plans/nnue-tatara-framework-and-halfkp-vm.md) | 起案 | |
+| NNUEをtataraに倣った枠組みへ載せ替え、HalfKP_vm（256x2-32-32）を加える | [plans/archived/nnue-tatara-framework-and-halfkp-vm.md](plans/archived/nnue-tatara-framework-and-halfkp-vm.md) | 完了（採用） | 2026年11月19日 |
 | PV-MCTSのデバッグ道具（根の統計の表示、探索木の不変条件の検査、PV-MCTSのbench） | [plans/archived/mcts-debugging-tools.md](plans/archived/mcts-debugging-tools.md) | 完了（採用） | 2026年11月17日 |
 
 ## 現在地
@@ -165,18 +165,18 @@ NNUEは、着手ごとに差分で更新できる小さなニューラルネッ�
 NNUEの作業の本線は、まずNNUEの実装を直して、自玉の升ごとに別の重みを引く入力HalfKP_vmをいつでも使える状態にし、その後に教師の生成と学習の標準の条件（標準レシピv2）で、手書きの評価関数v0から王の位置を使わない入力P型の世代反復をやり直すことである（2026年11月15日の利用者の決定）。
 自己対局と世代ごとの強さの判定は、オンライン対局サイトlishogiの実装に近い規則セット`lishogi`で行う（[ADR](adr/play-self-play-and-judge-trained-networks-under-the-lishogi-rule-set.md)）。
 
-本線は、次の表の上から2本の設計書をこの順に進め、前の設計書の完了を次の着手の前提とする。
-それらの前提だった[ネットの外部ファイル化](plans/archived/nnue-external-network-file.md)は2026年11月17日に完了し、ネットはgitに入れず、USIのオプション`EvalFile`で外部のファイルから読むようになった。
+本線は、次の表の先頭にあるP型の世代反復である。
+その前提だった[ネットの外部ファイル化](plans/archived/nnue-external-network-file.md)は2026年11月17日に完了し、ネットはgitに入れず、USIのオプション`EvalFile`で外部のファイルから読むようになった。
+[tatara化とHalfKP_vm](plans/archived/nnue-tatara-framework-and-halfkp-vm.md)は2026年11月19日に完了し、P型はtataraのLayerStackへ載り、HalfKP_vmもエンジン、学習器、および教師生成でいつでも使える状態になった。
 HalfKP_vmの世代反復は、P型の世代反復で評価関数の癖をつかんだ後に、別の設計書として起案する。
-残りの3本は、本線の教師を安く作るためのものか、本線の結果を見てから次に試すものである。
+表の残りの3本は、本線の教師を安く作るためのものか、本線の結果を見てから次に試すものである。
 
 | 設計書 | 内容 | 状態と次の判断 | 前提 |
 |---|---|---|---|
-| [tatara化とHalfKP_vm](plans/nnue-tatara-framework-and-halfkp-vm.md) | NNUEを将棋の学習器tataraに倣った枠組みへ載せ替え、HalfKP_vm（256x2-32-32）をエンジン、学習器、および教師生成でいつでも使える状態にする。 | 起案の段階で、利用者の承認を待っている。 | なし（外部ファイル化は完了した） |
-| [P型の世代反復](plans/nnue-generation-iteration.md) | 標準レシピv2で、第n世代に約n億局面の教師を使い、v0から最大第5世代までP型の世代反復を行う。教師の生成と学習に借りる計算機の費用は、約280米ドルと見込む。 | 起案の段階である。計算機を借りるので、前提の完了の後に利用者の着手の指示を待つ。 | tatara化の完了（外部ファイル化は完了した） |
+| [P型の世代反復](plans/nnue-generation-iteration.md) | 標準レシピv2で、第n世代に約n億局面の教師を使い、v0から最大第5世代までP型の世代反復を行う。教師の生成と学習に借りる計算機の費用は、約280米ドルと見込む。 | 起案の段階である。計算機を借りるので、利用者の着手の指示を待つ。 | なし（外部ファイル化とtatara化は完了した） |
 | [先読みなしの教師での間引きの比較](plans/nnue-subsample-no-lookahead.md) | 同じ局面数を少数の対局から採る学習と多数の対局から採る学習を比べ、対局数が多いほど良いという効果が、後続の局面の探索値を混ぜない現行の教師でも残るかを確かめる。 | 起案の段階である。世代反復の結果を見て、続けるかを決める。 | なし |
 | [記録する局面の間引き](plans/sparse-teacher-recording.md) | 4手に1手だけを2万ノードで探索して記録し、残りの手を少ないノード数で指して、同じ計算量で対局数を増やす。 | 起案の段階である。日本中将棋連盟の規則に基づく規則セット`JCSA`の教師と、いまの学習器の引数を前提に書かれているので、着手の前に`lishogi`の規則とtatara化の後の引数に合わせて改める。 | 「間引きの比較」の判定1が「支持」であること、および世代反復の完了（標準レシピv2が固定した教師の作り方を変えるため） |
-| [第1層の全再計算の差分化（Finny tables）](plans/nnue-finny-tables.md) | 自玉が別の区分へ動いたときに起きる第1層の値の全再計算を、保存した値からの差分の更新に置き換える。 | 待機中である。本文はtatara化で削除するHalfKP-hm-b8を前提にしているので、着手の前にHalfKP_vmに合わせて改める。着手するかは、tatara化で測るHalfKP_vmの全再計算の費用を見て、HalfKP_vmの世代反復を起案するときに決める。 | tatara化の完了 |
+| [第1層の全再計算の差分化（Finny tables）](plans/nnue-finny-tables.md) | 自玉が別の区分へ動いたときに起きる第1層の値の全再計算を、保存した値からの差分の更新に置き換える。 | 待機中である。本文はtatara化で削除するHalfKP-hm-b8を前提にしているので、着手の前にHalfKP_vmに合わせて改める。着手するかは、tatara化で測ったHalfKP_vmの全再計算の割合（深さ5の`bench`で累算器の更新の1.17%、[記録](measurements/nnue-tatara-framework-and-halfkp-vm/nnue-tatara-framework-and-halfkp-vm-halfkp-vm-check.md)）を見て、HalfKP_vmの世代反復を起案するときに決める。 | なし（tatara化は完了した） |
 
 世代反復の最終候補は、[NNUEの構成の見直し](plans/archived/nnue-architecture-revision.md)をmasterへ統合する前のネットと比べる。
 見直した構成は、統合前のネットより強いと判定されないまま、世代反復で使う構成として統合された。

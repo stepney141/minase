@@ -23,7 +23,8 @@ remote/work/には本ごとのconfig.json、塊、および追記中の生成ロ
 生成機では、/workspace/job/を作業のルートとする。
 worker.pidにはsetsidで起動したbashのプロセス識別子を保存し、bashはstartedの作成を待ってgeneration_worker.pyをexecするため、作業プロセスも同じ識別子とセッションを使う。
 worker.jsonは仕事がないまま待つ上限idle_limit_secondsを1,800秒に設定し、job.jsonは生成条件、対象番号、同時対局数、ネットの絶対パスnetwork、およびファイル全体のSHA-256であるnetwork_sha256を指定する。
---eval-fileのネットはコードのバンドルとは別にnetworks/<SHA-256>.binへ転送する。
+--eval-fileのtatara形式のネットからエンジンが構造を判定する。
+ネットはコードのバンドルとは別にnetworks/<SHA-256>.binへ転送する。
 bundles/source.bundleは指定コミットをビルドするためのGitの履歴であり、job.jsonのtarget_booksはlast_book + 1、skip_booksはfirst_book未満の番号と受け入れ済みの番号の和集合とする。
 作業プロセスは0以上target_books未満からskip_booksと生成機で公開済みの番号を除き、小さい番号から生成する。
 

@@ -36,7 +36,7 @@ use super::{
 use crate::error::ContractError;
 use crate::{
     data::{Dataset, build_targets_from_arrays, epoch_permutation},
-    nn::{atomic_write, patience_reached, pipeline, update_best, workers},
+    nn::{patience_reached, pipeline, update_best, workers},
 };
 use serde_json::{Value, json};
 use std::{
@@ -195,10 +195,8 @@ impl Session {
         self.previous_elapsed + self.started.elapsed().as_secs_f64()
     }
     fn save_latest(&self) -> Result<()> {
-        Ok(atomic_write(
-            &self.args.output_dir.join("latest.npz"),
-            &self.checkpoint.encode()?,
-        )?)
+        self.checkpoint
+            .write(self.args.output_dir.join("latest.npz"))
     }
 
     fn validate(&self) -> Result<f64> {
@@ -295,10 +293,8 @@ impl Session {
         // latestを永続化した後、best公開直前の中断は再開時に復旧する。
         self.save_latest()?;
         if improved {
-            atomic_write(
-                &self.args.output_dir.join("best.npz"),
-                &self.checkpoint.encode()?,
-            )?;
+            self.checkpoint
+                .write(self.args.output_dir.join("best.npz"))?;
         }
         eprintln!(
             "epoch {epoch}: train_loss={:.9} removal_loss={:.9} validation_loss={loss:.9}",
@@ -452,7 +448,7 @@ fn recover_best(directory: &Path, latest: &Checkpoint) -> Result<()> {
     if latest.progress.epoch != best.epoch {
         return Err(Error::Invalid("best checkpoint is missing or inconsistent"));
     }
-    Ok(atomic_write(&path, &latest.encode()?)?)
+    latest.write(&path)
 }
 
 /// 初期検証、CPU学習、チェックポイント保存、最良PSTの書き出しを行う。

@@ -49,7 +49,7 @@ fn play(game: &mut Game, moves: &[Move]) {
     }
 }
 
-fn with_snapshot(snapshot: &SearchSnapshot, nnue: &Nnue, test: impl FnOnce(&mut Searcher<'_>)) {
+fn with_snapshot(snapshot: &SearchSnapshot, nnue: &Network, test: impl FnOnce(&mut Searcher<'_>)) {
     with_draw_value_root_searcher(
         nnue,
         snapshot.position(),
@@ -73,7 +73,7 @@ fn rotated_cycle(black_attacks: bool, white_attacks: bool, offset: usize) -> (Po
 
 #[test]
 fn article_31_r1_draw_value_signs_path_cycles_from_both_root_colors() {
-    let nnue = epoch_zero_nnue();
+    let nnue = fixed_network();
     for attacks in [false, true] {
         for offset in [0, 1] {
             let (root, cycle) = rotated_cycle(attacks, attacks, offset);
@@ -104,7 +104,7 @@ fn article_31_r1_draw_value_signs_path_cycles_from_both_root_colors() {
 
 #[test]
 fn article_31_r1_draw_value_signs_history_cycles_from_both_root_colors() {
-    let nnue = epoch_zero_nnue();
+    let nnue = fixed_network();
     for attacks in [false, true] {
         for offset in [0, 1] {
             let (start, cycle) = rotated_cycle(attacks, attacks, offset);
@@ -141,7 +141,7 @@ fn article_31_r1_draw_value_signs_history_cycles_from_both_root_colors() {
 
 #[test]
 fn article_31_r1_draw_value_keeps_repetition_win_and_loss_in_their_band() {
-    let nnue = epoch_zero_nnue();
+    let nnue = fixed_network();
     for attacker in Color::ALL {
         for offset in [0, 1] {
             let (start, cycle) =
@@ -177,7 +177,7 @@ fn article_31_r1_draw_value_keeps_repetition_win_and_loss_in_their_band() {
 
 #[test]
 fn article_31_r1_negative_draw_value_selects_a_quiet_move_over_a_history_draw() {
-    let nnue = epoch_zero_nnue();
+    let nnue = fixed_network();
     let (root, cycle) = rook_cycle(false, false);
     let mut game = Game::from_position(Rules::JCSA, root);
     play(&mut game, &cycle[..3]);
@@ -232,7 +232,7 @@ fn article_31_r1_negative_draw_value_selects_a_quiet_move_over_a_history_draw() 
 
 #[test]
 fn article_31_r1_draw_value_does_not_change_r2_or_r3_search() {
-    let nnue = epoch_zero_nnue();
+    let nnue = fixed_network();
     for rule in [RepetitionRule::R2, RepetitionRule::R3] {
         for occurrences in 1..=if rule == RepetitionRule::R3 { 2 } else { 1 } {
             let (root, cycle) = rook_cycle(false, false);

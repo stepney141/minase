@@ -10,7 +10,7 @@ fn recorded_move(board: &Position, mv: Move) -> MoveRecord {
     );
     let mut after = board.clone();
     let undo = after.make_move_unchecked(mv, engine_rules());
-    MoveRecord::from_undo(test_nnue(), &undo)
+    MoveRecord::from_undo(&undo)
 }
 
 fn board_with_kings(mut pieces: Vec<(Square, Color, PieceKind)>) -> Position {
@@ -82,7 +82,9 @@ fn move_record_double_capture_selects_value_then_destination() {
         .piece_at(mv.mid.unwrap())
         .unwrap();
     let rook = more_valuable_at_destination.piece_at(mv.to).unwrap();
-    assert!(test_nnue().piece_value(rook) > test_nnue().piece_value(pawn));
+    assert!(
+        crate::eval::piece_values::piece_value(rook) > crate::eval::piece_values::piece_value(pawn)
+    );
     assert_eq!(
         recorded_move(&more_valuable_at_destination, mv).captured,
         Some(PieceKind::Rook)
@@ -98,8 +100,8 @@ fn move_record_double_capture_selects_value_then_destination() {
         ],
     );
     assert_eq!(
-        test_nnue().piece_value(equal_value.piece_at(mv.mid.unwrap()).unwrap()),
-        test_nnue().piece_value(equal_value.piece_at(mv.to).unwrap())
+        crate::eval::piece_values::piece_value(equal_value.piece_at(mv.mid.unwrap()).unwrap()),
+        crate::eval::piece_values::piece_value(equal_value.piece_at(mv.to).unwrap())
     );
     assert_eq!(
         recorded_move(&equal_value, mv).captured,
@@ -350,7 +352,7 @@ fn expected_path_state(
     };
     PathStateSnapshot {
         path_key,
-        record: Some(MoveRecord::from_undo(test_nnue(), &undo)),
+        record: Some(MoveRecord::from_undo(&undo)),
         material_key: material_key(&child),
         pawn_key: pawn_key(&child),
         minor_key: correction_keys.minor,
@@ -365,10 +367,10 @@ fn quiescence_path_state(
 ) -> PathStateSnapshot {
     assert!(legal_moves(board).contains(&mv));
     assert!(board.captured_squares(mv).iter().any(Option::is_some));
-    assert!(!see_prunes(board, engine_rules(), test_nnue(), mv, 0,));
+    assert!(!see_prunes(board, engine_rules(), mv, 0,));
     let mut snapshot = None;
     with_repetition_root_searcher(
-        test_nnue(),
+        test_network(),
         board,
         engine_rules(),
         repetition,
@@ -389,13 +391,7 @@ fn quiescence_path_state(
             child.make_move_unchecked(mv, engine_rules());
             let child_capture = step(sq(8, 8), sq(8, 6));
             assert!(legal_moves(&child).contains(&child_capture));
-            assert!(!see_prunes(
-                &child,
-                engine_rules(),
-                searcher.nnue,
-                child_capture,
-                0,
-            ));
+            assert!(!see_prunes(&child, engine_rules(), child_capture, 0,));
 
             let path_keys = searcher.path_keys.clone();
             let path_moves_len = searcher.path_moves.len();
@@ -418,7 +414,7 @@ fn normal_search_path_state(
 ) -> PathStateSnapshot {
     let mut snapshot = None;
     with_repetition_root_searcher(
-        test_nnue(),
+        test_network(),
         board,
         engine_rules(),
         repetition,

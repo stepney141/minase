@@ -5,13 +5,13 @@ use super::*;
 
 #[test]
 fn lazy_accumulator_skips_normal_and_qsearch_tt_cutoffs() {
-    let net = epoch_zero_nnue();
+    let net = fixed_network();
     let root = Position::initial();
     let mv = legal_moves(&root)[0];
     let mut child = root.clone();
     child.make_move_unchecked(mv, engine_rules());
     for depth in [0, 1] {
-        with_nnue_root_searcher(&net, &root, &[], |searcher| {
+        with_network_root_searcher(&net, &root, &[], |searcher| {
             searcher.tt.store(
                 search_key(&child),
                 8,
@@ -37,12 +37,12 @@ fn lazy_accumulator_skips_normal_and_qsearch_tt_cutoffs() {
 
 #[test]
 fn lazy_accumulator_skips_tt_static_eval_when_stand_pat_cuts_off() {
-    let net = epoch_zero_nnue();
+    let net = fixed_network();
     let root = Position::initial();
     let mv = legal_moves(&root)[0];
     let mut child = root.clone();
     child.make_move_unchecked(mv, engine_rules());
-    with_nnue_root_searcher(&net, &root, &[], |searcher| {
+    with_network_root_searcher(&net, &root, &[], |searcher| {
         assert!(
             searcher
                 .tt
@@ -64,18 +64,18 @@ fn lazy_accumulator_skips_tt_static_eval_when_stand_pat_cuts_off() {
 
 #[test]
 fn lazy_accumulator_computes_tt_static_eval_parent_before_descending() {
-    let net = epoch_zero_nnue();
+    let net = fixed_network();
     let root = Position::initial();
     let mv = legal_moves(&root)[0];
     let mut child = root.clone();
     child.make_move_unchecked(mv, engine_rules());
-    let expected = net.refresh_accumulator(&child);
-    with_nnue_root_searcher(&net, &root, &[], |searcher| {
-        assert!(searcher.tt.store_static_eval(
-            search_key(&child),
-            net.evaluate_accumulator(&expected, child.side_to_move()),
-            false
-        ));
+    let expected = net.evaluate(&child).unwrap();
+    with_network_root_searcher(&net, &root, &[], |searcher| {
+        assert!(
+            searcher
+                .tt
+                .store_static_eval(search_key(&child), expected, false)
+        );
         net.take_accumulator_stats();
         let mut current = root.clone();
         assert!(
@@ -96,7 +96,11 @@ fn lazy_accumulator_computes_tt_static_eval_parent_before_descending() {
         );
         assert!(searcher.nodes > 1);
         assert!(net.take_accumulator_stats().incremental_updates > 0);
-        assert_eq!(searcher.accumulators[1], expected);
+        assert_eq!(
+            searcher.evaluator.evaluate(1, child.side_to_move()),
+            expected
+        );
+        searcher.evaluator.assert_accumulator(&child, 1);
         assert_eq!(current, root);
         assert!(searcher.pending_accumulators.iter().all(Option::is_none));
     });
@@ -104,7 +108,7 @@ fn lazy_accumulator_computes_tt_static_eval_parent_before_descending() {
 
 #[test]
 fn lazy_accumulator_skips_null_tt_cutoff_and_applies_lion_expiry_on_read() {
-    let net = epoch_zero_nnue();
+    let net = fixed_network();
     let mut root = position(
         Color::Black,
         &[
@@ -118,9 +122,9 @@ fn lazy_accumulator_skips_null_tt_cutoff_and_applies_lion_expiry_on_read() {
     assert!(root.lion_taken_by_non_lion().is_some());
     let mut child = root.clone();
     child.make_null_move();
-    let expected = net.refresh_accumulator(&child);
+    let expected = net.evaluate(&child).unwrap();
     for cutoff in [true, false] {
-        with_nnue_root_searcher(&net, &root, &[], |searcher| {
+        with_network_root_searcher(&net, &root, &[], |searcher| {
             if cutoff {
                 searcher.tt.store(
                     search_key(&child),
@@ -141,7 +145,11 @@ fn lazy_accumulator_skips_null_tt_cutoff_and_applies_lion_expiry_on_read() {
                 assert_eq!(counts.updates(), 0);
             } else {
                 assert!(counts.incremental_updates > 0);
-                assert_eq!(searcher.accumulators[1], expected);
+                searcher.evaluator.assert_accumulator(&child, 1);
+                assert_eq!(
+                    searcher.evaluator.evaluate(1, child.side_to_move()),
+                    expected
+                );
             }
             assert_eq!(current, root);
             assert!(searcher.pending_accumulators.iter().all(Option::is_none));
@@ -151,7 +159,7 @@ fn lazy_accumulator_skips_null_tt_cutoff_and_applies_lion_expiry_on_read() {
 
 #[test]
 fn lazy_accumulator_matches_eager_update_once_per_move_across_rules() {
-    let net = epoch_zero_nnue();
+    let net = fixed_network();
     for specification in [
         "JCSA",
         "lishogi",
@@ -173,28 +181,22 @@ fn lazy_accumulator_matches_eager_update_once_per_move_across_rules() {
         for root in positions {
             let mut moves = Vec::new();
             MoveGenerator::new(rules.moves).generate_moves(&root, &mut moves);
-            with_nnue_root_searcher(&net, &root, &[], |searcher| {
+            with_network_root_searcher(&net, &root, &[], |searcher| {
                 for mv in moves {
                     let mut child = root.clone();
                     let undo = child.make_move_unchecked(mv, rules.moves);
-                    // 従来の、子へ進む前に無条件で更新する処理を参照とする。
-                    let mut expected = searcher.accumulators[0].clone();
-                    net.update_accumulator_after_move(
-                        &searcher.accumulators[0],
-                        &mut expected,
-                        &child,
-                        &undo,
-                    );
+                    let expected = net.evaluate(&child).unwrap();
                     searcher.pending_accumulators[1] = Some(PendingAccumulator {
                         update: AccumulatorUpdate::Move(undo),
                         computed: false,
                     });
                     net.take_accumulator_stats();
+                    assert_eq!(searcher.evaluate_at(&child, 1), expected);
                     assert_eq!(
-                        searcher.evaluate_at(&child, 1),
-                        net.evaluate_accumulator(&expected, child.side_to_move())
+                        searcher.evaluator.evaluate(1, child.side_to_move()),
+                        expected
                     );
-                    assert_eq!(searcher.accumulators[1], expected);
+                    searcher.evaluator.assert_accumulator(&child, 1);
                     assert_eq!(net.take_accumulator_stats().incremental_updates, 1);
                     searcher.evaluate_at(&child, 1);
                     assert_eq!(net.take_accumulator_stats().updates(), 0);

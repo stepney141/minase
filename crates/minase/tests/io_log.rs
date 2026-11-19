@@ -117,7 +117,7 @@ fn usi_session_records_handshake_search_and_exact_stdout() {
         concat!(
             "setoption name EvalFile value ",
             env!("CARGO_MANIFEST_DIR"),
-            "/nets/nnue-epoch0.bin"
+            "/nets/test-layer-stack.bin"
         ),
         "isready",
         "position startpos",
@@ -190,7 +190,7 @@ fn logging_preserves_stdout_byte_for_byte() {
     let input = concat!(
         "setoption name RuleSet value JCSA\nsetoption name EvalFile value ",
         env!("CARGO_MANIFEST_DIR"),
-        "/nets/nnue-epoch0.bin\nusi\nisready\nposition startpos\nmoves\nstate\nquit\n"
+        "/nets/test-layer-stack.bin\nusi\nisready\nposition startpos\nmoves\nstate\nquit\n"
     )
     .as_bytes();
     let plain = run("usi", None, input);

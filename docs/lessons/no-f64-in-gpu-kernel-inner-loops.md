@@ -15,3 +15,4 @@ GPUカーネルの内側のループ（局面数×発火数×幅の桁で回る�
 ## 出典
 
 [Rust製NNUE学習器（GPU）](../plans/archived/nnue-trainer-rust.md)、[検査と試走の記録](../measurements/nnue-trainer-rust/nnue-trainer-rust-checks.md)のフェーズ2fの節。
+2026年11月18日には、HalfKP_vmのSimpleの最適化器が約2.5億個の要素ごとに倍精度で計算しており、1回の更新の最適化器が145.57 msかかった。単精度に改めると16.84 msになった（[教師1本で1回の更新の時間を測る教訓](measure-memory-and-update-time-with-one-teacher-file-before-a-large-network-run.md)）。

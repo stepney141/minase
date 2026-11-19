@@ -441,13 +441,11 @@ fn tuning_parameters_in_isolated_process() {
         with_root_searcher(&board, &[], |searcher| {
             searcher.capture_history.update(
                 &board,
-                searcher.nnue,
                 mv,
                 super::super::capture_history::CAPTURE_HISTORY_LIMIT,
             );
             result = i64::from(super::super::capture_history::CaptureHistory::adjustment(
-                searcher.nnue,
-                searcher.capture_history.read(&board, searcher.nnue, mv),
+                searcher.capture_history.read(&board, mv),
             ));
         });
         result
@@ -457,7 +455,7 @@ fn tuning_parameters_in_isolated_process() {
         let mut histories = crate::search::HistoryTables::new(DEFAULT_THREADS);
         histories.workers[0][0][60][60] = 100;
         run_search_team(
-            test_nnue(),
+            test_network(),
             &snapshot.position,
             snapshot.rules(),
             snapshot.repetition(),
@@ -565,8 +563,8 @@ fn tuning_parameters_in_isolated_process() {
             embedding[0] = 1;
             Pst::from_weights_with_fm(
                 &vec![[0; 2]; FEATURE_COUNT],
-                std::array::from_fn(|state| test_nnue().piece_value_of_state(state)),
-                test_nnue().cp_per_logit(),
+                std::array::from_fn(crate::eval::piece_values::piece_value_of_state),
+                600.0, // PSTだけの試験なのでNNUEの尺度を参照しない。
                 "JCSA",
                 FmWeights {
                     embeddings: &vec![embedding; FEATURE_COUNT],
@@ -1046,10 +1044,14 @@ fn reverse_futility_parameter_changes_search() {
             (sq(11, 0), Color::Black, PieceKind::King),
         ],
     );
-    let nnue = test_nnue();
+    let nnue = test_network();
     let value = evaluate(nnue, &board);
     assert_eq!(params::reverse_futility_mult_base(), 235, "数値例の前提");
-    assert_eq!(nnue.pawn_value(), 100, "固定ネットの歩兵価値");
+    assert_eq!(
+        crate::eval::piece_values::pawn_value(),
+        100,
+        "固定ネットの歩兵価値"
+    );
     // 既定の余裕値32に1足りない窓。基数0なら余裕値は3となり枝刈りする。
     let beta = value - 31;
     let expected = ((661 * i64::from(beta) + 363 * i64::from(value)) / 1024) as i32;
@@ -1069,9 +1071,13 @@ fn reverse_futility_parameter_changes_search() {
 #[cfg(feature = "tuning")]
 fn razoring_parameter_changes_search() {
     let board = bare_kings();
-    let nnue = test_nnue();
+    let nnue = test_network();
     let value = evaluate(nnue, &board);
-    assert_eq!(nnue.pawn_value(), 100, "固定ネットの歩兵価値");
+    assert_eq!(
+        crate::eval::piece_values::pawn_value(),
+        100,
+        "固定ネットの歩兵価値"
+    );
     let depth = 1;
     let original = params::razoring_depth_margin();
     let changed = original - 1;

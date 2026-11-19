@@ -4,7 +4,6 @@
 use core::cmp::Ordering::{Equal, Greater, Less};
 
 use super::*;
-use crate::eval::evaluate;
 #[cfg(feature = "tuning")]
 use crate::eval::nnue::EVALUATION_LIMIT;
 use crate::search::alphabeta::correction::correction_update_bonus;
@@ -41,7 +40,7 @@ fn with_history_worker_searcher(
     let mut capture_history = empty_capture_history();
     let repetition_history = RepetitionHistory::new(&[]);
     let mut searcher = new_searcher(
-        test_nnue(),
+        test_network(),
         board,
         MoveRules::standard(),
         SearchRepetition::R1 {
@@ -85,32 +84,9 @@ fn attacked_board() -> Position {
 }
 
 #[cfg(feature = "tuning")]
-fn near_upper_evaluation_limit_board() -> Position {
-    let black_king = sq(11, 0);
-    let white_king = sq(0, 11);
-    let mut pieces = vec![
-        (black_king, Color::Black, PieceKind::King),
-        (white_king, Color::White, PieceKind::King),
-    ];
-    let mut squares = Square::all().filter(|&square| square != black_king && square != white_king);
-    pieces.extend(
-        squares
-            .by_ref()
-            .take(17)
-            .map(|square| (square, Color::Black, PieceKind::Rook)),
-    );
-    pieces.push((
-        squares.next().expect("fixture has a square for the bishop"),
-        Color::Black,
-        PieceKind::Bishop,
-    ));
-    position(Color::Black, &pieces)
-}
-
-#[cfg(feature = "tuning")]
 pub(super) fn quiescence_stand_pat_beta_cutoff_uses_corrected_static_eval() {
     let board = bare_kings();
-    let v = evaluate(test_nnue(), &board);
+    let v = evaluate(test_network(), &board);
     with_root_searcher(&board, &[], |searcher| {
         zero_position_correction(searcher, &board);
         searcher.correction.store(
@@ -132,9 +108,16 @@ pub(super) fn quiescence_stand_pat_beta_cutoff_uses_corrected_static_eval() {
 
 #[cfg(feature = "tuning")]
 pub(super) fn quiescence_stand_pat_clamps_at_evaluation_limit() {
-    let board = near_upper_evaluation_limit_board();
-    let v = evaluate(test_nnue(), &board);
-    with_root_searcher(&board, &[], |searcher| {
+    let board = bare_kings();
+    let mut parameters = crate::eval::nnue::test_util::layer_stack_parameters();
+    // 上限直前の出力を明示し、特定の駒配置や学習済み重みに依存しない。
+    parameters.output_weights.fill(0);
+    parameters.l1_weights[15 * parameters.width..].fill(0);
+    parameters.output_bias = (EVALUATION_LIMIT - 1) * parameters.fv_scale;
+    let network =
+        Network::LayerStack(crate::eval::nnue::LayerStackNetwork::new(parameters).unwrap());
+    let v = evaluate(&network, &board);
+    with_network_root_searcher(&network, &board, &[], |searcher| {
         zero_position_correction(searcher, &board);
         store_position_correction(searcher, &board, 1024);
         let correction = position_correction(searcher, board.side_to_move(), 0);
@@ -151,7 +134,7 @@ pub(super) fn quiescence_stand_pat_clamps_at_evaluation_limit() {
 #[cfg(feature = "tuning")]
 pub(super) fn quiescence_max_ply_returns_uncorrected_static_eval() {
     let board = bare_kings();
-    let v = evaluate(test_nnue(), &board);
+    let v = evaluate(test_network(), &board);
     with_root_searcher(&board, &[], |searcher| {
         zero_position_correction(searcher, &board);
         searcher.correction.store(
@@ -174,7 +157,7 @@ pub(super) fn quiescence_max_ply_returns_uncorrected_static_eval() {
 pub(super) fn quiescence_tt_stores_uncorrected_static_eval() {
     let board = capture_board();
     let key = search_key(&board);
-    let v = evaluate(test_nnue(), &board);
+    let v = evaluate(test_network(), &board);
     with_root_searcher(&board, &[], |searcher| {
         zero_position_correction(searcher, &board);
         searcher.correction.store(
@@ -343,7 +326,7 @@ fn position_correction_is_shared_between_worker_searchers() {
 /// 子の置換表に既知の値を置き、親の更新契約だけを検査する。
 #[test]
 fn correction_negamax_update_conditions() {
-    let nnue = test_nnue();
+    let nnue = test_network();
     let mut shared_histories = crate::search::HistoryTables::new(DEFAULT_THREADS);
     let stop = AtomicBool::new(false);
     let clock = ManualClock::new(Duration::ZERO);
@@ -470,8 +453,12 @@ fn correction_negamax_update_conditions() {
 
 #[test]
 fn correction_negamax_score_boundaries_tt_cutoffs_and_interruption() {
-    assert_eq!(test_nnue().pawn_value(), 100, "固定ネットの歩兵価値");
-    let nnue = test_nnue();
+    assert_eq!(
+        crate::eval::piece_values::pawn_value(),
+        100,
+        "固定ネットの歩兵価値"
+    );
+    let nnue = test_network();
     let mut shared_histories = crate::search::HistoryTables::new(DEFAULT_THREADS);
     for score in [
         MATE_THRESHOLD,
@@ -612,8 +599,12 @@ fn correction_negamax_score_boundaries_tt_cutoffs_and_interruption() {
 
 #[test]
 fn correction_root_updates_only_after_completed_search() {
-    let nnue = test_nnue();
-    assert_eq!(nnue.pawn_value(), 100, "固定ネットの歩兵価値");
+    let nnue = test_network();
+    assert_eq!(
+        crate::eval::piece_values::pawn_value(),
+        100,
+        "固定ネットの歩兵価値"
+    );
     let mut shared_histories = crate::search::HistoryTables::new(DEFAULT_THREADS);
     let board = bare_kings();
     let score = evaluate(nnue, &board);
@@ -696,7 +687,7 @@ fn correction_root_updates_only_after_completed_search() {
 
 #[cfg(feature = "tuning")]
 pub(super) fn correction_changes_futility_estimate() {
-    let nnue = test_nnue();
+    let nnue = test_network();
     let mut shared_histories = crate::search::HistoryTables::new(DEFAULT_THREADS);
     let stop = AtomicBool::new(false);
     let clock = ManualClock::new(Duration::ZERO);
@@ -705,7 +696,7 @@ pub(super) fn correction_changes_futility_estimate() {
     let quiets = legal_moves(&board);
     let history = repeated_root_children(&board, &quiets);
     let raw = evaluate(nnue, &board);
-    let alpha = raw + 10 * nnue.pawn_value();
+    let alpha = raw + 10 * crate::eval::piece_values::pawn_value();
     let mut corrections = Vec::new();
     let mut scores = Vec::new();
     let mut nodes = Vec::new();
@@ -770,7 +761,7 @@ pub(super) fn correction_changes_futility_estimate() {
 
 #[test]
 fn correction_search_move_and_null_move_propagate_position_keys() {
-    let nnue = test_nnue();
+    let nnue = test_network();
     let mut shared_histories = crate::search::HistoryTables::new(DEFAULT_THREADS);
     let stop = AtomicBool::new(false);
     let clock = ManualClock::new(Duration::ZERO);
@@ -889,7 +880,7 @@ fn correction_histories_survive_the_next_search_team_start() {
     let table = small_tt();
     let mut histories = crate::search::HistoryTables::new(threads);
     let first = run_search_team(
-        test_nnue(),
+        test_network(),
         &snapshot.position,
         snapshot.rules(),
         snapshot.repetition(),
@@ -926,7 +917,7 @@ fn correction_histories_survive_the_next_search_team_start() {
         .find(|&(_, value)| value != 5)
         .expect("the first search must update continuation correction history");
     let second = run_search_team(
-        test_nnue(),
+        test_network(),
         &snapshot.position,
         snapshot.rules(),
         snapshot.repetition(),

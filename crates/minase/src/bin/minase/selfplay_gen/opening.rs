@@ -210,7 +210,7 @@ mod tests {
 
     use crate::selfplay_gen::{
         play::{PlaySettings, play_game_from_opening},
-        test_support::{TemporaryDirectory, epoch_zero_nnue, test_table},
+        test_support::{TemporaryDirectory, fixed_network, test_table},
     };
     use std::fs;
 
@@ -247,7 +247,7 @@ mod tests {
         assert_eq!(start.position(), original.position());
         assert_eq!(start.ply_count(), 0);
         let completed = play_game_from_opening(
-            &epoch_zero_nnue(),
+            &fixed_network(),
             Rules::LISHOGI,
             1,
             PlaySettings {

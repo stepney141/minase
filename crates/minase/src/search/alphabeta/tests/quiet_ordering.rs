@@ -60,7 +60,7 @@ fn lesser_piece_threats_group_equal_values_and_use_strictly_lower_groups() {
         ],
     );
     // 異なる駒状態を同価値にする。順位0の相手駒は最高価値の自駒にも寄与しない。
-    let mut ranks = CaptureRanks::new(test_nnue());
+    let mut ranks = CaptureRanks::new();
     ranks.values = vec![40, 20, 10];
     ranks.rank_of_state.fill(2);
     for (kind, rank) in [
@@ -80,8 +80,7 @@ fn lesser_piece_threats_group_equal_values_and_use_strictly_lower_groups() {
 /// 実際の駒状態で照会し、昇順の整列と二分探索を使う参照処理と一致する。
 #[test]
 fn ranked_threats_match_reference_for_every_nonroyal_mover() {
-    let nnue = test_nnue();
-    let ranks = CaptureRanks::new(nnue);
+    let ranks = CaptureRanks::new();
     for rules in minase_core::test_util::capture_test_rules() {
         for board in minase_core::test_util::capture_test_positions()
             .into_iter()
@@ -89,7 +88,7 @@ fn ranked_threats_match_reference_for_every_nonroyal_mover() {
         {
             let threats = LesserPieceThreats::new(&board, &ranks);
             let reference = ReferenceLesserPieceThreats::with_piece_values(&board, |piece| {
-                nnue.piece_value(piece)
+                crate::eval::piece_values::piece_value(piece)
             });
             for from in
                 board.pieces_of(board.side_to_move()) & !board.royal_pieces(board.side_to_move())
@@ -97,7 +96,7 @@ fn ranked_threats_match_reference_for_every_nonroyal_mover() {
                 let piece = board.piece_at(from).unwrap();
                 assert_eq!(
                     threats.below(ranks.rank_of_state[crate::eval::piece_state_of(piece)]),
-                    reference.below(nnue.piece_value(piece)),
+                    reference.below(crate::eval::piece_values::piece_value(piece)),
                     "rules={rules:?}, from={from:?}"
                 );
             }
@@ -147,7 +146,6 @@ fn direct_check_squares_match_forward_control_on_bench_and_random_quiets() {
 
 #[test]
 fn direct_check_bonus_is_disabled_when_the_opponent_has_two_royals() {
-    let nnue = test_nnue();
     let generator = MoveGenerator::standard();
     let board = position_with_promoted_pieces(
         Color::Black,
@@ -164,16 +162,14 @@ fn direct_check_bonus_is_disabled_when_the_opponent_has_two_royals() {
     assert!(!see_prunes(
         &board,
         engine_rules(),
-        nnue,
         mv,
-        -(nnue.pawn_value() * 75 / 208),
+        -(crate::eval::piece_values::pawn_value() * 75 / 208),
     ));
 
     let mut direct_checks = DirectCheckSquares::new(&board);
     assert!(!qualifies_for_check_bonus(
         &board,
         &generator,
-        nnue,
         &mut direct_checks,
         kind_before_move(&board, mv),
         mv,
@@ -182,7 +178,6 @@ fn direct_check_bonus_is_disabled_when_the_opponent_has_two_royals() {
 
 #[test]
 fn direct_check_bonus_uses_the_promoted_piece_kind() {
-    let nnue = test_nnue();
     let generator = MoveGenerator::standard();
     let board = position(
         Color::Black,
@@ -207,7 +202,6 @@ fn direct_check_bonus_uses_the_promoted_piece_kind() {
     assert!(!qualifies_for_check_bonus(
         &board,
         &generator,
-        nnue,
         &mut direct_checks,
         moving_kind,
         unpromoted,
@@ -215,7 +209,6 @@ fn direct_check_bonus_uses_the_promoted_piece_kind() {
     assert!(qualifies_for_check_bonus(
         &board,
         &generator,
-        nnue,
         &mut direct_checks,
         moving_kind,
         promoted,
@@ -224,7 +217,6 @@ fn direct_check_bonus_uses_the_promoted_piece_kind() {
 
 #[test]
 fn discovered_check_alone_does_not_receive_the_direct_check_bonus() {
-    let nnue = test_nnue();
     let generator = MoveGenerator::standard();
     let board = position(
         Color::Black,
@@ -244,7 +236,6 @@ fn discovered_check_alone_does_not_receive_the_direct_check_bonus() {
     assert!(!qualifies_for_check_bonus(
         &board,
         &generator,
-        nnue,
         &mut direct_checks,
         kind_before_move(&board, mv),
         mv,
@@ -253,7 +244,6 @@ fn discovered_check_alone_does_not_receive_the_direct_check_bonus() {
 
 #[test]
 fn vacating_the_origin_does_not_extend_direct_check_squares() {
-    let nnue = test_nnue();
     let generator = MoveGenerator::standard();
     let board = position(
         Color::Black,
@@ -272,7 +262,6 @@ fn vacating_the_origin_does_not_extend_direct_check_squares() {
     assert!(!qualifies_for_check_bonus(
         &board,
         &generator,
-        nnue,
         &mut direct_checks,
         kind_before_move(&board, mv),
         mv,
@@ -281,7 +270,6 @@ fn vacating_the_origin_does_not_extend_direct_check_squares() {
 
 #[test]
 fn check_bonus_requires_a_check_whose_see_is_not_below_the_margin() {
-    let nnue = test_nnue();
     let generator = MoveGenerator::standard();
     let losing = position(
         Color::Black,
@@ -298,15 +286,13 @@ fn check_bonus_requires_a_check_whose_see_is_not_below_the_margin() {
     assert!(see_prunes(
         &losing,
         engine_rules(),
-        nnue,
         losing_check,
-        -(nnue.pawn_value() * 75 / 208),
+        -(crate::eval::piece_values::pawn_value() * 75 / 208),
     ));
     let mut direct_checks = DirectCheckSquares::new(&losing);
     assert!(!qualifies_for_check_bonus(
         &losing,
         &generator,
-        nnue,
         &mut direct_checks,
         kind_before_move(&losing, losing_check),
         losing_check,
@@ -325,15 +311,13 @@ fn check_bonus_requires_a_check_whose_see_is_not_below_the_margin() {
     assert!(!see_prunes(
         &safe,
         engine_rules(),
-        nnue,
         safe_check,
-        -(nnue.pawn_value() * 75 / 208),
+        -(crate::eval::piece_values::pawn_value() * 75 / 208),
     ));
     let mut direct_checks = DirectCheckSquares::new(&safe);
     assert!(qualifies_for_check_bonus(
         &safe,
         &generator,
-        nnue,
         &mut direct_checks,
         kind_before_move(&safe, safe_check),
         safe_check,
@@ -359,15 +343,13 @@ fn check_bonus_requires_a_check_whose_see_is_not_below_the_margin() {
     assert!(!see_prunes(
         &unknown,
         engine_rules(),
-        nnue,
         unknown_check,
-        -(nnue.pawn_value() * 75 / 208),
+        -(crate::eval::piece_values::pawn_value() * 75 / 208),
     ));
     let mut direct_checks = DirectCheckSquares::new(&unknown);
     assert!(qualifies_for_check_bonus(
         &unknown,
         &generator,
-        nnue,
         &mut direct_checks,
         kind_before_move(&unknown, unknown_check),
         unknown_check,
@@ -510,7 +492,7 @@ fn move_picker_reads_butterfly_pawn_and_all_available_continuations() {
         let ordered: Vec<_> = std::iter::from_fn(|| {
             picker.next(
                 &board,
-                searcher.nnue,
+                searcher.network,
                 &searcher.generator,
                 context,
                 &std::cell::OnceCell::new(),
@@ -579,7 +561,6 @@ impl ReferenceLesserPieceThreats {
 /// 採点の高速化前の処理。移動元ごとの値を各手で引き直す。
 fn reference_quiet_value(
     board: &Position,
-    nnue: &Nnue,
     generator: &MoveGenerator,
     context: MovePickerContext<'_>,
     threats: &ReferenceLesserPieceThreats,
@@ -588,7 +569,7 @@ fn reference_quiet_value(
 ) -> i64 {
     let piece = board.piece_at(mv.from).unwrap();
     let kind = piece.kind().unwrap();
-    let value = nnue.piece_value(piece);
+    let value = crate::eval::piece_values::piece_value(piece);
     let continuation = [1, 2, 3, 4, 6]
         .into_iter()
         .filter_map(|distance| {
@@ -610,9 +591,9 @@ fn reference_quiet_value(
             ply: context.ply,
             from: mv.from,
             to: mv.to,
-            check: qualifies_for_check_bonus(board, generator, nnue, direct, kind, mv),
+            check: qualifies_for_check_bonus(board, generator, direct, kind, mv),
             threat_value: i64::from(value) * i64::from(context.coefficients.threat_weight)
-                / i64::from(nnue.pawn_value()),
+                / i64::from(crate::eval::piece_values::pawn_value()),
             threat_delta: lesser_threat_delta(kind, threats.below(value), mv),
         },
         context.low_ply_history,
@@ -674,7 +655,7 @@ fn cached_quiet_scores_preserve_reference_order_with_all_history_terms() {
                         threat_weight: 97,
                     };
                     let threats = ReferenceLesserPieceThreats::with_piece_values(&board, |piece| {
-                        searcher.nnue.piece_value(piece)
+                        crate::eval::piece_values::piece_value(piece)
                     });
                     let mut direct = DirectCheckSquares::new(&board);
                     let mut expected = quiets.clone();
@@ -682,21 +663,20 @@ fn cached_quiet_scores_preserve_reference_order_with_all_history_terms() {
                         (
                             Reverse(reference_quiet_value(
                                 &board,
-                                searcher.nnue,
                                 &generator,
                                 context,
                                 &threats,
                                 &mut direct,
                                 mv,
                             )),
-                            Reverse(searcher.nnue.quiet_move_pst_delta(&board, mv)),
+                            Reverse(searcher.network.quiet_move_delta(&board, mv)),
                         )
                     });
                     let mut picker = MovePicker::new(None, [None; KILLER_COUNT]);
                     let actual: Vec<_> = std::iter::from_fn(|| {
                         picker.next(
                             &board,
-                            searcher.nnue,
+                            searcher.network,
                             &generator,
                             context,
                             &std::cell::OnceCell::new(),

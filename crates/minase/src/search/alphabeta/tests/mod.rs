@@ -21,6 +21,7 @@ mod lazy_accumulators;
 mod limits;
 mod multipv;
 mod negamax;
+mod network;
 mod null_move;
 mod ordering;
 mod partial;
@@ -53,8 +54,8 @@ use std::sync::{Arc, OnceLock, mpsc};
 use std::thread;
 use std::time::Duration;
 
-use crate::eval::PIECE_STATE_COUNT;
-use crate::eval::{Nnue, evaluate};
+use crate::eval::nnue::Network;
+
 use crate::search::alphabeta::INFINITY;
 #[cfg(feature = "tuning")]
 use crate::search::alphabeta::correction::correction_from_weighted_sum;
@@ -202,7 +203,7 @@ fn push_path_move(searcher: &mut Searcher<'_>, position: &mut Position, mv: Opti
         searcher.generator.generate_moves(position, &mut moves);
         assert!(moves.contains(&mv));
         let undo = position.make_move_unchecked(mv, searcher.rules);
-        Some(MoveRecord::from_undo(searcher.nnue, &undo))
+        Some(MoveRecord::from_undo(&undo))
     } else {
         position.make_null_move();
         searcher.null_move_boundary = Some(searcher.path_keys.len());
@@ -217,7 +218,7 @@ fn push_path_move(searcher: &mut Searcher<'_>, position: &mut Position, mv: Opti
         attacking: None,
     });
     let ply = searcher.path_moves.len();
-    searcher.accumulators[ply] = searcher.nnue.refresh_accumulator(position);
+    searcher.evaluator.refresh_for_test(position, ply);
     searcher.material_keys[ply] = material_key(position);
     searcher.pawn_keys[ply] = pawn_key(position);
     let correction_keys = correction_piece_keys(position);
@@ -229,6 +230,12 @@ fn push_path_move(searcher: &mut Searcher<'_>, position: &mut Position, mv: Opti
 /// 前段の着手自体を検査しないテストで、指定plyに対応する経路の長さだけを用意する。
 fn set_test_path_ply(searcher: &mut Searcher<'_>, ply: u32) {
     assert!(searcher.path_moves.len() <= ply as usize);
+    // 経路を省略して内部探索へ入る試験は、その深さの局面も明示的に準備する。
+    if searcher.path_moves.len() < ply as usize {
+        searcher
+            .evaluator
+            .refresh_for_test(&searcher.root_position, ply as usize);
+    }
     while searcher.path_moves.len() < ply as usize {
         let index = searcher.path_moves.len() as u64;
         searcher.path_moves.push(PathMove {
@@ -307,53 +314,23 @@ fn small_tt() -> TranspositionTable {
 }
 
 /// 学習済みネットに依存せず、全探索テストで同じ固定ネットを使う。
-pub(super) fn test_nnue() -> &'static Nnue {
-    shared_test_nnue()
+pub(super) fn test_network() -> &'static Network {
+    shared_test_network()
 }
 
 /// 非同期探索にも同じネットを渡せるよう、所有権を共有する。
-fn shared_test_nnue() -> &'static Arc<Nnue> {
-    static NNUE: OnceLock<Arc<Nnue>> = OnceLock::new();
-    NNUE.get_or_init(|| Arc::new(epoch_zero_nnue()))
+fn shared_test_network() -> &'static Arc<Network> {
+    static NNUE: OnceLock<Arc<Network>> = OnceLock::new();
+    NNUE.get_or_init(|| Arc::new(fixed_network()))
 }
 
-fn epoch_zero_nnue() -> Nnue {
-    Nnue::decode(&epoch_zero_nnue_bytes()).unwrap()
-}
-
-// NNUE形式のヘッダ長。eval::nnue::formatの定数は非公開なので、探索の試験で共有する。
-pub(super) const NNUE_HEADER_LENGTH: usize = 192;
-
-/// エポック0のP型の行を探索の特徴集合へ複写し、重みを変更するテストにも渡す。
-pub(super) fn epoch_zero_nnue_bytes() -> Vec<u8> {
-    use crate::eval::features::FEATURE_COUNT;
-    use crate::eval::nnue::{ActiveFeatureSet, ActiveHead, feature_set::FeatureSet, head::Head};
-    use sha2::{Digest, Sha256};
-
-    let source = include_bytes!("../../../../nets/nnue-epoch0.bin");
-    let width = u32::from_le_bytes(source[104..108].try_into().unwrap()) as usize;
-    let hidden = NNUE_HEADER_LENGTH + FEATURE_COUNT * 4 + PIECE_STATE_COUNT * 4;
-    let end = hidden + FEATURE_COUNT * width * 2;
-    let mut bytes = source[..hidden].to_vec();
-    let architecture = format!(
-        "features={};ft={width};linear=tapered2;head={}",
-        ActiveFeatureSet::NAME,
-        ActiveHead::NAME
-    );
-    bytes[8..104].fill(0);
-    bytes[8..8 + architecture.len()].copy_from_slice(architecture.as_bytes());
-    for _ in 0..ActiveFeatureSet::DIMENSIONS / FEATURE_COUNT {
-        bytes.extend_from_slice(&source[hidden..end]);
-    }
-    bytes.extend_from_slice(&source[end..]);
-    let checksum = Sha256::digest(&bytes[NNUE_HEADER_LENGTH..]);
-    bytes[144..176].copy_from_slice(&checksum);
-    bytes
+fn fixed_network() -> Network {
+    Network::LayerStack(crate::eval::nnue::test_util::fixed_layer_stack())
 }
 
 /// 時間制限のない単一ワーカーで根の窓と置換表を検査する。
 fn with_root_searcher(position: &Position, history: &[u64], test: impl FnOnce(&mut Searcher<'_>)) {
-    with_nnue_root_searcher(test_nnue(), position, history, test);
+    with_network_root_searcher(test_network(), position, history, test);
 }
 
 /// 履歴更新以外の条件を分離するため、捕獲履歴を明示的に0にしたテスト用の表を返す。
@@ -382,7 +359,7 @@ fn isolated_move_picker_context<'a>(
     });
     MovePickerContext {
         quiet_sort_limit: None,
-        ranks: RANKS.get_or_init(|| CaptureRanks::new(test_nnue())),
+        ranks: RANKS.get_or_init(CaptureRanks::new),
         history,
         capture_history,
         continuation_history: &shared.continuation,
@@ -415,8 +392,8 @@ fn searcher_move_picker_context<'a>(searcher: &'a Searcher<'_>, ply: u32) -> Mov
 }
 
 /// 明示した重みを使い、時間制限のない単一ワーカーで根を検査する。
-fn with_nnue_root_searcher(
-    nnue: &Nnue,
+fn with_network_root_searcher(
+    nnue: &Network,
     position: &Position,
     history: &[u64],
     test: impl FnOnce(&mut Searcher<'_>),
@@ -435,7 +412,7 @@ fn with_nnue_root_searcher(
 
 /// 着手規則と反復規則を指定し、時間制限のない単一ワーカーで検査する。
 fn with_repetition_root_searcher(
-    nnue: &Nnue,
+    nnue: &Network,
     position: &Position,
     rules: MoveRules,
     repetition: SearchRepetition,
@@ -447,7 +424,7 @@ fn with_repetition_root_searcher(
 
 /// chu-shogi.md第31条R1の引き分けの値も指定し、時間制限のない単一ワーカーで検査する。
 fn with_draw_value_root_searcher(
-    nnue: &Nnue,
+    nnue: &Network,
     position: &Position,
     rules: MoveRules,
     repetition: SearchRepetition,
@@ -499,7 +476,7 @@ fn with_draw_value_root_searcher(
 fn position_correction(searcher: &Searcher<'_>, side: Color, ply: u32) -> i32 {
     correction_from_weighted_sum(
         searcher.correction_weighted_sum_at(side, ply),
-        searcher.nnue.pawn_value(),
+        crate::eval::piece_values::pawn_value(),
     )
 }
 
@@ -575,7 +552,7 @@ fn zero_depth_one_corrections(searcher: &mut Searcher<'_>, position: &Position, 
     zero_current_correction(searcher, position);
     let path_len = searcher.path_moves.len();
     let child_ply = path_len + 1;
-    let accumulator = searcher.accumulators[child_ply].clone();
+    let evaluator = searcher.evaluator.clone_for_test();
     let material_key = searcher.material_keys[child_ply];
     let pawn_key = searcher.pawn_keys[child_ply];
     let minor_key = searcher.minor_keys[child_ply];
@@ -587,7 +564,7 @@ fn zero_depth_one_corrections(searcher: &mut Searcher<'_>, position: &Position, 
         searcher.path_moves.pop();
         searcher.path_keys.pop();
     }
-    searcher.accumulators[child_ply] = accumulator;
+    searcher.evaluator = evaluator;
     searcher.material_keys[child_ply] = material_key;
     searcher.pawn_keys[child_ply] = pawn_key;
     searcher.minor_keys[child_ply] = minor_key;
@@ -632,7 +609,7 @@ fn run_quiesce(
     };
     let history: Vec<u64> = Vec::new();
     let mut current = position.clone();
-    let nnue = test_nnue();
+    let nnue = test_network();
     let mut butterfly_history =
         Box::new([[[0; BOARD_SQUARE_COUNT]; BOARD_SQUARE_COUNT]; COLOR_COUNT]);
     let mut capture_history = empty_capture_history();
@@ -703,7 +680,7 @@ fn run_configured_negamax(
     };
     let history: Vec<u64> = Vec::new();
     let mut current = position.clone();
-    let nnue = test_nnue();
+    let nnue = test_network();
     let mut butterfly_history =
         Box::new([[[0; BOARD_SQUARE_COUNT]; BOARD_SQUARE_COUNT]; COLOR_COUNT]);
     let mut capture_history = empty_capture_history();
@@ -757,7 +734,7 @@ fn start(
             histories: crate::search::HistoryTables::new(threads),
             threads,
         },
-        Arc::clone(shared_test_nnue()),
+        Arc::clone(shared_test_network()),
         snapshot,
         limits,
         search_id,
@@ -810,7 +787,7 @@ fn run_search_with_histories(
         root_moves.to_vec(),
     )
     .expect("test root moves must not be empty");
-    let nnue = test_nnue();
+    let nnue = test_network();
     crate::search::search(nnue, &snapshot, limits, threads, tt, histories)
         .expect("valid test input must be searchable")
 }
@@ -986,7 +963,7 @@ fn start_ponder(limits: SearchLimits, threads: usize) -> SearchHandle {
             histories: crate::search::HistoryTables::new(worker_count(threads)),
             threads: worker_count(threads),
         },
-        Arc::clone(shared_test_nnue()),
+        Arc::clone(shared_test_network()),
         snapshot_for(&Position::initial()),
         limits,
         700,
@@ -1070,4 +1047,31 @@ fn previous_lines(previous: Option<(Move, i32)>, pv: &[Move]) -> Vec<RootLine> {
             pv: pv.to_vec(),
         })
         .collect()
+}
+
+fn evaluate(network: &Network, position: &Position) -> i32 {
+    network
+        .evaluate(position)
+        .expect("test position has valid anchors")
+}
+
+impl crate::eval::nnue::SearchEvaluator<'_> {
+    fn refresh_for_test(&mut self, position: &Position, ply: usize) {
+        match self {
+            Self::LayerStack { net, accumulators } => accumulators[ply] = net.refresh(position),
+            Self::Simple { net, accumulators } => accumulators[ply] = net.refresh(position),
+        }
+    }
+    fn clone_for_test(&self) -> Self {
+        match self {
+            Self::LayerStack { net, accumulators } => Self::LayerStack {
+                net,
+                accumulators: accumulators.clone(),
+            },
+            Self::Simple { net, accumulators } => Self::Simple {
+                net,
+                accumulators: accumulators.clone(),
+            },
+        }
+    }
 }

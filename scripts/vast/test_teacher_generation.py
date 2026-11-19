@@ -305,7 +305,7 @@ class TeacherTests(unittest.TestCase):
         temporary = tempfile.TemporaryDirectory()
         self.addCleanup(temporary.cleanup)
         self.root = Path(temporary.name)
-        (self.root / 'network.bin').write_bytes(b'MNUE' + bytes(140) + bytes.fromhex('12' * 32) + b'weights')
+        (self.root / 'network.bin').write_bytes((0x7AF32F21).to_bytes(4, 'little') + b'network fixture')
         self.clock = Clock()
         self.options = values(self.root, self.clock)
         self.commands = Commands(self.root, self.clock)
@@ -331,9 +331,15 @@ class TeacherTests(unittest.TestCase):
         return [command for command, _, _ in self.commands.calls]
 
     def test_network_transfer_and_header_expectation_use_whole_file_sha256(self) -> None:
+        self.assert_network_transfer(0x7AF32F21)
+
+    def test_simple_network_transfer_and_header_expectation_use_whole_file_sha256(self) -> None:
+        self.assert_network_transfer(0x7AF32F16)
+
+    def assert_network_transfer(self, version: int) -> None:
+        (self.root / 'network.bin').write_bytes(version.to_bytes(4, 'little') + b'network fixture')
         data = (self.root / 'network.bin').read_bytes()
         checksum = hashlib.sha256(data).hexdigest()
-        self.assertNotEqual(checksum, data[144:176].hex())
         self.assertEqual(self.execute(), 0, self.errors.getvalue())
         job = self.commands.jobs[0]
         self.assertEqual(job['network'], f'/workspace/job/networks/{checksum}.bin')

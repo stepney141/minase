@@ -600,7 +600,7 @@ fn tt_cutoff_history_updates_obey_move_and_parent_conditions() {
     ] {
         with_root_searcher(&board, &[], |searcher| {
             set_contexts(searcher, [Some(context), Some(previous)]);
-            searcher.accumulators[2] = searcher.nnue.refresh_accumulator(&board);
+            searcher.evaluator.refresh_for_test(&board, 2);
             searcher.move_counts[1] = move_count;
             let continuation = continuation_index(context, previous.piece, previous.mv, 1);
             searcher.continuation_history.store(continuation, 0);
@@ -641,7 +641,7 @@ pub(super) fn fail_low_and_eval_difference_update_recorded_histories() {
     );
     with_root_searcher(&board, &[], |searcher| {
         set_contexts(searcher, [Some(context), Some(quiet)]);
-        let pawn = searcher.nnue.pawn_value();
+        let pawn = crate::eval::piece_values::pawn_value();
         searcher.static_evals[1] = -pawn;
         searcher.stat_scores[1] = 0;
         searcher.move_counts[1] = 10;
@@ -734,18 +734,13 @@ fn fail_low_updates_recorded_capture_history() {
         .unwrap();
     let mut after_capture = capture_board.clone();
     let undo = after_capture.make_move_unchecked(capture, engine_rules());
-    let captured = MoveRecord::from_undo(test_nnue(), &undo);
+    let captured = MoveRecord::from_undo(&undo);
     with_root_searcher(&capture_board, &[], |searcher| {
         set_contexts(searcher, [Some(context), Some(captured)]);
         assert_eq!(searcher.capture_history.read_record(captured), 0);
         searcher.update_fail_low_histories(2, 4, 0, 0);
         assert_eq!(searcher.capture_history.read_record(captured), 892);
-        assert_eq!(
-            searcher
-                .capture_history
-                .read(&capture_board, searcher.nnue, capture),
-            892
-        );
+        assert_eq!(searcher.capture_history.read(&capture_board, capture), 892);
     });
 }
 

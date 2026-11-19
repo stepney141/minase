@@ -1,6 +1,6 @@
 //! 外部のNNUEファイルの読み込みと識別。
 
-use super::{Error, Nnue};
+use super::network::{FormatError, Network};
 use sha2::{Digest, Sha256};
 use std::{
     fmt, io,
@@ -11,14 +11,14 @@ use std::{
 /// 同じバイト列から復号したネットと、ファイル全体のSHA-256。
 pub struct NetworkFile {
     /// 検証済みのネット。
-    network: Arc<Nnue>,
+    network: Arc<Network>,
     /// ヘッダを含むファイル全体のSHA-256。
     sha256: [u8; 32],
 }
 
 impl NetworkFile {
     /// 同じファイルのバイト列から復号した検証済みのネットを返す。
-    pub fn network(&self) -> &Arc<Nnue> {
+    pub fn network(&self) -> &Arc<Network> {
         &self.network
     }
 
@@ -43,7 +43,7 @@ pub enum NetworkFileError {
         /// 指定されたパス。
         path: PathBuf,
         /// 復号の原因。
-        source: Error,
+        source: FormatError,
     },
 }
 
@@ -75,7 +75,6 @@ impl std::error::Error for NetworkFileError {
 
 /// ファイルを1回読み、同じバイト列からネットと識別子を得る。
 /// 識別子はヘッダを含むファイル全体のSHA-256である。
-/// MNUEのヘッダのチェックサムは本体の破損の検査に残し、識別子には使わない。
 ///
 /// # Errors
 /// 読み取りと復号の失敗を区別し、パスと元の原因を保持する。
@@ -85,7 +84,7 @@ pub fn read_network_file(path: &Path) -> Result<NetworkFile, NetworkFileError> {
         source,
     })?;
     let sha256 = Sha256::digest(&bytes).into();
-    let network = Nnue::decode(&bytes).map_err(|source| NetworkFileError::Decode {
+    let network = Network::decode(&bytes).map_err(|source| NetworkFileError::Decode {
         path: path.to_owned(),
         source,
     })?;

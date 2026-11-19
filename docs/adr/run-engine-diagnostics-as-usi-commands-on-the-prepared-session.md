@@ -19,7 +19,7 @@ Stockfishは`bench`、`d`、`eval`をUCIのコマンドとして受け、perft�
 minase自身も、局面、評価、置換表を表示する`d`、`eval`、`tt`をUSIの独自コマンドとして持っている（[ADR](show-position-evaluation-and-tt-as-usi-commands.md)）。
 診断をUSIへ移す判断は[起動引数と診断ツールをUSIへ移す計画](../plans/archived/cli-to-usi.md)で下した（[以前の決定](archive/run-engine-diagnostics-as-usi-commands-and-keep-experiment-tools-as-subcommands.md)）。
 以前の決定の時点では、αβ探索の`bench`は実行ファイルに埋め込んだNNUEのネットを使い、規則の設定も`isready`も要求しなかった。
-その後、ネットは埋め込まず、オプション`EvalFile`で指定した外部のファイルを`isready`で読むようになった（[外部ファイル化のADR](use-an-nnue-read-from-evalfile-as-the-only-search-evaluation.md)）。
+その後、ネットは埋め込まず、オプション`EvalFile`で指定した外部のファイルを`isready`で読むようになった（[外部ファイル化のADR](archive/use-an-nnue-read-from-evalfile-as-the-only-search-evaluation.md)）。
 PV-MCTSで起動したエンジンの`bench`は、ネットを使わないハッシュの評価器で探索するようになった（[PV-MCTSのbenchのADR](run-bench-with-the-launched-search-and-detect-pv-mcts-regressions-with-a-hash-evaluator.md)）。
 この改訂は[NNUEの外部ファイル化の設計書](../plans/archived/nnue-external-network-file.md)で下した。
 

@@ -14,6 +14,7 @@ pub mod workers;
 pub use adam::{AdamCoefficients, AdamWGroup};
 pub use hash::{Sha256Hasher, hex, sha256};
 pub use io::atomic_write;
+pub(crate) use io::atomic_write_with;
 pub use loss::{bce_with_logits, bce_with_logits_gradient};
 pub use stopping::{BestEpoch, patience_reached, update_best};
 

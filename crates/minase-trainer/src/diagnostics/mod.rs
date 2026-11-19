@@ -22,7 +22,8 @@ use serde::Serialize;
 
 pub use nnue_distribution::DistributionArgs;
 pub use nnue_moves::MovesArgs;
-pub use nnue_removal::RemovalArgs;
+pub(crate) use nnue_removal::measure_removal_sign;
+pub use nnue_removal::{RemovalArgs, RemovalSignReport};
 
 pub use pst_compare::PstCompareArgs;
 
@@ -33,7 +34,7 @@ type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 pub enum Command {
     /// 教師分類・位相帯の損失、整数一致、除去と成りでPSTを比較する。
     PstCompare(PstCompareArgs),
-    /// 全局面の標本でMNPT版3とMNUE版5の評価分布を比較する。
+    /// 全局面の標本でMNPT版3とtatara形式のLayerStackの評価分布を比較する。
     NnueDistribution(DistributionArgs),
     /// 検証集合で実数と整数の駒除去差分を検査する。
     NnueRemoval(RemovalArgs),

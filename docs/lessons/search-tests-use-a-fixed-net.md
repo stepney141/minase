@@ -12,12 +12,13 @@
 
 ## 以後の規則
 
-探索のテストは、学習済みの本番のネットを読まず、`search/alphabeta/tests/mod.rs`の`test_nnue()`が返す固定ネット（エポック0のP型のネットで、線形経路のPSTだけが評価値を持つ）で書く。
+探索のテストは、学習済みの本番のネットを読まず、`search/alphabeta/tests/mod.rs`の`test_network()`が返す固定ネットで書く。
+このネットは、コードで組み立てるP型のLayerStack（`eval::nnue::network::test_util::fixed_layer_stack()`）であり、駒割のPSQTに決まった後段を足したものである。
 期待値は評価値から計算で導くか、評価値に依存しない形にし、学習で変わる重みに結びつけない。
-ネットのファイルの読み込みと識別子を確かめるテストも、本番のネットではなく固定ネットのファイル`nets/nnue-epoch0.bin`で書く。
-本番のネットは実行ファイルに埋め込まず、リポジトリにも置かないので（[ADR](../adr/use-an-nnue-read-from-evalfile-as-the-only-search-evaluation.md)）、テストからは読めない。
+ネットのファイルの読み込みと識別子を確かめるテストも、本番のネットではなく、固定ネットを書き出したファイル`nets/test-layer-stack.bin`で書く。
+本番のネットは実行ファイルに埋め込まず、リポジトリにも置かないので（[ADR](../adr/search-with-an-evalfile-nnue-whose-structure-is-chosen-on-load.md)）、テストからは読めない。
 
 ## 出典
 
 - [plans/nnue-lr-schedule.md](../plans/archived/nnue-lr-schedule.md)（段階ゲートのためのネットの差し替え）
-- `crates/minase/src/search/alphabeta/tests/mod.rs`の`test_nnue`
+- `crates/minase/src/search/alphabeta/tests/mod.rs`の`test_network`と`crates/minase/src/eval/nnue/network/test_util.rs`の`fixed_layer_stack`

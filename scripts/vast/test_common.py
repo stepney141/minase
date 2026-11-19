@@ -6,6 +6,7 @@
 """
 
 from contextlib import redirect_stdout, redirect_stderr
+import hashlib
 import io
 import json
 import os
@@ -287,6 +288,24 @@ class CommonTests(unittest.TestCase):
 
 class TeacherCommonTests(unittest.TestCase):
     """フェーズ1の入札、CLI応答、転送上限、および受け入れ条件を検証する。"""
+
+    def test_network_identity_includes_header_and_all_weight_blocks(self) -> None:
+        """両構造とも、版番号から最後の重みまでの全バイトで識別する。"""
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / 'network.bin'
+            for version in (0x7AF32F21, 0x7AF32F16):
+                data = version.to_bytes(4, 'little') + bytes(1024 * 1024) + b'last weights'
+                path.write_bytes(data)
+                expected = hashlib.sha256(data).hexdigest()
+                self.assertEqual(common.file_sha256(path), expected)
+                for offset in (0, len(data) - 1):
+                    changed = bytearray(data)
+                    changed[offset] ^= 1
+                    path.write_bytes(changed)
+                    self.assertNotEqual(common.file_sha256(path), expected)
+            path.unlink()
+            with self.assertRaises(FileNotFoundError):
+                common.file_sha256(path)
 
     def test_plain_authentication_errors_stop_without_polling(self) -> None:
         message = 'Failed with error 401: Two Factor Authentication\n'

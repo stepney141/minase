@@ -175,7 +175,7 @@ fn quiesce_tt_static_eval_replacement_and_wide_window_skip_are_counted() {
     let position = quiet_position();
     with_root_searcher(&position, &[], |searcher| {
         zero_position_correction(searcher, &position);
-        let stand_pat = evaluate(searcher.nnue, &position);
+        let stand_pat = evaluate(searcher.network, &position);
         searcher.tt.store(
             search_key(&position),
             0,
@@ -205,7 +205,7 @@ fn quiesce_static_eval_only_store_is_counted_separately() {
     let position = quiet_position();
     with_root_searcher(&position, &[], |searcher| {
         zero_position_correction(searcher, &position);
-        let stand_pat = evaluate(searcher.nnue, &position);
+        let stand_pat = evaluate(searcher.network, &position);
         assert_eq!(
             searcher.quiesce(&mut position.clone(), stand_pat - 2, stand_pat, 0),
             Some(stand_pat)
@@ -237,7 +237,7 @@ fn null_move_cutoff_counts_its_quiesce_call_without_a_move_cutoff() {
     let position = quiet_position();
     let mut after_null = position.clone();
     after_null.make_null_move();
-    let expected = -evaluate(test_nnue(), &after_null);
+    let expected = -evaluate(test_network(), &after_null);
     with_root_searcher(&position, &[], |searcher| {
         zero_position_correction(searcher, &after_null);
         assert_eq!(
@@ -253,14 +253,14 @@ fn null_move_cutoff_counts_its_quiesce_call_without_a_move_cutoff() {
 }
 
 /// 全手走査で最後にαを更新した手を4区分に数える。
-/// 捕獲のない深さ1では子の静的評価から最善手を決め、探索順だけをhistoryで指定する。
+/// 捕獲のない子の静的評価を置換表へ明示し、探索順をhistoryで指定する。
 #[test]
 fn best_move_rank_histogram_counts_each_bucket_and_research_calls() {
     let position = quiet_position();
-    let nnue = test_nnue();
     let mut scored: Vec<_> = legal_moves(&position)
         .into_iter()
-        .map(|mv| {
+        .enumerate()
+        .map(|(index, mv)| {
             let mut child = position.clone();
             child.make_move_unchecked(mv, engine_rules());
             assert!(
@@ -268,7 +268,7 @@ fn best_move_rank_histogram_counts_each_bucket_and_research_calls() {
                     .iter()
                     .all(|&reply| child.captured_squares(reply).iter().all(Option::is_none))
             );
-            (mv, -evaluate(nnue, &child))
+            (mv, if index == 0 { 100 } else { 0 })
         })
         .collect();
     scored.sort_by_key(|&(_, score)| score);
@@ -289,6 +289,15 @@ fn best_move_rank_histogram_counts_each_bucket_and_research_calls() {
         }
         with_root_searcher(&position, &[], |searcher| {
             zero_depth_one_corrections(searcher, &position, &ordered);
+            for &(mv, score) in &scored {
+                let mut child = position.clone();
+                child.make_move_unchecked(mv, engine_rules());
+                assert!(
+                    searcher
+                        .tt
+                        .store_static_eval(search_key(&child), -score, false)
+                );
+            }
             for (index, mv) in ordered.iter().enumerate() {
                 searcher.history[position.side_to_move().index()][mv.from.dense_index()]
                     [mv.to.dense_index()] = (ordered.len() - index) as i32;
@@ -311,6 +320,15 @@ fn best_move_rank_histogram_counts_each_bucket_and_research_calls() {
         // 同じ順序でβを最善値に置くと、その順位で打ち切り、度数には入らない。
         with_root_searcher(&position, &[], |searcher| {
             zero_depth_one_corrections(searcher, &position, &ordered);
+            for &(mv, score) in &scored {
+                let mut child = position.clone();
+                child.make_move_unchecked(mv, engine_rules());
+                assert!(
+                    searcher
+                        .tt
+                        .store_static_eval(search_key(&child), -score, false)
+                );
+            }
             for (index, mv) in ordered.iter().enumerate() {
                 searcher.history[position.side_to_move().index()][mv.from.dense_index()]
                     [mv.to.dense_index()] = (ordered.len() - index) as i32;
@@ -355,7 +373,7 @@ fn fail_low_and_interrupted_nodes_do_not_enter_rank_histogram() {
 fn two_worker_search_stats_equal_the_sum_of_worker_counts() {
     let snapshot = snapshot_for(&Position::initial());
     let outcome = run_search_team(
-        test_nnue(),
+        test_network(),
         &snapshot.position,
         snapshot.rules(),
         snapshot.repetition(),
@@ -404,7 +422,7 @@ fn single_worker_fixed_depth_stats_are_reproducible() {
     let snapshot = snapshot_for(&Position::initial());
     let run = || {
         crate::search::search(
-            test_nnue(),
+            test_network(),
             &snapshot,
             &depth_limits(4),
             DEFAULT_THREADS,

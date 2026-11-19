@@ -7,6 +7,8 @@ use crate::search::{DRAW_VALUE_LIMIT, MAX_PLY, MULTI_PV_LIMIT};
 /// 探索入力または探索器の初期化に失敗した理由。
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum SearchError {
+    /// ネットが探索の根の王駒構成に対応しない。
+    UnsupportedRoot(crate::eval::nnue::input::AnchorError),
     /// 有限探索に停止条件が指定されていない。
     MissingLimit,
     /// 探索深さが1以上[`MAX_PLY`]以下でない。
@@ -43,6 +45,7 @@ pub enum SearchError {
 impl fmt::Display for SearchError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            Self::UnsupportedRoot(error) => error.fmt(formatter),
             Self::MissingLimit => formatter.write_str("search requires at least one limit"),
             Self::InvalidDepth { depth } => write!(
                 formatter,
@@ -70,4 +73,11 @@ impl fmt::Display for SearchError {
     }
 }
 
-impl std::error::Error for SearchError {}
+impl std::error::Error for SearchError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::UnsupportedRoot(error) => Some(error),
+            _ => None,
+        }
+    }
+}

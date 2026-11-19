@@ -6,14 +6,13 @@ use minase_core::test_util::{CAPTURE_EDGE_SFENS, capture_test_positions, capture
 fn public_reference(
     position: &Position,
     generator: &MoveGenerator,
-    nnue: &Nnue,
     tt_move: Option<Move>,
 ) -> Vec<(Move, MoveOrderKey)> {
     let mut moves = Vec::new();
     generator.generate_captures(position, &mut moves);
     let mut captures: Vec<_> = moves
         .into_iter()
-        .map(|mv| (mv, move_order_key(position, nnue, mv).unwrap()))
+        .map(|mv| (mv, move_order_key(position, mv).unwrap()))
         .collect();
     order_captures(&mut captures);
     if let Some(index) = tt_move.and_then(|tt| captures.iter().position(|&(mv, _)| mv == tt)) {
@@ -26,10 +25,9 @@ fn public_reference(
 fn reference(
     position: &Position,
     generator: &MoveGenerator,
-    nnue: &Nnue,
     tt_move: Option<Move>,
 ) -> Vec<(Move, MoveOrderKey)> {
-    let mut captures = public_reference(position, generator, nnue, tt_move);
+    let mut captures = public_reference(position, generator, tt_move);
     captures.retain(|&(mv, _)| !MoveGenerator::is_excluded_lion_capture(position, mv));
     captures
 }
@@ -37,15 +35,14 @@ fn reference(
 // 公開生成・安定整列・回転から得た全候補の列に、段階生成の手順が一致する。
 #[test]
 fn staged_captures_match_reference_for_rules_and_tt_moves() {
-    let nnue = test_nnue();
-    let ranks = CaptureRanks::new(nnue);
+    let ranks = CaptureRanks::new();
     let capture_history = empty_capture_history();
     let positions = capture_test_positions();
     for rules in capture_test_rules() {
         let generator = MoveGenerator::new(rules);
         let mut buffers = QsearchBuffers::default();
         for position in &positions {
-            let ordered = reference(position, &generator, nnue, None);
+            let ordered = reference(position, &generator, None);
             let mut all = Vec::new();
             generator.generate_moves(position, &mut all);
             let quiet = all.into_iter().find(|&mv| {
@@ -61,16 +58,16 @@ fn staged_captures_match_reference_for_rules_and_tt_moves() {
                 quiet,
             ];
             for tt_move in tt_moves {
-                let expected: Vec<_> = reference(position, &generator, nnue, tt_move)
+                let expected: Vec<_> = reference(position, &generator, tt_move)
                     .into_iter()
                     .map(|(mv, _)| mv)
                     .collect();
                 buffers.reset(position);
-                buffers.initialize(position, &generator, nnue, &ranks);
+                buffers.initialize(position, &generator, &ranks);
                 buffers.set_tt_move(position, &generator, tt_move);
                 let mut actual = Vec::new();
                 while let Some(candidate) =
-                    buffers.next(position, &generator, nnue, &ranks, &capture_history)
+                    buffers.next(position, &generator, &ranks, &capture_history)
                 {
                     actual.push(candidate.capture.mv);
                 }
@@ -83,17 +80,16 @@ fn staged_captures_match_reference_for_rules_and_tt_moves() {
 // 特殊な2枚取りの捕獲価値は、2枚の価値の合計とする。
 #[test]
 fn double_capture_uses_the_combined_victim_value() {
-    let nnue = test_nnue();
-    let ranks = CaptureRanks::new(nnue);
+    let ranks = CaptureRanks::new();
     let capture_history = empty_capture_history();
     let generator = MoveGenerator::standard();
     let position = minase_core::parse_sfen(CAPTURE_EDGE_SFENS[2]).unwrap();
     let mut buffers = QsearchBuffers::default();
     buffers.reset(&position);
-    buffers.initialize(&position, &generator, nnue, &ranks);
+    buffers.initialize(&position, &generator, &ranks);
     buffers.set_tt_move(&position, &generator, None);
     let mut double_captures = Vec::new();
-    while let Some(c) = buffers.next(&position, &generator, nnue, &ranks, &capture_history) {
+    while let Some(c) = buffers.next(&position, &generator, &ranks, &capture_history) {
         if c.capture.captured.into_iter().flatten().count() == 2 {
             double_captures.push(c);
         }
@@ -105,7 +101,9 @@ fn double_capture_uses_the_combined_victim_value() {
             .captured
             .into_iter()
             .flatten()
-            .map(|square| nnue.piece_value(position.piece_at(square).unwrap()))
+            .map(|square| {
+                crate::eval::piece_values::piece_value(position.piece_at(square).unwrap())
+            })
             .sum();
         assert_eq!(candidate.captured_value, expected);
     }
@@ -114,28 +112,27 @@ fn double_capture_uses_the_combined_victim_value() {
 // αが検査の途中で増加しても、全候補へ閾値を順に当てた残存手順は参照と一致する。
 #[test]
 fn rising_threshold_preserves_the_surviving_sequence() {
-    let nnue = test_nnue();
-    let ranks = CaptureRanks::new(nnue);
+    let ranks = CaptureRanks::new();
     let capture_history = empty_capture_history();
     let generator = MoveGenerator::standard();
     let mut buffers = QsearchBuffers::default();
     for position in capture_test_positions() {
-        let ordered = reference(&position, &generator, nnue, None);
+        let ordered = reference(&position, &generator, None);
         let tt_move = ordered.get(ordered.len() / 2).map(|&(mv, _)| mv);
         let mut threshold = -1;
         let mut expected = Vec::new();
-        for (mv, key) in reference(&position, &generator, nnue, tt_move) {
+        for (mv, key) in reference(&position, &generator, tt_move) {
             if key.captured_value > threshold || captures_last_royal(&position, mv) {
                 expected.push(mv);
                 threshold = threshold.max(key.captured_value);
             }
         }
         buffers.reset(&position);
-        buffers.initialize(&position, &generator, nnue, &ranks);
+        buffers.initialize(&position, &generator, &ranks);
         buffers.set_tt_move(&position, &generator, tt_move);
         threshold = -1;
         let mut actual = Vec::new();
-        while let Some(c) = buffers.next(&position, &generator, nnue, &ranks, &capture_history) {
+        while let Some(c) = buffers.next(&position, &generator, &ranks, &capture_history) {
             if c.captured_value > threshold || captures_last_royal(&position, c.capture.mv) {
                 actual.push(c.capture.mv);
                 threshold = threshold.max(c.captured_value);
@@ -149,8 +146,7 @@ fn rising_threshold_preserves_the_surviving_sequence() {
 // 前ノードを途中で打ち切っても、同じ順位の対象升を次ノードへ持ち越さない。
 #[test]
 fn reset_discards_targets_from_partially_consumed_node() {
-    let nnue = test_nnue();
-    let ranks = CaptureRanks::new(nnue);
+    let ranks = CaptureRanks::new();
     let capture_history = empty_capture_history();
     let generator = MoveGenerator::standard();
     let positions = [
@@ -179,21 +175,21 @@ fn reset_discards_targets_from_partially_consumed_node() {
     for first in &positions {
         for second in &positions {
             buffers.reset(first);
-            buffers.initialize(first, &generator, nnue, &ranks);
+            buffers.initialize(first, &generator, &ranks);
             buffers.set_tt_move(first, &generator, None);
             assert!(
                 buffers
-                    .next(first, &generator, nnue, &ranks, &capture_history)
+                    .next(first, &generator, &ranks, &capture_history)
                     .is_some()
             );
             buffers.reset(second);
-            buffers.initialize(second, &generator, nnue, &ranks);
+            buffers.initialize(second, &generator, &ranks);
             buffers.set_tt_move(second, &generator, None);
             let mut actual = Vec::new();
-            while let Some(c) = buffers.next(second, &generator, nnue, &ranks, &capture_history) {
+            while let Some(c) = buffers.next(second, &generator, &ranks, &capture_history) {
                 actual.push(c.capture.mv);
             }
-            let expected: Vec<_> = reference(second, &generator, nnue, None)
+            let expected: Vec<_> = reference(second, &generator, None)
                 .into_iter()
                 .map(|(mv, _)| mv)
                 .collect();
@@ -206,13 +202,12 @@ fn reset_discards_targets_from_partially_consumed_node() {
 // 居喰いを含む残存候補は参照列の順序で返る。
 #[test]
 fn lion_capture_filter_preserves_remaining_tt_variants() {
-    let nnue = test_nnue();
-    let ranks = CaptureRanks::new(nnue);
+    let ranks = CaptureRanks::new();
     let capture_history = empty_capture_history();
     let position = minase_core::parse_sfen(CAPTURE_EDGE_SFENS[2]).unwrap();
     for rules in capture_test_rules() {
         let generator = MoveGenerator::new(rules);
-        let ordered = reference(&position, &generator, nnue, None);
+        let ordered = reference(&position, &generator, None);
         let single_mid: Vec<_> = ordered
             .iter()
             .map(|&(mv, _)| mv)
@@ -239,15 +234,15 @@ fn lion_capture_filter_preserves_remaining_tt_variants() {
             .chain([None, Some(invalid)])
         {
             buffers.reset(&position);
-            buffers.initialize(&position, &generator, nnue, &ranks);
+            buffers.initialize(&position, &generator, &ranks);
             buffers.set_tt_move(&position, &generator, tt_move);
             let mut actual = Vec::new();
             while let Some(candidate) =
-                buffers.next(&position, &generator, nnue, &ranks, &capture_history)
+                buffers.next(&position, &generator, &ranks, &capture_history)
             {
                 actual.push(candidate.capture.mv);
             }
-            let expected: Vec<_> = reference(&position, &generator, nnue, tt_move)
+            let expected: Vec<_> = reference(&position, &generator, tt_move)
                 .into_iter()
                 .map(|(mv, _)| mv)
                 .collect();
@@ -261,18 +256,17 @@ fn lion_capture_filter_preserves_remaining_tt_variants() {
 #[test]
 fn main_picker_captures_match_stable_reference_for_all_rules() {
     let capture_history = empty_capture_history();
-    let nnue = test_nnue();
     let history = Box::new([[[0; BOARD_SQUARE_COUNT]; BOARD_SQUARE_COUNT]; COLOR_COUNT]);
     for rules in capture_test_rules() {
         let generator = MoveGenerator::new(rules);
         for position in capture_test_positions() {
-            let ordered = public_reference(&position, &generator, nnue, None);
+            let ordered = public_reference(&position, &generator, None);
             for tt_move in [None, ordered.get(ordered.len() / 2).map(|&(mv, _)| mv)] {
                 let mut picker = MovePicker::new(tt_move, [None; KILLER_COUNT]);
                 let mut actual = Vec::new();
                 while let Some((mv, is_capture)) = picker.next(
                     &position,
-                    nnue,
+                    test_network(),
                     &generator,
                     isolated_move_picker_context(&history, &capture_history),
                     &std::cell::OnceCell::new(),
@@ -282,7 +276,7 @@ fn main_picker_captures_match_stable_reference_for_all_rules() {
                     }
                     actual.push(mv);
                 }
-                let expected: Vec<_> = public_reference(&position, &generator, nnue, tt_move)
+                let expected: Vec<_> = public_reference(&position, &generator, tt_move)
                     .into_iter()
                     .map(|(mv, _)| mv)
                     .collect();
@@ -296,36 +290,33 @@ fn main_picker_captures_match_stable_reference_for_all_rules() {
 #[cfg(feature = "tuning")]
 pub(super) fn zero_capture_scale_preserves_reference_order() {
     let mut capture_history = empty_capture_history();
-    let nnue = test_nnue();
     let history = Box::new([[[0; BOARD_SQUARE_COUNT]; BOARD_SQUARE_COUNT]; COLOR_COUNT]);
     for rules in capture_test_rules() {
         let generator = MoveGenerator::new(rules);
         for position in capture_test_positions() {
-            let ordered = public_reference(&position, &generator, nnue, None);
+            let ordered = public_reference(&position, &generator, None);
             // 同順位も含む基準列に、正負の非ゼロ履歴を付けてから比較する。
             for pair in ordered.chunks(2) {
                 capture_history.update(
                     &position,
-                    nnue,
                     pair[0].0,
                     super::super::capture_history::CAPTURE_HISTORY_LIMIT,
                 );
                 for &(mv, _) in pair.iter().skip(1) {
                     capture_history.update(
                         &position,
-                        nnue,
                         mv,
                         -super::super::capture_history::CAPTURE_HISTORY_LIMIT,
                     );
                 }
-                assert_ne!(capture_history.read(&position, nnue, pair[0].0), 0);
+                assert_ne!(capture_history.read(&position, pair[0].0), 0);
             }
             for tt_move in [None, ordered.get(ordered.len() / 2).map(|&(mv, _)| mv)] {
                 let mut picker = MovePicker::new(tt_move, [None; KILLER_COUNT]);
                 let mut actual = Vec::new();
                 while let Some((mv, is_capture)) = picker.next(
                     &position,
-                    nnue,
+                    test_network(),
                     &generator,
                     isolated_move_picker_context(&history, &capture_history),
                     &std::cell::OnceCell::new(),
@@ -335,7 +326,7 @@ pub(super) fn zero_capture_scale_preserves_reference_order() {
                     }
                     actual.push(mv);
                 }
-                let expected: Vec<_> = public_reference(&position, &generator, nnue, tt_move)
+                let expected: Vec<_> = public_reference(&position, &generator, tt_move)
                     .into_iter()
                     .map(|(mv, _)| mv)
                     .collect();

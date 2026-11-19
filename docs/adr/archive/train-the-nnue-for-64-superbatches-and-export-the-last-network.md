@@ -2,7 +2,7 @@
 
 ## ステータス
 
-置き換え済み。決定日は2026年11月14日。[NNUEは、1世代の教師の量に応じて64または80 superbatchを余弦の学習率の予定で学び、学び終えた最後のネットを書き出す](../train-the-nnue-for-64-or-80-superbatches-by-the-generation-volume-and-export-the-last-network.md)によって置き換えられた。
+置き換え済み。決定日は2026年11月14日。[NNUEは、1世代の教師の量に応じて64または80 superbatchを余弦の学習率の予定で学び、学び終えた最後のネットを書き出す](train-the-nnue-for-64-or-80-superbatches-by-the-generation-volume-and-export-the-last-network.md)によって置き換えられた。
 [NNUEの学習率をcosine annealingで減らす](anneal-the-nnue-learning-rate-with-a-cosine-schedule.md)を置き換える。
 
 ## コンテキスト

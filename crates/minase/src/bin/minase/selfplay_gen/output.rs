@@ -140,7 +140,7 @@ use super::{
 use minase::datagen::output::{DirectoryLock, atomic_json, commit_files};
 use minase::datagen::statistics::{RecordedStatistics, SCORE_VALUE_COUNT, Statistics, score_index};
 use minase::datagen::{data_error, hex};
-use minase::eval::Nnue;
+use minase::eval::nnue::Network;
 use minase::search::{TranspositionTable, TranspositionTableError};
 use minase::training::records::{
     self, Exclusion, HEADER_LEN, Header, Reader, TeacherKind, Value, Writer,
@@ -632,7 +632,7 @@ impl RunReport {
 pub(super) fn generate_to_directory(
     directory: &Path,
     conditions: &GenerationConditions,
-    nnue: &Nnue,
+    nnue: &Network,
     openings: Option<&[Opening]>,
     concurrency: NonZeroUsize,
 ) -> io::Result<RunReport> {
@@ -642,7 +642,7 @@ pub(super) fn generate_to_directory(
 fn generate_impl(
     directory: &Path,
     conditions: &GenerationConditions,
-    nnue: &Nnue,
+    nnue: &Network,
     openings: Option<&[Opening]>,
     concurrency: NonZeroUsize,
 ) -> Result<RunReport, OutputError> {
@@ -782,7 +782,7 @@ impl Drop for StopWorkersOnDrop<'_> {
 fn generate_chunks(
     directory: &Path,
     conditions: &GenerationConditions,
-    nnue: &Nnue,
+    nnue: &Network,
     openings: Option<&[Opening]>,
     concurrency: NonZeroUsize,
     completed: &mut BTreeMap<u32, ChunkSummary>,

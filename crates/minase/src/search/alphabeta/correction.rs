@@ -91,7 +91,7 @@ impl Searcher<'_> {
             best_capture,
             params::correction_bonus(),
             params::correction_fail_low_bonus(),
-            self.nnue.pawn_value(),
+            crate::eval::piece_values::pawn_value(),
         ) else {
             return;
         };

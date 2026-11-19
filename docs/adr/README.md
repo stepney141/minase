@@ -141,7 +141,7 @@ PSTは駒の種類と升ごとの値の表による評価、FMはFactorization M
 - 2026年9月6日 [浅いノードの前向き枝刈りは王駒に利きが届くノードでは行わない](archive/skip-static-eval-pruning-when-a-royal-is-attacked.md)（置き換え済み）
 - 2026年9月7日 [LMRの減深量は対数表に3段階のhistory補正を加えて求める](archive/reduce-lmr-by-log-table-with-stepped-history-adjustment.md)（置き換え済み）
 - 2026年9月7日 [静かな手のhistoryはbutterfly表だけで引く](archive/keep-only-the-butterfly-history-table.md)（置き換え済み）
-- 2026年9月8日 [探索用駒価値は学習PSTから導いた値に固定する](derive-search-piece-values-from-the-learned-pst.md)
+- 2026年9月8日 [探索用駒価値は学習PSTから導いた値に固定する](archive/derive-search-piece-values-from-the-learned-pst.md)（置き換え済み）
 - 2026年9月8日 [線形の評価の2組の重みを盤上総駒数で補間する](interpolate-the-linear-path-by-total-piece-count.md)
 - 2026年9月12日 [aspiration windowsは外れた側だけを広げ、fail-high時に浅く読み直さない](archive/widen-only-the-failed-side-of-aspiration-windows.md)（置き換え済み）
 - 2026年9月12日 [反復の延長信号を使わず、最善手が安定したときだけ早く止める](archive/stop-early-on-stable-best-move-without-extensions.md)（置き換え済み）
@@ -221,13 +221,13 @@ PSTは駒の種類と升ごとの値の表による評価、FMはFactorization M
 - 2026年10月10日 [捕獲履歴の寄与を歩兵価値の定数倍に抑え、静止探索の順序にも使う](archive/bound-capture-history-and-use-it-in-qsearch.md)（置き換え済み）
 - 2026年10月10日 [根の2手目以降を前回反復の部分木ノード数で並べる](order-root-moves-by-previous-subtree-nodes.md)
 - 2026年10月10日 [静かな手の順序を減点つきの重力式と線形経路の差分の同点破りで決める](archive/order-quiets-with-malus-and-pst-tiebreak.md)（置き換え済み）
-- 2026年10月12日 [NNUEの入力特徴集合に王の位置で条件付けないP型を使う](use-p-type-input-features-for-the-nnue.md)
+- 2026年10月12日 [NNUEの入力特徴集合に王の位置で条件付けないP型を使う](archive/use-p-type-input-features-for-the-nnue.md)（置き換え済み）
 - 2026年10月12日 [NNUEの出力を、PSTを移した線形の経路と隠れ層のない直接内積の和にする](archive/compose-the-nnue-of-a-pst-path-and-a-direct-screlu-head.md)（置き換え済み）
 - 2026年10月12日 [NNUEの学習器は第1層の勾配をホストで作る逆索引から固定の順で足し、アトミック加算を使わない](backpropagate-the-first-layer-through-a-reverse-index.md)
 - 2026年10月12日 [NNUEの学習器をRustのホストとNVRTCで実行時にコンパイルするCUDA C++のカーネルで書く](write-trainer-kernels-in-cuda-cpp-via-nvrtc.md)
 - 2026年10月12日 [NNUEは探索値だけの先読み教師と二値交差エントロピーで学ぶ](archive/train-the-nnue-on-search-value-lookahead-teachers.md)（置き換え済み）
 - 2026年10月12日 [NNUEを入力特徴集合と出力部の型引数で組み立てる](archive/parameterize-the-nnue-by-feature-set-and-head-types.md)（置き換え済み）
-- 2026年10月12日 [P型のNNUEは左右鏡映の対で第1層の重みを半幅だけ回して共有する](share-p-type-mirror-weights-by-half-width-rotation.md)
+- 2026年10月12日 [P型のNNUEは左右鏡映の対で第1層の重みを半幅だけ回して共有する](archive/share-p-type-mirror-weights-by-half-width-rotation.md)（置き換え済み）
 - 2026年10月12日 [`unsafe`は学習器のクレートだけに許し、エンジンとライブラリでは禁じ続ける](archive/allow-unsafe-only-in-the-trainer-crate.md)（置き換え済み）
 - 2026年10月12日 [学習器のAdamWはPyTorchと同じバイアス補正つきの式にする](use-pytorch-adamw-with-bias-correction.md)
 - 2026年10月12日 [探索が使う評価関数をNNUEの1つにし、PSTとFMのコードは比較用に残す](archive/use-nnue-as-the-only-search-evaluation.md)（置き換え済み）
@@ -357,12 +357,12 @@ PSTは駒の種類と升ごとの値の表による評価、FMはFactorization M
 - 2026年11月2日 [本番の型と関数の中に`#[cfg(test)]`の項目を置かず、試験専用のコードは子モジュールと`test-util`へ分ける](keep-test-only-code-out-of-production-types-and-functions.md)
 - 2026年11月3日 [NNUEの線形の経路の序中盤の列を、学習後に対局結果へのロジスティック回帰で補正する](archive/correct-the-nnue-linear-path-by-regressing-on-game-outcomes.md)（置き換え済み）
 - 2026年11月4日 [NNUEの教師局面を静止探索の末端へ置き換えない](do-not-replace-nnue-teacher-positions-with-qsearch-leaves.md)
-- 2026年11月4日 [NNUEを、探索用駒価値で初期化した線形の経路と、要素積と2段の隠れ層を持つ非線形の経路で組み立てる](compose-the-nnue-of-a-piece-value-initialized-linear-path-and-pairwise-products-with-two-hidden-layers.md)
+- 2026年11月4日 [NNUEを、探索用駒価値で初期化した線形の経路と、要素積と2段の隠れ層を持つ非線形の経路で組み立てる](archive/compose-the-nnue-of-a-piece-value-initialized-linear-path-and-pairwise-products-with-two-hidden-layers.md)（置き換え済み）
 - 2026年11月5日 [ビルドのLLVMインライン閾値を1000へ上げる](raise-the-llvm-inline-threshold-to-1000.md)
 - 2026年11月5日 [探索内の反復検出は、対局履歴のビットフィルタを通してから線形走査で行う](filter-the-game-history-before-the-repetition-scan.md)
 - 2026年11月5日 [歩兵と仲人の移動元は到達升の集合のシフトで選び、効果が小さいと見込まれたほかの生成とSEEの高速化は実装しない](shift-pawn-origins-and-skip-other-low-yield-movegen-and-see-speedups.md)
 - 2026年11月7日 [NNUEの線形の経路を、学習の後に対局結果で補正しない](archive/do-not-correct-the-nnue-linear-path-after-training.md)（置き換え済み）
-- 2026年11月7日 [NNUEの線形の経路の学習率を0.03に保ち、第1層と同じ学習率にそろえない](keep-the-nnue-linear-path-learning-rate-at-0-03.md)
+- 2026年11月7日 [NNUEの線形の経路の学習率を0.03に保ち、第1層と同じ学習率にそろえない](archive/keep-the-nnue-linear-path-learning-rate-at-0-03.md)（置き換え済み）
 - 2026年11月7日 [NNUEの世代反復では、各世代のネットをその世代の教師だけで学ぶ](train-each-nnue-generation-only-on-its-own-teachers.md)
 - 2026年11月8日 [MCTSは、新しい節点の手番側が相手の最後の王駒を取れるなら、反復の近似より前に1手の勝ちに確定させる](prove-mcts-nodes-whose-side-to-move-can-capture-the-last-royal.md)
 - 2026年11月9日 [対局用MCTSは、ネットの方策のlogitを温度1.4で割ってからPUCTの事前確率を作る](divide-mcts-policy-logits-by-a-temperature-of-1-4.md)
@@ -395,11 +395,11 @@ PSTは駒の種類と升ごとの値の表による評価、FMはFactorization M
 - 2026年11月14日 [NNUEの世代反復の1世代の教師を、局面数ではなく教師ファイルの本数で定め、70本とする](archive/size-each-nnue-generation-at-70-teacher-files.md)（置き換え済み）
 - 2026年11月14日 [NNUEは64 superbatchを余弦の学習率の予定で学び、学び終えた最後のネットを書き出す](archive/train-the-nnue-for-64-superbatches-and-export-the-last-network.md)（置き換え済み）
 - 2026年11月14日 [NNUEは先読みを使わない探索値だけの教師で、勝率の差の2乗を損失として学ぶ](train-the-nnue-on-search-value-teachers-with-the-squared-win-rate-difference.md)
-- 2026年11月14日 [勝率尺度を重みファイルの1定数とし、NNUEの教師の探索値も既定ではその尺度で勝率へ換算する](convert-nnue-teacher-values-with-the-network-win-rate-scale-by-default.md)
+- 2026年11月14日 [勝率尺度を重みファイルの1定数とし、NNUEの教師の探索値も既定ではその尺度で勝率へ換算する](archive/convert-nnue-teacher-values-with-the-network-win-rate-scale-by-default.md)（置き換え済み）
 - 2026年11月14日 [NNUEの学習では、どのパラメータ群にも重み減衰を掛けない](apply-no-weight-decay-to-the-nnue.md)
 - 2026年11月14日 [NNUEの教師の生成では、王手の局面を除き、評価値が傾いた開始局面を捨て、大差が続いた対局を評価値で裁定する](exclude-checks-screen-openings-and-adjudicate-decided-games-in-teacher-generation.md)
 - 2026年11月15日 [NNUEの世代反復の第n世代の教師を、1億局面に相当する本数のn倍とし、世代を追って増やす](grow-each-nnue-generation-by-the-teacher-files-for-100-million-positions.md)
-- 2026年11月15日 [NNUEは、1世代の教師の量に応じて64または80 superbatchを余弦の学習率の予定で学び、学び終えた最後のネットを書き出す](train-the-nnue-for-64-or-80-superbatches-by-the-generation-volume-and-export-the-last-network.md)
+- 2026年11月15日 [NNUEは、1世代の教師の量に応じて64または80 superbatchを余弦の学習率の予定で学び、学び終えた最後のネットを書き出す](archive/train-the-nnue-for-64-or-80-superbatches-by-the-generation-volume-and-export-the-last-network.md)（置き換え済み）
 - 2026年11月15日 [教師データと探索を行わない対局の記録を、対局単位の連鎖で記録するMNSDの1形式にまとめる](record-teacher-data-and-unsearched-games-as-chained-games.md)
 - 2026年11月15日 [AlphaZero型探索のネットを、lishogiの人間同士の棋譜から選んだ固定の検証用データで診断し、採否には使わない](diagnose-zero-networks-on-fixed-lishogi-human-games.md)
 - 2026年11月15日 [AlphaZero型探索のネットは、AlphaZeroの残差ブロックを20個並べた256チャネルのResNetとし、方策ヘッドは3×3畳み込み2層、価値ヘッドは1チャネルの1×1畳み込みと全結合256とする](shape-the-zero-network-as-the-alphazero-resnet-with-a-two-layer-policy-head-and-a-one-channel-value-head.md)
@@ -425,11 +425,21 @@ PSTは駒の種類と升ごとの値の表による評価、FMはFactorization M
 - 2026年11月17日 [上位N手の読み筋を出すUSIオプション`MultiPV`は、USIの層が宣言して保持し、値が2以上のときだけ`info`行に順位を付ける](declare-multipv-in-the-usi-layer-and-rank-info-lines-only-when-it-is-two-or-more.md)
 - 2026年11月17日 [αβ探索のMultiPVは、各深さで根の探索をN回繰り返して選んだ手を除いていき、全N本を読み終えた反復だけを結果にする](search-alphabeta-multipv-by-repeating-the-root-search-and-keep-only-complete-iterations.md)
 - 2026年11月17日 [PV-MCTSのMultiPVは、探索を変えずに、終了時の根の辺を最善手と同じ比較規則で並べて上位N本を出し、2本目以降の未訪問の辺には評価値を付けない](rank-pv-mcts-root-edges-by-the-best-move-rule-for-multipv-and-leave-unvisited-edges-unscored.md)
-- 2026年11月17日 [探索が使う評価関数を、USIのオプションEvalFileで指定した外部のファイルのNNUEの1つにし、PSTとFMのコードは比較用に残す](use-an-nnue-read-from-evalfile-as-the-only-search-evaluation.md)
+- 2026年11月17日 [探索が使う評価関数を、USIのオプションEvalFileで指定した外部のファイルのNNUEの1つにし、PSTとFMのコードは比較用に残す](archive/use-an-nnue-read-from-evalfile-as-the-only-search-evaluation.md)（置き換え済み）
 - 2026年11月17日 [NNUEのネットを、読み込んだファイル全体のSHA-256で識別する](identify-nnue-networks-by-the-sha256-of-the-whole-file.md)
 - 2026年11月17日 [NNUEの教師ファイルは、対局数で決めた塊ごとに確定させ、全塊がそろったら1つのファイルへ組み直し、再開ではネットのファイル全体のSHA-256も照合する](commit-nnue-teacher-files-in-fixed-game-chunks-and-check-the-network-file-on-resume.md)
 - 2026年11月17日 [対局ハーネスと係数調整は、エンジンがisreadyで返すネットのチェックサムを実行条件に記録し、対局の開始時と再開時に照合する](record-and-verify-the-network-checksum-reported-by-match-and-spsa-engines.md)
 - 2026年11月17日 [棋力測定はコミットからビルドした別プロセスのエンジン同士で行い、ネットは追加のオプションで渡してチェックサムで固定する](compare-commits-as-separate-engine-processes-and-pin-networks-by-checksum.md)
 - 2026年11月17日 [エンジンの実装を検証する診断はUSIの独自コマンドにして準備済みのセッションで実行し、実験の管理とデータの生産はサブコマンドに残す](run-engine-diagnostics-as-usi-commands-on-the-prepared-session.md)
-- 2026年11月17日 [NNUEを入力特徴集合と出力部の型引数で組み立て、型の合わないネットのファイルは読み込みで拒否する](parameterize-the-nnue-by-types-and-reject-mismatched-network-files-on-load.md)
-- 2026年11月17日 [NNUEの世代反復では、線形の経路を学習の後に対局結果で補正せず、学習したネットをgitの外に置いてそのまま次の世代に使う](use-each-trained-nnue-uncorrected-and-outside-git-for-the-next-generation.md)
+- 2026年11月17日 [NNUEを入力特徴集合と出力部の型引数で組み立て、型の合わないネットのファイルは読み込みで拒否する](archive/parameterize-the-nnue-by-types-and-reject-mismatched-network-files-on-load.md)（置き換え済み）
+- 2026年11月17日 [NNUEの世代反復では、線形の経路を学習の後に対局結果で補正せず、学習したネットをgitの外に置いてそのまま次の世代に使う](archive/use-each-trained-nnue-uncorrected-and-outside-git-for-the-next-generation.md)（置き換え済み）
+- 2026年11月19日 [NNUEの入力特徴集合と構造を列挙型で表し、tataraの形式の重みのファイルの構造記述から構造を選ぶ](represent-nnue-feature-sets-and-structures-as-enums-and-select-the-structure-from-the-tatara-file.md)
+- 2026年11月19日 [NNUEの入力特徴集合にP型とHalfKP_vmを置き、HalfKP-hm-b8を削除する](provide-p-and-halfkp-vm-input-features-and-drop-halfkp-hm-b8.md)
+- 2026年11月19日 [P型をtataraのLayerStackにPSQTを足した構造で、HalfKP_vmを256x2-32-32のSimpleで組み、量子化をtataraにそろえる](compose-p-as-a-tatara-layerstack-with-a-psqt-and-halfkp-vm-as-a-simple-network.md)
+- 2026年11月19日 [P型のNNUEは左右鏡映の対で、第1層の重みを半幅だけ回して共有し、PSQTを同じ値にする](share-p-type-mirror-weights-in-the-first-layer-and-the-psqt.md)
+- 2026年11月19日 [探索は、EvalFileで読んだNNUEだけを使い、その構造を読み込みのときに選んで、評価器の列挙型で着手ごとに分岐する](search-with-an-evalfile-nnue-whose-structure-is-chosen-on-load.md)
+- 2026年11月19日 [探索用駒価値はv0の駒割から作る固定の表とし、エンジンと学習器で共有する](take-search-piece-values-from-the-v0-material-table.md)
+- 2026年11月19日 [NNUEの教師の勝率尺度K_tを学習器の必須の引数で渡し、ネットの出力の換算の尺度K_o＝8,128÷mと分ける](separate-the-nnue-teacher-win-rate-scale-from-the-output-scale.md)
+- 2026年11月19日 [NNUEの学習器を、構造によらない学習ループと構造ごとの実装に分け、構造ごとのサブコマンドで呼ぶ](split-the-nnue-trainer-into-a-shared-loop-and-structure-backends.md)
+- 2026年11月19日 [NNUEの世代反復では、学習したネットをgitの外に置いてそのまま次の世代の教師の生成に使い、学習の後に補正しない](use-each-trained-nnue-outside-git-for-the-next-generation.md)
+- 2026年11月19日 [NNUEの学習期間は未学習対局での検証損失から選ぶ](select-the-nnue-checkpoint-on-held-out-games.md)

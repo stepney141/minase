@@ -32,12 +32,12 @@ fn attacked_position_with_material() -> Position {
 
 /// 深さ1と2でもnull moveが打ち切れる、静的評価とnull moveの値より十分低い零窓を作る。
 fn shallow_null_window(board: &Position) -> (i32, i32) {
-    let static_eval = evaluate(test_nnue(), board);
+    let static_eval = evaluate(test_network(), board);
     let mut after_null = board.clone();
     after_null.make_null_move();
-    let null_score = -evaluate(test_nnue(), &after_null);
+    let null_score = -evaluate(test_network(), &after_null);
     let beta = static_eval.min(null_score) - 300;
-    assert!(beta >= null_move_beta_minimum(test_nnue().pawn_value()));
+    assert!(beta >= null_move_beta_minimum(crate::eval::piece_values::pawn_value()));
     assert!(beta.abs() < REPETITION_BAND_START);
     (beta - 1, beta)
 }
@@ -125,7 +125,7 @@ fn null_move_requires_cut_node_safe_window_and_unattacked_royal() {
 #[test]
 fn null_move_requires_beta_floor_material_and_non_null_predecessor() {
     let board = quiet_position_with_material();
-    let minimum = null_move_beta_minimum(test_nnue().pawn_value());
+    let minimum = null_move_beta_minimum(crate::eval::piece_values::pawn_value());
     assert_eq!(minimum, -961, "100 × 2000 / 208は0方向へ丸める");
     assert_eq!(
         run_candidate(&board, 1, minimum - 2, minimum - 1, 0, true, None, false,).1,
@@ -251,8 +251,9 @@ fn verification_restores_same_ply_state_after_completed_failure() {
         searcher.tt_hits[0] = true;
         searcher.nmp_min_ply = Some(77);
         searcher.pv[0].push(legal_moves(&board)[0]);
-        let beta =
-            evaluate(searcher.nnue, &board) + razoring_margin(searcher.nnue.pawn_value(), 4) + 2;
+        let beta = evaluate(searcher.network, &board)
+            + razoring_margin(crate::eval::piece_values::pawn_value(), 4)
+            + 2;
         let score = searcher
             .search_null_move_verification(&mut board.clone(), 4, beta, 0)
             .unwrap();
@@ -286,7 +287,7 @@ fn verification_restores_same_ply_state_before_propagating_interruption() {
         searcher.tt_hits[0] = true;
         searcher.pv[0].push(legal_moves(&board)[0]);
         searcher.interrupt_at = Some((0, StopReason::ExternalStop));
-        let beta = evaluate(searcher.nnue, &board) + 1;
+        let beta = evaluate(searcher.network, &board) + 1;
         assert_eq!(
             searcher.search_null_move_verification(&mut board.clone(), 4, beta, 0),
             None
@@ -330,9 +331,9 @@ pub(super) fn verification_starts_at_depth_threshold_and_returns_original_null_s
     for (depth, expected_verifications) in [(15, 0), (16, 1)] {
         with_root_searcher(&board, &[], |searcher| {
             zero_position_correction(searcher, &board);
-            let static_eval = evaluate(searcher.nnue, &board);
+            let static_eval = evaluate(searcher.network, &board);
             let beta = static_eval - 200;
-            assert!(beta >= null_move_beta_minimum(searcher.nnue.pawn_value()));
+            assert!(beta >= null_move_beta_minimum(crate::eval::piece_values::pawn_value()));
             searcher.follow_pv[0] = true;
             searcher.tt.store(
                 search_key(&board),
@@ -370,7 +371,7 @@ fn failed_verification_continues_outer_search_after_restoring_state() {
     let board = quiet_position_with_material();
     with_root_searcher(&board, &[], |searcher| {
         zero_position_correction(searcher, &board);
-        let static_eval = evaluate(searcher.nnue, &board);
+        let static_eval = evaluate(searcher.network, &board);
         let beta = static_eval - 200;
         let depth = 20;
         searcher.follow_pv[0] = true;

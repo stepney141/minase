@@ -4,7 +4,7 @@
 評価関数とは、局面を受け取り、手番側から見た有利さを1つの整数で返す関数である。
 PSTとFMの評価関数は2026年10月12日まで探索の既定の評価関数であり、同日にNNUE（差分更新できる小型のニューラルネットワーク）へ置き換わった。
 現在の探索はNNUEだけを使い、その式と学習は[NNUEによる評価関数と学習の目的関数](evaluation-nnue.md)が説明する。
-PSTとFMのコードは、学習した評価関数を比べる基準としてテストとともにソースに残っており、探索からは呼ばれない（[探索が使う評価関数をNNUEの1つにし、PSTとFMのコードは比較用に残す](../adr/use-an-nnue-read-from-evalfile-as-the-only-search-evaluation.md)）。
+PSTとFMのコードは、学習した評価関数を比べる基準としてテストとともにソースに残っており、探索からは呼ばれない（[探索が使う評価関数をNNUEの1つにし、PSTとFMのコードは比較用に残す](../adr/archive/use-an-nnue-read-from-evalfile-as-the-only-search-evaluation.md)）。
 NNUEの評価値のうち駒と升ごとの点数を足すだけの部分を線形の経路と呼び、この部分はPSTの式をそのまま使い、PSTの重みを初期値として学習するので、本書の入力特徴、補間、および教師値の説明はNNUEを読む前提にもなる。
 
 値の単位はセンチポーン（以下cp）であり、成っていない歩兵1枚をおよそ100とする目盛りである。
@@ -272,7 +272,7 @@ $`\mathrm{FmScale} = 1024`$ が学習したままの補正、0が補正なしに
 この式で導いた結果、採用時の重みファイルでは、成っていない歩兵が100 cp、獅子が2,522 cp、王駒が2,622 cpとなっている。
 
 この表は、2端点PSTを導入した計画の開始時点の重み（コミット `af200b4`）からこの式で導いた値に固定しており、PSTやFMを学び直しても計算し直さない。
-評価関数を変えたときに交換評価や枝刈りの基準まで同時に変わると、どちらの効果かを切り分けられないためである（[探索用駒価値は学習PSTから導いた値に固定する](../adr/derive-search-piece-values-from-the-learned-pst.md)）。
+評価関数を変えたときに交換評価や枝刈りの基準まで同時に変わると、どちらの効果かを切り分けられないためである（[探索用駒価値は学習PSTから導いた値に固定する](../adr/archive/derive-search-piece-values-from-the-learned-pst.md)）。
 PSTの重みは升ごとに異なり、FMの寄与は他の駒にも依存するので、静的評価の中の駒の寄与が探索用駒価値と一致する必要はない。
 NNUEへの置き換えでは、この47個の値を `pst.bin` からNNUEの重みファイル `nnue.bin` へそのまま写したので、現在の探索も同じ値を使う。
 
@@ -558,7 +558,7 @@ FMの学習器 `minase-trainer fm train`（`crates/minase-trainer/src/fm/`）は
 ## 参考資料
 
 - [NNUEによる評価関数と学習の目的関数](evaluation-nnue.md)
-- [探索が使う評価関数をNNUEの1つにし、PSTとFMのコードは比較用に残す](../adr/use-an-nnue-read-from-evalfile-as-the-only-search-evaluation.md)
+- [探索が使う評価関数をNNUEの1つにし、PSTとFMのコードは比較用に残す](../adr/archive/use-an-nnue-read-from-evalfile-as-the-only-search-evaluation.md)
 - [評価関数の設計書](../plans/archived/evaluation.md)
 - [PSTの序中盤と終盤の補間](../plans/archived/tapered-pst.md)
 - [FMの設計書](../plans/archived/factorization-machine.md)

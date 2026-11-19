@@ -349,7 +349,7 @@ AobaZeroも、互角局面集と初手からの対局で約100 Eloの差を記�
 人間の棋譜の局面を測定だけに使うことは、[ADR](../adr/do-not-use-human-games-to-strengthen-the-engine.md)の対象外である。
 
 第9に、一貫性の検査のうちminaseで意味のあるものは限られる。
-NNUEは盤面全体の左右鏡映に対して重みの共有で厳密に不変である（[ADR](../adr/share-p-type-mirror-weights-by-half-width-rotation.md)）から、盤の変換の検査は構造上0を返す。
+NNUEは盤面全体の左右鏡映に対して重みの共有で厳密に不変である（[ADR](../adr/archive/share-p-type-mirror-weights-by-half-width-rotation.md)）から、盤の変換の検査は構造上0を返す。
 推奨手を指す前後の探索値の差も、草稿の式の配置の選好bが主要変化に沿ってほぼ一定なら打ち消し合って現れない。
 残る検査のうち安いのは、麒麟の診断の駒の置き直しを全21駒種へ広げることである。
 麒麟の診断は27万局面の評価が約14秒だったので、作業機で短時間に測れる。

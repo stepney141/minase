@@ -56,7 +56,7 @@ git push origin master minase-core-v0.2.0 v2.1.0
 ```
 
 エンジンのリリースでは、タグをpushした後に、そのタグのGitHubのリリースを作り、採用したNNUEのネットのファイルを添付する。
-エンジンはネットを実行ファイルに埋め込まず、オプション`EvalFile`で指定したファイルから読むので、利用者はこの添付ファイルを取得して指定する（[外部ファイル化のADR](../adr/use-an-nnue-read-from-evalfile-as-the-only-search-evaluation.md)）。
+エンジンはネットを実行ファイルに埋め込まず、オプション`EvalFile`で指定したファイルから読むので、利用者はこの添付ファイルを取得して指定する（[外部ファイル化のADR](../adr/archive/use-an-nnue-read-from-evalfile-as-the-only-search-evaluation.md)）。
 採用したネットは、その版の棋力を測ったときに渡したネットであり、NAS（`/mnt/synology_nas/minase/nnue/nets/`）に`<ファイル全体のSHA-256の16進数>.bin`の名前で置いてある。
 リリースノートには、git-cliffが変更履歴に書いた今回の節と、添付したネットのSHA-256を書く。
 GitHubのリリースには、1ファイルあたり2 GiB未満のファイルを添付できる。

@@ -14,7 +14,7 @@ use minase_core::{Color, Game, GameResult, Rules, WinReason};
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 
-const TEST_NETWORK: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/nets/nnue-epoch0.bin");
+const TEST_NETWORK: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/nets/test-layer-stack.bin");
 
 const CASES: &str = include_str!("fixtures/lishogi_import_cases.ndjson");
 static NEXT: AtomicU64 = AtomicU64::new(0);
@@ -679,7 +679,7 @@ fn selfplay_summary_counts_saved_entries_and_discards_capped_games() {
         let mut reader = Reader::new(File::open(path).unwrap()).unwrap();
         let mut saved_games = 0;
         let mut eligible = 0;
-        let mut exclusions = [0; 4];
+        let mut exclusions = [0; 5];
         while let Some(decoded) = reader.read_game().unwrap() {
             saved_games += 1;
             for entry in decoded.record().entries() {
@@ -693,7 +693,10 @@ fn selfplay_summary_counts_saved_entries_and_discards_capped_games() {
             summary["recorded_positions"].parse::<u64>().unwrap(),
             eligible
         );
-        for (index, reason) in ["mate_band", "tactical", "repetition"].iter().enumerate() {
+        for (index, reason) in ["mate_band", "tactical", "repetition", "check"]
+            .iter()
+            .enumerate()
+        {
             assert_eq!(
                 summary[format!("excluded_{reason}_in_saved_games").as_str()]
                     .parse::<u64>()

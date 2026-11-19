@@ -1,6 +1,6 @@
 use super::{Error, Result};
 use cudarc::{
-    driver::{CudaContext, CudaFunction, CudaStream, DeviceRepr, PinnedHostSlice, ValidAsZeroBits},
+    driver::{CudaContext, CudaStream, DeviceRepr, PinnedHostSlice, ValidAsZeroBits},
     nvrtc::{CompileOptions, compile_ptx_with_opts},
 };
 use std::sync::Arc;
@@ -8,9 +8,9 @@ use std::sync::Arc;
 /// CUDA文脈と、計算・転送それぞれの非同期ストリーム。
 #[derive(Clone, Debug)]
 pub struct Device {
-    pub(super) context: Arc<CudaContext>,
-    pub(super) compute: Arc<CudaStream>,
-    pub(super) transfer: Arc<CudaStream>,
+    pub(in crate::nnue) context: Arc<CudaContext>,
+    pub(in crate::nnue) compute: Arc<CudaStream>,
+    pub(in crate::nnue) transfer: Arc<CudaStream>,
     name: String,
     capability: (i32, i32),
 }
@@ -52,7 +52,7 @@ impl Device {
     }
 }
 
-pub(super) fn pinned_zeros<T: DeviceRepr + ValidAsZeroBits>(
+pub(in crate::nnue) fn pinned_zeros<T: DeviceRepr + ValidAsZeroBits>(
     device: &Device,
     len: usize,
 ) -> Result<PinnedHostSlice<T>> {
@@ -72,18 +72,6 @@ pub(super) fn pinned_zeros<T: DeviceRepr + ValidAsZeroBits>(
     Ok(result)
 }
 
-/// forward、head、backward、reduce、optimizerの順にCUDAソースを連結する。
-/// 各ファイル内では、呼び出される補助関数をカーネルより先に定義する。
-pub(super) fn source() -> String {
-    [
-        include_str!("../../../kernels/forward.cu"),
-        include_str!("../../../kernels/head.cu"),
-        include_str!("../../../kernels/backward.cu"),
-        include_str!("../../../kernels/reduce.cu"),
-        include_str!("../../../kernels/optimizer.cu"),
-    ]
-    .join("\n")
-}
 /// NVRTCへ`--gpu-architecture=sm_{主}{副}`とfmad=false、prec_div=true、prec_sqrt=true、ftz=falseを渡す。
 /// 積和の融合を禁じ、CPU参照と同じ演算単位で丸める。
 fn options(capability: (i32, i32)) -> CompileOptions {
@@ -102,203 +90,17 @@ fn options(capability: (i32, i32)) -> CompileOptions {
     }
 }
 
-pub(super) struct Kernels {
-    pub acc: CudaFunction,
-    pub linear: CudaFunction,
-    pub head: CudaFunction,
-    pub first_backward_partials: CudaFunction,
-    pub first_backward_reduce: CudaFunction,
-    pub linear_backward_partials: CudaFunction,
-    pub linear_backward_reduce: CudaFunction,
-    pub virtual_reduce: CudaFunction,
-    pub gradients: CudaFunction,
-    pub reduce: CudaFunction,
-    pub validation: CudaFunction,
-    pub optimizer_rows: CudaFunction,
-    pub optimizer_virtual: CudaFunction,
-    pub optimizer_first: CudaFunction,
-    pub optimizer_head: CudaFunction,
-}
-impl Kernels {
-    pub fn compile(device: &Device) -> Result<Self> {
-        // SAFETY: NVRTC共有ライブラリの存在検査だけを行い、未検証のポインタを渡さない。
-        // Device::newと同じく、実行環境のCUDAライブラリを信頼する。
-        if !unsafe { cudarc::nvrtc::sys::is_culib_present() } {
-            return Err(Error::CompilerUnavailable);
-        }
-        let ptx = compile_ptx_with_opts(source(), options(device.capability))?;
-        let module = device.context.load_module(ptx)?;
-        Ok(Self {
-            acc: module.load_function("forward_acc")?,
-            linear: module.load_function("forward_linear")?,
-            head: module.load_function("output_backward")?,
-            first_backward_partials: module.load_function("first_layer_backward_partials")?,
-            first_backward_reduce: module.load_function("first_layer_backward_reduce")?,
-            linear_backward_partials: module.load_function("linear_backward_partials")?,
-            linear_backward_reduce: module.load_function("linear_backward_reduce")?,
-            virtual_reduce: module.load_function("reduce_virtual")?,
-            gradients: module.load_function("gradient_partials")?,
-            reduce: module.load_function("reduce_partials")?,
-            validation: module.load_function("validation_head")?,
-            optimizer_rows: module.load_function("optimizer_rows")?,
-            optimizer_virtual: module.load_function("optimizer_virtual")?,
-            optimizer_first: module.load_function("optimizer_first")?,
-            optimizer_head: module.load_function("optimizer_head")?,
-        })
+// 構造ごとのソースにも同じNVRTC設定と不在時のエラーを適用する。
+pub(in crate::nnue) fn compile_sources(
+    sources: &[&str],
+    capability: (i32, i32),
+) -> Result<cudarc::nvrtc::Ptx> {
+    // SAFETY: 実行環境のNVRTC共有ライブラリの存在だけを検査する。
+    if !unsafe { cudarc::nvrtc::sys::is_culib_present() } {
+        return Err(Error::CompilerUnavailable);
     }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    // CUDAの行コメントとブロックコメントを除き、文字列・文字リテラルは保つ。
-    fn without_comments(source: &str) -> String {
-        let mut chars = source.chars().peekable();
-        let mut code = String::new();
-        while let Some(c) = chars.next() {
-            match (c, chars.peek().copied()) {
-                ('/', Some('/')) => {
-                    chars.next();
-                    for c in chars.by_ref() {
-                        if c == '\n' {
-                            break;
-                        }
-                    }
-                    code.push('\n');
-                }
-                ('/', Some('*')) => {
-                    chars.next();
-                    while let Some(c) = chars.next() {
-                        if c == '*' && chars.peek() == Some(&'/') {
-                            chars.next();
-                            break;
-                        }
-                    }
-                    code.push(' ');
-                }
-                ('"' | '\'', _) => {
-                    code.push(c);
-                    while let Some(next) = chars.next() {
-                        code.push(next);
-                        if next == c {
-                            break;
-                        }
-                        if next == '\\'
-                            && let Some(escaped) = chars.next()
-                        {
-                            code.push(escaped);
-                        }
-                    }
-                }
-                _ => code.push(c),
-            }
-        }
-        code
-    }
-
-    #[test]
-    fn embedded_sources_and_compiler_options_keep_runtime_dimensions() {
-        let src = source();
-        for name in [
-            "forward_acc",
-            "forward_linear",
-            "output_backward",
-            "first_layer_backward_partials",
-            "first_layer_backward_reduce",
-            "linear_backward_partials",
-            "linear_backward_reduce",
-            "reduce_virtual",
-            "gradient_partials",
-            "reduce_partials",
-            "validation_head",
-            "optimizer_rows",
-            "optimizer_virtual",
-            "optimizer_first",
-            "optimizer_head",
-        ] {
-            assert_eq!(
-                src.matches(&format!("extern \"C\" __global__ void {name}("))
-                    .count(),
-                1
-            );
-        }
-        let code = without_comments(&src);
-        assert!(!code.contains("atomicAdd"));
-        assert!(!code.contains("template"));
-        let opts = options((8, 6));
-        assert_eq!(opts.options, ["--gpu-architecture=sm_86"]);
-        assert_eq!(opts.fmad, Some(false));
-        assert_eq!(opts.prec_div, Some(true));
-        assert_eq!(opts.prec_sqrt, Some(true));
-        assert_eq!(opts.ftz, Some(false));
-    }
-
-    #[test]
-    fn rust_launch_argument_order_matches_cuda_signatures() {
-        let cuda = source();
-        let rust = [include_str!("engine.rs"), include_str!("optimizer.rs")].join("\n");
-        for (kernel, field) in [
-            ("forward_acc", "acc"),
-            ("forward_linear", "linear"),
-            ("output_backward", "head"),
-            ("first_layer_backward_partials", "first_backward_partials"),
-            ("first_layer_backward_reduce", "first_backward_reduce"),
-            ("linear_backward_partials", "linear_backward_partials"),
-            ("linear_backward_reduce", "linear_backward_reduce"),
-            ("reduce_virtual", "virtual_reduce"),
-            ("gradient_partials", "gradients"),
-            ("reduce_partials", "reduce"),
-            ("validation_head", "validation"),
-            ("optimizer_rows", "optimizer_rows"),
-            ("optimizer_virtual", "optimizer_virtual"),
-            ("optimizer_first", "optimizer_first"),
-            ("optimizer_head", "optimizer_head"),
-        ] {
-            let signature = cuda
-                .split(&format!("void {kernel}("))
-                .nth(1)
-                .unwrap()
-                .split(')')
-                .next()
-                .unwrap();
-            let names: Vec<_> = signature
-                .split(',')
-                .map(|p| p.split_whitespace().last().unwrap())
-                .collect();
-            let launch = rust
-                .split(&format!("launch_builder(&k.{field})"))
-                .nth(1)
-                .unwrap()
-                .split("unsafe")
-                .next()
-                .unwrap();
-            let args: Vec<_> = launch
-                .split(".arg(")
-                .skip(1)
-                .map(|s| {
-                    let expression = s
-                        .split(')')
-                        .next()
-                        .unwrap()
-                        .trim_start_matches('&')
-                        .trim_start_matches("mut ");
-                    let name = expression.rsplit('.').next().unwrap();
-                    match (kernel, name) {
-                        (_, "n" | "n32") => "B",
-                        (_, "h") if expression == "h" => "H",
-                        (_, "scale") => "K",
-                        (_, "piece_counts") => "counts",
-                        (_, "output_bias") => "bias",
-                        (_, "gradient_partials" | "validation_partials") => "partials",
-                        ("forward_linear", "linear_features") => "features",
-                        ("forward_linear", "linear") => "weights",
-                        ("reduce_partials", "columns") => "values",
-                        (_, "weight_decay") => "decay",
-                        _ => name,
-                    }
-                })
-                .collect();
-            assert_eq!(args, names, "{kernel}: Rust/CUDA argument order");
-        }
-    }
+    Ok(compile_ptx_with_opts(
+        sources.join("\n"),
+        options(capability),
+    )?)
 }

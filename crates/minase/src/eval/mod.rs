@@ -3,11 +3,10 @@
 pub mod features;
 pub mod handcrafted;
 pub mod nnue;
+pub mod piece_values;
 // 比較用PSTの探索向け内部APIもソースとテストを保持する。
 #[allow(dead_code)]
 pub mod pst;
-
-pub use nnue::Nnue;
 
 use minase_core::{PieceCode, Position};
 
@@ -23,6 +22,9 @@ pub fn piece_state_of(piece: PieceCode) -> usize {
 }
 
 /// NNUEで局面を手番側の視点からセンチポーン評価する。
-pub fn evaluate(nnue: &Nnue, position: &Position) -> i32 {
-    nnue::evaluate(nnue, position)
+pub fn evaluate(
+    network: &nnue::Network,
+    position: &Position,
+) -> Result<i32, nnue::input::AnchorError> {
+    network.evaluate(position)
 }

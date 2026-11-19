@@ -83,7 +83,8 @@ minaseは規則セットの既定値を持たないので、GUIや対局用の�
 ### isready
 
 αβ探索で起動したminaseは、`isready`でオプション`EvalFile`のファイルから評価関数NNUEのネットを読み込み、形式を検証する。
-minaseはネットを実行ファイルに埋め込まず、既定のネットも持たない（[ADR](../adr/use-an-nnue-read-from-evalfile-as-the-only-search-evaluation.md)）。
+ネットのファイルは将棋のNNUEの学習器tataraの形式であり、minaseはファイルの構造記述から、P型の入力のLayerStackか、HalfKP_vmの入力のSimpleかを選ぶ（[形式のADR](../adr/represent-nnue-feature-sets-and-structures-as-enums-and-select-the-structure-from-the-tatara-file.md)）。
+minaseはネットを実行ファイルに埋め込まず、既定のネットも持たない（[ADR](../adr/search-with-an-evalfile-nnue-whose-structure-is-chosen-on-load.md)）。
 `EvalFile`が未設定なら`info string error: required option EvalFile is not set`を出し、`readyok`を返さずに終了コード1で終わる。
 ファイルを読めない場合は`info string error: failed to read NNUE network file '<パス>': <原因>`、形式の検証に通らない場合は`info string error: invalid NNUE network file '<パス>': <原因>`を出して、同じく終了する。
 読み込みや検証に失敗したときに、前に読み込んだネットや別のネットへは切り替えない。
@@ -96,7 +97,7 @@ MCTSで起動したminaseは、`isready`でオプション`NnModel`のファイ�
 ファイルを読めない場合と推論器を作れない場合も、エラーを1行出して終了し、別のネットや実行プロバイダへは切り替えない。
 どちらの探索でも、`isready`でネットの読み込みに成功すると、minaseは`readyok`の直前に`info string network_sha256 <64桁の16進数>`を1行出す。
 この値は、読み込んだファイル全体のバイト列のSHA-256であり、ネットの識別子として、対局ハーネスと係数調整がネットの同一性の照合に使う（[識別子のADR](../adr/identify-nnue-networks-by-the-sha256-of-the-whole-file.md)、[SPRTの手引き](sprt.md)の「エンジンの指定方法」の節）。
-NNUEのネットのファイルのヘッダにあるチェックサムは本体だけを対象にするので、この値とは異なる。
+NNUEのネットのファイルはチェックサムを持たないので、取り違えと破損はこの値で見つける。
 
 ### position
 
@@ -289,9 +290,36 @@ d
 eval
 ```
 
-αβ探索で起動したminaseでは、`isready`で読み込んだNNUE（評価関数のニューラルネット）による現局面の手番側の評価値と、升ごとの線形の寄与を12行12列の表で表示する。
+αβ探索で起動したminaseでは、`isready`で読み込んだNNUE（評価関数のニューラルネット）による現局面の手番側の評価値と、その内訳を、本体の評価と同じ整数の足し算と割り算の順で表示する。
 ネットが準備されていなければ`info string error: eval requires isready`を返す。
 各行に`info string`を付け、最後の行を`info string end`とする。
+
+P型のLayerStackのネットでは、次の行を出す。
+PSQT（駒と升ごとの点数の表）の升ごとの寄与は、その升の駒の手番側の視点の値から相手側の視点の値を引いた整数であり、12行12列の表で示す。
+
+```text
+evaluation <評価値cp>
+structure LayerStack
+feature-set P
+<12行12列の升ごとのPSQTの寄与>
+lion <先獅子の寄与>
+psqt <(手番側のPSQTの和 − 相手側のPSQTの和) / 2>
+dense <後段の整数の出力>
+fv-scale <除数>
+note evaluation = clamp((dense + psqt) / fv-scale, -28999, 28999) with division truncated toward zero; psqt = (sum of square contributions + lion) / 2 truncated toward zero
+```
+
+HalfKP_vmのSimpleのネットでは、次の行を出す。
+基準の王駒が一意に決まらない局面では、評価できない理由をエラーとして返す。
+
+```text
+evaluation <評価値cp>
+structure Simple
+feature-set HalfKPVm
+dense <後段の整数の出力>
+fv-scale <除数>
+note evaluation = clamp(dense / fv-scale, -28999, 28999) with division truncated toward zero
+```
 
 MCTSで起動したminaseでは、現局面を、`isready`で準備した推論器で推論し、ネットの出力を次の形で表示する。
 

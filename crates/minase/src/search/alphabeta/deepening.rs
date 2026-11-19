@@ -4,7 +4,7 @@ use std::sync::atomic::Ordering as AtomicOrdering;
 use std::sync::mpsc;
 use std::time::Duration;
 
-use crate::eval::Nnue;
+use crate::eval::nnue::Network;
 use crate::search::events::{SearchEvent, SearchResult, StopReason};
 use crate::search::{PvLine, SearchRepetition, TranspositionTable};
 use minase_core::mv::Move;
@@ -146,7 +146,7 @@ pub(super) fn auxiliary_depths(worker_index: usize, depth_limit: u32) -> impl It
 /// N＝1の場合だけ`adopt_partial`で根の順序と途中結果の採用を有効にする。
 #[allow(clippy::too_many_arguments)]
 pub(super) fn run_main_worker(
-    nnue: &Nnue,
+    nnue: &Network,
     position: &Position,
     rules: MoveRules,
     repetition: SearchRepetition,
@@ -209,7 +209,7 @@ pub(super) fn run_main_worker(
 /// 設計判断の理由は`docs/adr/search-alphabeta-multipv-by-repeating-the-root-search-and-keep-only-complete-iterations.md`にある。
 #[allow(clippy::too_many_arguments)]
 pub(super) fn run_main_worker_with_iteration_hook(
-    nnue: &Nnue,
+    nnue: &Network,
     position: &Position,
     rules: MoveRules,
     repetition: SearchRepetition,
@@ -253,12 +253,12 @@ pub(super) fn run_main_worker_with_iteration_hook(
     );
     searcher.root_results = adopt_partial.then(RootResults::default);
     #[cfg(feature = "invariants")]
-    nnue.assert_accumulator(position, &searcher.accumulators[0], 0);
+    searcher.evaluator.assert_accumulator(position, 0);
     let mut result = SearchResult {
         #[cfg(feature = "search-stats")]
         stats: crate::search::SearchStats::default(),
         best_move: root_moves[0],
-        score: nnue.evaluate_accumulator(&searcher.accumulators[0], position.side_to_move()),
+        score: searcher.evaluator.evaluate(0, position.side_to_move()),
         depth: 0,
         nodes: 0,
     };
@@ -327,8 +327,11 @@ pub(super) fn run_main_worker_with_iteration_hook(
         let stable = stable_signal(&completed_bests, coefficients.stable_iterations);
         let mut scaled_time_ms = None;
         if let Some(scaling) = &mut instability_scaling {
-            let falling_eval =
-                scaling.update_falling_eval(score, nnue.pawn_value(), coefficients.falling_eval);
+            let falling_eval = scaling.update_falling_eval(
+                score,
+                crate::eval::piece_values::pawn_value(),
+                coefficients.falling_eval,
+            );
             let best_move_stability = scaling
                 .update_best_move_stability(&completed_bests, coefficients.best_move_stability);
             let best_move_instability = scaling.update_best_move_instability(
@@ -481,7 +484,7 @@ pub(super) fn main_worker_outcome(
 /// 深さ上限を完了すると自分の処理を終え、他ワーカーへ深さ完了の停止を通知しない。
 #[allow(clippy::too_many_arguments)]
 pub(super) fn run_auxiliary_worker(
-    nnue: &Nnue,
+    nnue: &Network,
     position: &Position,
     rules: MoveRules,
     repetition: SearchRepetition,
@@ -518,12 +521,12 @@ pub(super) fn run_auxiliary_worker(
         pawn_history,
     );
     #[cfg(feature = "invariants")]
-    nnue.assert_accumulator(position, &searcher.accumulators[0], 0);
+    searcher.evaluator.assert_accumulator(position, 0);
     let mut result = SearchResult {
         #[cfg(feature = "search-stats")]
         stats: crate::search::SearchStats::default(),
         best_move: root_moves[0],
-        score: nnue.evaluate_accumulator(&searcher.accumulators[0], position.side_to_move()),
+        score: searcher.evaluator.evaluate(0, position.side_to_move()),
         depth: 0,
         nodes: 0,
     };

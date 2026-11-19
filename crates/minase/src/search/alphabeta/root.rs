@@ -432,7 +432,7 @@ impl Searcher<'_> {
             self.seek_mate = is_seek_mate(
                 prev.map(|line| line.score),
                 iteration_depth,
-                self.nnue.pawn_value(),
+                crate::eval::piece_values::pawn_value(),
             );
             if let Some(prev) = prev {
                 self.previous_pv.clone_from(&prev.pv);
@@ -461,7 +461,7 @@ impl Searcher<'_> {
                     (
                         average,
                         initial_aspiration_delta(
-                            self.nnue.pawn_value(),
+                            crate::eval::piece_values::pawn_value(),
                             params::aspiration_delta(),
                             params::aspiration_score_width(),
                             signed_square_average,
@@ -571,8 +571,7 @@ impl Searcher<'_> {
         self.tt_hits[0] = tt_hit.is_some();
         // 根の静的評価も子孫のimprovingの比較に保持する（Stockfish src/search.cpp:846-884）。
         #[cfg(feature = "invariants")]
-        self.nnue
-            .assert_accumulator(&position, &self.accumulators[0], 0);
+        self.evaluator.assert_accumulator(&position, 0);
         let side = position.side_to_move();
         let raw = if let Some(static_eval) = tt_hit.and_then(|hit| hit.static_eval) {
             #[cfg(feature = "search-stats")]
@@ -581,7 +580,7 @@ impl Searcher<'_> {
             }
             static_eval
         } else {
-            let raw = self.nnue.evaluate_accumulator(&self.accumulators[0], side);
+            let raw = self.evaluator.evaluate(0, side);
             if tt_hit.is_none() && self.tt.store_static_eval(key, raw, true) {
                 #[cfg(feature = "search-stats")]
                 {
@@ -591,8 +590,10 @@ impl Searcher<'_> {
             raw
         };
         let correction_weighted_sum = self.correction_weighted_sum_at(side, 0);
-        let correction =
-            correction_from_weighted_sum(correction_weighted_sum, self.nnue.pawn_value());
+        let correction = correction_from_weighted_sum(
+            correction_weighted_sum,
+            crate::eval::piece_values::pawn_value(),
+        );
         let static_eval = corrected_static_eval(raw, correction);
         self.static_evals[0] = static_eval;
         let eval = pruning_eval(
@@ -606,7 +607,7 @@ impl Searcher<'_> {
         let mut best_move = moves[0];
         let mut best_score = -INFINITY;
         let root_tt_move = moves[0];
-        let tt_capture = move_order_key(&position, self.nnue, root_tt_move).is_some();
+        let tt_capture = move_order_key(&position, root_tt_move).is_some();
         let mut best_capture = false;
         let mut searched_captures = Vec::with_capacity(SEARCHED_LIST_CAPACITY);
         let mut searched_quiets = Vec::with_capacity(SEARCHED_LIST_CAPACITY);
@@ -614,7 +615,7 @@ impl Searcher<'_> {
         for (index, mv) in moves.into_iter().enumerate() {
             self.move_counts[0] = index + 1;
             // 根も実際に読む各手のstatScoreを子の探索前に記録する（src/search.cpp:1371-1378）。
-            let capture = move_order_key(&position, self.nnue, mv).is_some();
+            let capture = move_order_key(&position, mv).is_some();
             let stat_score = self.move_stat_score(&position, mv, capture, 0);
             self.stat_scores[0] = stat_score;
             // Stockfishは根の並べ替え後の先頭手を置換表の手として扱う
@@ -642,7 +643,7 @@ impl Searcher<'_> {
                     cutoff_count: self.cutoff_counts[1],
                     alpha,
                     eval,
-                    pawn: self.nnue.pawn_value(),
+                    pawn: crate::eval::piece_values::pawn_value(),
                     correction_weighted_sum,
                     seek_mate_gives_check: self.lmr_seek_mate_gives_check(&position, mv),
                 });

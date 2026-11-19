@@ -24,7 +24,7 @@ AlphaZero型探索の自己対局の生成器`minase data zero-selfplay`は、�
 
 塊ごとに確定させる方式は、[NNUEの教師生成を中断の後に再開できるようにする設計書](../plans/archived/resumable-nnue-teacher-generation.md)で決めた（[以前の決定](archive/commit-nnue-teacher-files-in-fixed-game-chunks-and-reassemble-them-into-one-file.md)）。
 以前の決定は、ネットがリポジトリ内の重みを埋め込んだものであり、作業ツリーに変更がなければ生成コミットがネット全体を決めることを前提にしていた。
-その後、ネットは実行ファイルに埋め込まず、生成器の必須の引数`--eval-file`で外部のファイルから読むようになり（[外部ファイル化のADR](use-an-nnue-read-from-evalfile-as-the-only-search-evaluation.md)）、同じ生成コミットに別々のネットを渡せるようになった。
+その後、ネットは実行ファイルに埋め込まず、生成器の必須の引数`--eval-file`で外部のファイルから読むようになり（[外部ファイル化のADR](archive/use-an-nnue-read-from-evalfile-as-the-only-search-evaluation.md)）、同じ生成コミットに別々のネットを渡せるようになった。
 ネットの識別子は、読み込んだファイル全体のSHA-256である（[識別子のADR](identify-nnue-networks-by-the-sha256-of-the-whole-file.md)）。
 この改訂は[NNUEの外部ファイル化の設計書](../plans/archived/nnue-external-network-file.md)で下した。
 

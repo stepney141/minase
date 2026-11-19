@@ -11,7 +11,7 @@ use std::sync::mpsc;
 use std::thread;
 use std::time::Duration;
 
-use crate::eval::Nnue;
+use crate::eval::nnue::Network;
 use crate::search::events::{SearchEvent, SearchResult, StopReason};
 use crate::search::limits::SearchLimits;
 use crate::search::{MAX_PLY, SearchRepetition, TranspositionTable};
@@ -205,7 +205,7 @@ pub(super) fn uses_instability_scaling(limits: &SearchLimits, budget: Option<Tim
 /// scopeを抜けた後に外部停止を再確認せず、自然完了後の停止要求で記録済みの理由を上書きしない。
 #[allow(clippy::too_many_arguments)]
 pub(in crate::search) fn run_search_team(
-    nnue: &Nnue,
+    nnue: &Network,
     position: &Position,
     rules: MoveRules,
     repetition: SearchRepetition,

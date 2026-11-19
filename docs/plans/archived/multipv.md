@@ -75,7 +75,7 @@ USIの出力の規約は、[USIの独自拡張の手引き](../../guides/usi-ext
 minaseが探索機能の設計で先行実装として調べる中将棋エンジンHaChuは、複数の読み筋を出す機能を持たない。
 
 [ネットの外部ファイル化](nnue-external-network-file.md)の後は、検証の`bench`と、固定の深さとノード数の探索の前に、`RuleSet`、`EvalFile`、および`isready`を送る。
-[tatara化とHalfKP_vm](../nnue-tatara-framework-and-halfkp-vm.md)は探索が評価器を呼ぶ箇所を列挙型へ改めるので、本書と探索のコードが重なる。後からmasterへ入れる側が、先に入った変更に合わせる。
+[tatara化とHalfKP_vm](nnue-tatara-framework-and-halfkp-vm.md)は探索が評価器を呼ぶ箇所を列挙型へ改めるので、本書と探索のコードが重なる。後からmasterへ入れる側が、先に入った変更に合わせる。
 
 ## 設計判断
 

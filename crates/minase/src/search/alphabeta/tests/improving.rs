@@ -41,11 +41,11 @@ fn futility_pruning_is_independent_of_improving() {
     let board = bare_kings();
     let moves = legal_moves(&board);
     let history = repeated_root_children(&board, &moves);
-    let static_eval = evaluate(test_nnue(), &board);
-    let alpha = static_eval + 10 * test_nnue().pawn_value();
+    let static_eval = evaluate(test_network(), &board);
+    let alpha = static_eval + 10 * crate::eval::piece_values::pawn_value();
     for improving in [false, true] {
         with_repetition_root_searcher(
-            test_nnue(),
+            test_network(),
             &board,
             engine_rules(),
             SearchRepetition::R3,
@@ -85,7 +85,7 @@ pub(super) fn improving_uses_corrected_evaluations() {
             zero_position_correction(searcher, &board);
             store_position_correction(searcher, &board, 512);
             let correction = position_correction(searcher, side, 2);
-            let raw = evaluate(searcher.nnue, &board);
+            let raw = evaluate(searcher.network, &board);
             let corrected = corrected_static_eval(raw, correction);
             assert_ne!(corrected, raw);
             searcher.static_evals[0] = corrected - previous_difference;
@@ -112,7 +112,7 @@ pub(super) fn root_and_full_window_nodes_store_corrected_evaluation() {
             zero_position_correction(searcher, &board);
             store_position_correction(searcher, &board, 512);
             let correction = position_correction(searcher, side, 0);
-            let raw = evaluate(searcher.nnue, &board);
+            let raw = evaluate(searcher.network, &board);
             let corrected = corrected_static_eval(raw, correction);
             assert_ne!(corrected, raw);
             searcher.static_evals[0] = i32::MIN;

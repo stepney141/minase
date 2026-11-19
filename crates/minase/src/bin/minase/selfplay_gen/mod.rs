@@ -82,9 +82,8 @@ mod test_support {
     }
 
     /// 学習前の固定重みを使い、学習済みネットの更新から切り離す。
-    pub(super) fn epoch_zero_nnue() -> minase::eval::Nnue {
-        minase::eval::Nnue::decode(include_bytes!("../../../../nets/nnue-epoch0.bin"))
-            .expect("epoch-zero weights are valid")
+    pub(super) fn fixed_network() -> minase::eval::nnue::Network {
+        minase::eval::nnue::Network::LayerStack(minase::eval::nnue::test_util::fixed_layer_stack())
     }
 
     pub(super) fn round_trip(

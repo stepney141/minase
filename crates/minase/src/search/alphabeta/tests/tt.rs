@@ -107,7 +107,7 @@ fn negamax_inherits_parent_pv_flag_when_score_equals_alpha() {
         .into_iter()
         .map(|mv| {
             let undo = position.make_move_unchecked(mv, engine_rules());
-            let score = -evaluate(test_nnue(), &position);
+            let score = -evaluate(test_network(), &position);
             position.unmake_move(undo);
             score
         })
