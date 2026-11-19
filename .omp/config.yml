@@ -1,0 +1,38 @@
+enabledModels:
+  - anthropic/claude-opus-5-5
+  - anthropic/claude-fable-5-2
+  - anthropic/claude-sonnet-5-5
+  - openai-codex/gpt-6.2-sol
+  - openai-codex/gpt-6.2-astra
+
+modelRoles:
+  default: anthropic/claude-opus-5-5
+  plan: "@default"
+  smol: anthropic/claude-sonnet-5-5
+  judge: "@minase_analyze"
+  minase_lead: anthropic/claude-fable-5-2
+  minase_implement: openai-codex/gpt-6.2-sol
+  minase_analyze: openai-codex/gpt-6.2-astra
+
+autoResume: false
+
+prewalk:
+  enabled: false
+  auto: "off"
+
+async:
+  enabled: true
+
+task:
+  maxRecursionDepth: 2
+  agentModelOverrides:
+    scout: "@default"
+
+retry:
+  modelFallback: false
+
+contextPromotion:
+  enabled: false
+
+compaction:
+  methodOrder: [snapcompact]
