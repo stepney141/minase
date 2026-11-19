@@ -1,3 +1,34 @@
+## minase-core-v0.3.0 (2026-11-20)
+
+### Features
+
+- **search:** Prove MCTS nodes whose side to move can capture the last royal
+- **core:** Add a shuffled initial setup for zero self-play start positions
+- **datagen:** Exclude checks, screen openings, adjudicate decided games, and generate under lishogi
+
+### Bug fixes
+
+- **search:** Adjudicate MCTS leaves with the referee before the repetition approximation
+
+### Performance
+
+- **game:** Judge royal captures and attacking moves without full generation
+- **game:** Stop stalemate and mate judgement at the first escape
+- **movegen:** Look up slider attackers by their first blocker
+- **movegen:** Judge ordinary-piece legality without generating moves
+- **movegen:** Share the attack state among check tests of a node
+- **movegen:** Skip lion and capture checks when generating quiet moves
+- **movegen:** Find capture targets from the first blockers of the rays
+- **search:** Narrow attacker lookups and reuse attacker data in SEE
+- **movegen:** Select pawn and go-between origins by shifting destinations
+- **search:** Share the transposition move legality within a node
+
+### Refactoring
+
+- **rules:** Rename the engine-default rule set to JCSA (**breaking**)
+
+  The rule set name `engine-default` is no longer accepted; write `JCSA`. `Rules::ENGINE_DEFAULT` is now `Rules::JCSA`, and `Game::with_default_rules()` is removed; call `Game::new(Rules::JCSA)`.
+
 ## minase-core-v0.2.0 (2026-10-23)
 
 ### Features
