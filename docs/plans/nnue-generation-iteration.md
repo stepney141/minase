@@ -37,7 +37,7 @@ HalfKP_vmの世代反復は、本書でP型の評価関数の癖をつかんだ�
 ここにない語は、[標準レシピv1の設計書](archived/nnue-standard-recipe.md#目的)の定義に従う。
 
 - **標準レシピv1**：標準レシピv1の設計書が定める、教師の生成と学習の条件。
-- **標準レシピv2**：v1のうち、1世代の教師の量を[世代の量のADR](../adr/grow-each-nnue-generation-by-the-teacher-files-for-100-million-positions.md)のとおりに、学習の長さを[学習の長さのADR](../adr/train-the-nnue-for-64-or-80-superbatches-by-the-generation-volume-and-export-the-last-network.md)のとおりに、世代の番号で決まる値へ改めた条件。ほかの項目はv1と同じである。
+- **標準レシピv2**：v1のうち、1世代の教師の量を[世代の量のADR](../adr/grow-each-nnue-generation-by-the-teacher-files-for-100-million-positions.md)のとおりに、学習の長さを[学習の長さのADR](../adr/archive/train-the-nnue-for-64-or-80-superbatches-by-the-generation-volume-and-export-the-last-network.md)のとおりに、世代の番号で決まる値へ改めた条件。ほかの項目はv1と同じである。
 - **k**：1億局面に相当する教師ファイルの本数。第1世代の最初の4本の記録局面数の平均で1億を割って整数に丸めた値で、全世代で固定する。見込みは37である。
 - **新しい系列**：本書がv2で作る世代。
 - **本**：教師ファイルを数える単位。1本は、7,500局を生成して収めた教師ファイルである。
@@ -103,7 +103,7 @@ HalfKP_vmの世代反復は、本書でP型の評価関数の癖をつかんだ�
 | 着手の時期 | 外部ファイル化とtatara化の完了の後に着手する（2026年11月15日の利用者の決定）。 | tatara化より前の形式（ネットを埋め込む、minaseの従来の重みの形式MNUE）で先に始める案は、学んだネットをtatara化の後のエンジンで読めず、形式を変換する道具も作らない方針なので、P型の系統を学び直すことになる。 |
 | 学習と生成の条件 | 標準レシピv2（学習は[学習の手引き](../guides/nnue-training.md#標準レシピ)、教師の生成は[vast.aiで教師ファイルを生成する手順](../guides/nnue-training.md#vastaiで教師ファイルを生成する)と[生成器のADR](../adr/exclude-checks-screen-openings-and-adjudicate-decided-games-in-teacher-generation.md)）を全世代で使い、世代の途中で変えない。1世代の量と学習の長さは世代の番号で決まる値であり、世代ごとの調整ではない。 | 世代ごとに条件を調整する案は、世代の間の比較ができなくなる。 |
 | 1世代の量 | 第N世代はkN本とする（2026年11月15日の利用者の決定、[世代の量のADR](../adr/grow-each-nnue-generation-by-the-teacher-files-for-100-million-positions.md)）。kは第1世代の最初の4本から求め、37と異なれば、残りの本を生成する前にkを採るかを利用者が決める。 | 全世代を70本に固定するv1の量と、全世代を185本に固定する案は、同じADRの理由で採らない。 |
-| 学習の長さ | 第1世代から第4世代は64 superbatch、第5世代は80 superbatchとし、学習率の予定は`cosine:<長さ>:0.027`とする（2026年11月15日の利用者の決定、[学習の長さのADR](../adr/train-the-nnue-for-64-or-80-superbatches-by-the-generation-volume-and-export-the-last-network.md)）。 | 教師の量に比例して第N世代を64N superbatchとする案は、同じADRの理由で採らない。 |
+| 学習の長さ | 第1世代から第4世代は64 superbatch、第5世代は80 superbatchとし、学習率の予定は`cosine:<長さ>:0.027`とする（2026年11月15日の利用者の決定、[学習の長さのADR](../adr/archive/train-the-nnue-for-64-or-80-superbatches-by-the-generation-volume-and-export-the-last-network.md)）。 | 教師の量に比例して第N世代を64N superbatchとする案は、同じADRの理由で採らない。 |
 | 規則セット | 教師の生成、世代の判定、および最終候補の対局を、規則セット`lishogi`で行う（2026年11月13日の利用者の決定）。学習器には規則セット`lishogi`を引数で渡し、学習器は教師ファイルのヘッダの規則セットと照合する。 | 判定を日本中将棋連盟の規則に基づく規則セット`JCSA`に残して過去の測定記録と比べられるようにする案は、学習した規則とは別の規則でネットの強さを測ることになる。 |
 | 反復のコミット | 全世代の生成、学習、および判定に、同じ反復のコミットを使い、世代はネットのファイル（SHA-256）で区別する。 | 世代ごとにネットを埋め込んだコミットを作る外部ファイル化より前の方式は、外部ファイル化の後はネットがgitに入らないので成り立たない。世代ごとにコードのコミットを替える案は、判定の対局にコードの違いが混ざる。 |
 | ネットの保管と記録 | 世代のネットはNASに、SHA-256の16進数をファイル名にして置く。連続生成スクリプトの世代の記録に、反復のコミット、ネットのパスとSHA-256、および世代の完了の状態を書く（外部ファイル化の設計書）。 | 世代のネットをgitに入れる案は、外部ファイル化が退けた。 |
@@ -153,7 +153,7 @@ HalfKP_vmの世代反復は、本書でP型の評価関数の癖をつかんだ�
 | 棋力 | 暫定最良世代とのGSPRTの度数、LLR（対数尤度比）、および判定。候補と対照のネットのSHA-256。 |
 | 教師の量 | 本数、記録局面数、1本あたりの記録局面数、学習の最大常駐メモリ、および生成機と学習機の実費と時間。 |
 | 配置 | STCの対局における候補側の配置の距離Mと、5配置の割合。5配置は、奔王が1〜2段、龍馬が1〜2段、醉象が3〜5筋、金将が3段以上、および麒麟が右端2筋にある配置である（定義は[結果回帰の設計書](archived/nnue-outcome-regression.md#配置の距離)）。偏りが再発していないかの目安であり、世代の判定には使わない。 |
-| 学習の健全性 | 訓練と検証の損失の推移、学習の終わりの2回の検証損失の差、PSQT（駒と升ごとの点数の表）の移動量、および第0世代とのあいだの対局単位の汎化差（[教訓](../lessons/compare-nets-with-paired-game-bootstrap.md)）。学習の終わりでも検証損失が下がり続けていれば、学習の長さを延ばしたネットとの比較を利用者へ提案する（[学習の長さのADR](../adr/train-the-nnue-for-64-or-80-superbatches-by-the-generation-volume-and-export-the-last-network.md)）。 |
+| 学習の健全性 | 訓練と検証の損失の推移、学習の終わりの2回の検証損失の差、PSQT（駒と升ごとの点数の表）の移動量、および第0世代とのあいだの対局単位の汎化差（[教訓](../lessons/compare-nets-with-paired-game-bootstrap.md)）。学習の終わりでも検証損失が下がり続けていれば、学習の長さを延ばしたネットとの比較を利用者へ提案する（[学習の長さのADR](../adr/archive/train-the-nnue-for-64-or-80-superbatches-by-the-generation-volume-and-export-the-last-network.md)）。 |
 | 評価の形 | 評価値の分布、駒除去差分の符号反転、合法手の評価差、および書き出しの量子化誤差（平均、符号つきの平均、最大値、層ごとの飽和の割合）（[学習の手引き](../guides/nnue-training.md#学習した重みを診断する)、[教訓](../lessons/validation-loss-hides-material-distortion.md)、tatara化の設計書）。 |
 
 世代をまたぐ推移と反復の状態は、本書に着手するときに`docs/training/`に作る系列のページに書く（[学習の系列の記録](../training/README.md)）。

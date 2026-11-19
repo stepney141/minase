@@ -44,4 +44,5 @@ Pruneの規則のように、判定に落ちた世代だけ同じ生成器で本
 量を増やした世代でも直前の最良の世代に`H1`を取れなければ、自己生成の頭打ちの兆候とみて反復を止める。
 1世代の生成の時間と費用、および学習の常駐メモリは本数に比例して増える。
 連続生成スクリプト`scripts/vast/generation_chain.py`には、世代ごとに`--books-per-generation`でknを与える。
-学習の長さは[学習の長さのADR](train-the-nnue-for-64-or-80-superbatches-by-the-generation-volume-and-export-the-last-network.md)が教師の量に応じて定め、反復の上限と費用の見積りは[世代反復の設計書](../plans/nnue-generation-iteration.md)が定める。
+各世代の学習期間は、訓練に使わなかった対局での検証損失から選ぶ。[学習期間の決め方](select-the-nnue-checkpoint-on-held-out-games.md)
+レシピv2で始めた反復の上限と費用の見積りは、[世代反復の設計書](../plans/nnue-generation-iteration.md)が定める。

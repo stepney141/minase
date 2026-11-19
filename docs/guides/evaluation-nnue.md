@@ -604,9 +604,8 @@ PSQTは、tataraと同じく第1層と同じ群に入れ、第1層の学習率�
 tatara化の前の線形の経路の学習率0.03はcp単位の重みに対する値であり、ネットの出力の単位で表すPSQTにはそのまま移せないので引き継いでいない。
 重み減衰は、先行のエンジンに共通する形に合わせてどの群にも掛けない（[NNUEの学習では、どのパラメータ群にも重み減衰を掛けない](../adr/apply-no-weight-decay-to-the-nnue.md)）。
 2つの群の学習率には、各更新で共通の倍率を掛ける。
-標準の`cosine:64:0.027`では、64 superbatch（1 superbatchはミニバッチ6,104回分の更新）にわたって、余弦関数に沿って下げるcosine annealingで、倍率を1から0.027まで下げる。
-教師が約5億局面の第5世代では、学習の長さに合わせて`cosine:80:0.027`とする。
-superbatchは教師の量によらない単位なので、教師を増やしても学習率の進み方は変わらない。
+学習器では、指定した回数の更新をまとめた単位をsuperbatchと呼ぶ。
+学習率は余弦曲線に沿って下げる。第1〜4世代は390,656更新、第5世代は488,320更新で初期値の0.027倍に達する予定とし、検証損失で早く止めても、それまでの更新に使う学習率は保つ。
 AdamWの係数は $`\beta_1 = 0.9`$、$`\beta_2 = 0.999`$、$`\epsilon = 10^{-8}`$ であり、PyTorchと同じバイアス補正つきの式を使う（[学習器のAdamWはPyTorchと同じバイアス補正つきの式にする](../adr/use-pytorch-adamw-with-bias-correction.md)）。
 
 各更新の後で、重みを次の区間へ切り詰める。
@@ -635,16 +634,13 @@ Simpleでは、そのような区分の行にも学習した仮想行が足し�
 
 学習データは対局単位で訓練集合と検証集合に分け、約5%の対局を検証に充てる。
 同じ対局の局面を両方に入れると、隣接する局面が似ているために検証損失が実際より良く見えるからである。
-学習の長さは事前にsuperbatchの数で決め、標準の学習では、第1世代から第4世代は64 superbatchで390,656回、第5世代は80 superbatchで488,320回の更新を学び終えた最後の重みを採用する。
-この長さを選んだ理由は[NNUEは、1世代の教師の量に応じて64または80 superbatchを余弦の学習率の予定で学び、学び終えた最後のネットを書き出す](../adr/train-the-nnue-for-64-or-80-superbatches-by-the-generation-volume-and-export-the-last-network.md)にある。
-検証損失（検証集合での損失）は、学習の前、`--validation-superbatches`で指定した間隔ごと、および学習の終わりに測って記録し、標準の間隔は8 superbatchである。
-記録した検証損失は、学習を止める判断と重みの選択には使わない。
-先行の学習器の作者たちが、検証損失の良し悪しが棋力と一致しないと書いているからである（[学習レシピの調査](../research/nnue-training-recipes.md)）。
-2026年11月14日より前の学習器は、5エポック続けて検証損失が改善しなければ止め（早期終了）、検証損失が最良のエポックの重みを採用していた。
+標準レシピでは約0.5エポックごとに検証集合の全局面で教師値に対する平均二乗誤差を測る。
+更新後の検証損失が2回続けて最小値を更新しなければ学習を止め、最小値を最初に記録した時点の重みを選ぶ。
+書き出した整数モデルの棋力は別の開始局面で測る。[学習期間の決め方](../adr/select-the-nnue-checkpoint-on-held-out-games.md)
 
 ### 量子化誤差の記録
 
-学習器は、予定の更新を終えた最後の重みを量子化し、エンジンの読み込みと同じ検査に通してから `nnue.bin` を書き出す。
+学習器は、選んだ重みを量子化し、エンジンの読み込みと同じ検査に通してから `nnue.bin` を書き出す。
 量子化の範囲を超える値があれば、tataraのように切り詰めて続けることはせず、`nnue.bin`を書かずにエラーで止まる。
 書き出しのときには、`--seed`のシードで選んだ最大1万局面（`--validation-sample`）の検証局面について、エンジンの整数の評価と、学習器の実数の評価 $`K_o Y`$ の差を測る。
 実数の側は、GPUと同じ演算順の単精度で計算する学習器の参照実装を使う。
@@ -699,7 +695,7 @@ GPUの学習器を設計した理由は、[NNUEの学習器をRustのホスト�
 - [NNUEの世代反復では、学習したネットをgitの外に置いてそのまま次の世代の教師の生成に使い、学習の後に補正しない](../adr/use-each-trained-nnue-outside-git-for-the-next-generation.md)
 - [NNUEの学習器を、構造によらない学習ループと構造ごとの実装に分け、構造ごとのサブコマンドで呼ぶ](../adr/split-the-nnue-trainer-into-a-shared-loop-and-structure-backends.md)
 - [NNUEは先読みを使わない探索値だけの教師で、勝率の差の2乗を損失として学ぶ](../adr/train-the-nnue-on-search-value-teachers-with-the-squared-win-rate-difference.md)
-- [NNUEは、1世代の教師の量に応じて64または80 superbatchを余弦の学習率の予定で学び、学び終えた最後のネットを書き出す](../adr/train-the-nnue-for-64-or-80-superbatches-by-the-generation-volume-and-export-the-last-network.md)
+- [NNUEの学習期間は未学習対局での検証損失から選ぶ](../adr/select-the-nnue-checkpoint-on-held-out-games.md)
 - [NNUEの学習では、どのパラメータ群にも重み減衰を掛けない](../adr/apply-no-weight-decay-to-the-nnue.md)
 - [NNUEの学習器から駒除去差分の補助損失を外し、書き出し時に符号反転の割合を記録する](../adr/drop-the-piece-removal-auxiliary-loss-from-the-nnue-trainer.md)
 - [NNUEによるPST＋FMの完全代替](../plans/archived/nnue-replacement.md)

@@ -2,16 +2,16 @@
 
 ## ステータス
 
-承認済み。決定日は2026年11月15日。[NNUEは64 superbatchを余弦の学習率の予定で学び、学び終えた最後のネットを書き出す](archive/train-the-nnue-for-64-superbatches-and-export-the-last-network.md)を置き換える。
+置き換え済み。[NNUEの学習期間は未学習対局での検証損失から選ぶ](../select-the-nnue-checkpoint-on-held-out-games.md)によって置き換えられた。
 
 ## コンテキスト
 
-[以前の決定](archive/train-the-nnue-for-64-superbatches-and-export-the-last-network.md)は、学習の長さを、教師の量によらない単位superbatch（16,384局面のバッチ6,104回分の更新）で指定し、全世代を64 superbatchとした。
+[以前の決定](train-the-nnue-for-64-superbatches-and-export-the-last-network.md)は、学習の長さを、教師の量によらない単位superbatch（16,384局面のバッチ6,104回分の更新）で指定し、全世代を64 superbatchとした。
 64は、先例のうち教師の量が当時の1世代70本（約1.9億局面）に最も近い、Saplingの1.1億局面の学習の値だった。
 同じ決定は、学び終えた最後のネットを書き出し、学習率を学習の終わりまで余弦の形で下げ、検証損失を記録だけに使うと定めた。
 これらを選んだ理由は以前の決定のコンテキストにあり、本書でも変わらない。
 
-[世代の量のADR](grow-each-nnue-generation-by-the-teacher-files-for-100-million-positions.md)は、第n世代の教師をおよそn億局面とした。
+[世代の量のADR](../grow-each-nnue-generation-by-the-teacher-files-for-100-million-positions.md)は、第n世代の教師をおよそn億局面とした。
 64 superbatchのままでは、各局面を学ぶ回数は第1世代の約64回から第5世代の約13回まで下がる。
 Saplingのネットの学習記録によれば、minaseと同じく第1層の幅が256のネットは、1.1億、1.75億、および3.8億局面を64 superbatch、6億局面を80 superbatch、7.5億局面を90 superbatchで学んだ（[log.txt 59〜96行](https://github.com/Timmoth/Sapling/blob/2b43285d97fa4a9e49ce1d08fd4155a1fa950724/src/Sapling.Engine/Resources/WeightsHistory/log.txt#L59-L96)）。
 教師の量が約7倍になるあいだに、学習の長さは約1.4倍にしか延びていない。
@@ -29,7 +29,7 @@ Saplingのネットの学習記録によれば、minaseと同じく第1層の幅
 全世代を64 superbatchに固定する以前の決定は、第5世代の約5億局面が、Saplingが64で学んだ最大の3.8億局面より、80で学んだ6億局面に近いので採らない。
 教師の量に比例して延ばし、第n世代を64n superbatchとして各局面を学ぶ回数を約64回に保つ案は、Saplingの幅256のネットに同じ規模の先例がなく、第5世代の学習が約7.6時間かかるので採らない。
 エポック（教師の全訓練局面を1回ひととおり学ぶこと）の数で学習の長さを数える方式は、教師の量で更新回数が変わり、調べた範囲でこの方式を使うのはやねうら王の旧学習器と以前のminaseだけなので採らない。
-検証損失で止めて最良のネットを書き出す方式は、先行の学習器の作者たちが検証損失の良し悪しが棋力と一致しないと書いており、中断した世代反復でも最良のネットと最後のネットの優劣が確かめられなかったので採らない（[記録](../measurements/nnue-generation-reset/nnue-generation-reset-gen2-cosine10.md)）。
+検証損失で止めて最良のネットを書き出す方式は、先行の学習器の作者たちが検証損失の良し悪しが棋力と一致しないと書いており、中断した世代反復でも最良のネットと最後のネットの優劣が確かめられなかったので採らない（[記録](../../measurements/nnue-generation-reset/nnue-generation-reset-gen2-cosine10.md)）。
 学習率の下限を以前と同じ初期値の0.1倍とする案、Saplingの1.1億局面のネットと同じく16 superbatchごとに0.3倍へ階段状に下げる案、および1 superbatchごとに0.992倍へ下げる案は、以前の決定と同じ理由で採らない。
 
 ## 結果
@@ -42,4 +42,4 @@ minaseの入力特徴集合P型は、王の位置で条件付けない13,680特�
 第6世代以降の長さは、反復の延長を決めるときに決め直す。
 チェックポイントはsuperbatchの境界ごとに確定し、エポックの途中から再開しても、止めずに通した学習と同じネットが得られる。
 時間の上限で予定の更新に達しなかった学習は`nnue.bin`を書き出さず、終了コード1で終わる。
-長い学習で強くなることはminaseではまだ確かめておらず、最初の確認は[世代反復](../plans/nnue-generation-iteration.md)の第1世代の判定になる。
+長い学習で強くなることはminaseではまだ確かめておらず、最初の確認は[世代反復](../../plans/nnue-generation-iteration.md)の第1世代の判定になる。

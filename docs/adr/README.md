@@ -399,7 +399,7 @@ PSTは駒の種類と升ごとの値の表による評価、FMはFactorization M
 - 2026年11月14日 [NNUEの学習では、どのパラメータ群にも重み減衰を掛けない](apply-no-weight-decay-to-the-nnue.md)
 - 2026年11月14日 [NNUEの教師の生成では、王手の局面を除き、評価値が傾いた開始局面を捨て、大差が続いた対局を評価値で裁定する](exclude-checks-screen-openings-and-adjudicate-decided-games-in-teacher-generation.md)
 - 2026年11月15日 [NNUEの世代反復の第n世代の教師を、1億局面に相当する本数のn倍とし、世代を追って増やす](grow-each-nnue-generation-by-the-teacher-files-for-100-million-positions.md)
-- 2026年11月15日 [NNUEは、1世代の教師の量に応じて64または80 superbatchを余弦の学習率の予定で学び、学び終えた最後のネットを書き出す](train-the-nnue-for-64-or-80-superbatches-by-the-generation-volume-and-export-the-last-network.md)
+- 2026年11月15日 [NNUEは、1世代の教師の量に応じて64または80 superbatchを余弦の学習率の予定で学び、学び終えた最後のネットを書き出す](archive/train-the-nnue-for-64-or-80-superbatches-by-the-generation-volume-and-export-the-last-network.md)（置き換え済み）
 - 2026年11月15日 [教師データと探索を行わない対局の記録を、対局単位の連鎖で記録するMNSDの1形式にまとめる](record-teacher-data-and-unsearched-games-as-chained-games.md)
 - 2026年11月15日 [AlphaZero型探索のネットを、lishogiの人間同士の棋譜から選んだ固定の検証用データで診断し、採否には使わない](diagnose-zero-networks-on-fixed-lishogi-human-games.md)
 - 2026年11月15日 [AlphaZero型探索のネットは、AlphaZeroの残差ブロックを20個並べた256チャネルのResNetとし、方策ヘッドは3×3畳み込み2層、価値ヘッドは1チャネルの1×1畳み込みと全結合256とする](shape-the-zero-network-as-the-alphazero-resnet-with-a-two-layer-policy-head-and-a-one-channel-value-head.md)
@@ -442,3 +442,4 @@ PSTは駒の種類と升ごとの値の表による評価、FMはFactorization M
 - 2026年11月19日 [NNUEの教師の勝率尺度K_tを学習器の必須の引数で渡し、ネットの出力の換算の尺度K_o＝8,128÷mと分ける](separate-the-nnue-teacher-win-rate-scale-from-the-output-scale.md)
 - 2026年11月19日 [NNUEの学習器を、構造によらない学習ループと構造ごとの実装に分け、構造ごとのサブコマンドで呼ぶ](split-the-nnue-trainer-into-a-shared-loop-and-structure-backends.md)
 - 2026年11月19日 [NNUEの世代反復では、学習したネットをgitの外に置いてそのまま次の世代の教師の生成に使い、学習の後に補正しない](use-each-trained-nnue-outside-git-for-the-next-generation.md)
+- 2026年11月19日 [NNUEの学習期間は未学習対局での検証損失から選ぶ](select-the-nnue-checkpoint-on-held-out-games.md)
