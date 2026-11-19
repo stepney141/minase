@@ -87,6 +87,12 @@ pub(super) fn configuration(
     ] {
         object.remove(key);
     }
+    if args.validation_patience.is_some() {
+        object.insert(
+            "validation_superbatches".into(),
+            json!(args.validation_superbatches),
+        );
+    }
     object.insert("rules".into(), json!(args.parsed_rules()?.to_string()));
     object.insert("architecture".into(), architecture.clone());
     let files = dataset
@@ -160,13 +166,35 @@ fn append_record(path: &Path, record: &impl Serialize) -> Result<()> {
     Ok(())
 }
 
+#[derive(Default)]
+pub(super) struct ValidationHistory {
+    pub last: Option<(u64, f64)>,
+    pub best: Option<(u64, f64)>,
+    pub unimproved: u64,
+}
+
+impl ValidationHistory {
+    /// 更新前の測定は記録だけに使い、同率なら先の重みを残す。
+    pub fn record(&mut self, superbatch: u64, loss: f64) {
+        self.last = Some((superbatch, loss));
+        if superbatch > 0 {
+            if self.best.is_none_or(|(_, best)| loss < best) {
+                self.best = self.last;
+                self.unimproved = 0;
+            } else {
+                self.unimproved += 1;
+            }
+        }
+    }
+}
+
 /// 確定したsuperbatchまで連番を検査し、以後の行と改行のない末尾を捨てる。
 /// ログの追記後に`latest.npz`を保存し、その保存を確定の時点とする。
-/// 更新0回の検証から最後に確定した検証までのうち、最後の検証のsuperbatch数と損失を返す。
-pub(super) fn reconcile_log(path: &Path, superbatch: u64) -> Result<(u64, f64)> {
+/// 確定済みの行だけから検証の履歴を復元する。
+pub(super) fn reconcile_log(path: &Path, superbatch: u64) -> Result<ValidationHistory> {
     let bytes = std::fs::read(path)?;
     let mut keep = 0;
-    let mut last_loss = None;
+    let mut history = ValidationHistory::default();
     for (expected, line) in bytes.split_inclusive(|&b| b == b'\n').enumerate() {
         let expected = u64::try_from(expected)?;
         if line.last() != Some(&b'\n') {
@@ -183,9 +211,9 @@ pub(super) fn reconcile_log(path: &Path, superbatch: u64) -> Result<(u64, f64)> 
             );
         }
         if let Some(loss) = record.validation_loss {
-            last_loss = Some((record.superbatch, loss));
+            history.record(record.superbatch, loss);
         }
-        if expected == 0 && last_loss.is_none() {
+        if expected == 0 && history.last.is_none() {
             return Err(Error::Invalid("training log has no initial validation").into());
         }
         keep += line.len();
@@ -196,8 +224,7 @@ pub(super) fn reconcile_log(path: &Path, superbatch: u64) -> Result<(u64, f64)> 
                 );
                 atomic_write(path, &bytes[..keep])?;
             }
-            return last_loss
-                .ok_or_else(|| Error::Invalid("training log has no validation").into());
+            return Ok(history);
         }
     }
     Err(Error::Invalid("training log is missing a completed superbatch").into())

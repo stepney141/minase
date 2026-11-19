@@ -381,7 +381,12 @@ mod tests {
         fn save_checkpoint(&mut self, _: &Path, _: &Progress) -> Result<()> {
             panic!("saving is outside the supply pipeline")
         }
-        fn export(&mut self, _: &Path, _: &[(Position, Color)]) -> Result<Value> {
+        fn export(
+            &mut self,
+            _: &Path,
+            _: &[(Position, Color)],
+            _: Option<(&Path, u64)>,
+        ) -> Result<Value> {
             panic!("export is outside the supply pipeline")
         }
     }

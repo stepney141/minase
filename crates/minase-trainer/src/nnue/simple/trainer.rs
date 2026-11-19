@@ -254,9 +254,26 @@ impl TrainerBackend for Trainer {
         };
         Ok(checkpoint.write(path)?)
     }
-    fn export(&mut self, path: &Path, samples: &[(Position, Color)]) -> train::Result<Value> {
+    fn export(
+        &mut self,
+        path: &Path,
+        samples: &[(Position, Color)],
+        checkpoint: Option<(&Path, u64)>,
+    ) -> train::Result<Value> {
         self.flush_pending_loss()?;
-        let weights = self.weights()?;
+        let weights = if let Some((source, superbatch)) = checkpoint {
+            let saved = Checkpoint::read(source)?;
+            saved.check_settings(&self.settings)?;
+            if saved.progress.completed_superbatches != superbatch {
+                return Err(train::Error::Invalid(
+                    "best validation checkpoint does not match the training log",
+                )
+                .into());
+            }
+            saved.parameters
+        } else {
+            self.weights()?
+        };
         let borrowed: Vec<_> = samples.iter().map(|(p, c)| (p, *c)).collect();
         let report = quantization_report(&weights, self.settings.scale, &borrowed)?;
         crate::nn::atomic_write(path, &super::export(&weights, self.settings.scale)?)?;

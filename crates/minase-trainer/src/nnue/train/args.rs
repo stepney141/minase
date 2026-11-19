@@ -69,6 +69,10 @@ pub struct Args {
     /// 全検証集合を評価するsuperbatchの間隔を1以上で指定する。学習の最後にも評価する。
     #[arg(long)]
     pub validation_superbatches: NonZeroU64,
+    /// 検証損失が連続して改善しない検証回数。指定すると最小損失の重みを書き出す。
+    #[arg(long)]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub validation_patience: Option<NonZeroU64>,
     /// 初期化、順列作成、検証標本抽出の乱数シードを指定する。
     #[arg(long, default_value_t = 1)]
     pub seed: u64,
@@ -125,6 +129,17 @@ impl Args {
             );
         }
         self.planned_steps()?;
+        if self.validation_patience.is_some()
+            && !self
+                .superbatches
+                .get()
+                .is_multiple_of(self.validation_superbatches.get())
+        {
+            return Err(Error::Invalid(
+                "with validation patience the budget must end on a validation interval",
+            )
+            .into());
+        }
         if self.validation_sample == 0 || self.threads == Some(0) {
             return Err(
                 Error::Invalid("--validation-sample and --threads must be positive").into(),

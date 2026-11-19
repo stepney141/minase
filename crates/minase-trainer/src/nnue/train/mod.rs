@@ -9,7 +9,7 @@
 //!
 //! 新規実行では学習前に全検証集合を評価し、更新0回の行を`training.jsonl`に記録する。
 //! 予定のsuperbatch数をN、`--validation-superbatches`の間隔をVとすると、k番目のsuperbatchの終了時に、kがVで割り切れるか`k = N`なら全検証集合を評価する。
-//! 検証しなかったsuperbatchの検証損失は`null`とし、検証損失は停止や重みの選択には用いない。
+//! 検証しなかったsuperbatchの検証損失は`null`とし、`--validation-patience`を指定すると、更新後の最小損失を採った重みを保存し、指定回数改善しなければ止まる。
 //! superbatchの終了時は計算結果を回収して重みと最適化器の状態を取得し、必要な検証、ログの追記、`latest.npz`の保存の順に進む。
 //! この保存を確定の時点とし、先読みしただけのバッチと、検証を含めて時間内に完了しなかったsuperbatchの更新は採用しない。
 //!
@@ -18,7 +18,8 @@
 //! | config.json | 引数、照合用の設定と入力、前処理、デバイス名、再開履歴。 |
 //! | training.jsonl | 学習前の検証と、完了したsuperbatchごとの[`SuperbatchRecord`]。 |
 //! | latest.npz | 確定した重み、最適化器の状態、superbatch数、更新数、累積時間。 |
-//! | nnue.bin | 予定の更新を終えたlatest.npzを量子化したtatara形式。 |
+//! | best.npz | 検証で選ぶ場合の最良の重みと最適化器の状態。 |
+//! | nnue.bin | 選択した重みを量子化したtatara形式。 |
 //! | summary.json | 予定と完了のsuperbatch数と更新数、停止理由、検証と量子化の結果、駒除去差分の符号反転。 |
 //!
 //! 新規実行の出力先は存在しないか空でなければならない。
@@ -100,6 +101,8 @@ pub type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 pub enum StopReason {
     /// 予定のsuperbatch数を完了した。
     Completed,
+    /// 指定回数の検証で最小損失を更新しなかった。
+    ValidationPatience,
     /// 再開前を含む時間の上限に達した。
     TimeLimit,
 }
@@ -108,6 +111,7 @@ impl fmt::Display for StopReason {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         formatter.write_str(match self {
             Self::Completed => "completed",
+            Self::ValidationPatience => "validation_patience",
             Self::TimeLimit => "time_limit",
         })
     }
@@ -135,6 +139,10 @@ pub struct Summary {
     pub epochs: f64,
     /// 最後に確定した検証損失。初期検証も未完了ならnull。
     pub final_validation_loss: Option<f64>,
+    /// 書き出した重みのsuperbatch。未完了ならnull。
+    pub selected_superbatch: Option<u64>,
+    /// 書き出した重みの全検証集合での平均損失。
+    pub selected_validation_loss: Option<f64>,
     /// 再開前を含む累積秒数。
     pub elapsed_seconds: f64,
     /// 量子化誤差の検査結果。
@@ -170,7 +178,7 @@ struct Session<B> {
     backend: B,
     started: Instant,
     previous_elapsed: f64,
-    last_validation: Option<(u64, f64)>,
+    validation: record::ValidationHistory,
     gpu_used_bytes: Option<usize>,
     gpu_total_bytes: Option<usize>,
 }
@@ -204,7 +212,7 @@ impl<B: TrainerBackend> Session<B> {
             elapsed_seconds: 0.0,
             config: expected.clone(),
         };
-        let mut last_validation = None;
+        let mut validation = record::ValidationHistory::default();
         let saved_config = if let Some(resume) = &args.resume {
             if resume.canonicalize()? != args.output_dir.canonicalize()? {
                 return Err(Error::Invalid(
@@ -258,10 +266,10 @@ impl<B: TrainerBackend> Session<B> {
             write_json(&args.output_dir.join("config.json"), &config)?;
         }
         if let Some(resume) = &args.resume {
-            last_validation = Some(reconcile_log(
+            validation = reconcile_log(
                 &resume.join("training.jsonl"),
                 progress.completed_superbatches,
-            )?);
+            )?;
         }
         let previous_elapsed = progress.elapsed_seconds;
         let memory = backend.memory()?;
@@ -275,11 +283,12 @@ impl<B: TrainerBackend> Session<B> {
             backend,
             started,
             previous_elapsed,
-            last_validation,
+            validation,
             gpu_used_bytes: memory.map(|(used, _)| used),
             gpu_total_bytes: memory.map(|(_, total)| total),
         };
         if let Some(mut saved) = saved_config {
+            session.persist_best_if_current()?;
             for name in ["nnue.bin", "summary.json"] {
                 match std::fs::remove_file(session.args.output_dir.join(name)) {
                     Ok(()) => {}
@@ -296,10 +305,10 @@ impl<B: TrainerBackend> Session<B> {
                 resumed_at,
             )?;
         }
-        if session.last_validation.is_none() && !session.expired() {
+        if session.validation.last.is_none() && !session.expired() {
             let validation_started = Instant::now();
             if let Some(validation) = session.validate()? {
-                session.last_validation = Some((0, validation.loss()));
+                session.validation.record(0, validation.loss());
                 session.progress.elapsed_seconds = session.elapsed();
                 let record = session.superbatch_record(
                     Some((&validation, validation_started.elapsed().as_secs_f64())),
@@ -310,6 +319,33 @@ impl<B: TrainerBackend> Session<B> {
             }
         }
         Ok(session)
+    }
+
+    // latest.npzを先に確定する。最良時点で2ファイルの保存の間に中断しても再開時に復元できる。
+    fn persist_best_if_current(&mut self) -> Result<()> {
+        if self.args.validation_patience.is_some()
+            && let Some((best, _)) = self.validation.best
+        {
+            let path = self.args.output_dir.join("best.npz");
+            if best == self.progress.completed_superbatches {
+                self.backend.save_checkpoint(&path, &self.progress)?;
+            } else if !path.is_file() {
+                return Err(Error::Invalid("missing best validation checkpoint").into());
+            }
+        }
+        Ok(())
+    }
+
+    fn stopping_condition(&self) -> Option<StopReason> {
+        if self
+            .args
+            .validation_patience
+            .is_some_and(|p| self.validation.unimproved >= p.get())
+        {
+            Some(StopReason::ValidationPatience)
+        } else {
+            stop_reason(&self.progress, &self.args)
+        }
     }
 
     fn elapsed(&self) -> f64 {
@@ -372,7 +408,7 @@ impl<B: TrainerBackend> Session<B> {
 
     fn advance<'a>(&mut self, dataset: &'a Store, epoch: &mut Option<Epoch<'a>>) -> Result<bool> {
         self.progress.elapsed_seconds = self.elapsed();
-        if stop_reason(&self.progress, &self.args).is_some() {
+        if self.stopping_condition().is_some() {
             return Ok(false);
         }
         self.memory()?;
@@ -499,7 +535,8 @@ impl<B: TrainerBackend> Session<B> {
             return Err(error);
         }
         if let Some((validation, _)) = &validation {
-            self.last_validation = Some((k, validation.loss()));
+            self.validation.record(k, validation.loss());
+            self.persist_best_if_current()?;
         }
         let validation_loss = match &validation {
             Some((validation, _)) => format!("{:.9}", validation.loss()),
@@ -543,13 +580,13 @@ impl<B: TrainerBackend> Session<B> {
     fn finish(mut self) -> Result<Summary> {
         self.backend.flush_pending_loss()?;
         self.progress.elapsed_seconds = self.elapsed();
-        let mut stopped_by = stop_reason(&self.progress, &self.args).ok_or(Error::Invalid(
+        let mut stopped_by = self.stopping_condition().ok_or(Error::Invalid(
             "training stopped without a stopping condition",
         ))?;
         let completed = self.progress.completed_superbatches;
         // Nを保存済みkまで短縮した再開では、kの検証がまだ行われていないことがある。
         if stopped_by == StopReason::Completed
-            && self.last_validation.map(|(k, _)| k) != Some(completed)
+            && self.validation.last.map(|(k, _)| k) != Some(completed)
         {
             let started = Instant::now();
             if let Some(validation) = self.validate()? {
@@ -560,14 +597,14 @@ impl<B: TrainerBackend> Session<B> {
                     started.elapsed().as_secs_f64(),
                     self.elapsed(),
                 )?;
-                self.last_validation = Some((completed, validation.loss()));
+                self.validation.record(completed, validation.loss());
             } else {
                 stopped_by = StopReason::TimeLimit;
             }
         }
         self.progress.elapsed_seconds = self.elapsed();
         // 未確定の更新は採用せず、費やした時間だけを保存する。
-        if self.last_validation.is_some() {
+        if self.validation.last.is_some() {
             self.save_latest()?;
         }
         let mut summary = Summary {
@@ -579,7 +616,9 @@ impl<B: TrainerBackend> Session<B> {
             planned_steps: self.args.planned_steps()?,
             completed_steps: self.progress.completed_steps,
             epochs: self.progress.completed_steps as f64 / self.steps_per_epoch() as f64,
-            final_validation_loss: self.last_validation.map(|(_, loss)| loss),
+            final_validation_loss: self.validation.last.map(|(_, loss)| loss),
+            selected_superbatch: None,
+            selected_validation_loss: None,
             elapsed_seconds: self.progress.elapsed_seconds,
             quantization: None,
             removal_sign: None,
@@ -599,7 +638,17 @@ impl<B: TrainerBackend> Session<B> {
             .validation_sample(self.args.validation_sample, self.args.seed)?;
         let path = self.args.output_dir.join("nnue.bin");
         let exported = (|| -> Result<()> {
-            summary.quantization = Some(self.backend.export(&path, &samples)?);
+            let selected = if self.args.validation_patience.is_some() {
+                self.validation.best
+            } else {
+                self.validation.last
+            }
+            .ok_or(Error::Invalid("no validation result for export"))?;
+            let best = self.args.output_dir.join("best.npz");
+            let checkpoint = (selected.0 != completed).then_some((best.as_path(), selected.0));
+            summary.quantization = Some(self.backend.export(&path, &samples, checkpoint)?);
+            summary.selected_superbatch = Some(selected.0);
+            summary.selected_validation_loss = Some(selected.1);
             summary.removal_sign = Some(crate::diagnostics::measure_removal_sign(&path, &samples)?);
             Ok(())
         })();
@@ -742,7 +791,7 @@ fn validate_batches<T>(
     Ok(Some(total))
 }
 
-/// 指定デバイスで初期検証、予定回数の更新、最終の重みの書き出しを行う。
+/// 指定デバイスで検証と更新を行い、停止条件に達したら採用する重みを書き出す。
 /// 学習ループ中のエラーでは、最後に確定したsuperbatch数と更新回数を報告する。
 pub(crate) fn run_with<B: TrainerBackend>(
     args: Args,

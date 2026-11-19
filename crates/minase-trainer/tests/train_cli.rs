@@ -174,6 +174,90 @@ fn cli_subcommands_require_scales_and_rules_and_reject_invalid_scales() {
     }
 }
 #[test]
+fn validation_plateau_keeps_first_trained_checkpoint_across_resume() {
+    let fixture = Fixture::new();
+    let mut args = fixture.args("plateau", 2);
+    // f32の重みが変化しない学習率で、すべての検証時点を同率にする。
+    args.training.lr_ft = 1e-100;
+    args.training.lr_head = 1e-100;
+    args.validation_patience = Some(2.try_into().unwrap());
+    let first = run(args.clone()).unwrap();
+    assert_eq!(first.selected_superbatch, Some(1));
+    assert_eq!(first.completed_superbatches, 2);
+    let exported = fs::read(args.output_dir.join("nnue.bin")).unwrap();
+
+    args.superbatches = 6.try_into().unwrap();
+    args.resume = Some(args.output_dir.clone());
+    let resumed = run(args.clone()).unwrap();
+    assert_eq!(resumed.stopped_by.to_string(), "validation_patience");
+    assert_eq!(resumed.completed_superbatches, 3);
+    assert_eq!(resumed.selected_superbatch, Some(1));
+    assert_eq!(
+        resumed.selected_validation_loss,
+        first.selected_validation_loss
+    );
+    assert_eq!(
+        fs::read(args.output_dir.join("nnue.bin")).unwrap(),
+        exported
+    );
+    for (file, boundary) in [("best.npz", 1), ("latest.npz", 3)] {
+        assert_eq!(
+            Checkpoint::read(args.output_dir.join(file))
+                .unwrap()
+                .progress
+                .completed_superbatches,
+            boundary
+        );
+    }
+}
+#[test]
+fn validation_exports_best_weights_even_when_training_moves_farther() {
+    use minase::training::records::{Header, Origin, TeacherKind};
+    use minase_core::Position;
+    use minase_trainer::data::{Outcome, Sample, is_validation};
+    use minase_trainer::nnue::layerstack::export;
+
+    // 同じ盤面に訓練と検証で逆の探索値を与え、学習の進行とともに検証誤差を悪化させる。
+    let f = Fixture::new();
+    let mut args = f.args("opposed", 5);
+    let header = Header::new(
+        "JCSA".into(),
+        "1".repeat(40),
+        [2; 32],
+        TeacherKind::AlphaBeta,
+        200,
+        11,
+    )
+    .unwrap();
+    let samples: Vec<_> = (0..40)
+        .map(|game| {
+            let score = if is_validation(11, game) { -2000 } else { 2000 };
+            Sample::from_position(
+                &Position::initial(),
+                score,
+                Outcome::Draw,
+                game,
+                0,
+                Origin::RandomSelfplay,
+            )
+            .unwrap()
+        })
+        .collect();
+    fs::write(&args.data[0], common::mnsd::independent(header, &samples)).unwrap();
+    args.training.lambda = 1.0;
+    args.validation_patience = Some(2.try_into().unwrap());
+    let result = run(args.clone()).unwrap();
+    assert_eq!(result.selected_superbatch, Some(1));
+    assert_eq!(result.completed_superbatches, 3);
+    let network = fs::read(args.output_dir.join("nnue.bin")).unwrap();
+    let quantized = |name| {
+        let saved = Checkpoint::read(args.output_dir.join(name)).unwrap();
+        export(&saved.parameters, saved.settings.scale).unwrap()
+    };
+    assert_eq!(network, quantized("best.npz"));
+    assert_ne!(network, quantized("latest.npz"));
+}
+#[test]
 fn cpu_records_initial_validation_planned_updates_and_tatara_export() {
     let f = Fixture::new();
     let args = f.args("run", 3);

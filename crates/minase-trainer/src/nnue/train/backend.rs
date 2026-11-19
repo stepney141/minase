@@ -87,5 +87,10 @@ pub(crate) trait TrainerBackend {
     /// 構造固有の統計をJSONへ変換する。検証しない境界でも重みの統計を返す。
     fn statistics(&mut self, validation: Option<&Validation>) -> Result<Value>;
     fn save_checkpoint(&mut self, path: &Path, progress: &Progress) -> Result<()>;
-    fn export(&mut self, path: &Path, samples: &[(Position, Color)]) -> Result<Value>;
+    fn export(
+        &mut self,
+        path: &Path,
+        samples: &[(Position, Color)],
+        checkpoint: Option<(&Path, u64)>,
+    ) -> Result<Value>;
 }
