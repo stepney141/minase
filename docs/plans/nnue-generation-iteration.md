@@ -18,8 +18,8 @@ HalfKP_vmの世代反復は、本書でP型の評価関数の癖をつかんだ�
 状態は進行中である。
 2026年11月14日に起案し、2026年11月20日に利用者の指示で着手した。
 前提の[外部ファイル化](archived/nnue-external-network-file.md)は2026年11月17日に、[tatara化](archived/nnue-tatara-framework-and-halfkp-vm.md)は2026年11月19日に完了した。
-フェーズ1の連続生成スクリプトの変更を実装した段階であり、完了したフェーズはまだない。
-次の一手は、安い学習機を借りる試走で、学習だけを行う流れが最後まで通ることを確かめることである。
+フェーズ1は完了し、学習機だけを借りて学習する連続生成スクリプトの変更を、借りた学習機での試走で確かめた（[試走の記録](../measurements/nnue-generation-iteration/nnue-generation-iteration-training-rental-trial.md)）。
+次の一手は、フェーズ2として反復のコミットを定め、第1世代の教師の番号0〜3の4本を生成機で生成して、kとK_tを求めることである。
 
 ## 目的
 
