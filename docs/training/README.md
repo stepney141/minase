@@ -77,3 +77,4 @@ Pythonの環境がない作業ツリーでは、`uv sync --frozen --project tool
 |---|---|---|
 | [alphazero-rl-1](alphazero-rl-1/) | AlphaZero型探索の強化学習の1回目の実行（10ブロック128チャネルのネット、サイクル0〜32） | 2026年11月9日に中断し、凍結 |
 | [alphazero-rl-2](alphazero-rl-2/) | AlphaZero型探索の強化学習の2回目の実行（20ブロック256チャネルのネット、サイクル0〜） | 進行中（2026年11月17日にサイクル100） |
+| [nnue-generation-iteration](nnue-generation-iteration/) | 標準レシピv3でv0からやり直した、P型のNNUEの世代反復（第1世代〜最大第5世代） | 進行中（2026年11月20日に着手） |
