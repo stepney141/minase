@@ -75,6 +75,7 @@ class Commands:
         self.deny_after_start = False
         self.fail_query_after_start = False
         self.fail_query_after_create = False
+        self.loading_status_delay = 0
         self.fail_destroy = False
         self.create_failures = []
         self.remote_failures = {}
@@ -193,6 +194,12 @@ class Commands:
                     return self.result(command, '{')
                 if self.active() and self.fail_query_after_start:
                     return self.result(command, '{')
+                if (self.current in self.instances
+                        and self.instances[self.current]['actual_status'] == 'loading'
+                        and self.loading_status_delay):
+                    self.clock.sleep(min(seconds, self.loading_status_delay))
+                    if seconds < self.loading_status_delay:
+                        raise subprocess.TimeoutExpired(command, seconds)
                 if self.active():
                     machine = self.machines[self.current]
                     if machine['scenario'] == 'migrate' and machine['probes'] >= 1:
@@ -459,6 +466,19 @@ class TeacherTests(unittest.TestCase):
         self.assertEqual(sum(self.clock.sleeps), 900)
         self.assertEqual(self.state()['rental_count'], 3)
         self.assertEqual([int(c[3]) for c in self.commands.creations], [42, 43, 44])
+        self.assertFalse(self.commands.instances)
+
+    def test_running_status_query_timeout_at_deadline_deletes_then_tries_another_offer(self) -> None:
+        self.commands.scenarios[1] = 'loading'
+        self.commands.loading_status_delay = 0.25
+        # 作成と直後の照会で594.875秒経過し、次の照会には0.125秒しか残らない。
+        self.commands.on_create = lambda attempt: self.clock.sleep(594.625) if attempt == 1 else None
+        self.assertEqual(self.execute(), 0, self.errors.getvalue())
+        self.assertTrue(any(command == ['vastai', 'show', 'instances', '--raw']
+                            and 0 < seconds < self.commands.loading_status_delay
+                            for command, seconds, _ in self.commands.calls))
+        self.assertEqual([int(c[3]) for c in self.commands.creations], [42, 43])
+        self.assertIsNotNone(self.state()['rentals'][0]['deleted_at'])
         self.assertFalse(self.commands.instances)
 
     def test_cost_reserve_uses_instance_rate_and_final_collection(self) -> None:

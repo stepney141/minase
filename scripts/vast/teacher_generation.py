@@ -49,6 +49,7 @@ cpu_archはamd64、gpu_fracは1、cpu_cores_effectiveはcpu_coresと同じ、dir
 認証失効と照会頻度の上限による作成失敗も、その場で終了処理へ進む。
 
 借りた後は、作成開始から10分を稼働確認の期限とし、稼働を確認してから5分をSSH接続の期限とする。
+稼働確認の期限までの残り時間で上限を短くした状態照会が時間切れになった場合も、稼働確認の期限を超えたものとして扱う。
 どちらかを確認できなければ削除の完了を確かめ、その出品を制御スクリプトの今回の起動中は除外して別の出品を試す。
 SSHで接続できたら作業プロセスと観測用スクリプト、worker.jsonを送り、generation_worker.py cpu-infoでCPUの割り当てを検査する。
 使える論理スレッド数nprocは出品のcpu_coresと等しく、CPU時間の上限をスレッド数に換算したcpu_limitはnullかcpu_coresの0.9倍以上でなければならない。
@@ -510,9 +511,15 @@ class TeacherGeneration:
             if self.clock.time() >= end:
                 return False
             self.clock.sleep(min(5, end - self.clock.time()))
-            if self.clock.time() >= end:
+            seconds = min(60, end - self.clock.time())
+            if seconds <= 0:
                 return False
-            instance = common.instance(record['instance_id'], min(60, end - self.clock.time()))
+            try:
+                instance = common.instance(record['instance_id'], seconds)
+            except subprocess.TimeoutExpired:
+                if seconds < 60:
+                    return False
+                raise
         record['instance'] = instance
         end = self.clock.time() + 300
         while self.clock.time() < end:
