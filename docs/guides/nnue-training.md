@@ -333,7 +333,7 @@ systemd-run --user --unit=<サービス名> --setenv=PATH="$PATH" -p WorkingDire
 ### 連続生成スクリプトで世代を作る
 
 連続生成スクリプト`scripts/vast/generation_chain.py`は、世代ごとに、足りない教師の生成、教師の検査、学習、駒除去差分の診断、ネットの保管、およびエンジンでの動作確認を続けて行う。
-引数の一覧は`python3 scripts/vast/generation_chain.py run --help`で確かめ、標準レシピv3では上記の検証間隔と停止条件を渡す。1回の実行で指定できるB、T、Sは1組なので、教師量が変わる場合は世代ごとに計算して実行する。[v2で開始した世代反復](../plans/nnue-generation-iteration.md)を再現する場合は同設計書の固定条件を使う。
+引数の一覧は`python3 scripts/vast/generation_chain.py run --help`で確かめ、標準レシピv3では上記の検証間隔と停止条件を渡す。1回の実行で指定できるB、T、Sは1組なので、教師量が変わる場合は世代ごとに計算して実行する。世代反復での求め方と世代ごとの見込みの値は、[世代反復の設計書](../plans/nnue-generation-iteration.md#世代の手順)にある。
 標準レシピに関わる引数と動作は次のとおりである。
 
 - `--structure layerstack`はP型の学習器を、`--structure simple`はHalfKP_vmの学習器を選ぶ。
