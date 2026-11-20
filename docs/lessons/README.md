@@ -64,6 +64,7 @@ Rustのコードやテストを書くとき、およびそれらをcodexへ委�
 - [探索木を変えない高速化は親との交互測定5回で選別する](alternate-speed-rounds-against-parent.md) — 段階ごとの速度による選別では`bench_compare.py`で局面別の一致を確かめ、候補と親を`--rounds 5`で交互に測って増分が親の幅を超える段階だけを残し、まとめた版を段階ゲートにかける。
 - [ビルド設定を変えた後はコミットのビルドを混ぜて比べない](do-not-mix-builds-across-cargo-config-changes.md) — `.cargo/config.toml`のビルド設定が変わった後は、キャッシュ済みのビルドと新しいビルドを混ぜて比べず、変更前の設定のビルドが要るときはリポジトリの外のworktreeでビルドする。
 - [perfの採取周期はイベントごとに指定する](set-perf-sampling-period-per-event.md)。異なる周期で複数のイベントを採取するときは各イベントの`period=`で指定し、集計前に`perf evlist -v`で実際の周期を確認する。
+- [学習器のGPUの計算を変えた版は、同じ機械の他の処理を止め、GPUが律速になるスレッド数でも速さを比べる](compare-trainer-speed-with-co-resident-load-stopped-and-gpu-bound-threads.md) — 版の実学習の速さはBotや対局の測定を止めて順序を入れ替えた2組以上で測り、本番のスレッド数に加えて供給がGPUの上限を上回るスレッド数でも、局面数の合計÷`training_seconds`の合計で比べる。
 
 ## 評価関数の学習とGPU
 
@@ -88,6 +89,7 @@ Rustのコードやテストを書くとき、およびそれらをcodexへ委�
 - [縮約の順序はGPU側で固定の木として定義する](define-reduction-order-on-the-gpu.md) — GPUとCPU参照を同じ加算順で一致させるときは、GPUで速い固定の木を順序の定義にしてCPU参照がそれを真似る。CPUの順をGPUが真似ると直列化して遅くなる。
 - [AdamWの更新をCPUとGPUで比べるときは、CPUの参照の順伝播をGPUと同じ順の単精度にし、局面方向の和だけを倍精度にする](match-cpu-reference-precision-to-the-gpu-before-comparing-adamw-updates.md) — 打ち消し合う勾配の成分の丸めの差をAdamWが学習率程度の更新の差へ拡大するので、CPUの参照は順伝播と局面ごとの積をGPUと同じ順の単精度で、局面方向の和だけを倍精度で計算し、許容差は緩めない。
 - [パラメータの大きな構造を学ぶ前に、教師1本で保存と再開のメモリと1回の更新の時間を測る](measure-memory-and-update-time-with-one-teacher-file-before-a-large-network-run.md) — 大きな構造を足したら、本番と同じ幅とバッチで、教師1本の学習と再開の`memory.stat`の`anon`の最大と、`bench-step --profile`の1回の更新の区間ごとの時間を測って本番の上限と所要時間を見積もり、大きな配列は中間のバイト列を作らずにファイルと直接読み書きする。
+- [カーネルの遅さを直したら、同じ書き方をしている別の構造のカーネルも測る](apply-a-kernel-speed-fix-to-sibling-structures.md) — GPUのカーネルの遅さを直したら、同じ書き方の別の構造と入力特徴集合のカーネルを探して`bench-step --profile`で区間ごとの時間を測り、同じ型の遅さには同じ修正を当てて両方を測り直す。
 - [再開の設定ハッシュに予算を含めない](resume-hash-excludes-budgets.md) — 再開の照合は軌跡を変える設定だけで行い、エポック数、patience、時間の上限、ワーカー数は含めない。
 - [罰則の発火率が低いことは補助損失が不要であることを意味しない](low-penalty-activation-does-not-mean-the-penalty-is-unneeded.md) — 制約を課す補助損失を外すときは、働いている状態での発火率を根拠にせず、外した設定で学んで制約の指標を同じ標本で測ってから判断し、指標は書き出し時の検査として残す。
 - [ネットの汎化の差は対局単位の対応のある比較で測る](compare-nets-with-paired-game-bootstrap.md) — 学習したネットの汎化差や検証の損失を比べるときは、同じ対局の抽出をすべてのネットに当てる対応のあるブートストラップで差の区間を求め、ネットごとの区間の重なりで判断しない。
