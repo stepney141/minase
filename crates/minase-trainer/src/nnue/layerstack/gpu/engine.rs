@@ -231,9 +231,11 @@ impl BackwardBuffers {
             .arg(&n)
             .arg(&h)
             .arg(&columns);
-        // SAFETY: grid indexes ceil(n/128)*HEAD initialized partials, with 128 lanes.
+        // SAFETY: each 128-thread block owns up to 32 columns of one position group.
+        // The kernel bounds both positions and columns; the allocation holds
+        // ceil(capacity/128)*HEAD partials and all threads reach the barriers.
         unsafe {
-            args.launch(grid(blocks as usize, HEAD)?)?;
+            args.launch(grid(HEAD.div_ceil(32), blocks as usize)?)?;
         }
         let mut args = device.compute.launch_builder(&k.head_reduce);
         args.arg(&self.head)
@@ -257,6 +259,7 @@ impl BackwardBuffers {
                 .arg(&p);
             // SAFETY: BatchSlot builds bounded occurrence words and intervals;
             // allocation uses the same max_segment_count bound as the input ring.
+            // The fixed H=256 gives each of the 128 threads one unit per half.
             unsafe {
                 args.launch(grid(input.first_segments, 1)?)?;
             }
