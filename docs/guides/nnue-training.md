@@ -322,7 +322,7 @@ systemd-run --user --unit=<サービス名> --setenv=PATH="$PATH" -p WorkingDire
     --max-cost <累計費用の上限> --max-rentals <借りる回数の上限> >> <ログ> 2>&1"
 ```
 
-- 受け入れの検査に通った教師ファイルと生成ログは、実行ディレクトリの`gen-<N>/teacher/`と`gen-<N>/logs/`に置かれる。連続生成スクリプトで学習するときは、これらを連続生成スクリプトの実行ディレクトリの同じ位置へハードリンクで置き、`--train-place local`で再開する。
+- 受け入れの検査に通った教師ファイルと生成ログは、実行ディレクトリの`gen-<N>/teacher/`と`gen-<N>/logs/`に置かれる。連続生成スクリプトで学習するときは、これらを連続生成スクリプトの実行ディレクトリの同じ位置へハードリンクで置く。その世代の教師がすべてそろっていれば、連続生成スクリプトは教師を生成せず、`--train-place generator`と`--offer <学習機の出品>`ではGPUつきの学習機を借りて学習と診断だけを行い、`--train-place local`では作業機で学習する（[連続生成スクリプトで世代を作る](#連続生成スクリプトで世代を作る)）。
 - 連続生成スクリプトは、第N世代の番号iの教師ファイルのシードを`seed_base + seed_generation_step × N + seed_book_step × i`として照合する。制御スクリプトの`--seed-base`には、この式でiを0とした値（`seed_base + seed_generation_step × N`）を、`--seed-book-step`には連続生成スクリプトと同じ`seed_book_step`を渡す。生成コミットは連続生成スクリプトと同じ反復のコミットとし、`--eval-file`にはNASにある第N−1世代のネット（第1世代ではv0のネット）のファイルを渡す。
 - `--eval-file`のネットはtatara形式であり、生成機のエンジンがファイルの構造記述からLayerStackかSimpleかを判定するので、どちらの構造のネットも同じ引数で渡せる。
 - 途中で止めるときは、`systemctl --user kill --kill-whom=main --signal=SIGTERM <サービス名>`で主プロセスに終了シグナルを送る。制御スクリプトは最後の回収と生成機の削除の確認を行ってから終わる。`systemctl --user stop`は90秒で強制終了するので使わない。
@@ -343,6 +343,9 @@ systemd-run --user --unit=<サービス名> --setenv=PATH="$PATH" -p WorkingDire
 - 学習には、記録したK_tを`--teacher-cp-per-logit`に、規則セット`lishogi`を`--rules`に渡す。スクリプトの`--batch`、`--batches-per-superbatch`、`--superbatches`、`--validation-superbatches`、`--validation-patience`、`--train-subsample`、`--device`、`--lr-schedule`、および`--lambda`は学習器の同名の引数へ、`--train-seed`と`--train-threads`は学習器の`--seed`と`--threads`へ渡す。`--train-threads`には、標準レシピの`--threads`と同じく16か、[学習する](#学習する)の「スレッド数を決める」の手順で選んだ値を渡す。
 - 学習の`summary.json`の`status`が`candidate`でなければ止まる。学習の後は、その世代の教師だけで駒除去差分の診断を行い、報告を`gen-<N>/removal.json`に書く。
 - 最後に、ネットをSHA-256の名前で`--network-store`へ置き、`setoption name RuleSet value lishogi`、`setoption name EvalFile value <ネット>`、`isready`の後の`bench depth <--bench-depthの値>`が完走することを確かめてから、`gen-<N>/generation.json`に世代の完了を記録する。
+- 教師がすべて作業機にある世代を`--train-place generator`と`--offer`で実行すると、スクリプトは指定した出品を学習機として借り、コードと教師を送り、学習機でコミットを展開して学習器をビルドしてから学習と診断を行う。結果を作業機へ取得した後に学習機を止めて削除し、ネットの保管と`bench`は作業機で行う。学習機の停止期限は`--training-wait-hours`に世代の数を掛けた時間であり、教師の転送、ビルド、学習、および診断をこの時間に収める。
+- 学習機の作業プロセスは、学習が終わるまで`--idle-limit-hours`の自己停止を行わない。学習が終わらないまま作業機との接続が絶えた場合は、停止期限で学習機が止まる。
+- 学習機で行った各ステップのログは`gen-<N>/training-logs/`に取得される。`train.rusage.json`の`max_rss_kib`は学習器のプロセスの最大常駐メモリ（単位はKiB）であり、学習機を削除した後も読める。
 
 ### 中断した学習を再開する
 

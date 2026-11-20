@@ -9,7 +9,7 @@
 外部コマンドは注入した実行関数で置き換え、時計も進めるだけにする。
 """
 
-from contextlib import redirect_stderr, redirect_stdout
+from contextlib import nullcontext, redirect_stderr, redirect_stdout
 import fcntl
 import hashlib
 import io
@@ -23,6 +23,7 @@ import struct
 import subprocess
 import sys
 import tempfile
+from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
 import urllib.error
@@ -193,7 +194,11 @@ class Commands:
             return
         write_training_result(directory, generation)
         for name in self.training_missing:
-            (directory / name).unlink()
+            path = directory / name
+            if path.is_dir():
+                shutil.rmtree(path)
+            else:
+                path.unlink()
         (directory / 'done').write_text('done\n')
 
     def local(self, remote: str) -> Path:
@@ -1276,6 +1281,66 @@ class GeneratorTrainingTests(ChainTestCase):
         self.assertFalse((self.root / 'run/gen-1/generation.json').exists())
         self.assertFalse(any(call[0] == 'git' and call[3] == 'commit' for call in self.commands.calls))
 
+    def test_rents_for_training_only_and_records_each_generation(self) -> None:
+        """作業機に全世代の本があれば、学習の待ち時間だけで期限を決めて借りる。"""
+        self.values['last-generation'] = '2'
+        self.completed_books()
+        self.save_book(2, 0, 100)
+        deadline = int(self.clock.time()) + 8640  # 1.2時間を2世代分
+        self.assertEqual(self.execute(), 0, self.errors.getvalue())
+        calls = self.commands.calls
+        self.assertEqual([call[3] for call in calls if call[:3] == ['vastai', 'create', 'instance']], ['42'])
+        self.assertIn(f'bash -s -- {deadline} ', (self.root / 'run/onstart.sh').read_text())
+        self.assertEqual(self.commands.generated, [])
+        self.assertEqual(len(self.commands.training_jobs), 2)
+        bundle = f'/workspace/job/bundles/{self.values["commit"]}.bundle'
+        self.assertTrue(self.commands.local(bundle).is_file())
+        for generation, job in enumerate(self.commands.training_jobs, start=1):
+            self.assertEqual(job.keys(), {'commit', 'bundle', 'reference', 'steps'})
+            self.assertEqual(job['commit'], self.values['commit'])
+            self.assertEqual(job['bundle'], bundle)
+            self.assertEqual(job['reference'], self.values['ref'])
+            self.assertEqual([step['name'] for step in job['steps']], ['build', 'train', 'removal'])
+            directory = self.root / f'run/gen-{generation}'
+            self.assertTrue((directory / 'removal.json').is_file())
+            self.assertEqual(Path(self.record(generation)['network_path']).read_bytes(), network(generation))
+            mkdir = next(i for i, call in enumerate(calls) if call[0] == 'ssh'
+                         and call[-1] == f'mkdir -p /workspace/job/training/gen-{generation}')
+            push = next(i for i, call in enumerate(calls) if call[0] == 'rsync'
+                        and call[-1].endswith(f':/workspace/job/teacher/gen-{generation}/'))
+            self.assertLess(mkdir, push)
+        received = next(i for i, call in enumerate(calls) if call[0] == 'rsync'
+                        and call[-1] == str(self.root / 'run/gen-2/training-received') + '/')
+        stopped = next(i for i, call in enumerate(calls) if call[0] == 'ssh'
+                       and call[-1].endswith('generation_worker.py stop'))
+        destroyed = next(i for i, call in enumerate(calls) if call[:4] == ['vastai', 'destroy', 'instance', '17'])
+        self.assertLess(received, stopped)
+        self.assertLess(stopped, destroyed)
+        self.assertFalse(self.commands.instances)
+        self.assert_no_local_training()
+
+    def test_replaces_deleted_machine_for_training_only(self) -> None:
+        self.completed_books()
+        run = self.root / 'run'
+        (run / 'instance-id').write_text('99\n')
+        (run / 'ssh-address').write_text('stale.invalid 2222\n')
+        (run / 'deadline').write_text('1\n')
+        create = common.create
+
+        def create_without_stale_record(*args: object) -> int:
+            self.assertFalse((run / 'instance-id').exists())
+            self.assertFalse((run / 'ssh-address').exists())
+            return create(*args)
+
+        with patch.object(common, 'create', side_effect=create_without_stale_record) as rent:
+            self.assertEqual(self.execute(), 0, self.errors.getvalue())
+        rent.assert_called_once()
+        self.assertEqual(self.commands.generated, [])
+        self.assertEqual(self.record(1)['commit'], self.values['commit'])
+        self.assert_stopped()
+        self.assertFalse(self.commands.instances)
+        self.assert_no_local_training()
+
     def test_generator_receives_trained_network_before_stopping_and_committing(self) -> None:
         """事例1: 検査済みの本だけを番号順に渡し、全結果の取得後に停止して学習済みネットを使う。"""
         self.values['books-per-generation'] = '3'
@@ -1397,22 +1462,19 @@ class GeneratorTrainingTests(ChainTestCase):
         self.assertEqual(len(self.commands.training_jobs), 1)
         self.assert_no_local_training()
 
-    def test_completed_books_without_machine_stop_without_account_queries(self) -> None:
-        """事例5: 本だけがある場合は出品指定の有無にかかわらず借りず、localを案内する。"""
+    def test_completed_books_without_offer_stop_without_account_queries(self) -> None:
+        """本だけがあり出品指定がなければ借りず、学習機を借りる方法と作業機での再開を案内する。"""
         self.completed_books()
-        for offer in (True, False):
-            with self.subTest(offer=offer):
-                if not offer:
-                    del self.values['offer']
-                runner = chain.Chain(chain.arguments(argv(self.values)))
-                with self.assertRaisesRegex(chain.ChainStop, '--train-place local'):
-                    runner.execute()
-                self.assertFalse(any(call[0] in ('vastai', 'ssh', 'scp', 'rsync') for call in self.commands.calls))
-                self.assert_no_local_training()
-                self.assert_no_commit()
+        del self.values['offer']
+        self.assertEqual(self.execute(), 1)
+        for option in ('--offer', '--train-place local'):
+            self.assertIn(option, self.errors.getvalue())
+        self.assertFalse(any(call[0] in ('vastai', 'ssh', 'scp', 'rsync') for call in self.commands.calls))
+        self.assert_no_local_training()
+        self.assert_no_commit()
 
     def test_completed_results_skip_remote_training(self) -> None:
-        """事例7: 3つの要約がそろっていれば生成機に接続せず、検査と完了記録を行う。"""
+        """学習と診断の結果がそろっていれば、出品指定があっても借りずに世代を記録する。"""
         self.completed_books()
         write_training_result(self.root / 'run/gen-1', 1)
         self.assertEqual(self.execute(), 0, self.errors.getvalue())
@@ -1533,6 +1595,36 @@ class GeneratorTrainingTests(ChainTestCase):
         self.assert_stopped()
         self.assert_no_commit()
         self.assert_no_local_training()
+
+    def test_final_training_transfer_updates_logs_after_last_poll(self) -> None:
+        self.completed_books()
+        self.saved_machine()
+        receive = common.rsync_to
+
+        def append_after_poll(host: str, port: int, source: str, destination: Path) -> None:
+            if destination.name == 'training-received':
+                self.assertEqual((destination.parent / 'training-logs/train.log').read_text(), '生成機での学習ログ\n')
+                logs = self.commands.remote / 'training/gen-1/logs'
+                (logs / 'train.log').write_text('学習完了\n')
+                (logs / 'removal.rusage.json').write_text('{"max_rss_kib": 1024}\n')
+            receive(host, port, source, destination)
+
+        with patch.object(common, 'rsync_to', side_effect=append_after_poll):
+            self.assertEqual(self.execute(), 0, self.errors.getvalue())
+        logs = self.root / 'run/gen-1/training-logs'
+        self.assertEqual((logs / 'train.log').read_text(), '学習完了\n')
+        self.assertEqual(json.loads((logs / 'removal.rusage.json').read_text()), {'max_rss_kib': 1024})
+        self.assertFalse((logs.parent / 'training-received').exists())
+
+    def test_missing_received_logs_stop_without_recording_generation(self) -> None:
+        self.completed_books()
+        self.saved_machine()
+        self.commands.training_missing = ['logs']
+        self.assertEqual(self.execute(), 1)
+        self.assert_stopped()
+        self.assert_no_commit()
+        self.assert_no_local_training()
+        self.assertFalse((self.root / 'run/gen-1/train/summary.json').exists())
 
     def test_gpu_offer_requirements_apply_only_to_generator_training(self) -> None:
         """事例11: GPU数とCUDA版の下限を生成機学習だけに適用し、作成前に拒否する。"""
@@ -1871,6 +1963,30 @@ class WorkerTests(unittest.TestCase):
         stop.assert_called_once()
         self.assertEqual(sum(self.clock.sleeps), 5)
 
+    def test_training_directory_defers_idle_until_done_or_exit_status(self) -> None:
+        """学習用ディレクトリだけがある間も止めず、終了後に待ち時間を数える。"""
+        for generation, marker in enumerate(('done', 'exit-status'), start=1):
+            with self.subTest(marker=marker):
+                training = self.root / f'training/gen-{generation}'
+                started = self.clock.monotonic()
+                sleep = self.clock.sleep
+
+                def advance(seconds: float) -> None:
+                    sleep(seconds)
+                    elapsed = self.clock.monotonic() - started
+                    self.assertLessEqual(elapsed, 13, '学習の完了後は待ち時間の上限で停止する')
+                    if elapsed == 2:
+                        training.mkdir(parents=True)
+                    if elapsed == 8:
+                        (training / marker).touch()
+
+                with patch.object(self.clock, 'sleep', side_effect=advance), \
+                        patch.object(worker, 'stop_instance', return_value=0) as stop:
+                    self.assertEqual(worker.run_worker(self.root), 0)
+                stop.assert_called_once()
+                self.assertTrue((training / marker).is_file())
+                self.assertEqual(self.clock.monotonic() - started, 13)
+
     def test_cpu_info_reads_v1_v2_and_unlimited(self) -> None:
         with patch.object(worker.os, 'sched_getaffinity', return_value=set(range(384))):
             (self.root / 'cpu.max').write_text('34560000 100000\n')
@@ -1936,36 +2052,106 @@ class TrainingWorkerTests(unittest.TestCase):
                                'clean': str(self.directory / name) if name == 'train' else None,
                                'resume_file': str(self.directory / 'train/latest.npz') if name == 'train' else None,
                                'resume_args': ['--resume', str(self.directory / 'train')] if name == 'train' else None})
-        (self.directory / 'job.json').write_text(json.dumps({'steps': self.steps}))
+        self.job = {'commit': '3' * 40, 'bundle': '/workspace/job/bundles/iteration.bundle',
+                    'reference': 'refs/heads/iteration', 'steps': self.steps}
+        (self.directory / 'job.json').write_text(json.dumps(self.job))
+        self.git_calls = []
+        self.head = None
         self.calls = []
-        self.failure = None
+        self.failures = {}
+        self.max_rss_kib = {'build': 4096, 'train': 24576, 'removal': 8192}
         self.missing_done = None
         self.errors = io.StringIO()
         self.enterContext(redirect_stderr(self.errors))
-        self.enterContext(patch.object(subprocess, 'run', side_effect=self.command))
-        self.enterContext(patch.object(subprocess, 'Popen', side_effect=AssertionError('実コマンドは禁止です')))
+        self.enterContext(patch.object(subprocess, 'run', side_effect=self.git_command))
+        self.enterContext(patch.object(subprocess, 'Popen', side_effect=self.spawn_step))
+        self.enterContext(patch.object(os, 'wait4', side_effect=self.wait_step))
 
-    def command(self, command: list[str], **kwargs: object) -> subprocess.CompletedProcess:
+    def git_command(self, command: list[str], **kwargs: object) -> subprocess.CompletedProcess:
+        self.assertEqual(command[0], 'git')
+        self.git_calls.append(command)
+        if command[1] == 'init':
+            Path(command[2]).mkdir()
+        else:
+            self.assertEqual(kwargs['cwd'], self.root / 'minase')
+        if command[1] == 'rev-parse':
+            return subprocess.CompletedProcess(command, 128 if self.head is None else 0,
+                                               '' if self.head is None else self.head + '\n')
+        if command[1] == 'fetch':
+            kwargs['stdout'].write('bundleを取得\n')
+        if command[1] == 'checkout':
+            self.head = command[-1]
+            kwargs['stdout'].write('HEADを設定\n')
+        return subprocess.CompletedProcess(command, 0)
+
+    def spawn_step(self, command: list[str], **kwargs: object) -> nullcontext[SimpleNamespace]:
+        self.assertEqual(command[0], 'tool')
         self.calls.append((command, kwargs))
         name = command[1]
         self.assertFalse((self.directory / 'done').exists())
         self.assertFalse((self.directory / 'exit-status').exists())
         self.assertFalse((self.directory / 'finished' / name).exists())
         self.assertEqual(kwargs['cwd'], self.root / 'minase')
+        self.assertTrue(kwargs['cwd'].is_dir())
+        self.assertEqual(self.head, self.job['commit'])
         self.assertEqual(kwargs['stderr'], subprocess.STDOUT)
-        self.assertTrue(kwargs['check'])
         self.assertEqual(Path(kwargs['stdout'].name), self.directory / f'logs/{name}.log')
         kwargs['stdout'].write(name + '\n')
-        if name == 'train' and self.failure is not None:
-            raise subprocess.CalledProcessError(self.failure, command)
         if name == 'train' and '--resume' not in command:
             self.assertFalse((self.directory / 'train').exists())
-        if name != 'build' and name != self.missing_done:
+        if name != 'build' and name != self.missing_done and not (name == 'train' and name in self.failures):
             relative = {'train': 'train/summary.json', 'removal': 'removal.json'}[name]
             done = self.directory / relative
             done.parent.mkdir(parents=True, exist_ok=True)
             done.write_text('{}')
-        return subprocess.CompletedProcess(command, 0)
+        return nullcontext(SimpleNamespace(pid=5000 + len(self.calls), returncode=None))
+
+    def wait_step(self, pid: int, options: int) -> tuple[int, int, SimpleNamespace]:
+        self.assertEqual(pid, 5000 + len(self.calls))
+        self.assertEqual(options, 0)
+        name = self.calls[-1][0][1]
+        code = self.failures.get(name, 0)
+        status = code << 8 if code >= 0 else -code
+        return pid, status, SimpleNamespace(ru_maxrss=self.max_rss_kib[name])
+
+    def test_training_checks_out_bundle_before_build(self) -> None:
+        self.assertFalse((self.root / 'minase').exists())
+        logs = self.directory / 'logs'
+        logs.mkdir()
+        (logs / 'checkout.log').write_text('前回のログ\n')
+        self.assertEqual(worker.run_training(self.root, 3), 0, self.errors.getvalue())
+        self.assertEqual(self.git_calls, [
+            ['git', 'init', str(self.root / 'minase')],
+            ['git', 'rev-parse', '--verify', 'HEAD'],
+            ['git', 'fetch', self.job['bundle'], self.job['reference']],
+            ['git', 'checkout', '--detach', self.job['commit']],
+            ['git', 'rev-parse', 'HEAD'],
+        ])
+        self.assertEqual((logs / 'checkout.log').read_text(), '前回のログ\nbundleを取得\nHEADを設定\n')
+
+    def test_training_reuses_matching_checkout_without_fetch_or_checkout(self) -> None:
+        (self.root / 'minase').mkdir()
+        self.head = self.job['commit']
+        self.assertEqual(worker.run_training(self.root, 3), 0, self.errors.getvalue())
+        self.assertTrue(self.git_calls)
+        self.assertTrue(all(command[1] == 'rev-parse' for command in self.git_calls))
+
+    def test_missing_training_checkout_field_writes_exit_status(self) -> None:
+        (self.root / 'minase').mkdir()
+        self.head = self.job['commit']
+        job_file = self.directory / 'job.json'
+        exit_status = self.directory / 'exit-status'
+        for field in ('commit', 'bundle', 'reference'):
+            with self.subTest(field=field):
+                job = self.job.copy()
+                del job[field]
+                job_file.write_text(json.dumps(job))
+                exit_status.unlink(missing_ok=True)
+                self.assertEqual(worker.run_training(self.root, 3), 1)
+                self.assertEqual(exit_status.read_text(), '1\n')
+                self.assertFalse((self.directory / 'done').exists())
+        self.assertEqual(len(self.calls), 0)
+        self.install.assert_not_called()
 
     def test_steps_run_in_order_with_environment_and_publish_done_last(self) -> None:
         """事例13: 全ステップに環境を渡し、追記ログと成果物の完成後にdoneを置く。"""
@@ -2056,31 +2242,26 @@ class TrainingWorkerTests(unittest.TestCase):
 
     def test_steps_inherit_generation_lock(self) -> None:
         """各ステップのpass_fdsに、保持中の世代ロックの記述子を渡す。"""
-        def command(argv: list[str], **kwargs: object) -> subprocess.CompletedProcess:
+        def spawn(argv: list[str], **kwargs: object) -> nullcontext[SimpleNamespace]:
             self.assertIn('pass_fds', list(kwargs))
             self.assertIsInstance(kwargs['pass_fds'], tuple)
             self.assertEqual(len(kwargs['pass_fds']), 1)
             self.assertTrue(os.path.samestat(os.fstat(kwargs['pass_fds'][0]), (self.directory / 'lock').stat()))
-            return self.command(argv, **kwargs)
+            return self.spawn_step(argv, **kwargs)
 
-        with patch.object(subprocess, 'run', side_effect=command):
+        with patch.object(subprocess, 'Popen', side_effect=spawn):
             self.assertEqual(worker.run_training(self.root, 3), 0, self.errors.getvalue())
         self.assertEqual([argv[1] for argv, _ in self.calls], ['build', 'train', 'removal'])
 
     def test_failed_diagnostic_report_does_not_mark_step_finished(self) -> None:
         """失敗時の報告には成功の目印を付けず、再開時には診断を実行し直す。"""
-        def command(argv: list[str], **kwargs: object) -> subprocess.CompletedProcess:
-            result = self.command(argv, **kwargs)
-            if argv[1] == 'removal':
-                raise subprocess.CalledProcessError(7, argv)
-            return result
-
-        with patch.object(subprocess, 'run', side_effect=command):
-            self.assertEqual(worker.run_training(self.root, 3), 7)
+        self.failures['removal'] = 7
+        self.assertEqual(worker.run_training(self.root, 3), 7)
         self.assertTrue((self.directory / 'removal.json').is_file())
         self.assertFalse((self.directory / 'finished/removal').exists())
         self.assertFalse((self.directory / 'done').exists())
         (self.directory / 'exit-status').unlink()
+        del self.failures['removal']
         self.calls.clear()
         self.assertEqual(worker.run_training(self.root, 3), 0)
         self.assertEqual([argv[1] for argv, _ in self.calls], ['build', 'removal'])
@@ -2091,7 +2272,7 @@ class TrainingWorkerTests(unittest.TestCase):
         replace = Path.replace
         for failure, expected in ((7, 7), (-9, 137)):
             with self.subTest(failure=failure):
-                self.failure = failure
+                self.failures['train'] = failure
                 self.calls.clear()
                 (self.directory / 'exit-status').unlink(missing_ok=True)
                 publications = []
@@ -2111,6 +2292,26 @@ class TrainingWorkerTests(unittest.TestCase):
                 self.assertFalse((self.directory / '.exit-status.tmp').exists())
                 self.assertFalse((self.directory / 'done').exists())
                 self.assertFalse((self.directory / 'finished/train').exists())
+
+    def test_step_rusage_records_each_child_including_failure_and_overwrites_on_retry(self) -> None:
+        logs = self.directory / 'logs'
+        self.failures['train'] = 7
+        self.assertEqual(worker.run_training(self.root, 3), 7, self.errors.getvalue())
+        self.assertEqual(json.loads((logs / 'build.rusage.json').read_text()), {'max_rss_kib': 4096})
+        self.assertEqual(json.loads((logs / 'train.rusage.json').read_text()), {'max_rss_kib': 24576})
+        self.assertFalse((logs / 'removal.rusage.json').exists())
+
+        (self.directory / 'exit-status').unlink()
+        del self.failures['train']
+        self.max_rss_kib.update(build=3072, train=16384)
+        self.assertEqual(worker.run_training(self.root, 3), 0, self.errors.getvalue())
+        for name, expected in (('build', 3072), ('train', 16384), ('removal', 8192)):
+            with self.subTest(step=name):
+                lines = (logs / f'{name}.rusage.json').read_text().splitlines()
+                self.assertEqual(len(lines), 1)
+                usage = json.loads(lines[0])
+                self.assertIs(type(usage['max_rss_kib']), int)
+                self.assertEqual(usage, {'max_rss_kib': expected})
 
     def test_missing_step_output_is_failure(self) -> None:
         """事例16: 終了コード0でも指定した完了ファイルがなければ失敗する。"""

@@ -3,7 +3,7 @@
 
 使い方: python3 scripts/vast/generation_chain.py run --help
 必須条件をすべて指定し、systemd-run --userの同じサービス内で実行する。
---offerは新しく生成機を借りるときだけ指定する。
+--offerは生成機または学習機を新しく借りるときだけ指定する。
 --books-per-generationで1世代の本数を定め、番号0から指定本数の直前までを生成する。
 --replay-buffer-generations 1はその世代の本だけ、2は直前の世代の本も先に並べて学習に使う。
 第1世代の学習と各世代の診断には、その世代の本だけを使う。
@@ -11,9 +11,11 @@
 第1世代の教師から較正した勝率尺度K_tを世代の記録へ保存し、全世代の学習へ渡す。
 --superbatchesで学習の上限、--validation-superbatchesで検証の間隔を指定する。
 --lr-scheduleの期間はsuperbatchで指定する。--validation-patienceを指定すると、検証損失が最小のネットを使う。
---train-place generatorは生成機で学習と診断し、localは作業機で実行する。
-生成機の障害後はlocalを明示して再開する。ネットの保管とbenchはどちらも作業機で行う。
+--train-place generatorは借りた機械で学習と診断を行い、localは作業機で実行する。
+教師がすべて作業機にある世代では、--train-place generatorと--offerで学習機を借り、学習と診断だけを行う。
+機械を借りずに作業機で学習を再開するにはlocalを明示する。ネットの保管とbenchはどちらも作業機で行う。
 作業機では--run-dirに接続先とgen-<N>/{received,teacher,logs,train}を置く。
+借りた機械での各ステップのログと最大常駐メモリの記録（<ステップ名>.rusage.json）はgen-<N>/training-logs/に置く。
 --repoの--refが指す--commitを全世代で使い、--gen0-networkを第0世代のネットとする。
 ネットは--network-storeへSHA-256の名前で保管し、gen-<N>/generation.jsonで完了を表す。
 生成機へはコードのバンドルとネットを別々に転送し、job.jsonにnetworkとnetwork_sha256を書く。
@@ -339,17 +341,15 @@ class Chain:
     def prepare_machine(self, pending: list[int], needs_generation: bool) -> None:
         """借り直しが明示されたときだけ口座を照会し、通常の再開はSSHだけを使う。"""
         args = self.args
+        needs_training = args.train_place == 'generator' and any(
+            not self.training_complete(generation) for generation in pending)
         offer_given = hasattr(args, 'offer')
-        if self.instance_id is None and not needs_generation:
-            return
         if self.instance_id is not None and offer_given:
             if common.instance(self.instance_id, 600) is not None:
                 raise ChainStop(f'生成機 {self.instance_id} はまだ存在します。--offerを外して再開してください')
             self.clear_instance()
-            if args.train_place == 'generator' and not needs_generation:
-                return
-        needs_training = args.train_place == 'generator' and any(
-            not self.training_complete(generation) for generation in pending)
+        if self.instance_id is None and not needs_generation and not needs_training:
+            return
         if self.instance_id is not None and not needs_generation and not needs_training:
             # 残りが最後の世代の学習だけなら、生成機はすでに停止済みであり得るので接続を求めない。
             address = self.root / 'ssh-address'
@@ -625,13 +625,18 @@ class Chain:
             common.rsync_to(*self.address, f'{REMOTE}/training/gen-{generation}/', received)
         except (OSError, subprocess.SubprocessError) as error:
             raise TransportFailure('生成機からの学習結果の取得に失敗しました') from error
-        artifacts = ['train', 'removal.json']
-        for artifact in artifacts:
-            name = artifact if artifact == 'removal.json' else artifact + '/summary.json'
-            if not (received / name).is_file():
+        for name in ('train/summary.json', 'removal.json', 'logs'):
+            source = received / name
+            present = source.is_dir() if name == 'logs' else source.is_file()
+            if not present:
                 raise ChainStop(f'第{generation}世代の学習結果がそろっていません: {name}。'
                                 '本は作業機にあるので、--train-place localで再開できます')
+        logs = directory / 'training-logs'
+        logs.mkdir(exist_ok=True)
+        for source in (received / 'logs').iterdir():
+            os.replace(source, logs / source.name)
         # 古い成果物が残っていても、移動の途中で完了と判定しない。
+        artifacts = ['train', 'removal.json']
         for name in artifacts:
             destination = directory / name
             if destination.is_dir():
@@ -648,7 +653,7 @@ class Chain:
             return
         resume = '本は作業機にあるので、--train-place localで再開できます'
         if self.address is None:
-            raise ChainStop(f'学習できる生成機がありません。{resume}')
+            raise ChainStop(f'学習できる生成機がありません。--offerを指定して学習機を借りられます。{resume}')
         scale = self.teacher_scale(generation)
         training_books = self.training_books(generation)
         directory = Path(REMOTE) / 'training' / f'gen-{generation}'
@@ -691,9 +696,10 @@ class Chain:
                                           'clean': str(directory / name) if name == 'train' else None,
                                           'resume_file': str(directory / 'train/latest.npz') if name == 'train' else None,
                                           'resume_args': ['--resume', str(directory / 'train')] if name == 'train' else None})
+                        job = {'commit': commit, 'bundle': bundle, 'reference': self.args.ref, 'steps': steps}
                         with tempfile.TemporaryDirectory() as temporary:
                             path = Path(temporary) / 'job.json'
-                            path.write_text(json.dumps({'steps': steps}) + '\n')
+                            path.write_text(json.dumps(job) + '\n')
                             self.upload(path, str(directory / 'job.json.tmp'))
                         self.ssh(f'mv {directory}/job.json.tmp {directory}/job.json', 60)
                     prepared = True
@@ -943,9 +949,10 @@ def arguments(argv: list[str]) -> argparse.Namespace:
     run.add_argument('--replay-buffer-generations', required=True, type=int, choices=(1, 2), help='リプレイバッファに含める教師の世代数')
     run.add_argument('--structure', required=True, choices=('layerstack', 'simple'), help='学習するネットの構造')
     run.add_argument('--lambda', dest='mix', required=True, type=float, help='探索値の割合。0以上1以下')
-    run.add_argument('--offer', type=positive_int, help='新しく借りる出品ID。通常の再開では省略する')
+    run.add_argument('--offer', type=positive_int, help='生成機または学習機を新しく借りる出品ID。通常の再開では省略する')
     run.add_argument('--train-place', required=True, choices=('generator', 'local'),
-                     help='学習・診断をgeneratorでは生成機、localでは作業機で行う。障害後の作業機での再開はlocalを指定する')
+                     help='generatorは借りた機械、localは作業機で学習と診断を行う。'
+                          '教師がそろっていればgeneratorと--offerで学習機だけを借りられる')
     args = parser.parse_args(argv)
     if re.fullmatch(r'[0-9a-fA-F]{40}', args.commit) is None:
         parser.error('commitは40桁の16進数にしてください')

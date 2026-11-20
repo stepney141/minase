@@ -8,7 +8,11 @@ job.jsonのnetworkとnetwork_sha256は必須であり、networkを生成器の--
 job.jsonを作業の入力とし、teacher/に本、logs/に公開ログ、work/に再開用の出力と追記ログを置く。
 本ごとのwork/の内容は公開まで残し、同じ出力先と生成条件で中断後の処理を続ける。
 学習はtraining/gen-<世代>/job.jsonを読み、同じディレクトリに成果物とログを置く。
+学習のjob.jsonにはcommit、bundle、referenceが必須であり、ステップの前に指定コミットを展開してcheckout.logへ追記する。
 doneがnullでないステップは、成功と成果物を確認してfinished/<名前>を作り、再開時はこの目印で完了を判定する。
+各ステップの子プロセスの最大常駐メモリは、KiB単位でlogs/<ステップ名>.rusage.jsonへ記録する。
+training/直下のgen-*ディレクトリにdoneもexit-statusもない間は、本がなくても待ち時間を数えず、自己停止しない。
+作業機との接続が絶えて学習が終わらなければ、起動時スクリプトの絶対期限だけが機械を停止する。
 Python 3.11の標準ライブラリだけで動作し、作業機のcommon.pyは必要としない。
 """
 
@@ -134,9 +138,8 @@ def clean_published_work(root: Path) -> None:
         remove_working_book(generation / published.stem, generation / f'{published.stem}.log')
 
 
-def prepare_commit(root: Path, job: dict[str, Any], log: Any) -> Path:
-    """bundleから指定コミットを展開し、起動後の最初の本の前にビルドする。"""
-    reference = job['reference']
+def checkout_commit(root: Path, commit: str, bundle: str, reference: str, log: Any) -> Path:
+    """bundleから指定コミットを展開してHEADを照合し、作業ツリーを返す。"""
     repository = root / 'minase'
     if not repository.exists():
         subprocess.run(['git', 'init', str(repository)], check=True, stdout=log, stderr=subprocess.STDOUT)
@@ -144,15 +147,21 @@ def prepare_commit(root: Path, job: dict[str, Any], log: Any) -> Path:
                           text=True, stdout=subprocess.PIPE, stderr=log)
     if head.returncode not in (0, 1, 128):
         head.check_returncode()
-    if head.returncode or head.stdout.strip() != job['commit']:
-        subprocess.run(['git', 'fetch', job['bundle'], reference], cwd=repository,
+    if head.returncode or head.stdout.strip() != commit:
+        subprocess.run(['git', 'fetch', bundle, reference], cwd=repository,
                        check=True, stdout=log, stderr=subprocess.STDOUT)
-        subprocess.run(['git', 'checkout', '--detach', job['commit']], cwd=repository,
+        subprocess.run(['git', 'checkout', '--detach', commit], cwd=repository,
                        check=True, stdout=log, stderr=subprocess.STDOUT)
     actual = subprocess.run(['git', 'rev-parse', 'HEAD'], cwd=repository, check=True,
                             text=True, stdout=subprocess.PIPE, stderr=log).stdout.strip()
-    if actual != job['commit']:
-        raise ValueError(f'生成コミットが一致しません: {actual}')
+    if actual != commit:
+        raise ValueError(f'展開したコミットが一致しません: {actual}')
+    return repository
+
+
+def prepare_commit(root: Path, job: dict[str, Any], log: Any) -> Path:
+    """指定コミットを展開し、起動後の最初の本の前に生成器をビルドする。"""
+    repository = checkout_commit(root, job['commit'], job['bundle'], job['reference'], log)
     # HEADの更新後にビルドが中断していても、古いバイナリを再利用しない。
     subprocess.run(['cargo', 'build', '--release', '--locked', '--bin', 'minase'],
                    cwd=repository, check=True, stdout=log, stderr=subprocess.STDOUT)
@@ -233,7 +242,10 @@ def install_nvrtc(root: Path) -> Path:
 
 
 def run_training(root: Path, generation: int) -> int:
-    """世代のロックを子プロセスへ継承し、finishedの目印があるステップを飛ばす。"""
+    """ロックを子プロセスへ継承し、finishedの目印があるステップを飛ばす。
+
+    最大常駐メモリはステップが失敗しても記録し、再開でやり直した場合は最後の実行の値で上書きする。
+    """
     directory = root / 'training' / f'gen-{generation}'
     logs = directory / 'logs'
     logs.mkdir(parents=True, exist_ok=True)
@@ -246,6 +258,8 @@ def run_training(root: Path, generation: int) -> int:
             return 0
         try:
             job = json.loads((directory / 'job.json').read_text())
+            with (logs / 'checkout.log').open('a') as log:
+                repository = checkout_commit(root, job['commit'], job['bundle'], job['reference'], log)
             library = install_nvrtc(root)
             environment = os.environ.copy()
             search_path = str(library)
@@ -265,8 +279,14 @@ def run_training(root: Path, generation: int) -> int:
                     if clean.exists():
                         shutil.rmtree(clean)
                 with (logs / f'{step["name"]}.log').open('a') as log:
-                    subprocess.run(command, cwd=root / 'minase', check=True, env=environment,
-                                   stdout=log, stderr=subprocess.STDOUT, pass_fds=(lock.fileno(),))
+                    with subprocess.Popen(command, cwd=repository, env=environment, stdout=log,
+                                          stderr=subprocess.STDOUT, pass_fds=(lock.fileno(),)) as process:
+                        _, status, usage = os.wait4(process.pid, 0)
+                        # wait4で回収済みなので、Popenが再び待機しないよう終了状態を設定する。
+                        process.returncode = os.waitstatus_to_exitcode(status)
+                (logs / f'{step["name"]}.rusage.json').write_text(json.dumps({'max_rss_kib': usage.ru_maxrss}) + '\n')
+                if process.returncode:
+                    raise subprocess.CalledProcessError(process.returncode, command)
                 if done is not None:
                     if not done.is_file():
                         raise ValueError(f'ステップ{step["name"]}が成功しましたが、完了ファイルがありません: {done}')
@@ -311,7 +331,15 @@ def run_worker(root: Path) -> int:
                     prepared = generate_book(root, job, number, prepared)
                     idle_since = time.monotonic()
                     continue
-            remaining = idle_limit - (time.monotonic() - idle_since)
+            if any(directory.is_dir() and not (directory / 'done').is_file()
+                   and not (directory / 'exit-status').is_file() for directory in (root / 'training').glob('gen-*')):
+                idle_since = None
+                time.sleep(2)
+                continue
+            now = time.monotonic()
+            if idle_since is None:
+                idle_since = now
+            remaining = idle_limit - (now - idle_since)
             if remaining <= 0:
                 print('次の本が指定されないまま待ち時間の上限に達したため、自己停止します', flush=True)
                 code = stop_instance(Path('/proc/1/environ'))
