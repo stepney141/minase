@@ -87,11 +87,19 @@ KataGo（コミット`d91ea855110dae533f0aada947b2b7d78cc8a4e1`）の自己対�
 学習用の設定`cpp/configs/training/selfplay1.cfg`は、確率0.75で100 visitsの安い探索を行い（60行と61行）、安い探索の手の学習の重みを0とし（62行）、それ以外の手を600 visits（115行）で探索する。
 抽選は`cpp/program/play.cpp`の1135行で手ごとに行われ、重みが0の安い探索では、手を指す前に探索木を消さず、根に加える雑音（Dirichlet noise）も入れない（1149行から1152行）。
 論文（Wu, “Accelerating Self-Play Learning in Go,” arXiv:1902.10565）はこの方式をplayout cap randomizationと呼び、価値の学習には対局を多くすることが、方策の学習には深い探索が効くという両者の衝突を和らげるためのものと説明する。
+論文の表2では、この方式を外した学習は、同じ計算量で1,329 Eloから1,242 Eloへ下がった。
 本書は方策を学ばないが、本探索の値だけを教師とし、安い探索で対局を増やす点は同じである。
 ただし、KataGoの価値の学習は対局の結果を目標とするのに対し、minaseの教師は局面ごとの探索値であるので、同じ効果が出るかは本書の段階ゲートで確かめる。
 
 前計画が調べた将棋とチェスの生成器（[設計書の「先行実装」](archived/nnue-early-best-epoch.md#先行実装)）は、いずれも全手を同じ探索で指し、局面を書き出すかどうかだけを条件で決める。
 nnue-pytorchは、学習時に局面を飛ばす`--random-fen-skipping`で1局から使う局面を減らすが、生成の計算は減らない。
+
+本書の起案の後に行った[局面の間引きの先行例の調査](../research/position-thinning-prior-art.md)は、本書の方式に関わる例を2つ加えた。
+将棋エンジンの技巧は、自己対局の各手を確率10%で記録して勝敗を教師にするが、記録しない手も同じ探索で指すので、生成の計算は減らない。
+変則チェスであるcrazyhouseのエンジンCrazyAraの作者は、playout cap randomizationを実装して試したが、学習の標本を作る速さが落ち、悪手が増えて価値の教師の雑音も増えたと見て採らなかった（Czechの修士論文、5.4節）。
+同じ調査では、探索値を教師とするNNUEでこの方式の効果を測った例は見つからなかった。
+CrazyAraの例は、安い探索のノード数を下げるほど対局の手の質が落ち、教師の質を損なうおそれがあることを示す。
+本書は「設計判断」の表のとおり安い探索のノード数を本探索の5分の1にとどめ、効果を段階ゲートで確かめる。
 
 ## 実装フェーズ
 
@@ -176,3 +184,5 @@ masterに対し、`crates/minase/nets/nnue.bin`を候補のネットへ差し替
 - [学習率スケジュールの学習の記録（基準の教師の生成条件）](../measurements/nnue-lr-schedule/nnue-lr-schedule-training.md)
 - KataGo（コミット`d91ea855110dae533f0aada947b2b7d78cc8a4e1`）の`cpp/configs/training/selfplay1.cfg`と`cpp/program/play.cpp`
 - David J. Wu, “Accelerating Self-Play Learning in Go,” arXiv:1902.10565
+- [学習に使う局面の間引きに関する先行実装と論文の調査](../research/position-thinning-prior-art.md)
+- Johannes Czech, “Deep Reinforcement Learning for Crazyhouse,” 修士論文, TU Darmstadt, 2019（<https://ml-research.github.io/papers/czech2019deep.pdf>）

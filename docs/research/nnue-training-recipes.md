@@ -3,6 +3,8 @@
 本書のminaseに関する記述は2026年11月6日時点のものである。
 「minaseの標準学習レシピの候補」の節が先に測るとした予定の総長と書き出すネットの比較は、同日のSTCでどちらも`H0`だった（[第2世代の教師での学習率の予定と書き出すネットの比較](../measurements/nnue-generation-reset/nnue-generation-reset-gen2-cosine10.md)）。
 その後に起案した[NNUEの標準レシピv1を対局で決め、v0から世代反復をやり直す設計書](../plans/archived/nnue-standard-recipe.md)では、線形の経路の学習率、学習後の補正の要否、および直前の世代の教師の併用の3項目だけを対局で決め、ほかの学習条件は現行のまま固定する。
+本書の同じ節にある「対局で測ってから決める項目」の表が候補に挙げた「周ごとに抽選する読み飛ばし」は、2026年11月20日の[局面の間引きの先行例の調査](position-thinning-prior-art.md)で根拠が弱まった。
+この候補が根拠に挙げたStockfishが読み飛ばしを入れた理由は1回のバッチに同じ対局の手を並べないことであり、エポックごとに訓練集合の全体を並べ替えるminaseの学習器はこれをすでに満たしているからである。
 
 本書は、中将棋エンジンminaseのNNUE（着手ごとに差分で更新できる小さなニューラルネット評価関数）の標準学習レシピを開発者が決める判断材料として、強豪の学習器の学習レシピとハイパーパラメーターを一次資料で調べた調査メモである。
 資料は2026年11月5日に参照した。
@@ -431,7 +433,7 @@ minaseの過去の記録には、λ<1で[対局の勝敗を覚える](../lessons
 | 重み減衰 | 第1層と出力部の重み減衰を1e-4と0で比べる | tatara公開実験、Stockfish（因子化の層以外）、およびSaplingの前提は0か未確認である。minaseの値の根拠は記録されていない | 予定を決めた後に測る |
 | 基準の学習率 | 第1層と出力部を1e-3と5e-4で比べる。総長は上の結論に揃える | tanuki-の4分の1は判定不能、Viridithasの10倍は大敗。Stockfishの4e-4はバッチが大きい | 予定の総長と交絡するので順序を後にする |
 | 追加学習の段 | 学んだネットに、`constant:0.1`を5周足した候補と比べる | tanuki-とStockfishとViridithasに採用の記録がある。同じ予定の下限の区間と重なる | 再開時に予定を変えられないので、学習器に重みだけを読む引数が要る。下限の結果を見てから決める |
-| 局面の間引き | 周ごとに抽選する読み飛ばしを実装してから、4局面に1局面の予定を同じ更新回数で比べる。固定の部分集合での予備的な比較は`--train-subsample positions:4:<r>`でできる | StockfishとFairy-Stockfishは既定で使う。minaseには同じ局面数なら多くの対局から疎に採るほうが検証損失が低い記録がある（[記録](../measurements/nnue-early-best-epoch/nnue-train-subsample.md)） | [記録の間引きの設計書](../plans/sparse-teacher-recording.md)と重なるので、どちらで扱うかを先に決める |
+| 局面の間引き | 周ごとに抽選する読み飛ばしを実装してから、4局面に1局面の予定を同じ更新回数で比べる。固定の部分集合での予備的な比較は`--train-subsample positions:4:<r>`でできる | Stockfishは本番のレシピで使い（学習器の既定は0）、Fairy-Stockfishの学習器は既定で使う。minaseには同じ局面数なら多くの対局から疎に採るほうが検証損失が低い記録がある（[記録](../measurements/nnue-early-best-epoch/nnue-train-subsample.md)） | [記録の間引きの設計書](../plans/sparse-teacher-recording.md)と重なるので、どちらで扱うかを先に決める |
 | 損失の形 | 二値交差エントロピーと、sigmoid後の差の2乗を比べる | [tatara調査](tatara-nnue-transfer.md)の第5段階を参照 | 学習器の改修が要る |
 | 最適化手法 | Rangerと比べる | 同じ調査の第5段階を参照。StockfishはRanger系からAdamWへ移り、tataraとBulletOuの差は交絡している | 実装の費用が大きいので後に置く |
 | 量子化を考慮した学習 | 実数の順伝播へ丸めを入れて勾配を素通しする形で比べる | Stockfishは既定で有効で、導入時の採用の記録がある（[313ea4ab](https://github.com/official-stockfish/Stockfish/commit/313ea4ab0410872e99f0668c74edc7e49e9a0b6a)）。隠れ層を持つ現行の構成では対象がある（[tatara調査](tatara-nnue-transfer.md)の修正の節） | 学習器の改修が要るので予定の後に置く。量子化方式の変更と同時の記録なので、中将棋の構成での利得は分からない |

@@ -66,7 +66,7 @@ AlphaZeroの論文は「Illegal moves are masked out by setting their probabilit
 
 **lczero-training。** 旧パイプラインの`tf/chunkparser.py`は、`sample_record()`が「skips most training records to avoid sampling over-correlated positions」と説明し（L34-35）、L424-427で局面を確率1/32で採る。
 新パイプラインの`csrc/loader/stages/chunk_unpacker.cc`は、`position_sampling_rate`と`position_count`のどちらか一方の明示を求め（L140-143）、対局ごとに固定した乱数種で局面を互いに素な部分集合に分ける（L30-65）。
-lc0の開発wikiの「Large Elo fluctuations starting from ID253」は、2018年の不調の最大の要因を過学習とし、同じ対局から多くの局面を抽出したことと、シャッフルのバッファが小さすぎたことを挙げる（WebFetchの要約を通して読んだので、字句は原文と照合していない）。
+lc0の開発wikiの「[Large Elo fluctuations starting from ID253](https://lczero.org/dev/wiki/large-elo-fluctuations-starting-from-id253/)」は、2018年の不調の最大の要因を過学習とし、同じ対局から多くの局面を抽出したことと、シャッフルのバッファが小さすぎたことを挙げる（2026年11月20日に原文で照合した）。
 
 **Leela Zero。** `training/tf/parse.py` L44-46は`DOWN_SAMPLE = 16`を定め、「This helps improve the spread of games in the shuffle buffer.」と理由を書く。
 8通りの対称変換を乱択で施す（`chunkparser.py` L325-327）。
