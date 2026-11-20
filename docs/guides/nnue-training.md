@@ -49,7 +49,7 @@ minase-trainer nnue train layerstack \
   --lambda 1.0 \
   --batch 16384 --batches-per-superbatch <B> --superbatches <S> \
   --lr-schedule cosine:<T>:0.027 --validation-superbatches 1 --validation-patience 2 \
-  --seed 1 --device cuda --threads <スレッド数>
+  --seed 1 --device cuda --threads 16
 
 # 診断
 minase-trainer diag nnue-removal \
@@ -63,7 +63,7 @@ minase-trainer diag nnue-removal \
 - 訓練局面数をM、1エポックの更新回数をU＝ceil(M / 16,384)とし、検証間隔にはB＝ceil(U / 2)更新を使う。間引く場合のMには抽出後の局面数を用いる。ceilは整数への切り上げを表す。Mは同じ教師の `config.json` にある `preprocessing.training_positions`、間引いた場合は `preprocessing.train_subsample.training_positions_after` で確認する。初めて使う教師では約5%の対局を検証に充てるため、生成時の適格局面数の95%に訓練局面の抽出率を掛けて見積もり、学習記録の `epochs` で実際の間隔を確認する。
 - 学習率の減衰期間は、従来と同じ更新回数（第1〜4世代は390,656回、第5世代は488,320回）に揃える。その回数をBで割った値がTであり、S＝ceil(T)を `--superbatches` の上限とする。例えば訓練79,458,082局面ならU＝4,850、B＝2,425となり、第1世代ではT≃161.095、S＝162となる。
 - 更新に使える局面数が限られる場合は、すべての棋譜から局面を抽出する。例えば `--train-subsample positions:4:0` は各訓練局面を約1/4の割合で採り、検証対局をすべて残す。追加で生成する教師は異なるシードの対局から集める。全局面を使える場合に間引くことの棋力上の利点は未確認である。
-- `--threads`の実績は、RTX 3060 Tiを載せた手元の作業機で4、RTX 5090を載せたvast.aiの生成機で32である。
+- `--threads`は教師のバッチを組むスレッドの数であり、標準は16とする。基準とした作業機（RTX 3060 Ti、Core Ultra 7 265KFの20コア）では、4スレッドではバッチの供給が律速で毎秒約70万局面にとどまり、16スレッドで毎秒約106万局面になる。物理コア数が18に満たない機械では、物理コア数から2を引いた数を使う。GPUかCPUがこの作業機より強力な機械では、[学習する](#学習する)の「スレッド数を決める」の手順で16以上のスレッド数から選ぶ。RTX 5090を載せたvast.aiの生成機の実績は32である。
 - 学習で出力された`nnue.bin`については、ファイル全体のSHA-256を求め、NASの`/mnt/synology_nas/minase/nnue/nets/`に`<SHA-256の16進数>.bin`の名前で置く。エンジンには、オプション`EvalFile`でこのファイルを渡す。gitにはコミットしない。
 - 上のコマンド例では、診断は駒除去差分だけを示した。採否の測定の前に、[残りの2つの診断](#学習した重みを診断する)も行う。
 
@@ -162,6 +162,23 @@ done
 
 - 本番では標準レシピのコマンドに全入力を並べ、`--time-limit-hours`で累積時間の上限を決める。
 - 測定機を他の作業と共用するときは、`--threads`を明示して他の作業の分のコアを残す。
+
+**スレッド数を決める**
+
+学習の速さは、教師からバッチを組んで供給する処理とGPUでの更新のうち遅いほうで決まり、供給はスレッド数にほぼ比例して速くなる。
+GPUかCPUが基準の作業機より強力な機械では、本番の前にスレッド数を変えながら次の短い学習を走らせ、学習の速さを比べる。
+`--threads`には、16から8ずつ増やした値を、物理コア数から2を引いた数を上限として順に渡す。
+
+```sh
+minase-trainer nnue train layerstack \
+  --data <教師4ファイル> --rules <教師の規則セット> --teacher-cp-per-logit <K_t> \
+  --lambda 1.0 --batch 16384 --superbatches 1 --batches-per-superbatch 2000 \
+  --lr-schedule cosine:1:0.027 --validation-superbatches 1 --seed 1 --device cuda \
+  --threads <N> --output-dir <新規の出力先>
+```
+
+- 出力先の`training.jsonl`から、`superbatch`が1の行にある`training_positions_per_second`を読み、その最大値の97%以上になる最も小さいスレッド数を本番に使う。基準の作業機では1回が約1分（前処理15秒、学習31秒）で、16スレッドで毎秒1,055,979局面だった。
+- 測る間は、同じ機械のBotや対局の測定を止める（[教訓](../lessons/compare-trainer-speed-with-co-resident-load-stopped-and-gpu-bound-threads.md)）。
 
 **学習の長さと書き出すネット**
 
@@ -323,7 +340,7 @@ systemd-run --user --unit=<サービス名> --setenv=PATH="$PATH" -p WorkingDire
 - `--gen0-network`には、`nnue export-handcrafted`で書き出したv0のネットを渡す。スクリプトは、このネットを第0世代のネットとして`gen-0/generation.json`に記録する。
 - 第1世代の教師が`--calibration-books`の本数だけそろうと、スクリプトは番号の小さいほうからその本数の教師で`data calibrate`を実行し、結果を実行ディレクトリの`calibration.json`に置く。第1世代の最初の4本からK_tを求める標準の手順では、`--calibration-books`に4を渡す。
 - スクリプトは、較正の結果の`teacher_cp_per_logit`をK_tとして`gen-0/generation.json`に書き、以後の世代の記録にも同じ値を書く。`classes`が1項目でないか、`at_search_bound`が`true`なら止まる。
-- 学習には、記録したK_tを`--teacher-cp-per-logit`に、規則セット`lishogi`を`--rules`に渡す。スクリプトの`--batch`、`--batches-per-superbatch`、`--superbatches`、`--validation-superbatches`、`--validation-patience`、`--train-subsample`、`--device`、`--lr-schedule`、および`--lambda`は学習器の同名の引数へ、`--train-seed`と`--train-threads`は学習器の`--seed`と`--threads`へ渡す。
+- 学習には、記録したK_tを`--teacher-cp-per-logit`に、規則セット`lishogi`を`--rules`に渡す。スクリプトの`--batch`、`--batches-per-superbatch`、`--superbatches`、`--validation-superbatches`、`--validation-patience`、`--train-subsample`、`--device`、`--lr-schedule`、および`--lambda`は学習器の同名の引数へ、`--train-seed`と`--train-threads`は学習器の`--seed`と`--threads`へ渡す。`--train-threads`には、標準レシピの`--threads`と同じく16か、[学習する](#学習する)の「スレッド数を決める」の手順で選んだ値を渡す。
 - 学習の`summary.json`の`status`が`candidate`でなければ止まる。学習の後は、その世代の教師だけで駒除去差分の診断を行い、報告を`gen-<N>/removal.json`に書く。
 - 最後に、ネットをSHA-256の名前で`--network-store`へ置き、`setoption name RuleSet value lishogi`、`setoption name EvalFile value <ネット>`、`isready`の後の`bench depth <--bench-depthの値>`が完走することを確かめてから、`gen-<N>/generation.json`に世代の完了を記録する。
 
@@ -549,6 +566,7 @@ LayerStackの値は`nnue/layerstack/`に、Simpleの値は`nnue/simple/`にあ�
 | 教師の勝率尺度 | 第1世代の教師の最初の4本から`data calibrate`で一度だけ求めたK_tを、全世代の学習に`--teacher-cp-per-logit`で明示して渡す | 調べた13件の実装のうち11件が、手で決めた定数か一度推定して固定した値を使う（[調査メモ](../research/win-rate-scale-k-prior-art.md)）。tataraの形式は実数の勝率尺度の欄を持たないので、前の世代のネットから引き継がず引数で渡す（[ADR](../adr/separate-the-nnue-teacher-win-rate-scale-from-the-output-scale.md)） |
 | 重み減衰 | どの層にも掛けない | nnue-pytorch、tatara、tanuki-、variant-nnue-pytorchが0である（[調査メモ](../research/nnue-training-recipes.md)） |
 | バッチ | 16,384局面 | 先行の多くと同じ |
+| 学習のスレッド数 | 16。GPUかCPUが基準の作業機より強力な機械では、短い学習で速さを比べて選ぶ | 基準の作業機（RTX 3060 Ti、20コア）では、4スレッドは供給が律速で毎秒約70万局面、16スレッドは毎秒約106万局面だった（[記録](../measurements/adhoc/layerstack-backward-coalesce.md)） |
 | 検証 | 約0.5エポックごとに全検証対局で測る。 | 第2世代の旧設定では初回の更新後検証が8.29エポックだった。改善から悪化に転じる時期を見るために間隔を短くする。 |
 
 ## 詳細の置き場所
