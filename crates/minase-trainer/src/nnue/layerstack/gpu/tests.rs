@@ -447,6 +447,34 @@ fn equivalence_inputs_include_both_views_rotations_sentinels_and_lion_flags() {
 }
 
 #[test]
+fn equivalence_inputs_include_a_multi_segment_row_with_all_view_rotation_pairs() {
+    let b = batch(4096);
+    let inverse = b.first_layer_inverse();
+    let mut max_segments = 0;
+    let mut most_combinations = 0;
+    for (row, bounds) in inverse.segment_starts().windows(2).enumerate() {
+        let segments = bounds[1] - bounds[0];
+        max_segments = max_segments.max(segments);
+        if segments >= 3 {
+            let start = inverse.starts()[row] as usize;
+            let end = inverse.starts()[row + 1] as usize;
+            let combinations = inverse.entries()[start..end]
+                .iter()
+                .fold(0_u8, |mask, &word| {
+                    let view = (word >> 9) & 1;
+                    let rotation = word & 1;
+                    mask | (1 << (2 * view + rotation))
+                });
+            most_combinations = most_combinations.max(combinations.count_ones());
+        }
+    }
+    assert_eq!(
+        most_combinations, 4,
+        "view/rotation combinations on a row with at least 3 segments (max segments: {max_segments})"
+    );
+}
+
+#[test]
 #[ignore = "requires a CUDA GPU and NVRTC"]
 fn gpu_activation_derivatives_at_zero_and_one_match_reference() {
     let device = Device::new(0).unwrap();
