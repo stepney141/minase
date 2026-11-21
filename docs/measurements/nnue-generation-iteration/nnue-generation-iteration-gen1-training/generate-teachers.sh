@@ -20,7 +20,7 @@ commit=$(cat "$D/iteration-commit")
 exec systemd-run --user --unit="nnue-generation-iteration-$name" --collect \
   --setenv=PATH="$PATH" -p WorkingDirectory="$W" \
   -p StandardOutput=append:"$D/$name.log" -p StandardError=append:"$D/$name.log" \
-  python3 scripts/vast/teacher_generation.py run --run-dir "$D/$name" \
+  python3 scripts/vast/nnue/teacher_generation.py run --run-dir "$D/$name" \
   --repo "$W" --ref refs/nnue-generation-iteration/iteration --commit "$commit" \
   --minase-bin "$D/bin/minase" --eval-file "$network" \
   --generation "$generation" --first-book "$first" --last-book "$last" \

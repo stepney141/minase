@@ -4,7 +4,7 @@
 使い方: python3 generate_auto.py <世代N> <最後の番号> <教師の生成に使うネット> <UTCの絶対期限> <費用の上限（米ドル）> <除外するmachine_id（カンマ区切り）>
 systemd-run --userのサービスとして起動し、出力をログへ追記させる。
 
-制御スクリプト scripts/vast/teacher_generation.py は、合う出品がなくなると終了する。
+制御スクリプト scripts/vast/nnue/teacher_generation.py は、合う出品がなくなると終了する。
 本スクリプトは、その終了のたびに次の順で制御スクリプトを起動し直す（2026年11月20日の利用者の決定）。
 
 1. オンデマンドで、時間単価1.5米ドル以下の出品を借りる。
@@ -115,7 +115,7 @@ def run_leg(generation: int, first: int, last: int, mode: str, price: str, netwo
     events = run_dir / 'events.jsonl'
     before = len(events.read_text().splitlines()) if events.is_file() else 0
     commit = (ROOT / 'iteration-commit').read_text().strip()
-    command = ['python3', 'scripts/vast/teacher_generation.py', 'run', '--run-dir', str(run_dir),
+    command = ['python3', 'scripts/vast/nnue/teacher_generation.py', 'run', '--run-dir', str(run_dir),
                '--repo', str(WORKTREE), '--ref', 'refs/nnue-generation-iteration/iteration', '--commit', commit,
                '--minase-bin', str(ROOT / 'bin/minase'), '--eval-file', network,
                '--generation', str(generation), '--first-book', str(first), '--last-book', str(last),

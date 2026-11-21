@@ -23,7 +23,7 @@ commit=$(cat "$D/iteration-commit")
 exec systemd-run --user --unit="nnue-generation-iteration-gen$generation-train" --collect -p Nice=19 \
   --setenv=PATH="$PATH" -p WorkingDirectory="$W" \
   -p StandardOutput=append:"$D/gen$generation-train.log" -p StandardError=append:"$D/gen$generation-train.log" \
-  python3 scripts/vast/generation_chain.py run --run-dir "$D" --repo "$W" \
+  python3 scripts/vast/nnue/generation_chain.py run --run-dir "$D" --repo "$W" \
   --gen0-network /mnt/synology_nas/minase/nnue/nets/b2a0a450106bb3311f8ffe94f3bee17501347dabe93ecbc499827c66e07f0445.bin \
   --network-store /mnt/synology_nas/minase/nnue/nets \
   --minase-bin "$D/bin/minase" --trainer-bin "$D/bin/minase-trainer" \
