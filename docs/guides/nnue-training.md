@@ -37,7 +37,7 @@ P型を同じ教師ファイル30本で学習したところ、2.83エポック�
 1エポックは、訓練集合をひととおり学ぶ期間である。superbatchは、指定した回数のバッチ更新をまとめる単位である。
 検証は約0.5エポックごとに行う。更新後の最初の検証から最小損失を記録し、2回続けて最小値を更新しなければ学習を止める。同率なら先の重みを選ぶ。
 選択に使うのは量子化前の勝率の平均二乗誤差であり、選んだ重みを整数化した後、別の開始局面を使った対局で棋力を判定する。
-前の世代のネットで教師を生成して次の世代のネットを学習する世代反復では、`scripts/vast/generation_chain.py`がこの手順を続けて実行する（[連続生成スクリプトで世代を作る](#連続生成スクリプトで世代を作る)）。
+前の世代のネットで教師を生成して次の世代のネットを学習する世代反復では、`scripts/vast/nnue/generation_chain.py`がこの手順を続けて実行する（[連続生成スクリプトで世代を作る](#連続生成スクリプトで世代を作る)）。
 
 **コマンド**
 
@@ -303,7 +303,7 @@ minase-trainer diag nnue-moves \
 ### vast.aiで教師ファイルを生成する
 
 教師ファイルは、計算機を時間単位で借りられる市場vast.aiの中断可能インスタンスを最低入札額で借りて生成する（[ADR](../adr/rent-interruptible-instances-at-the-minimum-bid-for-teacher-generation.md)）。
-作業機の制御スクリプト`scripts/vast/teacher_generation.py`が生成機を1台ずつ借り、確定した塊を60秒おきに回収し、生成機が止められたら別の機械を借りて続きから生成する（[ADR](../adr/generate-teacher-files-on-one-rented-machine-and-continue-from-collected-chunks-on-another.md)）。
+作業機の制御スクリプト`scripts/vast/nnue/teacher_generation.py`が生成機を1台ずつ借り、確定した塊を60秒おきに回収し、生成機が止められたら別の機械を借りて続きから生成する（[ADR](../adr/generate-teacher-files-on-one-rented-machine-and-continue-from-collected-chunks-on-another.md)）。
 仕様はスクリプトのdocコメントにある。
 
 借りる前に`vastai show user`が残高を返すことを確かめ、2段階認証の要求で失敗すれば`vastai tfa login`でログインし直す。
@@ -313,7 +313,7 @@ minase-trainer diag nnue-moves \
 
 ```sh
 systemd-run --user --unit=<サービス名> --setenv=PATH="$PATH" -p WorkingDirectory=<worktree> \
-  /bin/bash -c "exec python3 scripts/vast/teacher_generation.py run --run-dir <実行ディレクトリ> \
+  /bin/bash -c "exec python3 scripts/vast/nnue/teacher_generation.py run --run-dir <実行ディレクトリ> \
     --repo <リポジトリ> --ref <生成コミットを含む参照> --commit <生成コミット> --minase-bin <検査に使うminase> \
     --eval-file <教師生成に使うネット> \
     --generation <N> --first-book 0 --last-book <最後の番号> --seed-base <番号0のシード> --seed-book-step 100000 \
@@ -332,8 +332,8 @@ systemd-run --user --unit=<サービス名> --setenv=PATH="$PATH" -p WorkingDire
 
 ### 連続生成スクリプトで世代を作る
 
-連続生成スクリプト`scripts/vast/generation_chain.py`は、世代ごとに、足りない教師の生成、教師の検査、学習、駒除去差分の診断、ネットの保管、およびエンジンでの動作確認を続けて行う。
-引数の一覧は`python3 scripts/vast/generation_chain.py run --help`で確かめ、標準レシピv3では上記の検証間隔と停止条件を渡す。1回の実行で指定できるB、T、Sは1組なので、教師量が変わる場合は世代ごとに計算して実行する。世代反復での求め方と世代ごとの見込みの値は、[世代反復の設計書](../plans/nnue-generation-iteration.md#世代の手順)にある。
+連続生成スクリプト`scripts/vast/nnue/generation_chain.py`は、世代ごとに、足りない教師の生成、教師の検査、学習、駒除去差分の診断、ネットの保管、およびエンジンでの動作確認を続けて行う。
+引数の一覧は`python3 scripts/vast/nnue/generation_chain.py run --help`で確かめ、標準レシピv3では上記の検証間隔と停止条件を渡す。1回の実行で指定できるB、T、Sは1組なので、教師量が変わる場合は世代ごとに計算して実行する。世代反復での求め方と世代ごとの見込みの値は、[世代反復の設計書](../plans/nnue-generation-iteration.md#世代の手順)にある。
 標準レシピに関わる引数と動作は次のとおりである。
 
 - `--structure layerstack`はP型の学習器を、`--structure simple`はHalfKP_vmの学習器を選ぶ。

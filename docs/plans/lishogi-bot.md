@@ -31,7 +31,7 @@ minaseを、lishogiのBotアカウントとして人間および他のBotと対�
 本マイルストーンでは、次の作業を行う。
 
 - 規則R1の反復裁定へ、lishogiの規則ライブラリscalashogiが実装する前提条件を取り込み、chu-shogi.md、`crates/minase-core/src/game/repetition/r1.rs`、`crates/minase-core/src/game/adjudication/`、および`crates/minase-core/src/game/referee.rs`を更新する。
-- lishogiの実対局のうち、この前提条件で裁定が分かれる対局をリプレイ照合のフィクスチャへ追加し、取得スクリプト`scripts/fetch_lishogi_replays.py`の初期局面の扱いを直す。
+- lishogiの実対局のうち、この前提条件で裁定が分かれる対局をリプレイ照合のフィクスチャへ追加し、取得スクリプト`scripts/lishogi/fetch_lishogi_replays.py`の初期局面の扱いを直す。
 - 固定した版のLishogi-Botとminaseのmasterを1つのDockerイメージにまとめるDockerfile、ビルドと起動を行うcompose定義、minase用の設定ファイル、および運用手順を、別リポジトリ`minase-lishogi-bot`に置く。
 - Botアカウントの作成と昇格、認証トークンの管理、およびエンジンバイナリの固定手順を定める。
 - 非レート対局とレート対局の2段階で公開運用し、対局記録の事後照合で異常0件を確認する。
@@ -124,7 +124,7 @@ R1の履歴は、直前の不可逆手からの可逆手の数を持ち、対局
 ### 検証
 
 上記3局をリプレイ照合のフィクスチャへ追加し、終局裁定がlishogiと一致することを確認する。
-追加は`scripts/fetch_lishogi_replays.py`の対象棋譜へ加えて再生成する。
+追加は`scripts/lishogi/fetch_lishogi_replays.py`の対象棋譜へ加えて再生成する。
 このスクリプトはlishogi APIの現行の欄名`initialSfen`を読んで初期局面をフィクスチャへ格納し、`crates/minase-core/tests/lishogi_replay.rs`はその局面から再生を始める。
 uy7y6mP6は標準初期局面から始まり、9手目に同一局面が4回目に現れるが可逆手が8手しかないため裁定されず、128手目の王駒捕獲で終わる。
 EHUTJJu4とA4EO2swaは4欄のSFENで与えられる途中局面から始まり、双方のじっとの往復で可逆手12手目に裁定される。

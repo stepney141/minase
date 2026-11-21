@@ -842,7 +842,7 @@ class ResumeTests(RunnerCase):
 class RemoteTests(unittest.TestCase):
     def test_vast_helpers_load_from_the_repository_and_require_the_file(self):
         repository = Path(__file__).resolve().parents[4]
-        self.assertEqual(Path(load_vast_common().__file__), repository / "scripts/vast/common.py")
+        self.assertEqual(Path(load_vast_common().__file__), repository / "scripts/vast/common/common.py")
         with tempfile.TemporaryDirectory() as directory:
             absent = Path(directory) / "tools/train/zero/minase_zero/runner.py"
             with patch.object(runner_module, "__file__", str(absent)), self.assertRaises(FileNotFoundError):

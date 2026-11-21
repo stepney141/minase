@@ -28,7 +28,7 @@ jobs:
         id: meta
         env:
           TAG: ${{ github.ref_name }}
-        run: python3 scripts/release_checks.py resolve-tag "$TAG" --github-output "$GITHUB_OUTPUT"
+        run: python3 scripts/release/release_checks.py resolve-tag "$TAG" --github-output "$GITHUB_OUTPUT"
 
       - uses: dtolnay/rust-toolchain@stable
         with:
@@ -51,7 +51,7 @@ jobs:
       - name: Verify minase package contents
         if: steps.meta.outputs.crate == 'minase'
         run: |
-          python3 scripts/release_checks.py check-package-nets
+          python3 scripts/release/release_checks.py check-package-nets
           # minase-core may not be published to crates.io yet when both tags are pushed,
           # so packaging skips registry resolution here and leaves `cargo publish` manual.
           cargo package -p minase --locked --no-verify
@@ -60,7 +60,7 @@ jobs:
         env:
           TAG: ${{ github.ref_name }}
           CHANGELOG: ${{ steps.meta.outputs.changelog }}
-        run: python3 scripts/release_checks.py extract-notes "$CHANGELOG" "$TAG" > release-notes.md
+        run: python3 scripts/release/release_checks.py extract-notes "$CHANGELOG" "$TAG" > release-notes.md
 
       - name: Create draft GitHub Release
         env:

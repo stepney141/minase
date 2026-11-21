@@ -83,7 +83,7 @@ HalfKP_vmの世代反復は、本書でP型の評価関数の癖をつかんだ�
 | [ネットの外部ファイル化](archived/nnue-external-network-file.md) | エンジンがネットをUSIのオプション`EvalFile`で外部のファイルから読み、ファイル全体のSHA-256を報告すること。教師生成と連続生成のスクリプトがネットのファイルを生成機へ転送し、世代のネットをgitにコミットしないこと。対局の実行器が候補と基準に別々のネットを渡し、SHA-256を記録して照合すること。 |
 | [tatara化とHalfKP_vm](archived/nnue-tatara-framework-and-halfkp-vm.md) | P型を、tataraのLayerStackおよびPSQTの構造とtataraの形式で学び、書き出すこと。v0のネットを書き出すこと。学習器が教師の勝率尺度K_tと規則セットを引数で受け取ること。探索用駒価値をコード上の定数とすること。HalfKP_vmをいつでも使える状態にしていること。 |
 
-本書は、外部ファイル化とtatara化の成果に加えて、[標準レシピv1の設計書](archived/nnue-standard-recipe.md)が改めた学習器と教師の生成器、連続生成スクリプト`scripts/vast/generation_chain.py`、および[中断可能な計算機での教師生成の設計書](archived/interruptible-teacher-generation.md)が作った制御スクリプト`scripts/vast/teacher_generation.py`を使う。
+本書は、外部ファイル化とtatara化の成果に加えて、[標準レシピv1の設計書](archived/nnue-standard-recipe.md)が改めた学習器と教師の生成器、連続生成スクリプト`scripts/vast/nnue/generation_chain.py`、および[中断可能な計算機での教師生成の設計書](archived/interruptible-teacher-generation.md)が作った制御スクリプト`scripts/vast/nnue/teacher_generation.py`を使う。
 標準レシピv1の設計書と、中断可能な計算機での教師生成の設計書は、どちらも完了し、masterへ統合されている。
 検証損失が最小だった時点の重みを選んで書き出す学習器の引数`--validation-patience`と、この引数を学習器へ渡す連続生成スクリプトの引数も、masterに入っている。
 生成機と学習機は反復のコミットから生成器と学習器をビルドするので、反復のコミットは前提の設計書の変更をすべて含まなければならない。

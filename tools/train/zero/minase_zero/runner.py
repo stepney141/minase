@@ -12,7 +12,7 @@ generation-commitとtrainer-commitはそれぞれ40桁の16進数字で指定す
 --minaseは作業機で集計に使う実行ファイルを指定する。
 NASのrootと借りた機械の作業場所は同じ相対パスを使い、接続と転送は1本ずつ実行する。
 Colab機にはcolab sshを中継にして接続する。
-vast.aiでは起動時にscripts/vast/common.pyのssh_addressで接続先を1回だけ照会し、専用の鍵~/.ssh/id_vastaiで直接接続する。
+vast.aiでは起動時にscripts/vast/common/common.pyのssh_addressで接続先を1回だけ照会し、専用の鍵~/.ssh/id_vastaiで直接接続する。
 
 最初のサイクルの前にGPUとCPUを1回照会し、全GPUの機種名とメモリ容量が同じであることを確かめる。
 GPUの枚数をN、cpusetのCPU数とcgroupのCPU割当てを周期で割って切り捨てた値の小さいほうをCとする。
@@ -410,7 +410,7 @@ def seed_registration(ledger: Path, name: str, seed: int, games: int) -> dict:
 
 def load_vast_common():
     """リポジトリ内のvast.ai操作モジュールを、ファイルの位置から読み込む。"""
-    path = Path(__file__).resolve().parents[4] / "scripts/vast/common.py"
+    path = Path(__file__).resolve().parents[4] / "scripts/vast/common/common.py"
     spec = importlib.util.spec_from_file_location("minase_zero_vast_common", path)
     if spec is None or spec.loader is None:
         raise RuntimeError(f"cannot load vast.ai helpers: {path}")

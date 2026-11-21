@@ -69,7 +69,7 @@ MCTSを対局させる手順は、同じ手引きの「エンジンの指定方�
 フェーズ2以降は、強化学習の[2回目の実行](alphazero-rl-2.md)で育つネットに依存する。
 2回目の実行は、2026年11月13日の時点で利用者の承認を待っている。
 
-借りる機械の操作は、[借りる機械の操作の手引き](../guides/alphazero-machines.md)と`scripts/vast-spsa/`に従う。
+借りる機械の操作は、[借りる機械の操作の手引き](../guides/alphazero-machines.md)と`scripts/vast/spsa/`に従う。
 GPUを持つ開発用の機械（以下作業機、GPUはRTX 3060 Ti 8 GB）で行う対局の測定は、[NNUEの世代反復のやり直しの計画](nnue-generation-iteration.md)が作業機で行う対局と重ならないように順番を調整する。
 NNUEは、αβ探索の評価関数である。
 
@@ -184,7 +184,7 @@ lc0は根でも内部と同じ係数を使い、囲碁のエンジンKataGoは�
 SPSAの対局は、1手の探索回数を固定して行う（`--each nodes=N`）。
 固定の回数なら、機械の速さによらず1手の探索量が同じになり、借りた機械で持ち時間を換算する仕組みが要らない。
 αβ探索のSPSAは持ち時間で対局させたが、その[ADR](../adr/run-spsa-on-rented-machines-with-nps-scaled-time-controls.md)が固定のノード数を退けた理由は「時間管理の係数を調整できない」ことであり、本書の4つの係数には当てはまらない。
-持ち時間で対局させる場合は、いまの`scripts/vast-spsa/`がαβ探索の`bench depth 9`の速度で換算の比を測るので（`scripts/vast-spsa/remote.py`の`bench`）、MCTSの毎秒のシミュレーション数で比を測る仕組みを新しく作ることになる。
+持ち時間で対局させる場合は、いまの`scripts/vast/spsa/`がαβ探索の`bench depth 9`の速度で換算の比を測るので（`scripts/vast/spsa/remote.py`の`bench`）、MCTSの毎秒のシミュレーション数で比を測る仕組みを新しく作ることになる。
 
 ### 速度差の確認
 
@@ -332,16 +332,16 @@ c_baseの2つと根のFPUの係数は表に入れず、`PuctConfig::default`の�
 
 ### 借りる機械の道具
 
-フェーズ2の後に利用者が機械を借りると決めた場合に限り、`scripts/vast-spsa/`をMCTSに対応させる。
+フェーズ2の後に利用者が機械を借りると決めた場合に限り、`scripts/vast/spsa/`をMCTSに対応させる。
 変更は次のとおりである。
 
 - セッションの設定（`session.toml`）で、αβ探索とMCTSのどちらの方式かを明示の欄で区別し、方式ごとに必須の欄を検査する。欠けた欄を補わない。
-- MCTSの設定には、起動引数の配列、固定のUSIオプションの配列、ネットのパスとSHA-256、固定の回数N、同時対局数、フェーズ2の試走で測った処理量q、および所要時間の上限の時間数を持たせる。上限の時間数は24か、フェーズ2で利用者が決めた値であり、総ペア数をqで割った見込みが上限を超えれば本番を始めない。いまの設定の書き出し（`scripts/vast-spsa/launch.py`の`write_session`）は単純な値しか扱わないので、配列にも対応させる。
-- MCTSでは、持ち時間の換算に使う測定機の速度`local_nps`を要求しない。CPUとメモリから同時対局数を求める処理（`scripts/vast-spsa/remote.py`の`concurrency`）、αβ探索の`bench`、および持ち時間と所要時間の換算（同じファイルの`sizing`）を省き、フェーズ2で選んだ同時対局数と`nodes=N`をそのまま渡す。
+- MCTSの設定には、起動引数の配列、固定のUSIオプションの配列、ネットのパスとSHA-256、固定の回数N、同時対局数、フェーズ2の試走で測った処理量q、および所要時間の上限の時間数を持たせる。上限の時間数は24か、フェーズ2で利用者が決めた値であり、総ペア数をqで割った見込みが上限を超えれば本番を始めない。いまの設定の書き出し（`scripts/vast/spsa/launch.py`の`write_session`）は単純な値しか扱わないので、配列にも対応させる。
+- MCTSでは、持ち時間の換算に使う測定機の速度`local_nps`を要求しない。CPUとメモリから同時対局数を求める処理（`scripts/vast/spsa/remote.py`の`concurrency`）、αβ探索の`bench`、および持ち時間と所要時間の換算（同じファイルの`sizing`）を省き、フェーズ2で選んだ同時対局数と`nodes=N`をそのまま渡す。
 - 機械の照会の条件を、CPUのスレッド数ではなく、GPU1枚、GPUの機種、メモリ、および空きのCPUにする。
 - ネットを転送し、ONNX Runtime、CUDA、およびTensorRTを`tools/train/zero/setup.sh`で導入し、本番の前にTensorRTのエンジンのキャッシュを作る。
-- 再開時の照合（`scripts/vast-spsa/remote.py`の`check_manifest`）に、起動引数、固定のUSIオプション、ネット、および固定の回数を加える。
-- 受け取った結果の`apply`の検査（`scripts/vast-spsa/fetch.py`の`validate_result`）が、MCTSでは`crates/minase/src/search/mcts/params.rs`を対象にする。
+- 再開時の照合（`scripts/vast/spsa/remote.py`の`check_manifest`）に、起動引数、固定のUSIオプション、ネット、および固定の回数を加える。
+- 受け取った結果の`apply`の検査（`scripts/vast/spsa/fetch.py`の`validate_result`）が、MCTSでは`crates/minase/src/search/mcts/params.rs`を対象にする。
 - 所要時間の見込みは、αβ探索の測定機の実績から得た1ペア9.05秒の固定値（[SPSAの手引き](../guides/spsa.md)の第4節の3,000ペアで27,138秒）ではなく、試走で測ったqから求める。
 
 1つのセッションで複数のGPUを使う仕組みは、GPU1枚の処理量を測ってから必要かを判断する。
@@ -380,7 +380,7 @@ SPSAの値を反映すると既定値が範囲の中を動くので、既定値�
 ### フェーズ3　借りる機械の道具
 
 利用者が機械を借りると決めた場合だけ行う。
-「借りる機械の道具」の節の変更を実装し、`scripts/vast-spsa/test_spsa.py`に、方式ごとの設定の検査、ネットの転送、引数の受け渡し、再開時の不一致、および反映する表の選択の試験を加える。
+「借りる機械の道具」の節の変更を実装し、`scripts/vast/spsa/test_spsa.py`に、方式ごとの設定の検査、ネットの転送、引数の受け渡し、再開時の不一致、および反映する表の選択の試験を加える。
 
 ### フェーズ4　本番のセッション
 

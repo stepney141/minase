@@ -4,7 +4,7 @@
 //! 棋譜idは空白を含まない空でない文字列で、ファイル内で重複しない。
 //! `initialSfen`欄はnullでも認めず、`status`は`resign`、`royalsLost`、`bareKing`、
 //! `winner`は`sente`または`gote`に限る。違反は行番号つきのエラーで処理を止める。
-//! レーティングなどの選別は`scripts/select_validation_games.py`が行う。
+//! レーティングなどの選別は`scripts/lishogi/select_validation_games.py`が行う。
 //!
 //! 各対局を[`Rules::LISHOGI`]の初期局面から再生する。解析または適用に失敗した手は
 //! `illegal_move`、残る手がある時点の終局は`finished_early`として除外する。

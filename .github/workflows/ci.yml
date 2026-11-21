@@ -49,14 +49,14 @@ jobs:
           python-version: "3.11"
       - name: Run script tests
         run: |
-          PYTHONPATH=. python3 scripts/test_fetch_lishogi_games.py
-          python3 scripts/test_bench_compare.py
-          python3 scripts/test_select_validation_games.py
-          python3 scripts/test_release_checks.py
-          python3 scripts/vast/test_common.py
-          python3 scripts/vast/test_teacher_generation.py
-          python3 scripts/vast/test_generation_chain.py
-          python3 scripts/vast-spsa/test_spsa.py
+          python3 scripts/lishogi/test_fetch_lishogi_games.py
+          python3 scripts/bench/test_bench_compare.py
+          python3 scripts/lishogi/test_select_validation_games.py
+          python3 scripts/release/test_release_checks.py
+          python3 scripts/vast/common/test_common.py
+          python3 scripts/vast/nnue/test_teacher_generation.py
+          python3 scripts/vast/nnue/test_generation_chain.py
+          python3 scripts/vast/spsa/test_spsa.py
       - uses: astral-sh/setup-uv@v5
       - name: Run training progress tool tests
         run: uv run --frozen --directory tools/train/progress python -m unittest test_series_progress
