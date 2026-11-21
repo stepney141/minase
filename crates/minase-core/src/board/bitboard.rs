@@ -120,8 +120,7 @@ impl Bitboard {
     /// 生値が最小の升を返す。空集合なら`None`を返す。
     #[inline]
     pub fn lsb(self) -> Option<Square> {
-        for word_index in 0..3 {
-            let word = self.0[word_index];
+        for (word_index, &word) in self.0.iter().enumerate() {
             if word != 0 {
                 let raw = word_index * 64 + word.trailing_zeros() as usize;
                 return Square::from_raw(raw as u8);
@@ -146,11 +145,10 @@ impl Bitboard {
     /// 生値が最小の升を集合から取り除いて返す。空集合なら`None`を返す。
     #[inline]
     pub fn pop_lsb(&mut self) -> Option<Square> {
-        for word_index in 0..3 {
-            let word = self.0[word_index];
-            if word != 0 {
+        for (word_index, word) in self.0.iter_mut().enumerate() {
+            if *word != 0 {
                 let raw = word_index * 64 + word.trailing_zeros() as usize;
-                self.0[word_index] &= word - 1;
+                *word &= *word - 1;
                 return Square::from_raw(raw as u8);
             }
         }

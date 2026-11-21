@@ -211,33 +211,34 @@ SPRTの再現性の契約は[棋力測定の手引き](sprt.md)の「ペア対�
 
 ### マージ前の検査
 
-minaseには継続的インテグレーション（CI）の環境もgitのフックによる強制もないので、検査はマージする人またはエージェントが手順として手元で実行する。
-masterへマージする前に、次の4つを通す。
+GitHub Actionsの継続的インテグレーション（CI）が`master`および`release/*`へのpushとプルリクエストで自動検査を実行する（[.github/workflows/ci.yml](../../.github/workflows/ci.yml)）。
+ローカルにgitのフックによる強制は置いていないため、マージする人またはエージェントはマージの前に手元でも次の4つを通す。
 
 ```console
 cargo fmt --all --check
 cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace
-cargo test -p minase --lib --features search-stats,tuning
+scripts/ci/run_feature_only_tests.sh
 ```
 
-4つ目は、フィーチャ`search-stats`と`tuning`を有効にしたときだけコンパイルされるテストを実行する。
-これらは既定のビルドに含まれないので、`cargo test --workspace`では走らない。
+4つ目の`scripts/ci/run_feature_only_tests.sh`は、フィーチャ`search-stats`と`tuning`を有効にしたときだけコンパイルされるテストを実行する。
+これらのテストは既定のビルドに含まれないため、`cargo test --workspace`では走らない。
+このスクリプトは、両フィーチャを有効にしたビルドと既定のビルドとで`minase` crateのライブラリテストの一覧を比べ、前者にしかないテストを実行する。両方にあるテストは`cargo test --workspace`で実行済みなので繰り返さない。
 複数のworktreeのブランチを順にmasterへマージするので、マージの後にはマージ後の状態で`cargo test --workspace`を再実行する。
 
 `scripts/`のPythonスクリプトのテストは、この4つの検査に含まれない。
-Lishogiの棋譜を取得する`scripts/fetch_lishogi_games.py`、およびvast.aiの調整機でSPSAを実行する`scripts/vast/`と`scripts/vast-spsa/`を変更したときは、マージの前にリポジトリのルートで該当するテストを実行する。
+Lishogiの棋譜を取得する`scripts/lishogi/fetch_lishogi_games.py`、およびvast.aiの計算機を操作する`scripts/vast/`を変更したときは、マージの前にリポジトリのルートで該当するテストを実行する。
 調整機のPythonは3.11なので、後者のテストは手元のPythonに加えて3.11でも実行する。
 
 ```console
-PYTHONPATH=. python3 scripts/test_fetch_lishogi_games.py
-python3 scripts/vast/test_common.py
-python3 scripts/vast/test_teacher_generation.py
-python3 scripts/vast/test_generation_chain.py
-python3 scripts/vast-spsa/test_spsa.py
+python3 scripts/lishogi/test_fetch_lishogi_games.py
+python3 scripts/vast/common/test_common.py
+python3 scripts/vast/nnue/test_teacher_generation.py
+python3 scripts/vast/nnue/test_generation_chain.py
+python3 scripts/vast/spsa/test_spsa.py
 ```
 
-`scripts/bench_compare.py`を変更したときは、`python3 scripts/test_bench_compare.py`も実行する。
+`scripts/bench/bench_compare.py`を変更したときは`python3 scripts/bench/test_bench_compare.py`、`scripts/lishogi/select_validation_games.py`を変更したときは`python3 scripts/lishogi/test_select_validation_games.py`、`scripts/release/release_checks.py`を変更したときは`python3 scripts/release/test_release_checks.py`も実行する。
 
 学習の系列の進捗図の道具`tools/train/progress/series_progress.py`を変更したときも、マージの前に試験を実行する。
 道具は独立のPythonの環境を持つので、作業ツリーに環境がなければ、先に`uv sync --frozen --project tools/train/progress`で導入する。

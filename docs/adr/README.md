@@ -443,3 +443,6 @@ PSTは駒の種類と升ごとの値の表による評価、FMはFactorization M
 - 2026年11月19日 [NNUEの学習器を、構造によらない学習ループと構造ごとの実装に分け、構造ごとのサブコマンドで呼ぶ](split-the-nnue-trainer-into-a-shared-loop-and-structure-backends.md)
 - 2026年11月19日 [NNUEの世代反復では、学習したネットをgitの外に置いてそのまま次の世代の教師の生成に使い、学習の後に補正しない](use-each-trained-nnue-outside-git-for-the-next-generation.md)
 - 2026年11月19日 [NNUEの学習期間は未学習対局での検証損失から選ぶ](select-the-nnue-checkpoint-on-held-out-games.md)
+- 2026年11月21日 [masterへのトランクベース開発を維持し、必要時だけrelease/*ブランチを切り、出口条件でリリースする](release-from-master-with-on-demand-release-branches-and-milestone-criteria.md)
+- 2026年11月21日 [評価ネットをエンジンの版数から分離し、Hugging Face Hubのモデルリポジトリへ置く](host-evaluation-networks-on-hugging-face-hub.md)
+- 2026年11月21日 [GitHub Actionsで定型検査とタグ起点の下書きリリース作成を自動化し、crates.ioへの公開は手動に残す](verify-commits-and-draft-releases-in-github-actions.md)

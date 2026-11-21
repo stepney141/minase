@@ -43,7 +43,7 @@ codexが報告する速度比は同時に走る負荷で歪むので、採否に
 ## 変種ごとの採否
 
 複数の変種を比べる作業は、「変種ごとに1コミット」で委任する。
-委任元が`scripts/bench_compare.py --parent <直前の変種>`で連鎖して測り、採用しない変種は`git reset --soft`とcherry-pickで外す。
+委任元が`scripts/bench/bench_compare.py --parent <直前の変種>`で連鎖して測り、採用しない変種は`git reset --soft`とcherry-pickで外す。
 codexがコミットできない場合は、変種ごとの差分を`target/*.patch`に出力させ、委任元が`git apply`で再現して`diff -q`で一致を確かめる。
 
 ## Claude Codeから委任する場合の注意

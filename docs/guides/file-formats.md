@@ -127,7 +127,7 @@ ONNXのネットはONNXが形式を定めるので載せない。
 | 形式 | 識別と版 | 書き手 | 読み手 | 仕様 |
 |---|---|---|---|---|
 | 開始局面一覧 | なし | `minase data lishogi openings` | `minase data selfplay generate --openings` | `crates/minase/src/bin/minase/lishogi_import/mod.rs` |
-| lishogiの棋譜のNDJSON | なし | lishogiのAPI（`scripts/fetch_lishogi_games.py`が保存する） | `minase data lishogi games`、`data lishogi openings` | `crates/minase/src/bin/minase/lishogi_import/input.rs` |
+| lishogiの棋譜のNDJSON | なし | lishogiのAPI（`scripts/lishogi/fetch_lishogi_games.py`が保存する） | `minase data lishogi games`、`data lishogi openings` | `crates/minase/src/bin/minase/lishogi_import/input.rs` |
 | SPSAの係数ファイル | なし | 利用者が用意する（`minase spsa params`が行を標準出力へ書く） | `minase spsa` | `crates/minase/src/bin/minase/spsa_runner/params.rs` |
 | SPSAが既定値を書き戻すマクロ`parameters!` | なし | `minase spsa apply` | `minase spsa apply` | `crates/minase/src/bin/minase/spsa_runner/apply.rs` |
 | エンジンの入出力の記録（`--io-log`） | なし | `minase --io-log` | なし | `crates/minase/src/bin/minase/io_log.rs` |

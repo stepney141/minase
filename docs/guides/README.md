@@ -16,7 +16,7 @@
 | [gemini-proofreading.md](gemini-proofreading.md) | agyからGeminiを呼び出して文書を推敲させる手順と注意点 | 文書を書き終えたとき |
 | [usi-extensions.md](usi-extensions.md) | USI原典と異なるコマンドの扱い、中将棋の表記、オプション、および独自の照会コマンドの一覧 | GUIや対局用のプログラムからminaseをUSIで動かすとき、独自コマンドの書式を調べるとき |
 | [file-formats.md](file-formats.md) | ディスクに読み書きするファイル形式と、その仕様の場所の一覧 | ファイル形式の仕様を探すとき |
-| [release.md](release.md) | 版数の決定からタグのpush、およびcrates.ioへの公開までの手順 | ライブラリまたはエンジンをリリースするとき |
+| [release.md](release.md) | ブランチ運用、リリースの出口条件、クレートの公開手順、および評価ネットの独立配布手順 | ライブラリ、エンジン、または評価ネットをリリースするとき |
 
 ## 棋力の測定と係数の調整
 

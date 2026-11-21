@@ -1,0 +1,86 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v[0-9]*"
+      - "minase-core-v[0-9]*"
+
+permissions:
+  contents: write
+
+jobs:
+  verify-and-draft:
+    name: Verify crate and draft GitHub Release
+    runs-on: ubuntu-latest
+    env:
+      CARGO_TERM_COLOR: always
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Resolve tag metadata and verify Cargo.toml version
+        id: meta
+        env:
+          TAG: ${{ github.ref_name }}
+        run: python3 scripts/release/release_checks.py resolve-tag "$TAG" --github-output "$GITHUB_OUTPUT"
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Check formatting
+        run: cargo fmt --all --check
+      - name: Run clippy
+        run: cargo clippy --workspace --all-targets -- -D warnings
+      - name: Run workspace tests
+        run: cargo test --workspace
+      - name: Run feature-gated engine tests
+        run: scripts/ci/run_feature_only_tests.sh
+
+      - name: Verify minase-core package
+        if: steps.meta.outputs.crate == 'minase-core'
+        run: cargo package -p minase-core --locked
+
+      - name: Verify minase package contents
+        if: steps.meta.outputs.crate == 'minase'
+        run: |
+          python3 scripts/release/release_checks.py check-package-nets
+          # minase-core may not be published to crates.io yet when both tags are pushed,
+          # so packaging skips registry resolution here and leaves `cargo publish` manual.
+          cargo package -p minase --locked --no-verify
+
+      - name: Extract release notes from changelog
+        env:
+          TAG: ${{ github.ref_name }}
+          CHANGELOG: ${{ steps.meta.outputs.changelog }}
+        run: python3 scripts/release/release_checks.py extract-notes "$CHANGELOG" "$TAG" > release-notes.md
+
+      - name: Create draft GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+          TITLE: ${{ steps.meta.outputs.title }}
+          PRERELEASE: ${{ steps.meta.outputs.prerelease }}
+        run: |
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "Release for $TAG already exists; skipping draft creation."
+            exit 0
+          fi
+          args=(
+            release create "$TAG"
+            --draft
+            --verify-tag
+            --title "$TITLE"
+            --notes-file release-notes.md
+          )
+          if [ "$PRERELEASE" = "true" ]; then
+            args+=(--prerelease)
+          fi
+          gh "${args[@]}"

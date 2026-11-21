@@ -197,10 +197,10 @@ game_rss_bytes = 630000000
 `local_nps`は、測定機でほかの測定、SPSA、教師生成、および学習を止めた状態で、調整対象のコミットの調整用ビルドを16本同時に起動し、それぞれへ`RuleSet`と`EvalFile`を設定して`isready`を送った後に、USIの独自コマンド`bench depth 9 repetitions 3`を送って走らせた平均NPSである。
 ネットは、調整機へ渡すものと同じファイルを使う。
 lishogiのBotは止めない。測定機でのSPSAも、Botと共用した状態で行ってきたからである。
-`local_nps`は`scripts/vast-spsa/bench.py`で測れる。`bench.py`は規則に`JCSA`を送る。調整機の`remote.py`も同じ関数を使い、`session.toml`の`rules`を送って負荷時の速度を測る。
+`local_nps`は`scripts/vast/spsa/bench.py`で測れる。`bench.py`は規則に`JCSA`を送る。調整機の`remote.py`も同じ関数を使い、`session.toml`の`rules`を送って負荷時の速度を測る。
 
 ```console
-python3 scripts/vast-spsa/bench.py target/match-cache/<コミット>-tuning/minase 16 <ログのディレクトリ> <ネット>
+python3 scripts/vast/spsa/bench.py target/match-cache/<コミット>-tuning/minase 16 <ログのディレクトリ> <ネット>
 ```
 
 `game_rss_bytes`は、測定機で調整用ビルド同士の1ペア（2局）をSTCで指し、`pairs/`の記録の`candidate_peak_rss_bytes`と`baseline_peak_rss_bytes`の和を局ごとに求めて、2局のうち大きい方の値とする。
@@ -229,13 +229,13 @@ vast.aiの検証（`verified`）は条件にしない。`vastai search offers`�
 出品のIDを決めて起動する場合は、次のとおりにする。
 
 ```console
-python3 scripts/vast-spsa/launch.py <セッション名> <期限までの分数> --eval-file <ネット> --offer <出品のID>
+python3 scripts/vast/spsa/launch.py <セッション名> <期限までの分数> --eval-file <ネット> --offer <出品のID>
 ```
 
 条件で選んで起動する場合は、次のとおりにする。
 
 ```console
-python3 scripts/vast-spsa/launch.py <セッション名> <期限までの分数> --eval-file <ネット> \
+python3 scripts/vast/spsa/launch.py <セッション名> <期限までの分数> --eval-file <ネット> \
   --max-price <1時間あたりの米ドル> --min-cpu-cores <スレッド数> \
   --min-cpu-ram <MB> --cpu <CPU名の一部> [--cpu <CPU名の一部> ...] --wait <分>
 ```
@@ -256,7 +256,7 @@ python3 scripts/vast-spsa/launch.py <セッション名> <期限までの分数>
 `launch.py`は、出品が条件を満たすこと、同じラベル（`minase-spsa-<セッション名>`）の調整機がないこと、および`session.toml`の必須のキーがそろっていることを確かめてから調整機を作る。
 調整機が10分以内に稼働しない場合や、SSHが5分以内に使えるようにならない場合は、その調整機を削除して止まる。
 
-調整機では`scripts/vast-spsa/remote.py`が、runnerと調整用ビルドのビルド、同時対局数`c`と換算係数`f`の決定、時間切れの事前確認、および本番のセッションを順に実行する。
+調整機では`scripts/vast/spsa/remote.py`が、runnerと調整用ビルドのビルド、同時対局数`c`と換算係数`f`の決定、時間切れの事前確認、および本番のセッションを順に実行する。
 同時対局数は、物理コア数から1を引いた数と、実メモリを`game_rss_bytes`の1.25倍で割った数の小さい方である。
 持ち時間は、STCの`time=10000+100`の基本時間と加算の両方に`f`（`local_nps`を調整機の負荷時の速度で割った比）を掛けた値になる。
 エンジンの各手の予算は残り時間と加算に係数の比を掛けて決まるので、持ち時間を一様に伸ばしても時間管理の係数の働きはほぼ変わらない。
@@ -272,7 +272,7 @@ python3 scripts/vast-spsa/launch.py <セッション名> <期限までの分数>
 起動したら、測定機で`fetch.py`を動かし続ける。
 
 ```console
-nohup python3 scripts/vast-spsa/fetch.py <セッション名> > data/vast-spsa/<セッション名>/fetch.log 2>&1 &
+nohup python3 scripts/vast/spsa/fetch.py <セッション名> > data/vast-spsa/<セッション名>/fetch.log 2>&1 &
 ```
 
 `fetch.py`は10分ごとに、調整機の実行ディレクトリを`incoming/`へ、ログを`logs/`へ取得し、適用番号が1から欠けずにそろっていれば、再開用の写し`run/`を更新する。
@@ -284,7 +284,7 @@ nohup python3 scripts/vast-spsa/fetch.py <セッション名> > data/vast-spsa/<
 2026年10月には、この再認証の要求がほぼ毎日起きた。
 このとき`fetch.py`は状態の照会に6回続けて失敗して終わるが、調整機は動き続ける。
 `vastai tfa login`で認証し直してから、`fetch.py`を同じ引数で起動し直す。
-認証し直す前に調整機を止める必要があるときは、調整機にSSHで入り、PID 1の環境変数（`/proc/1/environ`）にある`CONTAINER_ID`と`CONTAINER_API_KEY`を使って、起動時スクリプト`scripts/vast/onstart.sh`の自己停止と同じ停止の要求を送る。
+認証し直す前に調整機を止める必要があるときは、調整機にSSHで入り、PID 1の環境変数（`/proc/1/environ`）にある`CONTAINER_ID`と`CONTAINER_API_KEY`を使って、起動時スクリプト`scripts/vast/common/onstart.sh`の自己停止と同じ停止の要求を送る。
 調整機の削除は、認証し直した後に行う。
 セッションが全反復を終えると、`fetch.py`は測定機のrunnerで`minase spsa apply`を`params.rs`の一時的な写しに対して実行して記録の整合性を検査し、検査に通れば調整機を削除して終了コード0で終わる。
 写しは、調整の対象のコミットの`crates/minase/src/search/params.rs`を`git show`で読んで作るので、係数の表がこのパスへ移る前のコミットで始めたセッションは、そのコミットの`fetch.py`で取得を終える。

@@ -58,7 +58,7 @@
 本書で行う作業は次のとおりである。
 
 - 生成器`minase data selfplay generate`に、本探索を行う手を抽選する引数`--record-one-in <k>`と、安い探索のノード数を与える引数`--cheap-nodes <n>`を加える。
-- 生成機で教師の生成だけを行う制御スクリプト`scripts/vast/teacher_generation.py`、その作業プロセス`generation_worker.py`、世代反復で教師の受け入れから学習と診断までを続けて行う連続生成スクリプト`scripts/vast/generation_chain.py`、および共通の検査`common.py`が、この2つの引数を受け渡し、生成ログと照合するように改める。[学習の手引き](../guides/nnue-training.md)に引数の説明を加える。
+- 生成機で教師の生成だけを行う制御スクリプト`scripts/vast/nnue/teacher_generation.py`、その作業プロセス`generation_worker.py`、世代反復で教師の受け入れから学習と診断までを続けて行う連続生成スクリプト`scripts/vast/nnue/generation_chain.py`、および共通の検査`common.py`が、この2つの引数を受け渡し、生成ログと照合するように改める。[学習の手引き](../guides/nnue-training.md)に引数の説明を加える。
 - 生成用のコミットを作り、基準の教師と同じネット、同じ計算量で候補の教師を生成する。
 - 候補の教師から候補のネットを学び、基準のネットと段階ゲートで比べる。
 - 採用した場合は、教師生成の標準の手順を改める。採否によらず、結論をADRに書く。
@@ -250,7 +250,7 @@ Stockfishの学習器nnue-pytorchは、学習時に局面を飛ばす`--random-f
 コマンドは、[学習の手引きの例](../guides/nnue-training.md#vastaiで教師ファイルを生成する)の引数を次のとおりにしたものである。
 
 ```sh
-python3 scripts/vast/teacher_generation.py run --run-dir <実行ディレクトリ> \
+python3 scripts/vast/nnue/teacher_generation.py run --run-dir <実行ディレクトリ> \
   --repo <リポジトリ> --ref <生成用のコミットを含む参照> --commit <生成用のコミット> \
   --minase-bin <生成用のコミットを固定したworktreeのminase> \
   --eval-file <第G−1世代のネット> \

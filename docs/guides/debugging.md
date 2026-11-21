@@ -100,7 +100,7 @@ done
 
 **lishogiの対局**：lishogiの対局は、棋譜の着手列を`position ... moves ...`へ与えて再現する。
 途中の局面から始まる対局の開始局面は、lishogi APIの`initialSfen`欄にある（[USIとlishogi系拡張の調査](../research/protocols/usi-lishogi.md#lishogi-botブリッジ)）。
-規則の裁定がlishogiと食い違う対局は、`scripts/fetch_lishogi_replays.py`の対局一覧へ加えて固定データを作り直すと、`crates/minase-core/tests/lishogi_replay.rs`が合法性と終局の裁定を照合する回帰テストになる。
+規則の裁定がlishogiと食い違う対局は、`scripts/lishogi/fetch_lishogi_replays.py`の対局一覧へ加えて固定データを作り直すと、`crates/minase-core/tests/lishogi_replay.rs`が合法性と終局の裁定を照合する回帰テストになる。
 
 **並列探索**：`Threads`が2以上の探索は、共有置換表へのアクセス順がスケジューリングに依存するので、固定深さでも再現しない。
 まず`Threads=1`で同じ症状が出るかを確かめ、出れば単一スレッドの問題として調べる。
@@ -128,7 +128,7 @@ printf 'setoption name RuleSet value JCSA\nposition sfen <拡張SFEN>\nperft 3 d
 perftの数値は、テストの正しさの基準にしない（[ADR](../adr/verify-movegen-without-perft-counts.md)）。
 perftはdivideによる絞り込みと速度の計測に使う。
 
-HaChuの規則との食い違いは、`scripts/hachu_replay.py`でHaChuの自己対局の棋譜をminaseへ再生して照合する。
+HaChuの規則との食い違いは、`scripts/hachu/hachu_replay.py`でHaChuの自己対局の棋譜をminaseへ再生して照合する。
 このスクリプトはminaseをCECPで起動する。minaseはCECPでも`option EvalFile=`でネットを受け取らないと対局を始めないので、`hachu_replay.py`の`--eval-file`にネットのファイルを渡す。
 
 ### 探索
@@ -147,13 +147,13 @@ HaChuの規則との食い違いは、`scripts/hachu_replay.py`でHaChuの自己
 printf 'setoption name RuleSet value JCSA\nsetoption name EvalFile value %s\nisready\nbench depth 5\nquit\n' <ネット> | target/release/minase --protocol usi
 ```
 
-`scripts/bench_compare.py`は、作業ツリーのbenchを参照コミット（`--reference`）のbenchと全行で照合し、不一致があれば終了コード1で報告する。
+`scripts/bench/bench_compare.py`は、作業ツリーのbenchを参照コミット（`--reference`）のbenchと全行で照合し、不一致があれば終了コード1で報告する。
 `--baseline`と`--parent`は速度の比を求める比較先であり、挙動の一致だけを確かめるときは3つとも同じ比較先のコミットを与える。
 このスクリプトは、`--eval-file`で指定したネットを、作業ツリーと比較先のすべての版に`EvalFile`として送る。
 ネットを埋め込んでいた版は、宣言していない`EvalFile`を無視して埋め込みのネットで探索する。
 
 ```console
-scripts/bench_compare.py --reference master --baseline master --parent master --depth 5 --eval-file <ネット>
+scripts/bench/bench_compare.py --reference master --baseline master --parent master --depth 5 --eval-file <ネット>
 ```
 
 ノード数が変わった場合は、変更に探索木を変える箇所が含まれている。
@@ -175,7 +175,7 @@ diff before.txt after.txt
 両方が同じエラーで止まった場合にも、出力の全行は一致してしまうからである。
 出力の最初の行（`info string bench mcts`）は、手を選ぶ式PUCTの係数と方策の温度を記録するので、係数の既定値を変えるコミットとの比較で差が出たときは、まずこの行を比べる。
 `--features invariants`でビルドしたminaseの`bench`は、各局面の探索の終わりに探索木の全節点を検査し、検査に通れば通常のビルドと同じ出力を返す。
-αβ探索の`bench`を比べる`scripts/bench_compare.py`は、PV-MCTSの`bench`を扱わない。
+αβ探索の`bench`を比べる`scripts/bench/bench_compare.py`は、PV-MCTSの`bench`を扱わない。
 
 **PV-MCTSが選んだ手の調査**：対局でPV-MCTSが不自然な手を指したときは、`setoption name VerboseMoveStats value true`を送ってから同じ局面を探索するか、このオプションを有効にして`--io-log`で記録した対局のログから、その手を選んだ探索の表を読む。
 表の書式は[USIの独自拡張の手引き](usi-extensions.md)の「根の候補手ごとの統計」の節にあり、勝率を表す欄（`value-sum`、`q`、`value`）はどれも根の手番側から見た値である。
@@ -296,13 +296,13 @@ xboardとエンジンの送受信は`mm.debug`に記録される。
 ### 時間切れと時間管理
 
 時間切れは、保存済みの実行ディレクトリから時計を再構成して、手数帯ごとの残り時間と思考時間を数えて調べる（[教訓](../lessons/reconstruct-clock-from-match-records.md)）。
-`scripts/clock_profile.py`がこの集計を行う。
+`scripts/match/clock_profile.py`がこの集計を行う。
 
 ```console
-scripts/clock_profile.py data/matches/<測定名> --budget quadruple-soft
+scripts/match/clock_profile.py data/matches/<測定名> --budget quadruple-soft
 ```
 
-`--budget`は、再構成で使う時間予算の式を`quadruple-soft`、`quadruple-main`、`target`、`total`、`byoyomi-opening`から選ぶ（定義は`scripts/clock_budget_stats.py`）。
+`--budget`は、再構成で使う時間予算の式を`quadruple-soft`、`quadruple-main`、`target`、`total`、`byoyomi-opening`から選ぶ（定義は`scripts/match/clock_budget_stats.py`）。
 
 対局ハーネスの外（lishogiやGUI）で起きた時間切れは、`--io-log`の記録から`go`を受けた時刻と`bestmove`を送った時刻の差を読み、エンジン側の思考時間を確かめる。
 この差が`go`で渡された残り時間に収まっていれば、遅れはエンジンの外（通信やブリッジ）にある。
@@ -330,5 +330,5 @@ RUST_BACKTRACE=1 target/debuginfo/release/minase --protocol usi
 修正は、次の3点を確かめてから採用する。
 
 1. 修正を一時的に外すと失敗する回帰テストを追加する（[教訓](../lessons/confirm-regression-test-fails-without-fix.md)）。規則に関わるテストは、期待値をchu-shogi.mdの条文から導き、条文の番号をテストに書く。`cargo test`は整合検査（フィーチャ`invariants`）を常に有効にして走るので、テストの中の着手と探索も全検査を受ける。
-2. 探索木を変えないはずの修正は、`bench`の局面ごとのノード数が変わらないことを`scripts/bench_compare.py`で確かめる。
+2. 探索木を変えないはずの修正は、`bench`の局面ごとのノード数が変わらないことを`scripts/bench/bench_compare.py`で確かめる。
 3. 探索木を変える修正のうち、棋力に影響し得るものは、[sprt.md](sprt.md)の手順で採否を決める。

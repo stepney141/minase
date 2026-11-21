@@ -1,5 +1,9 @@
 # Minase
 
+[![CI](https://github.com/stepney141/minase/actions/workflows/ci.yml/badge.svg?branch=master)](https://github.com/stepney141/minase/actions/workflows/ci.yml)
+[![crates.io: minase](https://img.shields.io/crates/v/minase?label=minase)](https://crates.io/crates/minase)
+[![crates.io: minase-core](https://img.shields.io/crates/v/minase-core?label=minase-core)](https://crates.io/crates/minase-core)
+
 Minase is a legal-move generation library and playing engine for chu shogi, written in Rust.
 It follows the rules of [Japan Chu Shogi Association](https://www.chushogi-renmei.com/) by default, and the local rules used by lishogi, [HaChu](https://salsa.debian.org/debian/hachu), and other sources can be selected through rule codes.
 The supported rules and their sources are documented in [chu-shogi.md](docs/rules/chu-shogi.md) (Japanese).

@@ -237,8 +237,8 @@ pub fn backward(
         for (k, &du) in du.iter().enumerate() {
             add(P::L3Weights, k, gy * c(f.u[k] as f32));
             add(P::L2Biases, k, du);
-            for i in 0..30 {
-                add(P::L2Weights, k * 30 + i, du * f.z[i] as f32);
+            for (i, &z) in f.z.iter().enumerate() {
+                add(P::L2Weights, k * 30 + i, du * z as f32);
             }
         }
         let dz: [f32; 30] = std::array::from_fn(|i| {

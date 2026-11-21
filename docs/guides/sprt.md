@@ -237,7 +237,7 @@ tar -I 'zstd -3 -T2 -q' -cf data/matches/<測定名>.tar.zst -C data/matches <�
 tar -I 'zstd -d -q' -xf data/matches/<測定名>.tar.zst -C data/matches
 ```
 
-`scripts/resign_diagnosis.py`のように`data/matches`を走査するスクリプトは、圧縮した測定をエラーを出さずにスキップする。
+`scripts/match/resign_diagnosis.py`のように`data/matches`を走査するスクリプトは、圧縮した測定をエラーを出さずにスキップする。
 全記録を対象にする診断では、先にすべて展開し、対象の局数を確かめる。
 
 ## 保存記録の集計

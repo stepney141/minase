@@ -51,7 +51,7 @@ PGOと`unsafe`を要する先読みは利用者の決定により再提案しな
 
 利き逆引きの契約は[棋力向上段階3](archived/strength-stage3.md)が、捕獲専用生成の契約は[棋力向上段階1](archived/strength-stage1.md)が、探索専用生成の残存手順（段階8の除外条件を適用した参照列）とSEEの判定契約は[第1期](archived/movegen-speedup.md)と[第2期](archived/movegen-speedup-2.md)の設計書が定める。
 本マイルストーンはこれらの契約を変えず、契約テスト（`crates/minase-core/src/movegen/tests/`、`crates/minase/src/search/alphabeta/tests/captures.rs`、`crates/minase/src/search/alphabeta/see.rs`のテスト）を各段階の検証に使う。
-計測基盤は第2期で整備した`scripts/bench_compare.py`（`--reference`、`--baseline`、`--parent`）をそのまま使い、照合参照コミットと速度の基準はいずれも第2期の最終の採用版とする。第2期の段階7から段階9で探索木が変わったので、第1期の照合参照コミットは使えない。
+計測基盤は第2期で整備した`scripts/bench/bench_compare.py`（`--reference`、`--baseline`、`--parent`）をそのまま使い、照合参照コミットと速度の基準はいずれも第2期の最終の採用版とする。第2期の段階7から段階9で探索木が変わったので、第1期の照合参照コミットは使えない。
 計測区間は[大容量メモリの確保を速度指標に含めない方針](../lessons/bench-allocation-outside-timing.md)に、診断の件数は[独立した参照値と照合する規則](../lessons/compare-diagnostics-with-independent-reference.md)に、プロファイルの読み方は[ハイブリッドCPUの正規化](../lessons/perf-hybrid-cpu-normalize-search-samples.md)に従う。
 最終のSPRTは[SPRTの手引き](../guides/sprt.md)に従う。
 本マイルストーンのブランチは、第2期のブランチをmasterへ取り込んだ後にmasterから切る。
@@ -181,7 +181,7 @@ STCの前には所要時間の見積もりを利用者へ示す。
 cargo fmt --check
 cargo clippy --release --all-targets
 cargo test --release
-scripts/bench_compare.py --reference <第2期の最終の採用版> --baseline <第2期の最終の採用版> --parent <直前の採用版> --depth 5 --repetitions 3 --rounds 5 --threads 1
+scripts/bench/bench_compare.py --reference <第2期の最終の採用版> --baseline <第2期の最終の採用版> --parent <直前の採用版> --depth 5 --repetitions 3 --rounds 5 --threads 1
 printf 'setoption name RuleSet value JCSA\nposition startpos\nperft 3\nquit\n' | target/release/minase --protocol usi
 ```
 

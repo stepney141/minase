@@ -16,7 +16,7 @@
 - typeは次のとおり使い分ける。`feat`は利用者から見える機能の追加と、探索・評価・時間管理のうち棋力に影響する変更に使う。`fix`は不具合の修正、`perf`は棋力を変えない速度改善、`refactor`は挙動を変えない構造変更、`test`はテストだけの変更、`docs`は docs/、chu-shogi.md および測定記録の変更、`build`は依存関係とビルド設定の変更、`chore`はそれ以外に使う。
 - USIオプション、エンジンの起動引数（`--protocol`、`--search`、`--io-log`）、規則コードまたはライブラリの公開APIの互換性を壊す変更は、typeの直後に`!`を付け、本文に`BREAKING CHANGE:`フッターを書く。補助ツールのサブコマンド（`minase match run`など）とその引数は開発者向けであり、互換性の対象としない。
 - リリースノートは git-cliff（cliff.toml）がコミット履歴から CHANGELOG.md へ生成し、`feat`、`fix`、`perf`、`refactor`と互換性を壊す変更だけを載せる。マージコミットの件名は既定の`Merge branch '<名前>'`のままでよい。
-- リリースは [docs/guides/release.md](docs/guides/release.md) の手順に従う。
+- 日常の開発は`master`へのトランクベース開発とし、既公開版のパッチ保守や次期版の安定化が必要な場合だけ`release/*`ブランチを切る。評価ネットはエンジン本体から分離してHugging Face Hubのモデルリポジトリで配布し、クレートのタグのpush時にGitHub Actionsが検査と下書きリリースを作る。出口条件、手動確認一覧、および公開手順は [docs/guides/release.md](docs/guides/release.md) に従う。
 
 ## 棋力測定
 

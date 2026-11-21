@@ -414,8 +414,8 @@ fn gpu_activation_derivatives_at_zero_and_one_match_reference() {
                 0.5
             }
         };
-        for j in 0..16 {
-            w[Parameter::FtBiases][j] = desired(Parameter::FtBiases, j);
+        for (j, bias) in w[Parameter::FtBiases][..16].iter_mut().enumerate() {
+            *bias = desired(Parameter::FtBiases, j);
         }
         // Binary-exact compensation keeps the chosen layer at 0, 1 or 0.5,
         // while all other layers remain interior with nonzero downstream slopes.

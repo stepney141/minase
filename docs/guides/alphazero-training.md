@@ -430,7 +430,7 @@ Colabの機械では`colab sessions`で確かめる。
 作業ツリーに変更のない状態で同じコミットからビルドした`minase`を使い、lishogiの棋譜`data/lishogi/games.ndjson`（SHA-256 `58bbec58…4b5f`）から次のコマンドで作ると、出力の4つのファイル`selected.ndjson`、`selection.json`、`zero-validation-games.mnsd`、および`replay.json`が元と同じチェックサムになる。
 
 ```console
-python3 scripts/select_validation_games.py --input data/lishogi/games.ndjson \
+python3 scripts/lishogi/select_validation_games.py --input data/lishogi/games.ndjson \
   --output <出力先>/selected.ndjson --report <出力先>/selection.json
 target/release/minase data lishogi validation --input <出力先>/selected.ndjson \
   --output <出力先>/zero-validation-games.mnsd --report <出力先>/replay.json --seed 20261113

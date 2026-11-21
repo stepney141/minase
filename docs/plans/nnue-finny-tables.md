@@ -59,7 +59,7 @@ P型の文脈は1種類なので、この全再計算は起きない。
 全再計算の回数は`AccumulatorStats`が数え、USIの独自コマンド`bench`の`accumulators:`行が`refresh_fraction`として出力する。
 `invariants`機能を有効にしたビルドでは、探索中に静的評価を求める局面で、差分更新の累算値を全再計算と照合する（`Network::assert_accumulator`）。
 現行の学習器で再学習したHalfKP-hm-b8のネットは、ブランチ`halfkp-retrain`のコミット`ae1b384c`に埋め込まれている（[記録](../measurements/nnue-early-best-epoch/halfkp-retrain-stc.md)）。
-探索木を変えない高速化のNPSの比較には、`scripts/bench_compare.py`を使う。
+探索木を変えない高速化のNPSの比較には、`scripts/bench/bench_compare.py`を使う。
 
 [tatara化とHalfKP_vm](archived/nnue-tatara-framework-and-halfkp-vm.md)は、`FeatureSet`トレイトとHalfKP-hm-b8を削除し、自玉の72区分と鏡映の有無を文脈とするHalfKP_vmを加える。
 本書は8区分の文脈を前提に書かれているので、着手の前にHalfKP_vmに合わせて改める。
@@ -218,7 +218,7 @@ benchは[性能コアへ固定](../lessons/pin-bench-to-performance-core.md)し�
 
 ### フェーズ3　探索結果の照合と速度の測定
 
-`scripts/bench_compare.py`で、表を入れる前の候補のコミットを基準にして、作業ツリーからビルドした表を入れた版の局面ごとのノード数、最善手、および探索値が一致することと、NPSの比を測る。
+`scripts/bench/bench_compare.py`で、表を入れる前の候補のコミットを基準にして、作業ツリーからビルドした表を入れた版の局面ごとのノード数、最善手、および探索値が一致することと、NPSの比を測る。
 このスクリプトは、親との速度比に、交互測定での親の中央値の幅を分解能として併記する。
 速度比から1を引いた値が分解能を上回れば（出力の`increment_exceeds_parent_width`が`true`）、候補の時間制御の対局は表を入れた版で行う。
 上回らなければ表を入れず、測定記録を残して完了（不採用）とする。
@@ -235,7 +235,7 @@ cargo clippy --release --all-targets
 cargo test --release
 cargo test --release --features invariants
 printf 'bench depth 9 threads 1\nquit\n' | cargo run --release --features invariants --bin minase -- --protocol usi
-scripts/bench_compare.py --reference <表を入れる前の候補> --baseline <表を入れる前の候補> --parent <表を入れる前の候補> --depth 9 --repetitions 3 --rounds 5 --threads 1
+scripts/bench/bench_compare.py --reference <表を入れる前の候補> --baseline <表を入れる前の候補> --parent <表を入れる前の候補> --depth 9 --repetitions 3 --rounds 5 --threads 1
 ```
 
 `bench_compare.py`は作業ツリーを候補としてビルドし、3つの引数のコミットと比べる。表を入れる前の候補のコミットを3つとも指定すると、照合の基準と速度比の分母がそろう。
