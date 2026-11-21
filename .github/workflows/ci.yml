@@ -1,0 +1,62 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - master
+      - "release/*"
+  pull_request:
+    branches:
+      - master
+      - "release/*"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  rust:
+    name: Rust fmt, clippy, and tests
+    runs-on: ubuntu-latest
+    env:
+      CARGO_TERM_COLOR: always
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+      - name: Check formatting
+        run: cargo fmt --all --check
+      - name: Run clippy
+        run: cargo clippy --workspace --all-targets -- -D warnings
+      - name: Run workspace tests
+        run: cargo test --workspace
+      - name: Run feature-gated engine tests
+        run: cargo test -p minase --lib --features search-stats,tuning
+
+  python:
+    name: Python script and tool tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Run script tests
+        run: |
+          PYTHONPATH=. python3 scripts/test_fetch_lishogi_games.py
+          python3 scripts/test_bench_compare.py
+          python3 scripts/test_select_validation_games.py
+          python3 scripts/test_extract_release_notes.py
+          python3 scripts/vast/test_common.py
+          python3 scripts/vast/test_teacher_generation.py
+          python3 scripts/vast/test_generation_chain.py
+          python3 scripts/vast-spsa/test_spsa.py
+      - uses: astral-sh/setup-uv@v5
+      - name: Run training progress tool tests
+        run: uv run --frozen --directory tools/train/progress python -m unittest test_series_progress

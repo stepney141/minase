@@ -1,4 +1,4 @@
-allow-branch = ["master"]
+allow-branch = ["master", "release/*"]
 pre-release-commit-message = "chore(release): v{{version}}"
 tag-message = "{{crate_name}} v{{version}}"
 # The dry run only prints the release notes; the real run prepends each crate's changelog.

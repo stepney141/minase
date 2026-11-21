@@ -299,7 +299,7 @@ LTCのシードは、STCの基本シードからペア数以上離れた値と�
 
 採用した場合は、最終候補のネットを世代の記録のSHA-256で特定し、反復のコミットと統合するコードの間に対局の挙動に関わる差がないことを確かめてから（[教訓](../lessons/revert-rejected-candidates-before-merge.md)）、利用者の許可を得てmasterへ統合する。
 採用したネットのSHA-256と置き場所、それを作った世代の数と教師の量を、[評価関数の手引き](../guides/evaluation-nnue.md)とADRに書く。
-リリースでは、外部ファイル化の設計書が定めた手順で、採用したネットをGitHubのリリースに添付する。
+リリースでは、[リリースの手引き](../guides/release.md#評価ネットの公開手順hugging-face-hub)が定める手順で、採用したネットをHugging Face Hubのモデルリポジトリへ公開し、エンジンのリリースノートからそのURLとSHA-256を参照する。
 求めたkとK_tは第1世代の測定記録に書き、kが37と異なった場合は[学習の手引き](../guides/nnue-training.md#標準レシピ)の本数の値を改める。
 [世代の量のADR](../adr/grow-each-nnue-generation-by-the-teacher-files-for-100-million-positions.md)はkを測った値と定めているので書き換えず、kの決め方を変える場合だけ新しいADRで置き換える。
 不採用の場合は、フェーズ1の変更と測定記録を統合するかを利用者に尋ねる。
