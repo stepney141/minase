@@ -218,11 +218,12 @@ GitHub Actionsの継続的インテグレーション（CI）が`master`およ�
 cargo fmt --all --check
 cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace
-cargo test -p minase --lib --features search-stats,tuning
+scripts/ci/run_feature_only_tests.sh
 ```
 
-4つ目は、フィーチャ`search-stats`と`tuning`を有効にしたときだけコンパイルされるテストを実行する。
-これらは既定のビルドに含まれないので、`cargo test --workspace`では走らない。
+4つ目の`scripts/ci/run_feature_only_tests.sh`は、フィーチャ`search-stats`と`tuning`を有効にしたときだけコンパイルされるテストを実行する。
+これらのテストは既定のビルドに含まれないため、`cargo test --workspace`では走らない。
+このスクリプトは、両フィーチャを有効にしたビルドと既定のビルドとで`minase` crateのライブラリテストの一覧を比べ、前者にしかないテストを実行する。両方にあるテストは`cargo test --workspace`で実行済みなので繰り返さない。
 複数のworktreeのブランチを順にmasterへマージするので、マージの後にはマージ後の状態で`cargo test --workspace`を再実行する。
 
 `scripts/`のPythonスクリプトのテストは、この4つの検査に含まれない。

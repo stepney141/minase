@@ -9,6 +9,7 @@
 | ディレクトリ | 役割 | 主なファイル |
 |---|---|---|
 | [bench/](bench/) | USI の `bench` コマンドを用いた回帰照合と、複数コミット間の探索速度比較を行う。 | `bench_compare.py`、`test_bench_compare.py` |
+| [ci/](ci/) | GitHub Actions の CI とリリース検証で行う検査のうち、`cargo` の1コマンドでは完結しないものを実行する。 | `run_feature_only_tests.sh` |
 | [hachu/](hachu/) | 中将棋エンジン HaChu と minase の通信プロトコル（CECP）および規則の互換性を照合する。 | `hachu_selfplay.py`、`hachu_replay.py` |
 | [lishogi/](lishogi/) | オンライン対局サイト Lishogi から中将棋棋譜を取得し、学習・検証用の選別や回帰テスト用フィクスチャを生成する。 | `fetch_lishogi_games.py`、`select_validation_games.py`、`fetch_lishogi_replays.py`、`test_fetch_lishogi_games.py`、`test_select_validation_games.py` |
 | [match/](match/) | `minase match run` の対局記録や USI 自己対局から、時間消費、対局コスト、および投了条件を診断する。 | `clock_budget_stats.py`、`clock_profile.py`、`byoyomi_game_profile.py`、`match_cost_profile.py`、`resign_diagnosis.py` |

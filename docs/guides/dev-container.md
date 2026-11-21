@@ -95,7 +95,7 @@ Rustのビルドと確認は、ホストと同じコマンドで行う。
 cargo fmt --all --check
 cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace
-cargo test -p minase --lib --features search-stats,tuning
+scripts/ci/run_feature_only_tests.sh
 ```
 
 GPUを使う確認も、コンテナの中で実行できる。

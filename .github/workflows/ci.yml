@@ -37,7 +37,7 @@ jobs:
       - name: Run workspace tests
         run: cargo test --workspace
       - name: Run feature-gated engine tests
-        run: cargo test -p minase --lib --features search-stats,tuning
+        run: scripts/ci/run_feature_only_tests.sh
 
   python:
     name: Python script and tool tests
