@@ -890,7 +890,7 @@ fn generate_chunks(
                 .game_number
                 .checked_sub(1)
                 .ok_or(OutputError::UnexpectedGame(game.game_number))?
-                / conditions.config.chunk_games.get();
+                / conditions.config.chunk_games;
             if chunk >= conditions.config.chunk_count() || completed.contains_key(&chunk) {
                 stop.store(true, Ordering::Release);
                 return Err(OutputError::UnexpectedGame(game.game_number));

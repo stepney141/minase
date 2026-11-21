@@ -176,12 +176,11 @@ impl Parameters {
                 *value = (rng.next() * half_width) as f32;
             }
         }
-        for row in 0..94 * 72 {
+        for (row, value) in result[Parameter::Psqt][..94 * 72].iter_mut().enumerate() {
             let state = row / 72 % 47;
             if ![11, 21].contains(&state) {
                 let sign = if row / (47 * 72) == 0 { 1.0 } else { -1.0 };
-                result[Parameter::Psqt][row] =
-                    (sign * f64::from(piece_value_of_state(state)) / scale.output()) as f32;
+                *value = (sign * f64::from(piece_value_of_state(state)) / scale.output()) as f32;
             }
         }
         result

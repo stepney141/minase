@@ -157,8 +157,8 @@ fn hand_calculated_forward_covers_negative_square_saturation_skip_and_psqt() {
     let u = f64::from((z / 2.0 + (127.0 / 512.0) / 4.0 + 0.125 + y / 4.0 + 0.125) as f32);
     let n = f64::from((u / 2.0 + 0.25 - 0.125 + p / 4.0 + 0.0625) as f32);
     let output = f64::from((n + 0.375) as f32);
-    for j in 0..256 {
-        assert_eq!(out.p[j], if j == 0 || j == 128 { p } else { 0.0 });
+    for (j, &value) in out.p.iter().enumerate() {
+        assert_eq!(value, if j == 0 || j == 128 { p } else { 0.0 });
     }
     assert_eq!(out.y[0], y);
     assert_eq!(out.y[1], -0.5);
@@ -198,8 +198,8 @@ fn smooth_weights() -> Parameters {
             *v = 0.0005 + v.abs() * 0.1;
         }
     }
-    for k in 0..15 {
-        w[L1Biases][k] = if k % 3 == 0 { -0.375 } else { 0.25 };
+    for (k, bias) in w[L1Biases][..15].iter_mut().enumerate() {
+        *bias = if k % 3 == 0 { -0.375 } else { 0.25 };
     }
     w[L1Biases][15] = 0.125;
     w[L2Weights].fill(0.015625);

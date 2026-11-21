@@ -853,9 +853,9 @@ fn nonlinear_model() -> TestModel {
     let w = &mut m.parameters;
     w[Parameter::FtWeights][..(ROWS - 1) * H].fill(1.0 / 1024.0);
     w[Parameter::FtBiases].fill(0.125);
-    for row in 0..94 * 72 {
+    for (row, value) in w[Parameter::Psqt][..94 * 72].iter_mut().enumerate() {
         if ![11, 21].contains(&(row / 72 % 47)) {
-            w[Parameter::Psqt][row] = if row < 47 * 72 { 0.03125 } else { -0.03125 };
+            *value = if row < 47 * 72 { 0.03125 } else { -0.03125 };
         }
     }
     w[Parameter::L1Weights][..H].fill(1.0 / 256.0);

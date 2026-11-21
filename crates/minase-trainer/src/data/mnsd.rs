@@ -348,8 +348,7 @@ impl Dataset {
             let mut raw = Vec::with_capacity(count);
             let mut games = Vec::with_capacity(count);
             let mut plies = Vec::with_capacity(count);
-            for local in 0..count {
-                let metadata = file.metadata[local];
+            for &metadata in &file.metadata {
                 raw.push(f64::from(metadata.score));
                 games.push(metadata.game);
                 plies.push(metadata.ply);

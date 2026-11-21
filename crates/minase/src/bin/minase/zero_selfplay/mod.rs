@@ -118,7 +118,7 @@ fn validate_gpu_count(requested: NonZeroUsize, available: NonZeroUsize) -> Resul
 
 /// 0から数えたスレッド番号を、使用する機器の枚数を法とする剰余で機器番号へ対応させる。
 fn device_for_thread(thread: usize, devices: NonZeroUsize) -> usize {
-    thread % devices.get()
+    thread % devices
 }
 
 #[cfg(test)]
