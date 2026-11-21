@@ -237,7 +237,7 @@ python3 scripts/vast/test_generation_chain.py
 python3 scripts/vast-spsa/test_spsa.py
 ```
 
-`scripts/bench_compare.py`を変更したときは`python3 scripts/test_bench_compare.py`、`scripts/select_validation_games.py`を変更したときは`python3 scripts/test_select_validation_games.py`、`scripts/extract_release_notes.py`を変更したときは`python3 scripts/test_extract_release_notes.py`も実行する。
+`scripts/bench_compare.py`を変更したときは`python3 scripts/test_bench_compare.py`、`scripts/select_validation_games.py`を変更したときは`python3 scripts/test_select_validation_games.py`、`scripts/release_checks.py`を変更したときは`python3 scripts/test_release_checks.py`も実行する。
 
 学習の系列の進捗図の道具`tools/train/progress/series_progress.py`を変更したときも、マージの前に試験を実行する。
 道具は独立のPythonの環境を持つので、作業ツリーに環境がなければ、先に`uv sync --frozen --project tools/train/progress`で導入する。

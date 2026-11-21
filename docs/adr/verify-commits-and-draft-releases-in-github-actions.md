@@ -26,5 +26,5 @@ CIを置かずに手元の実行だけで済ませる案は、リポジトリ側
 ## 結果
 
 `master`、`release/*`、およびクレートのタグに対して同じ自動検査が常に走り、本番のNNUEネットの誤同梱やタグと`Cargo.toml`の食い違いを機械的に防げる。
-下書きリリースは`scripts/extract_release_notes.py`で変更履歴から自動生成され、プレリリース版には自動で`--prerelease`が付くため、開発者は推奨ネットへのリンクを補って公開し、`cargo publish`を手動で実行するだけでよい。
+下書きリリースは`scripts/release_checks.py`でタグ検証と変更履歴抽出を行い、プレリリース版には自動で`--prerelease`が付くため、開発者は推奨ネットへのリンクを補って公開し、`cargo publish`を手動で実行するだけでよい。
 `minase`は未公開の`minase-core`に依存する状態でタグがpushされ得るため、ワークフロー内の`cargo package -p minase`は`--no-verify`でアーカイブ生成と`--list`検査までを行い、レジストリ解決を伴う公開確認は`minase-core`の公開後に行う。

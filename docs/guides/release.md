@@ -145,7 +145,7 @@ git push origin master minase-core-v0.3.1 v3.0.0
 1. タグ名と対象クレートの `Cargo.toml` の版数の一致を検査する。
 2. `cargo fmt`、`cargo clippy`、`cargo test --workspace`、およびフィーチャ付きテストを実行する。
 3. パッケージ内容を検査する。`minase` では `cargo package -p minase --list` の `nets/` 以下に本番の NNUE ネットが混入していないことを確かめる。
-4. `scripts/extract_release_notes.py` で変更履歴から該当版の節を抽出し、`--draft` 付きで GitHub リリースを作成する。プレリリース版には自動で `--prerelease` を付ける。
+4. `scripts/release_checks.py` で変更履歴から該当版の節を抽出し、`--draft` 付きで GitHub リリースを作成する。プレリリース版には自動で `--prerelease` を付ける。
 
 ワークフローの成功を確認したら、GitHub 上の下書きリリースを開き、エンジンでは推奨する評価ネットの Hugging Face Hub 上のダウンロード URL と SHA-256（PV-MCTS のネットを含む場合は `NnCpPerLogit` も）を追記してから公開する。
 ネットのバイナリ自体は GitHub リリースへ添付しない。
