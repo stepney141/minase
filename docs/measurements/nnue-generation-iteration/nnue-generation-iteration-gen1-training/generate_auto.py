@@ -1,15 +1,19 @@
 #!/usr/bin/env python3
 """出品が途絶えるたびに借り方を替えて、1世代の残りの教師ファイルを生成し続ける。
 
-使い方: python3 generate_auto.py <世代N> <最後の番号> <教師の生成に使うネット> <UTCの絶対期限> <費用の上限（米ドル）> <除外するmachine_id（カンマ区切り）>
+使い方: python3 generate_auto.py <世代N> <最後の番号> <教師の生成に使うネット> <UTCの絶対期限> <費用の上限（米ドル）> \
+          <除外するmachine_id（カンマ区切り）> <オンデマンドの時間単価の上限> <中断可能インスタンスの入札額の上限>
 systemd-run --userのサービスとして起動し、出力をログへ追記させる。
 
 制御スクリプト scripts/vast/nnue/teacher_generation.py は、合う出品がなくなると終了する。
 本スクリプトは、その終了のたびに次の順で制御スクリプトを起動し直す（2026年11月20日の利用者の決定）。
 
-1. オンデマンドで、時間単価1.5米ドル以下の出品を借りる。
-2. 借りられなければ、中断可能インスタンスで、入札額3.5米ドル以下の出品を借りる。
+1. オンデマンドで、時間単価が上限以下の出品を借りる。
+2. 借りられなければ、中断可能インスタンスで、入札額が上限以下の出品を借りる。
 3. どちらも借りられなければ、10分待って1へ戻る。
+
+第1世代の番号21〜42では、オンデマンドの上限を1.5米ドル、入札額の上限を3.5米ドルとした。
+第2世代からは、どちらの上限も1.5米ドルとする（2026年11月21日の利用者の決定）。
 
 制御スクリプトは実行ディレクトリごとに引数を固定するので、実行ディレクトリを
 data/nnue-generation-iteration/gen<N>-b<最初の番号>-<借り方> と名づけ、最初の番号と借り方の組ごとに分ける。
@@ -33,7 +37,6 @@ import time
 
 ROOT = Path('/home/stepney141/board-games/minase/data/nnue-generation-iteration')
 WORKTREE = Path('/home/stepney141/board-games/minase/data/worktrees/nnue-generation-iteration')
-MODES = (('on-demand', '1.5'), ('interruptible', '3.5'))
 NO_OFFER = '条件を満たす出品がありません'
 
 
@@ -138,6 +141,7 @@ def run_leg(generation: int, first: int, last: int, mode: str, price: str, netwo
 def main(argv: list[str]) -> int:
     generation, last, network, deadline, budget = int(argv[0]), int(argv[1]), argv[2], argv[3], float(argv[4])
     excluded = [int(value) for value in argv[5].split(',')]
+    modes = (('on-demand', argv[6]), ('interruptible', argv[7]))
     end = datetime.strptime(deadline, '%Y-%m-%dT%H:%M:%SZ').replace(tzinfo=timezone.utc).timestamp()
     baseline = ROOT / f'gen{generation}-auto.credit-start'
     if not baseline.is_file():
@@ -158,7 +162,7 @@ def main(argv: list[str]) -> int:
         if end - time.time() < 1800:
             log('停止: 絶対期限まで30分を切りました')
             return 1
-        mode, price = MODES[mode_index]
+        mode, price = modes[mode_index]
         code, progressed, reason = run_leg(generation, first, last, mode, price, network, deadline, argv[4],
                                            excluded)
         if code == 0:
@@ -170,7 +174,7 @@ def main(argv: list[str]) -> int:
             mode_index = 0
             continue
         mode_index += 1
-        if mode_index == len(MODES):
+        if mode_index == len(modes):
             mode_index = 0
             log('待機: どちらの借り方でも借りられないので10分待ちます')
             time.sleep(600)
