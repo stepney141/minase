@@ -135,6 +135,34 @@ HaChuの既定の規則には、反復による引き分けも、駒が少なく
 相手と対局の条件、拒否着手、不正着手、および破棄ペアの扱い、ならびに得点率が偏って相手の条件を改めるときに測定値の系列をつなぐ方法は、[ADR](../adr/measure-zero-networks-against-a-pinned-alphabeta-search-first-and-depth-3-hachu-second.md)にある。
 対局の起動、集計、および拒否着手と不正着手の分類には、[固定の相手との対局のスクリプト](../measurements/mcts-fixed-opponents/mcts-fixed-opponents-scripts/)を使う。
 
+[haitaka-variants](https://github.com/na2hiro/haitaka-variants)（将棋ったーの変則将棋を実装するエンジン、作業機では`../haitaka-variants`にある）の中将棋は、USIもCECPも実装せず、独自のJSONで局面と着手を受け渡す`haitaka_cli json`だけを入口に持つ。
+このエンジンとの対局には、この入口とUSIの間を中継するアダプタ`scripts/haitaka/haitaka_usi.py`を、外部のUSIエンジンとして指定する。
+haitakaは規則を切り替えられないので、審判層とminase側には、[chu-shogi.md](../rules/chu-shogi.md)第10章の規則コードのうちhaitakaの規則に最も近い組`L1,P0,P3,R1,E1,E2`を与える。
+haitakaは持ち時間を配分する機能を持たないので、思考制限には`movetime=`を使う。
+
+```console
+(cd ../haitaka-variants && cargo build --release -p haitaka_cli --features chushogi)
+cargo run --release --bin minase -- match run \
+  --run-dir data/matches/<測定名> --seed <シード> \
+  --candidate commit:<測定対象> \
+  --baseline "python3 scripts/haitaka/haitaka_usi.py <haitaka_cliのパス>" \
+  --candidate-option EvalFile=<ネット> \
+  --rules L1,P0,P3,R1,E1,E2 --each movetime=1000,timemargin=200 elo --pairs <ペア数>
+```
+
+接続の前に、`scripts/haitaka/haitaka_rule_diff.py`でminaseとhaitakaの合法手と終局の判定を突き合わせる。
+この規則セットとhaitakaの間に残る規則の差は、アダプタのdocコメントにある。
+
+対局の結果は、規則の差が勝敗に入り込んでいないかを確かめてから読む。
+まず、`crashes`の件数と、標準エラーに出た理由を確かめる。
+審判層が合法とした着手をhaitakaが拒否した場合と、審判層が続行とする局面をhaitakaが終局と判定した場合は、アダプタが理由を標準エラーへ書いて終了し、ハーネスはhaitakaの側のクラッシュとして数えるからである。
+先獅子の判定の差からhaitakaが審判層の認めない着手を指すこともあり得るので、haitakaの不正着手（`illegal_moves`）も確かめる。
+次に、終局理由が`Repetition`の局数を、王駒の捕獲による勝ちと分けて記録する。
+haitakaは連続して王手をかけた場合を除いて反復を引き分けと読むが、規則R1は王手でない攻撃的着手を繰り返した側も負けとするので、haitakaが引き分けのつもりで繰り返した対局が、haitakaの負けで終わることがある。
+この勝ちは、haitakaの規則の下での勝ちではない。
+資源の記録にも注意が要る。`haitaka_cli`はアダプタが手ごとに起動する子プロセスなので、ハーネスが記録するhaitakaの側のCPU時間と最大常駐メモリはアダプタだけの値であり、探索の値を含まない。
+先例は[1手1秒の対局の記録](../measurements/adhoc/haitaka-movetime1000-elo.md)にある。
+
 ### 進捗記録の固定局数Elo
 
 各フェーズ完了時の強さの積み上がりは、固定ペア数のEloと95%信頼区間で記録する。

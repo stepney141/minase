@@ -11,6 +11,7 @@
 | [bench/](bench/) | USI の `bench` コマンドを用いた回帰照合と、複数コミット間の探索速度比較を行う。 | `bench_compare.py`、`test_bench_compare.py` |
 | [ci/](ci/) | GitHub Actions の CI とリリース検証で行う検査のうち、`cargo` の1コマンドでは完結しないものを実行する。 | `run_feature_only_tests.sh` |
 | [hachu/](hachu/) | 中将棋エンジン HaChu と minase の通信プロトコル（CECP）および規則の互換性を照合する。 | `hachu_selfplay.py`、`hachu_replay.py` |
+| [haitaka/](haitaka/) | 変則将棋エンジン haitaka-variants の中将棋を USI エンジンとして `minase match run` へつなぎ、minase との規則の差を合法手の突き合わせで調べる。 | `haitaka_usi.py`、`haitaka_rule_diff.py` |
 | [lishogi/](lishogi/) | オンライン対局サイト Lishogi から中将棋棋譜を取得し、学習・検証用の選別や回帰テスト用フィクスチャを生成する。 | `fetch_lishogi_games.py`、`select_validation_games.py`、`fetch_lishogi_replays.py`、`test_fetch_lishogi_games.py`、`test_select_validation_games.py` |
 | [match/](match/) | `minase match run` の対局記録や USI 自己対局から、時間消費、対局コスト、および投了条件を診断する。 | `clock_budget_stats.py`、`clock_profile.py`、`byoyomi_game_profile.py`、`match_cost_profile.py`、`resign_diagnosis.py` |
 | [release/](release/) | リリースタグの整合、配布パッケージに含まれる評価ネット一覧、および変更履歴の抽出を検証する。 | `release_checks.py`、`test_release_checks.py` |
