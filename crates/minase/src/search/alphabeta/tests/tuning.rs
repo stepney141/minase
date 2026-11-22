@@ -62,7 +62,8 @@ fn tuning_parameters_in_isolated_process() {
                 .unwrap();
             assert!(
                 output.status.success(),
-                "{scenario}: {}\n{}",
+                "{scenario} ({}): {}\n{}",
+                output.status,
                 String::from_utf8_lossy(&output.stdout),
                 String::from_utf8_lossy(&output.stderr)
             );
