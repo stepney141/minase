@@ -23,8 +23,8 @@ HalfKP_vmの世代反復は、本書でP型の評価関数の癖をつかんだ�
 第1世代の最初の4本の記録局面数の平均は2,325,829で、kは43となり、2026年11月20日に利用者が43を採ると決めたので、第N世代は43N本とする。
 同じ4本から較正した教師の勝率尺度K_tは733.12 cpである。
 第1世代は43本（記録局面数99,642,331）から学び（[学習の記録](../measurements/nnue-generation-iteration/nnue-generation-iteration-gen1-training.md)）、第0世代との判定で`H1`を取って暫定最良世代になった（[判定の記録](../measurements/nnue-generation-iteration/nnue-generation-iteration-gen1-stc.md)）。
-フェーズ3として、第2世代の教師86本を第1世代のネットで生成している（2026年11月21日の利用者の決定）。
-次の一手は、86本がそろった後に学習機を借りて第2世代を学び、第1世代との判定を行うことである。
+フェーズ3では、第2世代が86本（記録局面数217,189,481）から学び（[学習の記録](../measurements/nnue-generation-iteration/nnue-generation-iteration-gen2-training.md)）、第1世代との判定で`H1`を取って暫定最良世代になった（[判定の記録](../measurements/nnue-generation-iteration/nnue-generation-iteration-gen2-stc.md)）。
+次の一手は、利用者が第3世代へ進むと決めた後に、第2世代のネットで第3世代の教師129本を生成することである。
 
 ## 目的
 
