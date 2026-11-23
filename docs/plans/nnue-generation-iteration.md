@@ -45,7 +45,7 @@ HalfKP_vmの世代反復は、本書でP型の評価関数の癖をつかんだ�
 ここにない語は、[標準レシピv1の設計書](archived/nnue-standard-recipe.md#目的)の定義に従う。
 
 - **標準レシピv1**：標準レシピv1の設計書が定める、教師の生成と学習の条件。
-- **標準レシピv3**：[学習の手引き](../guides/nnue-training.md#標準レシピ)が定める、教師の生成と学習の現行の条件。1世代の教師の量を[世代の量のADR](../adr/grow-each-nnue-generation-by-the-teacher-files-for-100-million-positions.md)のとおり世代の番号で決め、学習を止める時点と書き出す重みを[学習期間のADR](../adr/select-the-nnue-checkpoint-on-held-out-games.md)のとおり検証損失で選ぶ。
+- **標準レシピv3**：本書に着手した時点の、教師の生成と学習の条件。1世代の教師の量を[世代の量のADR](../adr/grow-each-nnue-generation-by-the-teacher-files-for-100-million-positions.md)のとおり世代の番号で決め、学習を止める時点と書き出す重みを、置き換え済みの[学習期間のADR](../adr/archive/select-the-nnue-checkpoint-on-held-out-games.md)のとおり検証損失で選ぶ。第1世代と第2世代はこの条件で学んだ。学習の条件は第3世代から標準レシピv4に替わり、教師の生成の条件は変わらない。
 - **k**：1億局面に相当する教師ファイルの本数。第1世代の最初の4本の記録局面数（教師ファイルに記録した、学習に使える局面の数）の平均で1億を割って整数に丸めた値で、全世代で固定する。見込みは37である。
 - **新しい系列**：本書の世代反復で作る世代の系列。
 - **本**：教師ファイルを数える単位。1本は、7,500局を生成して収めた教師ファイルである。
@@ -118,7 +118,7 @@ HalfKP_vmの世代反復は、本書でP型の評価関数の癖をつかんだ�
 | 学習と生成の条件 | 標準レシピv3（学習は[学習の手引き](../guides/nnue-training.md#標準レシピ)、教師の生成は[vast.aiで教師ファイルを生成する手順](../guides/nnue-training.md#vastaiで教師ファイルを生成する)と[生成器のADR](../adr/exclude-checks-screen-openings-and-adjudicate-decided-games-in-teacher-generation.md)）を全世代で使い、世代の途中で変えない。1世代の量と学習率の減衰の期間は世代の番号から、検証の間隔はその世代の訓練局面数から決まる値であり、世代ごとの調整ではない。 | 世代ごとに条件を調整する案は、世代の間の比較ができなくなる。 |
 | 第3世代以降の学習 | 第3世代以降は、学習器のコミットの学習器で、標準レシピv4の条件で学ぶ。v4は、第1世代の教師43本をv4の条件で学んだネットが、v3の条件で学んだネットに短時間の対局の逐次検定で`H1`を取った結果をもって、2026年11月23日に利用者が採用した（[判定の記録](../measurements/nnue-decay-to-end/nnue-decay-to-end-gen1-stc.md)、[ADR](../adr/train-the-nnue-for-four-epochs-decaying-the-learning-rate-to-the-end-and-export-the-last-network.md)）。教師の生成器、エンジン、1世代の量、教師の勝率尺度、および規則セットは変えない。本表の「学習と生成の条件」、「学習を止める時点と書き出すネット」、「学習率の予定」、および「反復のコミット」の行は、第3世代以降の学習については、この行が優先する。 | 第3世代を第2世代までと同じ学習器と条件で学び、修正を次の世代か次の系列から使う案と、世代反復を第1世代からやり直す案は、利用者が退けた。第3世代の同じ教師をv3の条件とv4の条件の両方で学び、ネットどうしの対局で第3世代のネットを選ぶ案は、利用者がv4を採用した時点で取りやめた。このため、第3世代の判定（第2世代との対局）には、教師の世代の差と学習の条件の差の両方が含まれる。 |
 | 1世代の量 | 第N世代はkN本とする（2026年11月15日の利用者の決定、[世代の量のADR](../adr/grow-each-nnue-generation-by-the-teacher-files-for-100-million-positions.md)）。kは第1世代の最初の4本から求め、37と異なれば、残りの本を生成する前にkを採るかを利用者が決める。 | 全世代を70本に固定するv1の量と、全世代を185本に固定する案は、同じADRの理由で採らない。 |
-| 学習を止める時点と書き出すネット | 約0.5エポックごとに検証損失を測り、学習前の検証を除いて、検証損失が2回（約1エポック）続けて最小値を更新しなければ学習を止めて、検証損失が最小だった時点の重みを書き出す（[学習期間のADR](../adr/select-the-nnue-checkpoint-on-held-out-games.md)）。superbatchの数が上限Sに達した場合も、それまでに検証損失が最小だった時点の重みを書き出す。 | 世代の番号で決めた更新回数まで学習を続けて最後の重みを使う案は採らない。P型で同じ教師30本を繰り返し学んだ測定では、2.83エポックより後は訓練損失が下がり続けても検証損失が悪化し、8.02エポックのネットは2.83エポックのネットに対局で負けたからである（[測定記録](../measurements/adhoc/tatara-p-generalization.md)）。対局で最もよかったエポック数に固定する案は、同じADRの理由で採らない。 |
+| 学習を止める時点と書き出すネット | 約0.5エポックごとに検証損失を測り、学習前の検証を除いて、検証損失が2回（約1エポック）続けて最小値を更新しなければ学習を止めて、検証損失が最小だった時点の重みを書き出す（置き換え済みの[学習期間のADR](../adr/archive/select-the-nnue-checkpoint-on-held-out-games.md)）。superbatchの数が上限Sに達した場合も、それまでに検証損失が最小だった時点の重みを書き出す。 | 世代の番号で決めた更新回数まで学習を続けて最後の重みを使う案は採らない。P型で同じ教師30本を繰り返し学んだ測定では、2.83エポックより後は訓練損失が下がり続けても検証損失が悪化し、8.02エポックのネットは2.83エポックのネットに対局で負けたからである（[測定記録](../measurements/adhoc/tatara-p-generalization.md)）。対局で最もよかったエポック数に固定する案は、同じADRの理由で採らない。 |
 | 学習率の予定 | `cosine:<T>:0.027`とし、学習率を初期値の0.027倍まで下げる期間を、第1世代から第4世代は390,656更新、第5世代は488,320更新とする（[学習の手引き](../guides/nnue-training.md#標準レシピの設定と根拠)）。16,384局面のバッチでは、それぞれ延べ約64億局面と約80億局面の学習にあたる。第5世代の期間が長いのは、教師が約5億局面に増えるからであり、2つの値は、先行エンジンSaplingが3.8億局面以下の教師と6億局面の教師に使った学習の長さである（「参考資料」）。学習器は期間をsuperbatchの数で受け取るので、`<T>`には、この更新回数を1 superbatchの更新回数Bで割った値を渡す。 | 減衰の期間を学習が止まる見込みの更新回数まで縮める案は採らない。期間を縮めて学んだネットは、元の期間で同じ回数だけ学んだネットより検証損失が小さかったが、対局での差は+30.8 Eloで95%信頼区間（−14.9〜+77.7）が0をまたぎ、標準の期間を変える根拠には足りなかった（[測定記録](../measurements/adhoc/tatara-p-generalization.md)）。 |
 | 訓練局面の間引き | 間引かず、訓練対局の全局面を学ぶ。学習機は、全局面を載せられるメモリを持つvast.aiの出品から選ぶ（「学習の場所」の行）。 | 学習器の`--train-subsample`で局面を間引く案は採らない。標準レシピv3が間引きを定めるのは、更新に使える局面数が限られる場合であり、全局面を学べる場合に間引く利益は測られていない（[測定記録](../measurements/adhoc/tatara-p-generalization.md)）。 |
 | 規則セット | 教師の生成、世代の判定、および最終候補の対局を、規則セット`lishogi`で行う（2026年11月13日の利用者の決定）。学習器には規則セット`lishogi`を引数で渡し、学習器は教師ファイルのヘッダの規則セットと照合する。 | 判定を日本中将棋連盟の規則に基づく規則セット`JCSA`に残して過去の測定記録と比べられるようにする案は、学習した規則とは別の規則でネットの強さを測ることになる。 |
@@ -197,7 +197,7 @@ kが見込みの37で、第N世代の記録局面数の合計がN億のときの
 | 棋力 | 暫定最良世代とのGSPRTの度数、LLR（対数尤度比）、および判定。候補と対照のネットのSHA-256。 |
 | 教師の量 | 本数、対局数、記録局面数、1本あたりの記録局面数、訓練局面数と検証局面数、学習のスレッド数と速さ、学習の最大常駐メモリ、および生成機と学習機の実費と時間。 |
 | 配置 | STCの対局における候補側の配置の距離Mと、5配置の割合。5配置は、奔王が1〜2段、龍馬が1〜2段、醉象が3〜5筋、金将が3段以上、および麒麟が右端2筋にある配置である（定義は[結果回帰の設計書](archived/nnue-outcome-regression.md#配置の距離)）。偏りが再発していないかの目安であり、世代の判定には使わない。 |
-| 学習の健全性 | 訓練と検証の損失の推移、学習が止まった理由（`summary.json`の`stopped_by`）、書き出した重みの時点と学習が止まった時点のそれぞれのエポック数と更新回数、書き出した重みの検証損失、PSQT（駒と升ごとの点数の表）の移動量、および第0世代とのあいだの対局単位の汎化差（[教訓](../lessons/compare-nets-with-paired-game-bootstrap.md)）。学習が検証損失の停止条件ではなくsuperbatchの数の上限Sで止まった場合は、検証損失がまだ下がり得るので、反復は止めずに、判定の結果と合わせて利用者へ報告する（[学習期間のADR](../adr/select-the-nnue-checkpoint-on-held-out-games.md)）。 |
+| 学習の健全性 | 訓練と検証の損失の推移、学習が止まった理由（`summary.json`の`stopped_by`）、書き出した重みの時点と学習が止まった時点のそれぞれのエポック数と更新回数、書き出した重みの検証損失、PSQT（駒と升ごとの点数の表）の移動量、および第0世代とのあいだの対局単位の汎化差（[教訓](../lessons/compare-nets-with-paired-game-bootstrap.md)）。第1世代と第2世代で、学習が検証損失の停止条件ではなくsuperbatchの数の上限Sで止まった場合は、検証損失がまだ下がり得るので、反復は止めずに、判定の結果と合わせて利用者へ報告する（置き換え済みの[学習期間のADR](../adr/archive/select-the-nnue-checkpoint-on-held-out-games.md)）。 |
 | 第3世代以降の学習の条件 | 学習器のコミット、実際の1エポックの更新回数（`config.json`の`preprocessing.updates_per_epoch`）と学習の長さ（8B÷Uエポック）、最後の検証損失と更新後の検証損失の最小値の比、および量子化誤差の絶対値の最大。比と量子化誤差は、見張りの閾値を見直すために、判定の結果と一緒に記録する（[ADR](../adr/train-the-nnue-for-four-epochs-decaying-the-learning-rate-to-the-end-and-export-the-last-network.md)）。 |
 | 評価の形 | 評価値の分布、駒除去差分の符号反転、合法手の評価差、および書き出しの量子化誤差（平均、符号つきの平均、最大値、層ごとの飽和の割合）（[学習の手引き](../guides/nnue-training.md#学習した重みを診断する)、[教訓](../lessons/validation-loss-hides-material-distortion.md)、tatara化の設計書）。 |
 
@@ -351,7 +351,7 @@ LTCのシードは、STCの基本シードからペア数以上離れた値と�
 
 ## 参考資料
 
-- [学習の手引きの標準レシピ](../guides/nnue-training.md#標準レシピ)、[学習期間のADR](../adr/select-the-nnue-checkpoint-on-held-out-games.md)、およびその根拠の[測定記録](../measurements/adhoc/tatara-p-generalization.md)
+- [学習の手引きの標準レシピ](../guides/nnue-training.md#標準レシピ)、標準レシピv4の[学習の長さと書き出すネットのADR](../adr/train-the-nnue-for-four-epochs-decaying-the-learning-rate-to-the-end-and-export-the-last-network.md)、置き換え済みの[学習期間のADR](../adr/archive/select-the-nnue-checkpoint-on-held-out-games.md)、およびその根拠の[測定記録](../measurements/adhoc/tatara-p-generalization.md)
 - [標準レシピv1の設計書](archived/nnue-standard-recipe.md)
 - [中断した世代反復の設計書](archived/nnue-generation-reset.md)とその[測定記録](../measurements/nnue-generation-reset/)
 - [中断可能な計算機での教師生成の設計書](archived/interruptible-teacher-generation.md)

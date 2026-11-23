@@ -2149,9 +2149,9 @@ fn diagnostic_piece_kanji(piece: PieceCode) -> char {
             Color::Black => '王',
             Color::White => '玉',
         },
-        PieceKind::DrunkElephant => '醉',
-        PieceKind::FerociousLeopard => '猛',
-        PieceKind::BlindTiger => '盲',
+        PieceKind::DrunkElephant => '象',
+        PieceKind::FerociousLeopard => '豹',
+        PieceKind::BlindTiger => '虎',
         PieceKind::CopperGeneral => '銅',
         PieceKind::SilverGeneral => '銀',
         PieceKind::GoldGeneral => '金',
@@ -4761,8 +4761,8 @@ mod tests {
     fn diagnostic_startpos_board_matches_rules() {
         let output = session(&[RuleCode::R1], "position startpos\nd\n");
         let expected = [
-            "^香 ^猛 ^銅 ^銀 ^金 ^醉 ^玉 ^金 ^銀 ^銅 ^猛 ^香",
-            "^反 ・ ^角 ・ ^盲 ^鳳 ^麒 ^盲 ・ ^角 ・ ^反",
+            "^香 ^豹 ^銅 ^銀 ^金 ^象 ^玉 ^金 ^銀 ^銅 ^豹 ^香",
+            "^反 ・ ^角 ・ ^虎 ^鳳 ^麒 ^虎 ・ ^角 ・ ^反",
             "^横 ^竪 ^飛 ^馬 ^龍 ^奔 ^獅 ^龍 ^馬 ^飛 ^竪 ^横",
             "^歩 ^歩 ^歩 ^歩 ^歩 ^歩 ^歩 ^歩 ^歩 ^歩 ^歩 ^歩",
             "・ ・ ・ ^仲 ・ ・ ・ ・ ^仲 ・ ・ ・",
@@ -4771,8 +4771,8 @@ mod tests {
             "・ ・ ・ 仲 ・ ・ ・ ・ 仲 ・ ・ ・",
             "歩 歩 歩 歩 歩 歩 歩 歩 歩 歩 歩 歩",
             "横 竪 飛 馬 龍 獅 奔 龍 馬 飛 竪 横",
-            "反 ・ 角 ・ 盲 麒 鳳 盲 ・ 角 ・ 反",
-            "香 猛 銅 銀 金 王 醉 金 銀 銅 猛 香",
+            "反 ・ 角 ・ 虎 麒 鳳 虎 ・ 角 ・ 反",
+            "香 豹 銅 銀 金 王 象 金 銀 銅 豹 香",
         ];
         let rows: Vec<_> = output.lines().filter(|line| line.contains('|')).collect();
         assert_eq!(rows.len(), 12);
@@ -4830,7 +4830,7 @@ mod tests {
             .flat_map(|row| row.split('|').skip(1).take(12))
             .map(|cell| cell.chars().filter(|c| !c.is_whitespace()).collect())
             .collect();
-        for piece in ["+飛", "^+金", "+太", "^+醉"] {
+        for piece in ["+飛", "^+金", "+太", "^+象"] {
             assert_eq!(
                 cells.iter().filter(|cell| cell.as_str() == piece).count(),
                 1,

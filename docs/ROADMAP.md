@@ -141,6 +141,7 @@
 | NNUE教師生成を探索結果を変えずに速くする | [plans/archived/teacher-generation-speedup.md](plans/archived/teacher-generation-speedup.md) | 完了 | 2026年11月6日 |
 | NNUEの標準レシピv1と、学習器および教師の生成器の変更 | [plans/archived/nnue-standard-recipe.md](plans/archived/nnue-standard-recipe.md) | 完了（採用） | 2026年11月15日 |
 | 標準レシピv3でのP型のNNUEの世代反復のやり直し | [plans/nnue-generation-iteration.md](plans/nnue-generation-iteration.md) | 進行中 | |
+| NNUEの学習で端数バッチを捨て、学習率を学習の終わりまでに下げきる | [plans/archived/nnue-decay-to-end.md](plans/archived/nnue-decay-to-end.md) | 完了（採用） | 2026年11月23日 |
 | MCTSの葉での王駒の捕獲の判定と方策の温度 | [plans/archived/mcts-royal-capture-temperature.md](plans/archived/mcts-royal-capture-temperature.md) | 完了（採用） | 2026年11月9日 |
 | 起動引数と診断ツールをUSIへ移す | [plans/archived/cli-to-usi.md](plans/archived/cli-to-usi.md) | 完了（採用） | 2026年11月12日 |
 | NNUEの教師生成を中断の後に再開できるようにする | [plans/archived/resumable-nnue-teacher-generation.md](plans/archived/resumable-nnue-teacher-generation.md) | 完了（採用） | 2026年11月14日 |
@@ -169,6 +170,7 @@ NNUEの作業の本線は、まずNNUEの実装を直して、自玉の升ごと
 その前提だった[ネットの外部ファイル化](plans/archived/nnue-external-network-file.md)は2026年11月17日に完了し、ネットはgitに入れず、USIのオプション`EvalFile`で外部のファイルから読むようになった。
 [tatara化とHalfKP_vm](plans/archived/nnue-tatara-framework-and-halfkp-vm.md)は2026年11月19日に完了し、P型はtataraのLayerStackへ載り、HalfKP_vmもエンジン、学習器、および教師生成でいつでも使える状態になった。
 HalfKP_vmの世代反復は、P型の世代反復で評価関数の癖をつかんだ後に、別の設計書として起案する。
+世代反復の第3世代以降の学習は、[端数バッチの修正と学習率の下げきり](plans/archived/nnue-decay-to-end.md)が定めた標準レシピv4（端数バッチを捨てる学習器で約4エポックを学び、学習率を終わりまでに下げきって、最後の重みを使う条件）で行う。
 表の残りの3本は、本線の教師を安く作るためのものか、本線の結果を見てから次に試すものである。
 
 | 設計書 | 内容 | 状態と次の判断 | 前提 |
@@ -219,6 +221,10 @@ PV-MCTSには、勝率尺度をオプション`NnCpPerLogit`で渡す。
 自己対局の探索はPUCTの係数を使わず、定例の測定はサイクル1を始めたときのバイナリに固定するので、調整しても2回目の学習の途中で条件は変わらない。
 2回目の実行と[NNUEの世代反復](plans/nnue-generation-iteration.md)は、借りる計算機が競合しないので並行して進め、作業機での対局の測定だけを重ならないように順番を調整する。
 強さを測る相手のαβ探索はネットを埋め込んだコミット`45d5db54`に固定されているので、2回目の実行の測定はNNUEの変更の影響を受けない。
+
+設計書のない候補のうち、Leela Chess Zeroから移せる工夫は[提案](proposals/lc0-transfer-candidates.md)にあり、利用者の判断を待っている。
+1件ごとの効果が小さくても移せる調整を積み上げる方針で、対局用の探索、自己対局と教師データ、およびネットと学習器の42候補を挙げ、採否を決めるための6件の測定を、GPUを借りずに先に行うよう勧める。
+このうち、反復の近似による勝敗の扱いと、大域情報を扱う層の選び方は、3回目の強化学習を始める前に決める事項である。
 
 統括計画の完了の後には、AlphaZero型のネットの評価値でNNUEの教師値を付け直す設計書を起案する（[提案](proposals/nnue-teacher-content-candidates.md)の最初の候補）。
 到達の判定でMCTSがαβ探索と同等以上とされた場合は、既定の探索方式の変更とlishogi Botへの配備も別の設計書で扱う。

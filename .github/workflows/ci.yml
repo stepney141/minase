@@ -24,6 +24,10 @@ jobs:
     runs-on: ubuntu-latest
     env:
       CARGO_TERM_COLOR: always
+      # Backtraces keep file and line numbers; the rest of the debug info only slows the build.
+      CARGO_PROFILE_DEV_DEBUG: line-tables-only
+      # Override .cargo/config.toml's target-cpu=native so cached dependencies run on any runner CPU.
+      RUSTFLAGS: "-C target-cpu=x86-64"
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -36,6 +40,19 @@ jobs:
         run: cargo clippy --workspace --all-targets -- -D warnings
       - name: Run workspace tests
         run: cargo test --workspace
+
+  rust-features:
+    name: Rust feature-gated engine tests
+    runs-on: ubuntu-latest
+    env:
+      CARGO_TERM_COLOR: always
+      CARGO_PROFILE_DEV_DEBUG: line-tables-only
+      # Override .cargo/config.toml's target-cpu=native so cached dependencies run on any runner CPU.
+      RUSTFLAGS: "-C target-cpu=x86-64"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
       - name: Run feature-gated engine tests
         run: scripts/ci/run_feature_only_tests.sh
 

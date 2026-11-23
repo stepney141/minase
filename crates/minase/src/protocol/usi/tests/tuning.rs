@@ -37,7 +37,8 @@ fn tuning_usi_contract_in_isolated_process() {
                 let stdout = String::from_utf8(output.stdout).unwrap();
                 assert!(
                     output.status.success(),
-                    "{scenario}: {stdout}\n{}",
+                    "{scenario} ({}): {stdout}\n{}",
+                    output.status,
                     String::from_utf8_lossy(&output.stderr)
                 );
                 assert!(

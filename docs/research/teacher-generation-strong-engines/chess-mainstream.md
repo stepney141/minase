@@ -313,7 +313,9 @@ TensorFlow版の学習器は、新しい順に`num_chunks`個の対局ファイ�
 同じ抽出の段階に、探索前のネットの評価`orig_q`と探索後の評価`best_q`の差、および探索前後の方策のKLDから重みを作り、ネットの予測が当たっている局面を確率的に捨てる「diff focus」がある（[chunkparser.py 37〜44行、444〜459行](https://github.com/LeelaChessZero/lczero-training/blob/ee626a97e517df76e85084339bbe6d0895eaba09/tf/chunkparser.py#L37-L44)）。
 docstringは、この選別が「how accurate the no-search eval ('orig_q') is compared to eval after search ('best_q')」に従うと説明する。
 既定値では無効である。
-wikiの履歴はT60のnet 67739以降とT76の開始時から「value focus」の設定を使ったと記しており、これはdiff focusに相当すると推測されるが、対応も具体的な値も確認していない（[Project history](https://lczero.org/dev/wiki/project-history/)）。
+wikiの履歴はT60のnet 67739以降とT76の開始時から「value focus」の設定を使ったと記す（[Project history](https://lczero.org/dev/wiki/project-history/)）。
+value focusは、価値の差だけを使うdiff focusの前身であり、lczero-trainingの[プルリクエスト#139](https://github.com/LeelaChessZero/lczero-training/pull/139)（2021年2月）で入り、[プルリクエスト#169](https://github.com/LeelaChessZero/lczero-training/pull/169)（2021年10月）でdiff focusに置き換わった。
+T60は、ネット67739からvalue focusを最小値0.7で使い始めて0.5、0.05と下げ、ネット610161からdiff focusを最小値0.025、傾き3.0で使った（[lc0の自己対局と教師データの調査](../lc0-transfer/selfplay-data.md)のT4、2026年11月22日）。
 
 2018年の初期の系列では、リプレイバッファと抽出の設定の誤りが評価の劣化を招いた記録がある。
 lc0のwikiは、1日に約2,160万局面を生成して約3億720万局面を学習に使い、各局面を平均14.2回使っていたことを挙げ、過学習が強さの変動の最大の要因であり、価値の損失の重みを0.25に下げると強さが上がり始めたと記す（[Large Elo fluctuations starting from id253](https://lczero.org/dev/wiki/large-elo-fluctuations-starting-from-id253/)）。
@@ -405,7 +407,7 @@ minaseが投了や評価値による打ち切りで対局を短くする場合�
 - UHOの正式名称と局面の選定基準。作者のページを取得できなかった。
 - Stockfishの最初の採用ネット（2020年8月）に使われた教師データの深さと量、およびnodchip本人による手順の原文。
 - 現行のレシピの微調整段が追加で何エポック学ぶか。本書は600エポックまで続けると書いたが、学習器の再開時のエポック数の扱いから40エポックの追加と推測している。
-- lc0のT80の1手あたりの平均訪問数、データ量、リプレイバッファの大きさ、`q_ratio`、deblunderの閾値、diff focusの値、およびwikiの「value focus」とdiff focusの対応。
+- lc0のT80の1手あたりの平均訪問数、データ量、およびdeblunderの閾値。T80のリプレイバッファの大きさ、`q_ratio`、およびdiff focusの値は、[lc0の自己対局と教師データの調査](../lc0-transfer/selfplay-data.md)の系列ごとの設定の表にある。
 - lc0のサーバーが`ResignFPThreshold`を投了閾値の調整に使っているかどうか。
 - BT4が2026年の論文のLeela-CFと同じネットかどうか、およびBT4の学習データ。
 - 2026年5月の採用コミットが「does not use a lambda schedule for the most part」と書いた設定と、現行の余弦曲線によるλの変化との関係。
