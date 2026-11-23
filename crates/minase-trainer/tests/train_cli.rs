@@ -43,6 +43,11 @@ fn argv() -> Vec<&'static str> {
         "cosine:3:0.027",
     ]
 }
+
+// 教師は40対局×3局面で、seed=11では検証用の3対局を除いた111局面が訓練用になる。
+// batch=17では6更新分と9局面の端数がある。
+const UPDATES_PER_EPOCH: u64 = 6;
+
 struct Fixture(PathBuf);
 impl Fixture {
     fn new() -> Self {
@@ -281,6 +286,7 @@ fn cpu_records_initial_validation_planned_updates_and_tatara_export() {
     assert_eq!(config["architecture"]["m"], 8);
     assert_eq!(config["architecture"]["K_o"], 1016.0);
     let summary = document(dir.join("summary.json"));
+    assert_eq!(summary["epochs"], 1.0);
     assert_eq!(summary["removal_sign"]["positions"], 5);
     assert_eq!(summary["removal_sign"]["removals"], 20);
     assert_eq!(summary["removal_sign"]["reversals"]["total"], 20);
@@ -386,42 +392,100 @@ fn cpu_records_initial_validation_planned_updates_and_tatara_export() {
         diagnostic["reversals"]
     );
 }
-fn resume_matches(device: DeviceKind) {
+
+#[test]
+fn cpu_training_discards_the_tail_and_records_epochs() {
     let f = Fixture::new();
-    let mut full = f.args("full", 3);
-    full.device = device;
-    run(full.clone()).unwrap();
-    let mut first = f.args("resume", 1);
-    first.device = device;
-    run(first.clone()).unwrap();
-    let before = Checkpoint::read(first.output_dir.join("latest.npz")).unwrap();
-    assert!(
-        before.progress.completed_steps < 7,
-        "stop inside the first epoch"
-    );
-    let mut resumed = first;
-    resumed.superbatches = 3.try_into().unwrap();
-    resumed.resume = Some(resumed.output_dir.clone());
-    resumed.threads = Some(2);
-    resumed.time_limit_hours = 23.0;
-    run(resumed.clone()).unwrap();
-    bits(
-        &Checkpoint::read(full.output_dir.join("latest.npz")).unwrap(),
-        &Checkpoint::read(resumed.output_dir.join("latest.npz")).unwrap(),
-    );
+    let mut args = f.args("epochs", UPDATES_PER_EPOCH + 1);
+    args.batches_per_superbatch = 1.try_into().unwrap();
+    run(args.clone()).unwrap();
+
+    let rows = logs(&args.output_dir);
+    assert_eq!(rows.len(), UPDATES_PER_EPOCH as usize + 2);
+    assert_eq!(rows[UPDATES_PER_EPOCH as usize]["epochs"], 1.0);
+    for row in &rows[1..] {
+        assert_eq!(row["steps"], 1);
+        // 丸めで秒数と速度の積から局面数を戻す。
+        let seconds = row["training_seconds"].as_f64().unwrap();
+        let positions_per_second = row["training_positions_per_second"].as_f64().unwrap();
+        assert_eq!((seconds * positions_per_second).round(), args.batch as f64);
+    }
+    let config = document(args.output_dir.join("config.json"));
     assert_eq!(
-        fs::read(full.output_dir.join("nnue.bin")).unwrap(),
-        fs::read(resumed.output_dir.join("nnue.bin")).unwrap()
+        config["preprocessing"]["updates_per_epoch"],
+        UPDATES_PER_EPOCH
     );
 }
+
 #[test]
-fn cpu_resume_inside_epoch_is_bit_identical_with_changed_budgets() {
-    resume_matches(DeviceKind::Cpu);
+fn fewer_than_one_batch_after_subsampling_fails_before_creating_output() {
+    let f = Fixture::new();
+    let mut args = f.args("too-small", 1);
+    // 間引き前は111局面、間引き後は55局面なので、間引き後にだけ1バッチに満たない。
+    args.batch = 75;
+    args.train_subsample = Some("positions:2:0".parse().unwrap());
+    let error = run(args.clone()).unwrap_err();
+    assert!(
+        matches!(
+            error.downcast_ref::<Error>(),
+            Some(Error::Invalid(reason)) if reason.contains("training positions")
+                && reason.contains("--batch")
+        ),
+        "{error}"
+    );
+    assert!(!args.output_dir.exists());
+}
+
+fn resume_matches(f: &Fixture, full: Args, splits: &[u64]) {
+    run(full.clone()).unwrap();
+    let checkpoint = Checkpoint::read(full.output_dir.join("latest.npz")).unwrap();
+    let network = fs::read(full.output_dir.join("nnue.bin")).unwrap();
+    for &split in splits {
+        let mut first = full.clone();
+        first.output_dir = f.0.join(format!("resume-{split}"));
+        first.superbatches = split.try_into().unwrap();
+        let before = run(first.clone()).unwrap();
+        let steps = split * full.batches_per_superbatch.get();
+        assert_eq!(before.completed_steps, steps);
+        assert_eq!(before.epochs, steps as f64 / UPDATES_PER_EPOCH as f64);
+
+        let mut resumed = first;
+        resumed.superbatches = full.superbatches;
+        resumed.resume = Some(resumed.output_dir.clone());
+        resumed.threads = Some(2);
+        resumed.time_limit_hours = 23.0;
+        run(resumed.clone()).unwrap();
+        bits(
+            &checkpoint,
+            &Checkpoint::read(resumed.output_dir.join("latest.npz")).unwrap(),
+        );
+        assert_eq!(
+            fs::read(resumed.output_dir.join("nnue.bin")).unwrap(),
+            network,
+            "split at update {split}"
+        );
+    }
+}
+#[test]
+fn cpu_resume_around_and_inside_epoch_is_bit_identical_with_changed_budgets() {
+    let f = Fixture::new();
+    let mut full = f.args("full", UPDATES_PER_EPOCH + 2);
+    full.batches_per_superbatch = 1.try_into().unwrap();
+    // 1周目の最後の更新の手前、確定直後（2周目の先頭）、1周目の途中。
+    let splits = [
+        UPDATES_PER_EPOCH - 1,
+        UPDATES_PER_EPOCH,
+        UPDATES_PER_EPOCH / 2,
+    ];
+    resume_matches(&f, full, &splits);
 }
 #[test]
 #[ignore = "requires a CUDA GPU"]
 fn gpu_resume_inside_epoch_is_bit_identical() {
-    resume_matches(DeviceKind::Cuda);
+    let f = Fixture::new();
+    let mut full = f.args("full", 3);
+    full.device = DeviceKind::Cuda;
+    resume_matches(&f, full, &[1]);
 }
 fn validation_interval(device: DeviceKind) {
     let f = Fixture::new();
@@ -497,6 +561,52 @@ fn resume_rejects_changed_trajectory_and_inputs_without_mutating_artifacts() {
     b.data = vec![copy];
     assert!(run(b).is_err());
 }
+
+#[test]
+fn resume_rejects_config_without_updates_per_epoch_without_mutating_artifacts() {
+    use minase_trainer::nn::{Error as CheckpointError, checkpoint::MismatchField};
+
+    let f = Fixture::new();
+    let mut args = f.args("legacy-config", 1);
+    run(args.clone()).unwrap();
+
+    let config_path = args.output_dir.join("config.json");
+    let mut config = document(&config_path);
+    let _ = config["preprocessing"]
+        .as_object_mut()
+        .unwrap()
+        .remove("updates_per_epoch");
+    fs::write(config_path, serde_json::to_vec_pretty(&config).unwrap()).unwrap();
+    let names = [
+        "config.json",
+        "latest.npz",
+        "nnue.bin",
+        "summary.json",
+        "training.jsonl",
+    ];
+    let artifacts = names.map(|name| fs::read(args.output_dir.join(name)).unwrap());
+
+    args.resume = Some(args.output_dir.clone());
+    args.superbatches = 2.try_into().unwrap();
+    let error = run(args.clone()).unwrap_err();
+    assert!(
+        matches!(
+            error.downcast_ref::<CheckpointError>(),
+            Some(CheckpointError::CheckpointMismatch(
+                MismatchField::Preprocessing
+            ))
+        ),
+        "{error}"
+    );
+    for (name, bytes) in names.into_iter().zip(artifacts) {
+        assert_eq!(
+            fs::read(args.output_dir.join(name)).unwrap(),
+            bytes,
+            "{name}"
+        );
+    }
+}
+
 #[test]
 fn rules_are_parsed_and_checked_for_every_teacher() {
     let f = Fixture::new();
@@ -562,9 +672,18 @@ fn subsampling_changes_only_training_and_spill_resume_repeats_it() {
     a.buckets = 3;
     a.bucket_positions = Some(1000);
     a.scratch_dir = Some(f.0.clone());
-    run(a.clone()).unwrap();
+    // 55局面で3更新の周を一つ越え、次の周の1更新目を終えた時点から再開する。
+    a.batches_per_superbatch = 4.try_into().unwrap();
+    let before = run(a.clone()).unwrap();
+    assert_eq!(before.completed_steps, 4);
+    assert_eq!(before.epochs, 4.0 / 3.0);
     let config = document(a.output_dir.join("config.json"));
-    assert!(config["preprocessing"]["train_subsample"].is_object());
+    assert_eq!(
+        config["preprocessing"]["train_subsample"]["training_positions_after"],
+        55
+    );
+    assert_eq!(config["preprocessing"]["updates_per_epoch"], 3);
+    assert_eq!(config["preprocessing"]["validation_positions"], 9);
     let mut b = a.clone();
     b.output_dir = f.0.join("continuous");
     b.superbatches = 2.try_into().unwrap();
@@ -671,6 +790,8 @@ fn cli_time_limit_preserves_checkpoint_and_resume_matches_continuous_training() 
         .arg(&resumed.data[0])
         .args(["--output-dir"])
         .arg(f.0.join("cli-timeout"))
+        .arg("--batch")
+        .arg(resumed.batch.to_string())
         .args([
             "--rules",
             "JCSA",

@@ -230,7 +230,7 @@ fn train_batches_inner(
 }
 
 /// 一時ファイルから最大workersバッチを先に取り出し、並列に構築して順に投入する。
-/// 復元済み記録の上限はworkers×batch件で、最後以外のバッチは満杯になる。
+/// 復元済み記録の上限はworkers×batch件で、指定された更新回数を超えて読み進めない。
 pub(super) fn train_spill_batches(
     store: &SpillStore,
     reader: &mut EpochReader<'_>,
