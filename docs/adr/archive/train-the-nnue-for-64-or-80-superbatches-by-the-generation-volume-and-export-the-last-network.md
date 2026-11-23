@@ -2,7 +2,7 @@
 
 ## ステータス
 
-置き換え済み。[NNUEの学習期間は未学習対局での検証損失から選ぶ](../select-the-nnue-checkpoint-on-held-out-games.md)によって置き換えられた。
+置き換え済み。[NNUEの学習期間は未学習対局での検証損失から選ぶ](select-the-nnue-checkpoint-on-held-out-games.md)によって置き換えられた。
 
 ## コンテキスト
 

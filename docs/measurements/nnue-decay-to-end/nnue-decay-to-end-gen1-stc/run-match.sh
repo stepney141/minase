@@ -2,7 +2,7 @@
 # 候補の条件のネットと現行の条件のネットを、GSPRTで比べる。
 # 使い方: run-match.sh <測定名> <シード> <stc|ltc> <候補のネット> <対照のネット> <同時対局数>
 # 両側に世代反復の反復のコミットのエンジンを使い、ネットだけをEvalFileで替える。
-# 測定名とシードは、設計書 docs/plans/nnue-decay-to-end.md の「測定と判定」の表の値を渡す。
+# 測定名とシードは、設計書 docs/plans/archived/nnue-decay-to-end.md の「測定と判定」の表の値を渡す。
 # 途中で止まった測定は、同じ実行ディレクトリを minase match run --resume で再開する。
 set -euo pipefail
 name=$1

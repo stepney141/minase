@@ -2,13 +2,13 @@
 
 ## ステータス
 
-承認済み。2026年11月19日に標準レシピv3に適用した。
+置き換え済み。[NNUEは約4エポックの学習の終わりまでに学習率を余弦減衰で下げきり、最後のネットを書き出して、検証損失は見張りに使う](../train-the-nnue-for-four-epochs-decaying-the-learning-rate-to-the-end-and-export-the-last-network.md)によって置き換えられた。決定日は2026年11月19日で、標準レシピv3に適用していた。
 
 ## コンテキスト
 
-[標準レシピv2](archive/train-the-nnue-for-64-or-80-superbatches-by-the-generation-volume-and-export-the-last-network.md)は、教師の世代に応じて64または80 superbatchの学習を予定し、最後の重みを使っていた。
+[標準レシピv2](train-the-nnue-for-64-or-80-superbatches-by-the-generation-volume-and-export-the-last-network.md)は、教師の世代に応じて64または80 superbatchの学習を予定し、最後の重みを使っていた。
 tatara方式のP型では、同じ棋譜を繰り返し学ぶと、訓練損失が下がり続けても別の対局の探索値を予測する精度が悪化した。
-訓練局面数と更新回数を揃えると、多くの対局から少しずつ採ったモデルの検証損失が小さかった。局面数だけから適切な反復回数を決めると、この違いを取りこぼす。[測定記録](../measurements/adhoc/tatara-p-generalization.md)
+訓練局面数と更新回数を揃えると、多くの対局から少しずつ採ったモデルの検証損失が小さかった。局面数だけから適切な反復回数を決めると、この違いを取りこぼす。[測定記録](../../measurements/adhoc/tatara-p-generalization.md)
 
 ## 決定
 

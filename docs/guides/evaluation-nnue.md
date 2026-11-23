@@ -634,9 +634,9 @@ Simpleでは、そのような区分の行にも学習した仮想行が足し�
 
 学習データは対局単位で訓練集合と検証集合に分け、約5%の対局を検証に充てる。
 同じ対局の局面を両方に入れると、隣接する局面が似ているために検証損失が実際より良く見えるからである。
-標準レシピでは約0.5エポックごとに検証集合の全局面で教師値に対する平均二乗誤差を測る。
-更新後の検証損失が2回続けて最小値を更新しなければ学習を止め、最小値を最初に記録した時点の重みを選ぶ。
-書き出した整数モデルの棋力は別の開始局面で測る。[学習期間の決め方](../adr/select-the-nnue-checkpoint-on-held-out-games.md)
+標準レシピでは、1 superbatch（更新をまとめる単位）を約0.5エポックとして8 superbatch（約4エポック）を学び、学習率をその終わりまでに初期値の0.027倍まで余弦の形で下げて、最後の重みを選ぶ。
+検証集合は、約0.5エポックごとに全局面で教師値に対する平均二乗誤差を測り、最後の重みが悪化していないかを見張るために使う。最後の検証損失が、重みの更新を始めてから測った検証損失の最小値の1.02倍を超えたネットは使わない。
+書き出した整数モデルの棋力は別の開始局面で測る。[学習の長さと書き出すネットの決め方](../adr/train-the-nnue-for-four-epochs-decaying-the-learning-rate-to-the-end-and-export-the-last-network.md)
 
 ### 量子化誤差の記録
 
@@ -695,7 +695,8 @@ GPUの学習器を設計した理由は、[NNUEの学習器をRustのホスト�
 - [NNUEの世代反復では、学習したネットをgitの外に置いてそのまま次の世代の教師の生成に使い、学習の後に補正しない](../adr/use-each-trained-nnue-outside-git-for-the-next-generation.md)
 - [NNUEの学習器を、構造によらない学習ループと構造ごとの実装に分け、構造ごとのサブコマンドで呼ぶ](../adr/split-the-nnue-trainer-into-a-shared-loop-and-structure-backends.md)
 - [NNUEは先読みを使わない探索値だけの教師で、勝率の差の2乗を損失として学ぶ](../adr/train-the-nnue-on-search-value-teachers-with-the-squared-win-rate-difference.md)
-- [NNUEの学習期間は未学習対局での検証損失から選ぶ](../adr/select-the-nnue-checkpoint-on-held-out-games.md)
+- [NNUEは約4エポックの学習の終わりまでに学習率を余弦減衰で下げきり、最後のネットを書き出して、検証損失は見張りに使う](../adr/train-the-nnue-for-four-epochs-decaying-the-learning-rate-to-the-end-and-export-the-last-network.md)
+- [NNUEの学習は、エポックの最後に残る1バッチ未満の局面を、そのエポックでは学ばない](../adr/drop-the-tail-batch-of-each-nnue-training-epoch.md)
 - [NNUEの学習では、どのパラメータ群にも重み減衰を掛けない](../adr/apply-no-weight-decay-to-the-nnue.md)
 - [NNUEの学習器から駒除去差分の補助損失を外し、書き出し時に符号反転の割合を記録する](../adr/drop-the-piece-removal-auxiliary-loss-from-the-nnue-trainer.md)
 - [NNUEによるPST＋FMの完全代替](../plans/archived/nnue-replacement.md)
