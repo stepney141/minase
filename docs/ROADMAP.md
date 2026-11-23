@@ -141,7 +141,7 @@
 | NNUE教師生成を探索結果を変えずに速くする | [plans/archived/teacher-generation-speedup.md](plans/archived/teacher-generation-speedup.md) | 完了 | 2026年11月6日 |
 | NNUEの標準レシピv1と、学習器および教師の生成器の変更 | [plans/archived/nnue-standard-recipe.md](plans/archived/nnue-standard-recipe.md) | 完了（採用） | 2026年11月15日 |
 | 標準レシピv3でのP型のNNUEの世代反復のやり直し | [plans/nnue-generation-iteration.md](plans/nnue-generation-iteration.md) | 起案 | |
-| NNUEの学習で端数バッチを捨て、学習率を学習の終わりまでに下げきる | [plans/nnue-decay-to-end.md](plans/nnue-decay-to-end.md) | 起案 | |
+| NNUEの学習で端数バッチを捨て、学習率を学習の終わりまでに下げきる | [plans/archived/nnue-decay-to-end.md](plans/archived/nnue-decay-to-end.md) | 完了（採用） | 2026年11月23日 |
 | MCTSの葉での王駒の捕獲の判定と方策の温度 | [plans/archived/mcts-royal-capture-temperature.md](plans/archived/mcts-royal-capture-temperature.md) | 完了（採用） | 2026年11月9日 |
 | 起動引数と診断ツールをUSIへ移す | [plans/archived/cli-to-usi.md](plans/archived/cli-to-usi.md) | 完了（採用） | 2026年11月12日 |
 | NNUEの教師生成を中断の後に再開できるようにする | [plans/archived/resumable-nnue-teacher-generation.md](plans/archived/resumable-nnue-teacher-generation.md) | 完了（採用） | 2026年11月14日 |
@@ -170,13 +170,12 @@ NNUEの作業の本線は、まずNNUEの実装を直して、自玉の升ごと
 その前提だった[ネットの外部ファイル化](plans/archived/nnue-external-network-file.md)は2026年11月17日に完了し、ネットはgitに入れず、USIのオプション`EvalFile`で外部のファイルから読むようになった。
 [tatara化とHalfKP_vm](plans/archived/nnue-tatara-framework-and-halfkp-vm.md)は2026年11月19日に完了し、P型はtataraのLayerStackへ載り、HalfKP_vmもエンジン、学習器、および教師生成でいつでも使える状態になった。
 HalfKP_vmの世代反復は、P型の世代反復で評価関数の癖をつかんだ後に、別の設計書として起案する。
-表の2行目は、世代反復の第1世代と第2世代の学習で見つかった学習の条件の問題を直すものであり、第3世代の学習から使う。
+世代反復の第3世代以降の学習は、[端数バッチの修正と学習率の下げきり](plans/archived/nnue-decay-to-end.md)が定めた標準レシピv4（端数バッチを捨てる学習器で約4エポックを学び、学習率を終わりまでに下げきって、最後の重みを使う条件）で行う。
 表の残りの3本は、本線の教師を安く作るためのものか、本線の結果を見てから次に試すものである。
 
 | 設計書 | 内容 | 状態と次の判断 | 前提 |
 |---|---|---|---|
 | [P型の世代反復](plans/nnue-generation-iteration.md) | 標準レシピv3で、第n世代に約n億局面の教師を使い、v0から最大第5世代までP型の世代反復を行う。各世代の学習は、訓練に使わない対局での損失が下がらなくなった時点で止める。教師の生成と学習に借りる計算機の費用は、各世代を上限まで学んだ場合で約300米ドルと見込む。 | 起案の段階である。計算機を借りるので、利用者の着手の指示を待つ。 | なし（外部ファイル化とtatara化は完了した） |
-| [端数バッチの修正と学習率の下げきり](plans/nnue-decay-to-end.md) | 学習器がエポックの最後の端数バッチで不正確な更新を行う不具合を直す。あわせて、学習の長さを約4エポックに固定して学習率をその終わりまでに下限まで下げ、最後の重みを使う条件を、現行の標準レシピv3と対局で比べる。 | 起案の段階である。2026年11月23日に利用者が、修正を世代反復の第3世代の学習から使うと決めた。次の一手は学習器の修正である。 | P型の世代反復の第1世代と第3世代の教師（比べるネットを学ぶため） |
 | [先読みなしの教師での間引きの比較](plans/nnue-subsample-no-lookahead.md) | 同じ局面数を少数の対局から採る学習と多数の対局から採る学習を比べ、対局数が多いほど良いという効果が、後続の局面の探索値を混ぜない現行の教師でも残るかを確かめる。 | 起案の段階である。2026年11月20日に、記録する局面の間引きの着手の前提から外した。世代反復の結果を見て、続けるかを決める。 | なし |
 | [記録する局面の間引き](plans/sparse-teacher-recording.md) | 4分の1の手だけを2万ノードで探索して記録し、残りの手を少ないノード数で指して、同じ計算量で対局数を増やす。世代反復で最後に強いと判定された世代の教師と同じネットを使い、生成の計算量をそろえて教師を生成し、学んだネットをその世代のネットと段階ゲートで比べる。 | 起案の段階である。計算機を借りるので、世代反復の完了の後に利用者の着手の指示を待つ。 | 世代反復の完了（その教師とネットを基準に使い、標準レシピv3が固定した教師の作り方を変えるため） |
 | [第1層の全再計算の差分化（Finny tables）](plans/nnue-finny-tables.md) | 自玉が別の区分へ動いたときに起きる第1層の値の全再計算を、保存した値からの差分の更新に置き換える。 | 待機中である。本文はtatara化で削除するHalfKP-hm-b8を前提にしているので、着手の前にHalfKP_vmに合わせて改める。着手するかは、tatara化で測ったHalfKP_vmの全再計算の割合（深さ5の`bench`で累算器の更新の1.17%、[記録](measurements/nnue-tatara-framework-and-halfkp-vm/nnue-tatara-framework-and-halfkp-vm-halfkp-vm-check.md)）を見て、HalfKP_vmの世代反復を起案するときに決める。 | なし（tatara化は完了した） |

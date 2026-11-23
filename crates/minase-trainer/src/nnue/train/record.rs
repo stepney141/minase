@@ -68,6 +68,7 @@ pub(super) fn configuration(
     workers: usize,
     dataset: super::store::DatasetInfo<'_>,
     architecture: Value,
+    steps_per_epoch: u64,
 ) -> Result<Value> {
     let mut settings = serde_json::to_value(args)?;
     let object = settings
@@ -104,6 +105,7 @@ pub(super) fn configuration(
         "teacher_classes": dataset.classes, "teacher_lambdas": dataset.lambdas,
         "teacher_cp_per_logit": args.teacher_cp_per_logit,
         "training_positions": dataset.training, "validation_positions": dataset.validation,
+        "updates_per_epoch": steps_per_epoch,
         "training_indices_sha256": dataset.training_hash,
         "validation_indices_sha256": dataset.validation_hash,
     });

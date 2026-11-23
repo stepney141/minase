@@ -1,10 +1,11 @@
 //! CUDAまたはCPUで、指定したsuperbatch数だけNNUEを学習する。
 //!
 //! 1 superbatchは`--batches-per-superbatch`回の更新であり、教師の1周とは独立した単位である。
-//! 間引き後の訓練局面数をM、`--batch`の局面数をmとすると、1周の更新回数は`U = ceil(M/m)`となる。
+//! 間引き後の訓練局面数をM、`--batch`の局面数をmとすると、1周の更新回数は`U = floor(M/m)`となる。
 //! 周ごとに訓練集合の全体を一様に並べ替える。
 //! superbatchの境界は周の途中に来てよく、同じ周の順列を境界を越えて保持する。
-//! 周の最後の短いバッチも1更新と数え、次の周の局面で埋めない。
+//! 各更新はm局面で行い、周の末尾の端数はその周では学ばない。訓練局面が1バッチに満たなければエラーにする。
+//! 局面が少ないほど勾配は不正確になり、AdamWはそれでも通常の大きさの1更新を行うためである。
 //! 学習率の倍率は、`--lr-schedule`、完了した更新回数、`--batches-per-superbatch`だけで決まる。
 //!
 //! 新規実行では学習前に全検証集合を評価し、更新0回の行を`training.jsonl`に記録する。
@@ -173,6 +174,7 @@ struct Session<B> {
     workers: usize,
     dataset: Arc<Store>,
     selection: subsample::Selection,
+    steps_per_epoch: u64,
     teacher_cp_per_logit: Vec<f64>,
     progress: Progress,
     backend: B,
@@ -201,10 +203,18 @@ impl<B: TrainerBackend> Session<B> {
         }
         dataset.check_rules(args.parsed_rules()?)?;
         let selection = subsample::Selection::new(&mut dataset, args.train_subsample)?;
+        let steps_per_epoch = selection.positions / args.batch as u64;
+        if steps_per_epoch == 0 {
+            return Err(Error::Invalid(
+                "training positions after subsampling are fewer than --batch",
+            )
+            .into());
+        }
         let mut dataset_info = store::DatasetInfo::from(&dataset);
         dataset_info.subsample = selection.summary.as_ref();
         let teacher_cp_per_logit = vec![args.teacher_cp_per_logit; dataset_info.classes.len()];
-        let mut config = configuration(&args, workers, dataset_info, architecture)?;
+        let mut config =
+            configuration(&args, workers, dataset_info, architecture, steps_per_epoch)?;
         let expected = crate::nn::checkpoint::Configuration::from_document(&config)?;
         let initial_progress = Progress {
             completed_superbatches: 0,
@@ -278,6 +288,7 @@ impl<B: TrainerBackend> Session<B> {
             workers,
             dataset: Arc::new(dataset),
             selection,
+            steps_per_epoch,
             teacher_cp_per_logit,
             progress,
             backend,
@@ -402,10 +413,6 @@ impl<B: TrainerBackend> Session<B> {
         Ok(())
     }
 
-    fn steps_per_epoch(&self) -> u64 {
-        self.selection.positions.div_ceil(self.args.batch as u64)
-    }
-
     fn advance<'a>(&mut self, dataset: &'a Store, epoch: &mut Option<Epoch<'a>>) -> Result<bool> {
         self.progress.elapsed_seconds = self.elapsed();
         if self.stopping_condition().is_some() {
@@ -414,7 +421,7 @@ impl<B: TrainerBackend> Session<B> {
         self.memory()?;
         let training_started = Instant::now();
         let deadline = self.deadline();
-        let steps_per_epoch = self.steps_per_epoch();
+        let steps_per_epoch = self.steps_per_epoch;
         let mut remaining = self.args.batches_per_superbatch.get();
         let mut training = pipeline::Training::default();
         while remaining > 0 {
@@ -463,11 +470,7 @@ impl<B: TrainerBackend> Session<B> {
             let part = match (dataset, epoch.as_mut()) {
                 (Store::Memory(dataset), Some(Epoch::Memory(indices))) => {
                     let start = usize::try_from(offset * self.args.batch as u64)?;
-                    let end = if offset + steps == steps_per_epoch {
-                        indices.len()
-                    } else {
-                        usize::try_from((offset + steps) * self.args.batch as u64)?
-                    };
+                    let end = usize::try_from((offset + steps) * self.args.batch as u64)?;
                     pipeline::train_batches(
                         pipeline::Supply {
                             dataset,
@@ -558,7 +561,7 @@ impl<B: TrainerBackend> Session<B> {
         Ok(SuperbatchRecord {
             device: self.args.device,
             superbatch: self.progress.completed_superbatches,
-            epochs: self.progress.completed_steps as f64 / self.steps_per_epoch() as f64,
+            epochs: self.progress.completed_steps as f64 / self.steps_per_epoch as f64,
             train_loss: training.map(|(t, _)| t.loss / t.positions as f64),
             validation_loss: validation.map(|(v, _)| v.loss()),
             statistics: self.backend.statistics(validation.map(|(v, _)| v))?,
@@ -615,7 +618,7 @@ impl<B: TrainerBackend> Session<B> {
             completed_superbatches: self.progress.completed_superbatches,
             planned_steps: self.args.planned_steps()?,
             completed_steps: self.progress.completed_steps,
-            epochs: self.progress.completed_steps as f64 / self.steps_per_epoch() as f64,
+            epochs: self.progress.completed_steps as f64 / self.steps_per_epoch as f64,
             final_validation_loss: self.validation.last.map(|(_, loss)| loss),
             selected_superbatch: None,
             selected_validation_loss: None,

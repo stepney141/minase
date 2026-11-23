@@ -57,7 +57,8 @@ pub struct Args {
     /// 先読み幅を1以上4096以下の手数で指定する。--lookahead-gammaも必要。
     #[arg(long, requires = "lookahead_gamma")]
     pub lookahead_plies: Option<u16>,
-    /// 1更新の最大局面数を指定する。末尾のバッチは指定数より少なくてもよい。
+    /// 1更新の訓練局面数を指定する。各周の端数は学ばず、訓練局面が1バッチに満たなければエラーにする。
+    /// 局面が少ないほど勾配は不正確になり、AdamWはそれでも通常の大きさの1更新を行うためである。
     #[arg(long, default_value_t = 16_384)]
     pub batch: usize,
     /// 再開前の完了分を含むsuperbatch数を1以上で指定する。

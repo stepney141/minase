@@ -27,16 +27,18 @@
 
 ## 標準レシピ
 
-標準レシピv3では、教師を対局単位で訓練用と検証用に分け、訓練に使わなかった対局で教師の探索値を最もよく予測した重みを棋力測定に送る。
-P型を同じ教師ファイル30本で学習したところ、2.83エポック以降は訓練損失が下がり続けても検証損失は悪化した。8.02エポックのモデルは2.05エポックのモデルより、共通の相手と開始局面で測った得点率も低かった。エポック数は教師を替えるたびに選び直す。[測定記録](../measurements/adhoc/tatara-p-generalization.md)
+標準レシピv4では、教師を対局単位で訓練用と検証用に分け、訓練用の局面を約4エポック学ぶ。学習率は、学習の終わりまでに初期値の0.027倍まで余弦の形で下げ、学び終えた最後の重みを棋力測定に送る。
+検証用の対局は、重みを選ぶためではなく、最後の重みが悪化していないかを見張るために使う。
+v3までは、検証損失が2回続けて最小値を更新しなければ止めて、最小だった時点の重みを使っていた。この方式では、学習率がほとんど下がらないうちに学習が止まり、止まる時点が検証損失の揺れで決まっていた（[診断の測定](../measurements/adhoc/nnue-early-stop-diagnosis.md)）。進行中の[P型の世代反復](../plans/nnue-generation-iteration.md)の第1世代の教師43本を使った比較では、v4の条件で学んだネットが、v3の条件で学んだネットに対して、短時間の対局の逐次検定で`H1`（候補が有意に強いという判定）を取り、+21.0 Elo（95%信頼区間+6.6〜+35.5）だった（[判定の記録](../measurements/nnue-decay-to-end/nnue-decay-to-end-gen1-stc.md)、[ADR](../adr/train-the-nnue-for-four-epochs-decaying-the-learning-rate-to-the-end-and-export-the-last-network.md)）。
+一方、同じ教師を長く学び続けると弱くなる。P型を同じ教師ファイル30本で学習したところ、2.83エポック以降は訓練損失が下がり続けても検証損失は悪化し、8.02エポックのネットは2.83エポックのネットに対局で負けた（[測定記録](../measurements/adhoc/tatara-p-generalization.md)）。学習の長さは約4エポックより延ばさない。
 
 学ぶネットは、P型の入力を受けるLayerStackに、駒と升ごとの点数を足す表PSQT（piece-square table）を並べた構造である。
 第1層の幅は256であり、LayerStackの後段とPSQTはどちらも、局面の進行度などに応じて重みの組を切り替える区分を1つだけ持つ。
 構造を選んだ理由は[構造のADR](../adr/compose-p-as-a-tatara-layerstack-with-a-psqt-and-halfkp-vm-as-a-simple-network.md)にある。
 
-1エポックは、訓練集合をひととおり学ぶ期間である。superbatchは、指定した回数のバッチ更新をまとめる単位である。
-検証は約0.5エポックごとに行う。更新後の最初の検証から最小損失を記録し、2回続けて最小値を更新しなければ学習を止める。同率なら先の重みを選ぶ。
-選択に使うのは量子化前の勝率の平均二乗誤差であり、選んだ重みを整数化した後、別の開始局面を使った対局で棋力を判定する。
+1エポックは、訓練集合をひととおり学ぶ期間である。superbatchは、指定した回数のバッチ更新をまとめる単位であり、1 superbatchを約0.5エポックにして、8 superbatchで学習を終える。
+検証は約0.5エポックごとに行い、量子化前の勝率の平均二乗誤差（検証損失）を記録する。学習の後に、最後の検証損失が、重みの更新を始めてから測った検証損失の最小値の1.02倍を超えていないことを確かめる（見張りの条件）。超えていれば、そのネットは使わずに原因を調べる。検証損失が最小だった時点の重みへ差し替えることはしない。
+最後の重みを整数化した後、別の開始局面を使った対局で棋力を判定する。
 前の世代のネットで教師を生成して次の世代のネットを学習する世代反復では、`scripts/vast/nnue/generation_chain.py`がこの手順を続けて実行する（[連続生成スクリプトで世代を作る](#連続生成スクリプトで世代を作る)）。
 
 **コマンド**
@@ -47,27 +49,27 @@ minase-trainer nnue train layerstack \
   --data <教師...> --rules lishogi --teacher-cp-per-logit <K_t> \
   --output-dir <新規または空のディレクトリ> \
   --lambda 1.0 \
-  --batch 16384 --batches-per-superbatch <B> --superbatches <S> \
-  --lr-schedule cosine:<T>:0.027 --validation-superbatches 1 --validation-patience 2 \
+  --batch 16384 --batches-per-superbatch <B> --superbatches 8 \
+  --lr-schedule cosine:8:0.027 --validation-superbatches 1 \
   --seed 1 --device cuda --threads 16
 
 # 診断
 minase-trainer diag nnue-removal \
-  --float <学習の出力>/best.npz --net <学習の出力>/nnue.bin \
+  --float <学習の出力>/latest.npz --net <学習の出力>/nnue.bin \
   --data <教師...> --sample 10000 --seed 1 --output <新規の報告.json>
 ```
 
 - `--data`には、その世代の教師だけを指定する。第n世代の教師は、1億局面に相当する本数k（見込みは37）のn倍の教師ファイルである。
 - `--rules`には、教師の生成器と同じ規則セット`lishogi`（対局サイトLishogiに近い対局条件の規則コードの組）を渡す。学習器は、全ての教師ファイルのヘッダの規則セットがこれと一致することを確かめ、一致しなければ学習を始めずに止まる。
 - `--teacher-cp-per-logit`には、教師の探索値を勝率へ換算する尺度K_tを数値で渡す。単位は1ロジットあたりのcp（センチポーン、評価値の単位で歩兵1枚の100分の1）である。K_tは第1世代の教師の最初の4本から一度だけ求め、全世代に同じ値を渡す。求め方は[学習データと初期値を用意する](#学習データと初期値を用意する)にある。
-- 訓練局面数をM、1エポックの更新回数をU＝ceil(M / 16,384)とし、検証間隔にはB＝ceil(U / 2)更新を使う。間引く場合のMには抽出後の局面数を用いる。ceilは整数への切り上げを表す。Mは同じ教師の `config.json` にある `preprocessing.training_positions`、間引いた場合は `preprocessing.train_subsample.training_positions_after` で確認する。初めて使う教師では約5%の対局を検証に充てるため、生成時の適格局面数の95%に訓練局面の抽出率を掛けて見積もり、学習記録の `epochs` で実際の間隔を確認する。
-- 学習率の減衰期間は、従来と同じ更新回数（第1〜4世代は390,656回、第5世代は488,320回）に揃える。その回数をBで割った値がTであり、S＝ceil(T)を `--superbatches` の上限とする。例えば訓練79,458,082局面ならU＝4,850、B＝2,425となり、第1世代ではT≃161.095、S＝162となる。
+- 訓練局面数をM、1エポックの更新回数をU＝floor(M / 16,384)とし、1 superbatchの更新回数にはB＝ceil(U / 2)を使う。間引く場合のMには抽出後の局面数を用いる。floorは整数への切り捨て、ceilは整数への切り上げを表す。Mは同じ教師の `config.json` にある `preprocessing.training_positions`、間引いた場合は `preprocessing.train_subsample.training_positions_after` で、Uは `preprocessing.updates_per_epoch` で確認する。初めて使う教師では約5%の対局を検証に充てるため、生成時の適格局面数の95%に訓練局面の抽出率を掛けて見積もり、学習記録の `epochs` で実際の間隔を確認する。例えば訓練79,458,082局面ならU＝4,849、B＝2,425となる。
+- `--superbatches 8`と`--lr-schedule cosine:8:0.027`は、教師の量によらず同じ値を渡す。学習の長さと学習率を下げる期間がどちらも8 superbatch（約4エポック）になる。`--validation-patience`は渡さない。渡すと、学習率を下げている途中で検証損失が2回横ばいになった時点で学習が止まる。
 - 更新に使える局面数が限られる場合は、すべての棋譜から局面を抽出する。例えば `--train-subsample positions:4:0` は各訓練局面を約1/4の割合で採り、検証対局をすべて残す。追加で生成する教師は異なるシードの対局から集める。全局面を使える場合に間引くことの棋力上の利点は未確認である。
 - `--threads`は教師のバッチを組むスレッドの数であり、標準は16とする。基準とした作業機（RTX 3060 Ti、Core Ultra 7 265KFの20コア）では、4スレッドではバッチの供給が律速で毎秒約70万局面にとどまり、16スレッドで毎秒約106万局面になる。物理コア数が18に満たない機械では、物理コア数から2を引いた数を使う。GPUかCPUがこの作業機より強力な機械では、[学習する](#学習する)の「スレッド数を決める」の手順で16以上のスレッド数から選ぶ。RTX 5090を載せたvast.aiの生成機の実績は32である。
 - 学習で出力された`nnue.bin`については、ファイル全体のSHA-256を求め、NASの`/mnt/synology_nas/minase/nnue/nets/`に`<SHA-256の16進数>.bin`の名前で置く。エンジンには、オプション`EvalFile`でこのファイルを渡す。gitにはコミットしない。
 - 上のコマンド例では、診断は駒除去差分だけを示した。採否の測定の前に、[残りの2つの診断](#学習した重みを診断する)も行う。
 
-HalfKP_vmのネットは、`nnue train layerstack`を`nnue train simple`に替え、同じ引数で学ぶ。
+HalfKP_vmのネットは、`nnue train layerstack`を`nnue train simple`に替え、同じ引数で学ぶ。約4エポックという学習の長さはP型で測って決めた値であり、HalfKP_vmでは測っていない。
 HalfKP_vmは、自陣の王将の升（王将がなければ太子の升）に応じて第1層の行を選び、両陣営の王将を入力の駒から除いて、太子は駒として含める。
 Simpleは、両視点の幅256の第1層の出力を連結した512成分を、幅32、幅32、出力1の層へ通す構造（256x2-32-32）である。
 学習器は、tataraの特徴分解と同じく、学習の間だけ王の位置によらない13,392行の仮想行を第1層に足し、書き出しのときに実の行へ畳み込む。
@@ -79,6 +81,7 @@ HalfKP_vmをバッチ16,384局面で学ぶと、学習器がGPUに確保する�
 | 段階 | 次のときに中止する |
 |---|---|
 | 学習 | `summary.json`の`status`が`candidate`でない。 |
+| 学習の後 | `training.jsonl`の最後のsuperbatchの`validation_loss`が、superbatchが1以上の行の`validation_loss`の最小値の1.02倍を超えている（見張りの条件）。 |
 | 診断 | 終了コードが0以外である。 |
 | NASへ置いた後 | エンジンに`setoption name RuleSet value lishogi`、`setoption name EvalFile value <NASのネット>`、`isready`を順に送った後の、`bench depth 5`が完走しない。`bench`は、将棋のエンジンとGUIの通信規約USIにminaseが足した独自のコマンドである。 |
 
@@ -182,8 +185,8 @@ minase-trainer nnue train layerstack \
 
 **学習の長さと書き出すネット**
 
-- `--superbatches`×`--batches-per-superbatch`が更新回数の上限である。標準レシピでは検証損失が改善しなくなれば上限より早く止まる。
-- エポック末の短いバッチも1更新と数える。superbatchの境界はエポックの途中に来てもよい。
+- `--superbatches`×`--batches-per-superbatch`が更新回数である。標準レシピでは8 superbatchを最後まで学び、最後の重みを書き出す。`--validation-patience`を指定した場合だけ、検証損失が改善しなくなった時点で早く止まる。
+- どの更新も `--batch` の局面数ちょうどで行う。エポックごとに並べ替えた訓練局面のうち、最後に残る `--batch` 未満の端数は、そのエポックでは学ばない。端数だけのバッチで更新すると、勾配が不正確なまま通常の大きさの更新になり、直後の検証損失が跳ねるからである（[測定記録](../measurements/adhoc/nnue-early-stop-diagnosis.md)）。訓練局面が1バッチに満たない教師は、学習を始める前にエラーになる。superbatchの境界はエポックの途中に来てもよい。
 - 検証は学習前、指定した間隔ごと、および予定した最後のsuperbatchで行う。更新0回の測定は初期値との比較に使い、候補は更新後の重みから選ぶ。
 
 **主な調整用オプション**（値域と式は[オプション一覧](#オプション一覧)）
@@ -269,7 +272,7 @@ minase-trainer diag nnue-removal \
 ```
 
 - `--sample`は1以上で検証集合の局面数以下とする。
-- `--float`と`--net`には、同じ学習で出力されたファイルの組を指定する。標準レシピでは`best.npz`が`nnue.bin`の量子化前のモデルである。固定回数で学習した場合は`latest.npz`を渡す。2つのファイルの構造、第1層の幅、および除数mが一致しなければ、報告を書かずに終わる。
+- `--float`と`--net`には、同じ学習で出力されたファイルの組を指定する。標準レシピでは`latest.npz`が`nnue.bin`の量子化前のモデルである。`--validation-patience`を指定して学習した場合は`best.npz`を渡す。2つのファイルの構造、第1層の幅、および除数mが一致しなければ、報告を書かずに終わる。
 - 報告の`reversals`は、v0の駒割で求めた参照の除去差分と、整数のネットの除去差分とで、符号が反転した件数と割合である。駒損を有利と評価する傾向の目安になる。
 - Simpleでは、王将のない側の最後の太子を除いた局面は静的評価を定義できないので、終局の除去として`terminal_removal_count`に数え、差分の集計から除く。
 - 量子化前の評価で、累算値から行を引く一括の計算と、除去後の局面から計算し直した値との差が上限の1e-6 cpを超えると、`error`を含む報告を保存して終了コード1で終わる。学習器の不具合として調べる。
@@ -333,7 +336,7 @@ systemd-run --user --unit=<サービス名> --setenv=PATH="$PATH" -p WorkingDire
 ### 連続生成スクリプトで世代を作る
 
 連続生成スクリプト`scripts/vast/nnue/generation_chain.py`は、世代ごとに、足りない教師の生成、教師の検査、学習、駒除去差分の診断、ネットの保管、およびエンジンでの動作確認を続けて行う。
-引数の一覧は`python3 scripts/vast/nnue/generation_chain.py run --help`で確かめ、標準レシピv3では上記の検証間隔と停止条件を渡す。1回の実行で指定できるB、T、Sは1組なので、教師量が変わる場合は世代ごとに計算して実行する。世代反復での求め方と世代ごとの見込みの値は、[世代反復の設計書](../plans/nnue-generation-iteration.md#世代の手順)にある。
+引数の一覧は`python3 scripts/vast/nnue/generation_chain.py run --help`で確かめ、標準レシピv4では、上記のB、`--superbatches 8`、および`--lr-schedule cosine:8:0.027`を渡し、`--validation-patience`を渡さない。1回の実行で指定できるBは1つなので、教師量が変わる場合は世代ごとに計算して実行する。世代反復での求め方は、[世代反復の設計書](../plans/nnue-generation-iteration.md#世代の手順)にある。
 標準レシピに関わる引数と動作は次のとおりである。
 
 - `--structure layerstack`はP型の学習器を、`--structure simple`はHalfKP_vmの学習器を選ぶ。
@@ -476,7 +479,7 @@ done
 | `--weight-decay-ft <VALUE>` | 0 | `ft`群の重み減衰。非負の有限値。 |
 | `--weight-decay-head <VALUE>` | 0 | `head`群の重み減衰。非負の有限値。 |
 | `--lr-schedule <SPEC>` | 必須 | 下表の3つの形。 |
-| `--batch <N>` | 16384 | 1更新の最大局面数。エポックの最後のバッチは少なくてもよい。 |
+| `--batch <N>` | 16384 | 1更新の局面数。エポックの最後に残るN局面未満の端数は、そのエポックでは学ばない。訓練局面がN局面に満たなければエラーになる。 |
 | `--seed <N>` | 1 | 初期化、順列作成、検証標本抽出の乱数シード。 |
 
 | `--lr-schedule`の形 | 倍率m(t) | 条件 |
@@ -559,15 +562,15 @@ LayerStackの値は`nnue/layerstack/`に、Simpleの値は`nnue/simple/`にあ�
 | 構成 | P型のLayerStack（第1層の幅256、後段の区分1つ）に、区分1つのPSQTを並べた構造 | 2026年11月15日にエンジンの開発者が、P型もtataraの枠組みへ載せ替え、重みをtataraの形式にすると決めた（[ADR](../adr/compose-p-as-a-tatara-layerstack-with-a-psqt-and-halfkp-vm-as-a-simple-network.md)） |
 | 最適化手法 | AdamW（β1=0.9、β2=0.999、ε=1e-8） | Stockfishの本番と同じ値（[調査メモ](../research/nnue-training-recipes.md)） |
 | 基準の学習率 | `ft`群と`head`群をどちらも0.001 | 0.001は先行の初期値の範囲内。PSQTはtataraと同じく第1層と同じ`ft`群に入れ、第1層の学習率を使う。載せ替える前の構造が持っていた線形の経路（駒と升ごとの点数を駒数で序盤と終盤の間で補間する部分）の学習率0.03はcp単位の値であり、ネットの出力の単位で表すPSQTへはそのまま移せない。理由の詳細は[ADR](../adr/compose-p-as-a-tatara-layerstack-with-a-psqt-and-halfkp-vm-as-a-simple-network.md)にある |
-| 学習の長さ | 対局単位の検証損失で世代ごとに選ぶ。 | 同じ30ファイルでは、訓練損失が下がり続けても検証損失と棋力は悪化した。[測定記録](../measurements/adhoc/tatara-p-generalization.md) |
-| 書き出すネットと停止 | 連続2回改善しなければ止まり、検証損失が最小の重みを書き出す。 | 2回は単発の上振れで止めないための運用値である。検証損失は教師の探索値を再現する精度を測るので、棋力の採否には独立した対局を用いる。 |
-| 学習率の予定 | 旧レシピと同じ更新回数を期間とする余弦減衰で、下限は初期値の0.027倍とする。 | 検証間隔を変えても、同じ更新回数での学習率を保つ。[旧レシピの根拠](../adr/archive/train-the-nnue-for-64-or-80-superbatches-by-the-generation-volume-and-export-the-last-network.md) |
+| 学習の長さ | 8 superbatch（約4エポック）。 | 検証損失の最小は、訓練局面が2,370万〜2億600万の学習で1.5〜2.7エポックにあり、更新回数よりエポック数のほうが一定に近い。学習率を4エポックで下げきった学習の検証損失は、3.0エポックで最小になり、2.67エポックから4.0エポックまで横ばいだった（[診断の測定](../measurements/adhoc/nnue-early-stop-diagnosis.md)）。長く学び続けると検証損失と棋力が悪化するので（[測定記録](../measurements/adhoc/tatara-p-generalization.md)）、これより延ばさない。 |
+| 書き出すネットと停止 | 8 superbatchを最後まで学び、最後の重みを書き出す。検証損失による停止は使わない。 | v3の停止の規則（連続2回改善しなければ止める）は、検証損失の揺れ（標準偏差で約0.5%）より小さい差で止まる時点を決めており、選ばれる時点が学習のシードで変わった（同じ診断の測定）。最後の重みを使う条件のネットは、v3の条件のネットにSTCで`H1`を取った（[判定の記録](../measurements/nnue-decay-to-end/nnue-decay-to-end-gen1-stc.md)、[ADR](../adr/train-the-nnue-for-four-epochs-decaying-the-learning-rate-to-the-end-and-export-the-last-network.md)）。 |
+| 学習率の予定 | 学習の長さと同じ8 superbatchを期間とする余弦減衰で、下限は初期値の0.027倍とする。 | v3は期間を390,656更新としていたが、学習は約1.4万〜3.1万更新で止まり、学習率は初期値の0.98倍より下がらなかった。期間を学習の長さに合わせると、検証損失が約2.5%下がった（同じ診断の測定）。下限は旧レシピと同じ値である（[旧レシピの根拠](../adr/archive/train-the-nnue-for-64-or-80-superbatches-by-the-generation-volume-and-export-the-last-network.md)）。 |
 | 損失 | 勝率の差の2乗 | bullet、tatara、variant-nnue-pytorchが2乗を、nnue-pytorch、Stockfish、tanuki-が勝率の差のべき乗を使う（同じ調査メモ）。指数は調整していない基本の形の2とする |
 | 教師の勝率尺度 | 第1世代の教師の最初の4本から`data calibrate`で一度だけ求めたK_tを、全世代の学習に`--teacher-cp-per-logit`で明示して渡す | 調べた13件の実装のうち11件が、手で決めた定数か一度推定して固定した値を使う（[調査メモ](../research/win-rate-scale-k-prior-art.md)）。tataraの形式は実数の勝率尺度の欄を持たないので、前の世代のネットから引き継がず引数で渡す（[ADR](../adr/separate-the-nnue-teacher-win-rate-scale-from-the-output-scale.md)） |
 | 重み減衰 | どの層にも掛けない | nnue-pytorch、tatara、tanuki-、variant-nnue-pytorchが0である（[調査メモ](../research/nnue-training-recipes.md)） |
 | バッチ | 16,384局面 | 先行の多くと同じ |
 | 学習のスレッド数 | 16。GPUかCPUが基準の作業機より強力な機械では、短い学習で速さを比べて選ぶ | 基準の作業機（RTX 3060 Ti、20コア）では、4スレッドは供給が律速で毎秒約70万局面、16スレッドは毎秒約106万局面だった（[記録](../measurements/adhoc/layerstack-backward-coalesce.md)） |
-| 検証 | 約0.5エポックごとに全検証対局で測る。 | 第2世代の旧設定では初回の更新後検証が8.29エポックだった。改善から悪化に転じる時期を見るために間隔を短くする。 |
+| 検証 | 約0.5エポックごとに全検証対局で測り、最後の検証損失が更新後の最小値の1.02倍を超えたネットは使わない。 | 最後の重みが訓練局面への適合で悪化していないことを確かめるためである。1.02倍は運用上の値で、診断の測定で4エポックまで学んだ3つの学習（1.004〜1.014倍）を通し、対局を4分の1に絞って適合を進ませた学習（1.021倍）を止める。世代ごとに比を記録して見直す。 |
 
 ## 詳細の置き場所
 
@@ -581,4 +584,4 @@ LayerStackの値は`nnue/layerstack/`に、Simpleの値は`nnue/simple/`にあ�
 | 構造ごとの式、初期化、切り詰め、量子化 | `crates/minase-trainer/src/nnue/layerstack/`と`nnue/simple/` |
 | チェックポイントの形式 | `crates/minase-trainer/src/nnue/layerstack/checkpoint.rs`と`nnue/simple/checkpoint.rs`の`Checkpoint` |
 | 学習データの形式、教師値、検証集合の分け方 | `crates/minase/src/training/`と`crates/minase-trainer/src/data/`（PSTとFMの学習器と共通） |
-| 方式を選んだ理由 | ADRの[学習器の構成](../adr/split-the-nnue-trainer-into-a-shared-loop-and-structure-backends.md)、[構造と量子化](../adr/compose-p-as-a-tatara-layerstack-with-a-psqt-and-halfkp-vm-as-a-simple-network.md)、[教師の勝率尺度](../adr/separate-the-nnue-teacher-win-rate-scale-from-the-output-scale.md)、[学習の後に補正しないこと](../adr/use-each-trained-nnue-outside-git-for-the-next-generation.md)、[カーネルの書き方](../adr/write-trainer-kernels-in-cuda-cpp-via-nvrtc.md)、[第1層の勾配](../adr/backpropagate-the-first-layer-through-a-reverse-index.md)、[AdamWの式](../adr/use-pytorch-adamw-with-bias-correction.md)、[教師と損失](../adr/train-the-nnue-on-search-value-teachers-with-the-squared-win-rate-difference.md)、[学習の長さと書き出すネット](../adr/select-the-nnue-checkpoint-on-held-out-games.md) |
+| 方式を選んだ理由 | ADRの[学習器の構成](../adr/split-the-nnue-trainer-into-a-shared-loop-and-structure-backends.md)、[構造と量子化](../adr/compose-p-as-a-tatara-layerstack-with-a-psqt-and-halfkp-vm-as-a-simple-network.md)、[教師の勝率尺度](../adr/separate-the-nnue-teacher-win-rate-scale-from-the-output-scale.md)、[学習の後に補正しないこと](../adr/use-each-trained-nnue-outside-git-for-the-next-generation.md)、[カーネルの書き方](../adr/write-trainer-kernels-in-cuda-cpp-via-nvrtc.md)、[第1層の勾配](../adr/backpropagate-the-first-layer-through-a-reverse-index.md)、[AdamWの式](../adr/use-pytorch-adamw-with-bias-correction.md)、[教師と損失](../adr/train-the-nnue-on-search-value-teachers-with-the-squared-win-rate-difference.md)、[学習の長さと書き出すネット](../adr/train-the-nnue-for-four-epochs-decaying-the-learning-rate-to-the-end-and-export-the-last-network.md)、[端数バッチの扱い](../adr/drop-the-tail-batch-of-each-nnue-training-epoch.md) |
