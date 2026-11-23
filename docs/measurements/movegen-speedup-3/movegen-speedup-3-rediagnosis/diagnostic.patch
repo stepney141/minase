@@ -1,0 +1,838 @@
+diff --git a/crates/minase-core/src/diag.rs b/crates/minase-core/src/diag.rs
+new file mode 100644
+index 00000000..18622d7c
+--- /dev/null
++++ b/crates/minase-core/src/diag.rs
+@@ -0,0 +1,163 @@
++//! 第3期の再診断で使う件数カウンタ。診断用のビルドだけに入れ、本番の経路には入れない。
++#![allow(missing_docs, non_camel_case_types)]
++
++use std::sync::atomic::{AtomicBool, AtomicU64, Ordering::Relaxed};
++
++macro_rules! counters {
++    ($($name:ident),+ $(,)?) => {
++        #[derive(Clone, Copy)]
++        #[repr(usize)]
++        pub enum C { $($name),+ }
++        const NAMES: &[&str] = &[$(stringify!($name)),+];
++    };
++}
++
++counters!(
++    // 利きの逆引き。s_はSEEからの呼び出し、o_はそれ以外。2つの組は同じ並びにする。
++    s_att_calls,
++    s_att_nonempty,
++    s_att_neigh_own,
++    s_att_neigh_candidate,
++    s_att_fixed_hit,
++    s_att_calls_fixed_hit,
++    s_att_dir_no_blocker,
++    s_att_dir_enemy_blocker,
++    s_att_dir_own_nonslider,
++    s_att_dir_hit,
++    s_att_calls_slide_hit,
++    s_att_dir_prefilter_pass,
++    s_att_calls_prefilter_none,
++    s_att_calls_lines_none,
++    s_att_special_present,
++    s_att_special_hit,
++    o_att_calls,
++    o_att_nonempty,
++    o_att_neigh_own,
++    o_att_neigh_candidate,
++    o_att_fixed_hit,
++    o_att_calls_fixed_hit,
++    o_att_dir_no_blocker,
++    o_att_dir_enemy_blocker,
++    o_att_dir_own_nonslider,
++    o_att_dir_hit,
++    o_att_calls_slide_hit,
++    o_att_dir_prefilter_pass,
++    o_att_calls_prefilter_none,
++    o_att_calls_lines_none,
++    o_att_special_present,
++    o_att_special_hit,
++    // SEE。
++    see_calls,
++    see_from_q_threshold,
++    see_from_q_floor,
++    see_from_picker,
++    see_exit_mid,
++    see_exit_kirin,
++    see_exit_pre,
++    see_entered_loop,
++    see_lookups,
++    see_first_empty,
++    see_exit_depth1,
++    see_exit_lion,
++    see_full,
++    see_lookups_1,
++    see_lookups_2,
++    see_lookups_3,
++    see_lookups_4p,
++    see_pruned,
++    // 静止探索。
++    q_nodes,
++    q_tt_hit,
++    q_tt_cut,
++    q_standpat_cut,
++    q_init,
++    q_init_special_present,
++    q_special_generated,
++    q_special_excluded,
++    q_enemy_sum,
++    q_targets_sum,
++    q_scan_pieces,
++    q_scan_reach_pass,
++    q_scan_capturers,
++    q_scan_slide_tests,
++    q_scan_slide_ray_pass,
++    q_scan_slide_hit,
++    q_scan_slider_pieces,
++    q_scan_slider_reach_pass,
++    q_scan_slider_capturers,
++    q_see_both,
++    q_see_both_pass,
++    q_ordinary_possible,
++    q_ranks_present,
++    q_groups_generated,
++    q_group_ordinary_emitted,
++    q_group_special_added,
++    q_tt_move_given,
++    q_tt_move_valid,
++    q_ret_tt,
++    q_ret_ordinary,
++    q_ret_special,
++    q_royal_capture,
++    q_searched,
++    q_node_ret0,
++    q_node_ret1,
++    q_node_ret2,
++    q_node_ret3_4,
++    q_node_ret5p,
++    q_node_groups0,
++    q_node_groups1,
++    q_node_groups2,
++    q_node_groups3p,
++    q_node_cut_tt,
++    q_node_cut_first_nontt,
++    q_node_cut_later,
++    q_node_nocut,
++    // 主探索の手選択器。
++    pk_nodes,
++    pk_tt_ret,
++    pk_capgen_nodes,
++    pk_caps_generated,
++    pk_caps_returned,
++    pk_killer_ret,
++    pk_quietgen_nodes,
++    pk_quiets_generated,
++    // 王手判定。
++    gc_calls,
++);
++
++const SLOTS: usize = 160;
++static V: [AtomicU64; SLOTS] = [const { AtomicU64::new(0) }; SLOTS];
++/// SEEの交換列から利きの逆引きを呼んでいる間だけ真にする。
++pub static IN_SEE: AtomicBool = AtomicBool::new(false);
++/// 静止探索の初期化で通常駒を走査している間だけ真にする。
++pub static IN_COLLECT: AtomicBool = AtomicBool::new(false);
++
++const ATT_BLOCK: usize = C::o_att_calls as usize - C::s_att_calls as usize;
++
++#[inline]
++pub fn add(c: C, n: u64) {
++    V[c as usize].fetch_add(n, Relaxed);
++}
++
++#[inline]
++pub fn inc(c: C) {
++    add(c, 1);
++}
++
++/// `s_att_*`の名前で呼び、SEEの外では対応する`o_att_*`へ加える。
++#[inline]
++pub fn att(c: C, n: u64) {
++    let offset = if IN_SEE.load(Relaxed) { 0 } else { ATT_BLOCK };
++    V[c as usize + offset].fetch_add(n, Relaxed);
++}
++
++pub fn in_collect() -> bool {
++    IN_COLLECT.load(Relaxed)
++}
++
++pub fn dump() {
++    assert!(NAMES.len() <= SLOTS);
++    for (index, name) in NAMES.iter().enumerate() {
++        eprintln!("diag {name} {}", V[index].load(Relaxed));
++    }
++}
+diff --git a/crates/minase-core/src/lib.rs b/crates/minase-core/src/lib.rs
+index 395cf58c..fc9610a0 100644
+--- a/crates/minase-core/src/lib.rs
++++ b/crates/minase-core/src/lib.rs
+@@ -10,6 +10,8 @@
+ 
+ pub(crate) mod attacks;
+ pub mod board;
++#[doc(hidden)]
++pub mod diag;
+ pub mod game;
+ pub mod movegen;
+ pub mod mv;
+diff --git a/crates/minase-core/src/movegen/control.rs b/crates/minase-core/src/movegen/control.rs
+index 5b6dd863..bdec1b5c 100644
+--- a/crates/minase-core/src/movegen/control.rs
++++ b/crates/minase-core/src/movegen/control.rs
+@@ -66,10 +66,15 @@ impl Position {
+     /// 審判層の王駒の捕獲可能性とR1の攻撃的着手の判定もこれに基づく。
+     /// 相手の獅子の升では捕獲制限があるため、疑似利きと合法な捕獲の有無は一致しない。
+     pub fn attackers_to_by(&self, color: Color, square: Square, occupied: Bitboard) -> Bitboard {
++        use crate::diag::{self, C};
+         let tables = attack_tables();
+-        (ordinary_attackers_to(tables, self, color, square, occupied)
++        let result = (ordinary_attackers_to(tables, self, color, square, occupied)
+             | special_attackers_to(tables, self, color, square))
+-            & occupied
++            & occupied;
++        if !result.is_empty() {
++            diag::att(C::s_att_nonempty, 1);
++        }
++        result
+     }
+ }
+ 
+@@ -86,24 +91,68 @@ fn ordinary_attackers_to(
+     square: Square,
+     occupied: Bitboard,
+ ) -> Bitboard {
++    use crate::diag::{self, C};
++    diag::att(C::s_att_calls, 1);
++    {
++        let mut sliders_dir = [Bitboard::EMPTY; 8];
++        let mut any_slider = Bitboard::EMPTY;
++        for kind in PieceKind::ALL {
++            let mask = tables.slide_directions(color, movement_profile(kind));
++            if mask == 0 {
++                continue;
++            }
++            let pieces = position.pieces_of_kind(color, kind) & occupied;
++            any_slider |= pieces;
++            for d in Direction::ALL {
++                if (mask >> d.index()) & 1 != 0 {
++                    sliders_dir[d.index()] |= pieces;
++                }
++            }
++        }
++        let mut pass = 0;
++        let mut lines = Bitboard::EMPTY;
++        for d in Direction::ALL {
++            let ray = tables.ray(square, d);
++            lines |= ray;
++            if ray.intersects(sliders_dir[d.opposite().index()]) {
++                pass += 1;
++            }
++        }
++        diag::att(C::s_att_dir_prefilter_pass, pass);
++        if pass == 0 {
++            diag::att(C::s_att_calls_prefilter_none, 1);
++        }
++        if !lines.intersects(any_slider) {
++            diag::att(C::s_att_calls_lines_none, 1);
++        }
++    }
+     let mut attackers = Bitboard::EMPTY;
+     let own = position.pieces_of(color) & occupied;
+     for from in tables.neighbourhood(square) & own {
++        diag::att(C::s_att_neigh_own, 1);
+         let kinds = tables.fixed_attacker_kinds(color, square, from);
+         if kinds == 0 {
+             continue;
+         }
++        diag::att(C::s_att_neigh_candidate, 1);
+         let kind = position
+             .piece_at(from)
+             .and_then(|piece| piece.kind())
+             .expect("own square must contain a piece");
+         if kinds & (1 << kind.index()) != 0 {
++            diag::att(C::s_att_fixed_hit, 1);
+             attackers.set(from);
+         }
+     }
+-    attackers
+-        | sliding_attackers_to::<true>(tables, position, color, square, occupied, own)
+-        | sliding_attackers_to::<false>(tables, position, color, square, occupied, own)
++    if !attackers.is_empty() {
++        diag::att(C::s_att_calls_fixed_hit, 1);
++    }
++    let sliding = sliding_attackers_to::<true>(tables, position, color, square, occupied, own)
++        | sliding_attackers_to::<false>(tables, position, color, square, occupied, own);
++    if !sliding.is_empty() {
++        diag::att(C::s_att_calls_slide_hit, 1);
++    }
++    attackers | sliding
+ }
+ 
+ /// 生値が増える方向と減る方向を別々に走査し、最初の遮蔽駒の逆方向の走りを調べる。
+@@ -131,6 +180,7 @@ fn sliding_attackers_to<const INCREASING: bool>(
+             Direction::SouthWest,
+         ]
+     };
++    use crate::diag::{self, C};
+     let mut attackers = Bitboard::EMPTY;
+     for direction in directions {
+         let blockers = tables.ray(square, direction) & occupied;
+@@ -140,9 +190,11 @@ fn sliding_attackers_to<const INCREASING: bool>(
+             blockers.msb()
+         };
+         let Some(blocker) = blocker else {
++            diag::att(C::s_att_dir_no_blocker, 1);
+             continue;
+         };
+         if !own.contains(blocker) {
++            diag::att(C::s_att_dir_enemy_blocker, 1);
+             continue;
+         }
+         let kind = position
+@@ -151,7 +203,10 @@ fn sliding_attackers_to<const INCREASING: bool>(
+             .expect("blocker must be a piece");
+         let mask = tables.slide_directions(color, movement_profile(kind));
+         if (mask >> direction.opposite().index()) & 1 != 0 {
++            diag::att(C::s_att_dir_hit, 1);
+             attackers.set(blocker);
++        } else {
++            diag::att(C::s_att_dir_own_nonslider, 1);
+         }
+     }
+     attackers
+@@ -165,7 +220,9 @@ fn special_attackers_to(
+     color: Color,
+     square: Square,
+ ) -> Bitboard {
++    use crate::diag::{self, C};
+     let mut attackers = Bitboard::EMPTY;
++    let mut present = false;
+     for kind in [
+         PieceKind::Lion,
+         PieceKind::HornedFalcon,
+@@ -175,6 +232,7 @@ fn special_attackers_to(
+         if pieces.is_empty() {
+             continue;
+         }
++        present = true;
+         match movement_profile_data(movement_profile(kind)).special {
+             SpecialMovement::None => {}
+             SpecialMovement::Lion => {
+@@ -197,6 +255,12 @@ fn special_attackers_to(
+             }
+         }
+     }
++    if present {
++        diag::att(C::s_att_special_present, 1);
++    }
++    if !attackers.is_empty() {
++        diag::att(C::s_att_special_hit, 1);
++    }
+     attackers
+ }
+ 
+@@ -310,16 +374,33 @@ pub(super) fn capture_targets_without_special(
+     enemy: Bitboard,
+ ) -> Bitboard {
+     let id = movement_profile(kind);
++    use crate::diag::{self, C};
++    let diag_on = diag::in_collect();
+     if !tables.reach(color, id, from).intersects(enemy) {
+         return Bitboard::EMPTY;
+     }
++    if diag_on {
++        diag::inc(C::q_scan_reach_pass);
++        if !movement_profile_data(id).slides.is_empty() {
++            diag::inc(C::q_scan_slider_reach_pass);
++        }
++    }
+     let mut captures = tables.fixed(color, id, from) & enemy;
+     for slide in movement_profile_data(id).slides {
+         let direction = slide.direction.for_color(color);
++        if diag_on {
++            diag::inc(C::q_scan_slide_tests);
++            if tables.ray(from, direction).intersects(enemy) {
++                diag::inc(C::q_scan_slide_ray_pass);
++            }
++        }
+         if tables.ray(from, direction).intersects(enemy)
+             && let Some(blocker) = tables.first_blocker(from, direction, occupied)
+             && enemy.contains(blocker)
+         {
++            if diag_on {
++                diag::inc(C::q_scan_slide_hit);
++            }
+             captures.set(blocker);
+         }
+     }
+diff --git a/crates/minase-core/src/movegen/gives_check.rs b/crates/minase-core/src/movegen/gives_check.rs
+index a9d97853..eeb3f791 100644
+--- a/crates/minase-core/src/movegen/gives_check.rs
++++ b/crates/minase-core/src/movegen/gives_check.rs
+@@ -58,6 +58,7 @@ impl CheckContext {
+         generator: &MoveGenerator,
+         mv: Move,
+     ) -> bool {
++        crate::diag::inc(crate::diag::C::gc_calls);
+         let mover = position.side_to_move();
+         let captured = position.captured_squares(mv);
+         let mut remaining_royals = position.royal_pieces(mover.opposite());
+diff --git a/crates/minase-core/src/movegen/search_captures.rs b/crates/minase-core/src/movegen/search_captures.rs
+index fadd83a8..daa7b413 100644
+--- a/crates/minase-core/src/movegen/search_captures.rs
++++ b/crates/minase-core/src/movegen/search_captures.rs
+@@ -170,7 +170,9 @@ impl MoveGenerator {
+         if allowed.is_empty() {
+             return targets;
+         }
++        use crate::diag::{self, C};
+         let color = position.side_to_move();
++        diag::IN_COLLECT.store(true, std::sync::atomic::Ordering::Relaxed);
+         for kind in ORDINARY_KINDS {
+             let origins = if matches!(kind, PieceKind::Pawn | PieceKind::GoBetween) {
+                 single_step_origins(position, kind, allowed)
+@@ -178,12 +180,23 @@ impl MoveGenerator {
+                 position.pieces_of_kind(color, kind)
+             };
+             for from in origins {
++                diag::inc(C::q_scan_pieces);
++                let slider = !movement_profile_data(movement_profile(kind)).slides.is_empty();
++                if slider {
++                    diag::inc(C::q_scan_slider_pieces);
++                }
+                 if let Some(capturer) = self.ordinary_capturer(position, from, kind, allowed) {
++                    diag::inc(C::q_scan_capturers);
++                    if slider {
++                        diag::inc(C::q_scan_slider_capturers);
++                    }
++                    diag::add(C::q_ordinary_possible, u64::from(capturer.captures.popcount()));
+                     targets |= capturer.captures;
+                     output.push(capturer);
+                 }
+             }
+         }
++        diag::IN_COLLECT.store(false, std::sync::atomic::Ordering::Relaxed);
+         targets
+     }
+ 
+diff --git a/crates/minase/src/bin/minase/main.rs b/crates/minase/src/bin/minase/main.rs
+index a0c704bc..de2974db 100644
+--- a/crates/minase/src/bin/minase/main.rs
++++ b/crates/minase/src/bin/minase/main.rs
+@@ -156,6 +156,7 @@ fn main() -> ExitCode {
+             }
+         }
+     }
++    minase_core::diag::dump();
+     ExitCode::SUCCESS
+ }
+ 
+diff --git a/crates/minase/src/search/alphabeta/ordering.rs b/crates/minase/src/search/alphabeta/ordering.rs
+index f008a794..a940c7b4 100644
+--- a/crates/minase/src/search/alphabeta/ordering.rs
++++ b/crates/minase/src/search/alphabeta/ordering.rs
+@@ -1087,6 +1087,7 @@ impl MovePicker {
+             match self.stage {
+                 MovePickerStage::Tt => {
+                     self.stage = MovePickerStage::Captures;
++                    minase_core::diag::inc(minase_core::diag::C::pk_nodes);
+                     if let Some(tt_move) = self.tt_move
+                         && let Some(capture) = *tt_capture.get_or_init(|| {
+                             generator
+@@ -1110,6 +1111,11 @@ impl MovePicker {
+                             &mut self.base_moves,
+                             &mut self.quiets,
+                         );
++                        minase_core::diag::inc(minase_core::diag::C::pk_capgen_nodes);
++                        minase_core::diag::add(
++                            minase_core::diag::C::pk_caps_generated,
++                            self.quiets.len() as u64,
++                        );
+                         self.captures.extend(
+                             self.quiets
+                                 .drain(..)
+@@ -1147,6 +1153,7 @@ impl MovePicker {
+                     }
+                     if let Some(&(mv, _)) = self.captures.get(self.capture_index) {
+                         self.capture_index += 1;
++                        minase_core::diag::inc(minase_core::diag::C::pk_caps_returned);
+                         return Some((mv, true));
+                     }
+                     self.stage = if self.killers_tried {
+@@ -1183,6 +1190,7 @@ impl MovePicker {
+                             .all(Option::is_none)
+                     {
+                         self.used_quiets[killer_index] = Some(killer);
++                        minase_core::diag::inc(minase_core::diag::C::pk_killer_ret);
+                         return Some((killer, false));
+                     }
+                 }
+@@ -1192,6 +1200,11 @@ impl MovePicker {
+                     // killer段の単独検査と同じ非捕獲の合法手を、ここで初めて全件生成する。
+                     self.quiets.clear();
+                     generator.generate_quiets(position, &mut self.base_moves, &mut self.quiets);
++                    minase_core::diag::inc(minase_core::diag::C::pk_quietgen_nodes);
++                    minase_core::diag::add(
++                        minase_core::diag::C::pk_quiets_generated,
++                        self.quiets.len() as u64,
++                    );
+                     self.quiets.retain(|&mv| Some(mv) != self.tt_move);
+                     let continuation_offsets = CONTINUATION_WEIGHTS.map(|(distance, _)| {
+                         let context_ply = context.ply.checked_sub(distance as u32)? as usize;
+diff --git a/crates/minase/src/search/alphabeta/quiesce.rs b/crates/minase/src/search/alphabeta/quiesce.rs
+index 66e3b66e..c2e90c19 100644
+--- a/crates/minase/src/search/alphabeta/quiesce.rs
++++ b/crates/minase/src/search/alphabeta/quiesce.rs
+@@ -126,6 +126,8 @@ impl Searcher<'_> {
+         beta: i32,
+         ply: u32,
+     ) -> Option<i32> {
++        use minase_core::diag::{self as dg, C};
++        dg::inc(C::q_nodes);
+         #[cfg(feature = "search-stats")]
+         {
+             self.stats.quiesce_nodes += 1;
+@@ -161,6 +163,7 @@ impl Searcher<'_> {
+             {
+                 self.stats.quiesce_tt_hits += 1;
+             }
++            dg::inc(C::q_tt_hit);
+             tt_move = hit.best_move;
+             if let Some(value) = hit.value {
+                 let cutoff = !in_repetition_band(value.score)
+@@ -171,6 +174,7 @@ impl Searcher<'_> {
+                     };
+                 if cutoff {
+                     if beta == alpha + 1 {
++                        dg::inc(C::q_tt_cut);
+                         #[cfg(feature = "search-stats")]
+                         {
+                             self.stats.quiesce_tt_cutoffs += 1;
+@@ -219,6 +223,7 @@ impl Searcher<'_> {
+                     self.stats.quiesce_static_eval_stores += 1;
+                 }
+             }
++            dg::inc(C::q_standpat_cut);
+             return Some(qsearch_entry_cutoff_score(best, beta));
+         }
+ 
+@@ -226,6 +231,10 @@ impl Searcher<'_> {
+         let buffers = &mut self.qsearch[ply as usize];
+         buffers.reset(position);
+         buffers.initialize(position, &self.generator, &self.capture_ranks);
++        dg::inc(C::q_init);
++        if tt_move.is_some() {
++            dg::inc(C::q_tt_move_given);
++        }
+         let mut best = best;
+         let mut best_move = None;
+         let mut candidate_count = 0;
+@@ -236,6 +245,11 @@ impl Searcher<'_> {
+         #[cfg(feature = "search-stats")]
+         let mut returned_low_value_group = false;
+         self.qsearch[ply as usize].set_tt_move(position, &self.generator, tt_move);
++        let diag_tt_valid = self.qsearch[ply as usize].tt_move.is_some();
++        if diag_tt_valid {
++            dg::inc(C::q_tt_move_valid);
++        }
++        let mut diag_cut = 0_u8;
+         'candidates: while let Some(candidate) = self.qsearch[ply as usize].next(
+             position,
+             &self.generator,
+@@ -244,6 +258,16 @@ impl Searcher<'_> {
+         ) {
+             let candidate_index = candidate_count;
+             candidate_count += 1;
++            dg::inc(if candidate_index == 0 && diag_tt_valid {
++                C::q_ret_tt
++            } else if matches!(
++                candidate.capture.piece.kind(),
++                Some(PieceKind::Lion | PieceKind::HornedFalcon | PieceKind::SoaringEagle)
++            ) {
++                C::q_ret_special
++            } else {
++                C::q_ret_ordinary
++            });
+             let mv = candidate.capture.mv;
+             #[cfg(feature = "search-stats")]
+             if !returned_low_value_group
+@@ -260,6 +284,7 @@ impl Searcher<'_> {
+                 candidate.capture.captured,
+             );
+             let score = if is_last_royal_capture {
++                dg::inc(C::q_royal_capture);
+                 MATE - (ply + 1) as i32
+             } else {
+                 let futility_value = futility_base + candidate.captured_value;
+@@ -268,6 +293,7 @@ impl Searcher<'_> {
+                 let is_double_lion = candidate.capture.piece.kind() == Some(PieceKind::Lion)
+                     && candidate.capture.captured.iter().all(Option::is_some);
+                 let mut see_floor_passed = false;
++                let mut diag_t_passed = false;
+                 'pruning: {
+                     if is_recapture || mv.promote {
+                         #[cfg(feature = "search-stats")]
+@@ -329,6 +355,7 @@ impl Searcher<'_> {
+                     }
+ 
+                     let see_threshold = alpha - futility_base;
++                    dg::inc(C::see_from_q_threshold);
+                     if see_prunes(position, self.rules, mv, see_threshold) {
+                         if self.checking_move_exempts_qsearch_pruning(
+                             position,
+@@ -353,6 +380,14 @@ impl Searcher<'_> {
+                     }
+                     // 同じ候補が厳しい閾値を通過したなら、下限でも枝刈りしない。
+                     see_floor_passed = see_threshold >= self.qsearch_see_floor;
++                    diag_t_passed = true;
++                }
++                let diag_both = diag_t_passed && !see_floor_passed;
++                if !see_floor_passed {
++                    dg::inc(C::see_from_q_floor);
++                }
++                if diag_both {
++                    dg::inc(C::q_see_both);
+                 }
+                 if !see_floor_passed && see_prunes(position, self.rules, mv, self.qsearch_see_floor)
+                 {
+@@ -362,7 +397,11 @@ impl Searcher<'_> {
+                     }
+                     continue;
+                 }
++                if diag_both {
++                    dg::inc(C::q_see_both_pass);
++                }
+                 self.enter_node().then_some(())?;
++                dg::inc(C::q_searched);
+                 self.previous_move_to[(ply + 1) as usize] = Some(mv.to);
+                 self.ensure_accumulator(position, ply);
+                 let undo = position.make_move_with_captures_unchecked(
+@@ -412,9 +451,35 @@ impl Searcher<'_> {
+             }
+             alpha = alpha.max(score);
+             if alpha >= beta {
++                diag_cut = if candidate_index == 0 && diag_tt_valid {
++                    1
++                } else if candidate_index == 0 {
++                    2
++                } else {
++                    3
++                };
+                 break;
+             }
+         }
++        dg::inc(match candidate_count {
++            0 => C::q_node_ret0,
++            1 => C::q_node_ret1,
++            2 => C::q_node_ret2,
++            3 | 4 => C::q_node_ret3_4,
++            _ => C::q_node_ret5p,
++        });
++        dg::inc(match self.qsearch[ply as usize].diag_groups {
++            0 => C::q_node_groups0,
++            1 => C::q_node_groups1,
++            2 => C::q_node_groups2,
++            _ => C::q_node_groups3p,
++        });
++        dg::inc(match diag_cut {
++            1 => C::q_node_cut_tt,
++            2 => C::q_node_cut_first_nontt,
++            3 => C::q_node_cut_later,
++            _ => C::q_node_nocut,
++        });
+         let best = qsearch_post_search_score(best, beta);
+         let bound = if best >= beta {
+             Bound::Lower
+@@ -533,6 +598,7 @@ pub(super) struct QsearchBuffers {
+     pub(super) group: Vec<QsearchCapture>,
+     targets_by_rank: [Bitboard; PIECE_STATE_COUNT],
+     pub(super) present_ranks: u64,
++    pub(super) diag_groups: u32,
+     royals: Bitboard,
+     royal_count: u32,
+     tt_move: Option<Move>,
+@@ -550,6 +616,7 @@ impl Default for QsearchBuffers {
+             group: Vec::new(),
+             targets_by_rank: [Bitboard::EMPTY; PIECE_STATE_COUNT],
+             present_ranks: 0,
++            diag_groups: 0,
+             royals: Bitboard::EMPTY,
+             royal_count: 0,
+             tt_move: None,
+@@ -566,6 +633,7 @@ impl QsearchBuffers {
+         self.special.clear();
+         self.group.clear();
+         self.present_ranks = 0;
++        self.diag_groups = 0;
+         self.royals = position.royal_pieces(position.side_to_move().opposite());
+         self.royal_count = self.royals.popcount();
+         self.capturers.clear();
+@@ -597,8 +665,26 @@ impl QsearchBuffers {
+         ranks: &CaptureRanks,
+     ) {
+         let opponent = position.side_to_move().opposite();
++        use minase_core::diag::{self as dg, C};
++        let side = position.side_to_move();
++        if [
++            PieceKind::Lion,
++            PieceKind::HornedFalcon,
++            PieceKind::SoaringEagle,
++        ]
++        .iter()
++        .any(|&kind| !position.pieces_of_kind(side, kind).is_empty())
++        {
++            dg::inc(C::q_init_special_present);
++        }
++        dg::add(
++            C::q_enemy_sum,
++            u64::from(position.pieces_of(opponent).popcount()),
++        );
+         generator.generate_special_captures(position, &mut |capture| {
++            dg::inc(C::q_special_generated);
+             if MoveGenerator::is_excluded_lion_capture(position, capture.mv) {
++                dg::inc(C::q_special_excluded);
+                 return;
+             }
+             let captured_value = capture
+@@ -620,6 +706,7 @@ impl QsearchBuffers {
+             position.pieces_of(opponent),
+             &mut self.capturers,
+         );
++        dg::add(C::q_targets_sum, u64::from(allowed.popcount()));
+         for kind in PieceKind::ALL {
+             let pieces = position.pieces_of_kind(opponent, kind) & allowed;
+             if pieces.is_empty() {
+@@ -639,6 +726,7 @@ impl QsearchBuffers {
+                 }
+             }
+         }
++        dg::add(C::q_ranks_present, u64::from(self.present_ranks.count_ones()));
+     }
+ 
+     /// 同じ捕獲価値の対象升を順位別の集合へ加え、存在する順位を更新する。
+@@ -674,6 +762,8 @@ impl QsearchBuffers {
+             .get(self.special_cursor)
+             .map(|c| c.captured_value);
+         let value = ordinary_value.into_iter().chain(special_value).max()?;
++        self.diag_groups += 1;
++        minase_core::diag::inc(minase_core::diag::C::q_groups_generated);
+         let targets = if ordinary_value == Some(value) {
+             self.present_ranks &= !(1_u64 << rank);
+             self.targets_by_rank[rank]
+@@ -688,6 +778,10 @@ impl QsearchBuffers {
+         {
+             self.special_cursor += 1;
+         }
++        minase_core::diag::add(
++            minase_core::diag::C::q_group_special_added,
++            (self.special_cursor - special_start) as u64,
++        );
+         self.group.clear();
+         self.cursor = 0;
+         generator.emit_ordinary_captures(position, &self.capturers, targets, &mut |capture| {
+@@ -696,6 +790,10 @@ impl QsearchBuffers {
+             candidate.seq = self.group.len() as u16;
+             self.group.push(candidate);
+         });
++        minase_core::diag::add(
++            minase_core::diag::C::q_group_ordinary_emitted,
++            self.group.len() as u64,
++        );
+         if special_start == self.special_cursor {
+             self.group
+                 .sort_unstable_by_key(|c| (Reverse(c.history), c.attacker_value, c.seq));
+diff --git a/crates/minase/src/search/alphabeta/see.rs b/crates/minase/src/search/alphabeta/see.rs
+index eab5ce8b..8e785788 100644
+--- a/crates/minase/src/search/alphabeta/see.rs
++++ b/crates/minase/src/search/alphabeta/see.rs
+@@ -34,7 +34,10 @@ const MAX_GAINS: usize = 93;
+ /// 2段階移動の手は偽を返す。
+ /// 最初の取り返しで交換評価が閾値以上と確定したら、残る逆引きと逆算を省く。
+ pub(super) fn see_prunes(position: &Position, rules: MoveRules, mv: Move, threshold: i32) -> bool {
++    use minase_core::diag::{self, C};
++    diag::inc(C::see_calls);
+     if mv.mid.is_some() {
++        diag::inc(C::see_exit_mid);
+         return false;
+     }
+ 
+@@ -49,6 +52,7 @@ pub(super) fn see_prunes(position: &Position, rules: MoveRules, mv: Move, thresh
+         && mv.promote
+         && captured_piece.is_some_and(|piece| piece.kind() == Some(PieceKind::Lion))
+     {
++        diag::inc(C::see_exit_kirin);
+         return false;
+     }
+     let captured_value = captured_piece.map_or(0, crate::eval::piece_values::piece_value);
+@@ -69,6 +73,7 @@ pub(super) fn see_prunes(position: &Position, rules: MoveRules, mv: Move, thresh
+         && captured_value - moving_value - crate::eval::piece_values::max_promotion_gain()
+             >= threshold
+     {
++        diag::inc(C::see_exit_pre);
+         return false;
+     }
+     let mut lion_on_square =
+@@ -80,14 +85,33 @@ pub(super) fn see_prunes(position: &Position, rules: MoveRules, mv: Move, thresh
+     let mut occupied = position.occupied();
+     occupied.clear(mv.from);
+     let mut depth = 0_usize;
++    diag::inc(C::see_entered_loop);
++    let mut lookups = 0_u32;
++    let finish = |lookups: u32| {
++        diag::add(C::see_lookups, u64::from(lookups));
++        diag::inc(match lookups {
++            1 => C::see_lookups_1,
++            2 => C::see_lookups_2,
++            3 => C::see_lookups_3,
++            _ => C::see_lookups_4p,
++        });
++    };
+ 
+     loop {
++        diag::IN_SEE.store(true, std::sync::atomic::Ordering::Relaxed);
+         let attackers = position.attackers_to_by(side, mv.to, occupied);
++        diag::IN_SEE.store(false, std::sync::atomic::Ordering::Relaxed);
++        lookups += 1;
+         if lion_on_square && lion_capture_is_rule_dependent(position, rules, mv.to, side, attackers)
+         {
++            diag::inc(C::see_exit_lion);
++            finish(lookups);
+             return false;
+         }
+         if attackers.is_empty() {
++            if lookups == 1 {
++                diag::inc(C::see_first_empty);
++            }
+             break;
+         }
+ 
+@@ -129,6 +153,8 @@ pub(super) fn see_prunes(position: &Position, rules: MoveRules, mv: Move, thresh
+         // g1 <= -thresholdならthreshold以上である。成り益を含むg1で判定する。
+         // 後続が獅子規則に依存しても枝刈りしないので、この終了は安全である。
+         if depth == 1 && gains[0] >= threshold && i64::from(gains[1]) <= -i64::from(threshold) {
++            diag::inc(C::see_exit_depth1);
++            finish(lookups);
+             return false;
+         }
+         lion_on_square = next_kind == PieceKind::Lion
+@@ -138,10 +164,15 @@ pub(super) fn see_prunes(position: &Position, rules: MoveRules, mv: Move, thresh
+         side = side.opposite();
+     }
+ 
++    diag::inc(C::see_full);
++    finish(lookups);
+     while depth >= 1 {
+         gains[depth - 1] = -(-gains[depth - 1]).max(gains[depth]);
+         depth -= 1;
+     }
++    if gains[0] < threshold {
++        diag::inc(C::see_pruned);
++    }
+     gains[0] < threshold
+ }
+ 

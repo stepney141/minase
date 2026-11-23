@@ -1,0 +1,108 @@
+diff --git a/crates/minase-core/src/movegen/control.rs b/crates/minase-core/src/movegen/control.rs
+index 5b6dd863..e31eb843 100644
+--- a/crates/minase-core/src/movegen/control.rs
++++ b/crates/minase-core/src/movegen/control.rs
+@@ -133,26 +133,22 @@ fn sliding_attackers_to<const INCREASING: bool>(
+     };
+     let mut attackers = Bitboard::EMPTY;
+     for direction in directions {
+-        let blockers = tables.ray(square, direction) & occupied;
++        let sliders = position.sliders(color, direction.opposite());
++        let ray = tables.ray(square, direction);
++        if !(ray & sliders).intersects(occupied) {
++            continue;
++        }
++        let blockers = ray & occupied;
+         let blocker = if INCREASING {
+             blockers.lsb()
+         } else {
+             blockers.msb()
+         };
+-        let Some(blocker) = blocker else {
+-            continue;
+-        };
+-        if !own.contains(blocker) {
+-            continue;
+-        }
+-        let kind = position
+-            .piece_at(blocker)
+-            .and_then(|piece| piece.kind())
+-            .expect("blocker must be a piece");
+-        let mask = tables.slide_directions(color, movement_profile(kind));
+-        if (mask >> direction.opposite().index()) & 1 != 0 {
++        let blocker = blocker.expect("ray with a slider has a blocker");
++        if sliders.contains(blocker) {
+             attackers.set(blocker);
+         }
++        let _ = own;
+     }
+     attackers
+ }
+diff --git a/crates/minase-core/src/position/mod.rs b/crates/minase-core/src/position/mod.rs
+index f86d7073..c56f78b6 100644
+--- a/crates/minase-core/src/position/mod.rs
++++ b/crates/minase-core/src/position/mod.rs
+@@ -39,6 +39,8 @@ pub struct Position {
+     by_color: [Bitboard; COLOR_COUNT],
+     /// 対局者別・駒種別の駒の集合。
+     by_kind: [[Bitboard; PIECE_KIND_COUNT]; COLOR_COUNT],
++    /// 試作: 対局者別・絶対方向別の、その方向へ走る駒の集合。
++    sliders: [[Bitboard; 8]; COLOR_COUNT],
+     /// 手番側。
+     side_to_move: Color,
+     /// 直前の着手で獅子以外の駒に取られた獅子の情報。先獅子(第15条)の判定に使う。
+@@ -77,6 +79,12 @@ impl Position {
+         self.by_kind[color.index()][kind.index()]
+     }
+ 
++    /// 試作: 指定した対局者の、指定方向へ走る駒の集合を返す。
++    #[inline]
++    pub(crate) const fn sliders(&self, color: Color, direction: crate::board::Direction) -> Bitboard {
++        self.sliders[color.index()][direction.index()]
++    }
++
+     /// 手番側を返す。
+     #[inline]
+     pub const fn side_to_move(&self) -> Color {
+diff --git a/crates/minase-core/src/position/placement.rs b/crates/minase-core/src/position/placement.rs
+index b652edc0..4c9ebe70 100644
+--- a/crates/minase-core/src/position/placement.rs
++++ b/crates/minase-core/src/position/placement.rs
+@@ -40,6 +40,12 @@ impl Position {
+         self.occupied.set(square);
+         self.by_color[color.index()].set(square);
+         self.by_kind[color.index()][kind.index()].set(square);
++        let mut mask = crate::attacks::attack_tables()
++            .slide_directions(color, crate::attacks::movement_profile(kind));
++        while mask != 0 {
++            self.sliders[color.index()][mask.trailing_zeros() as usize].set(square);
++            mask &= mask - 1;
++        }
+         Ok(())
+     }
+ 
+@@ -61,6 +67,12 @@ impl Position {
+         self.occupied.clear(square);
+         self.by_color[color.index()].clear(square);
+         self.by_kind[color.index()][kind.index()].clear(square);
++        let mut mask = crate::attacks::attack_tables()
++            .slide_directions(color, crate::attacks::movement_profile(kind));
++        while mask != 0 {
++            self.sliders[color.index()][mask.trailing_zeros() as usize].clear(square);
++            mask &= mask - 1;
++        }
+         piece
+     }
+ }
+diff --git a/crates/minase-core/src/position/setup.rs b/crates/minase-core/src/position/setup.rs
+index bf0c9b8e..ef553c8d 100644
+--- a/crates/minase-core/src/position/setup.rs
++++ b/crates/minase-core/src/position/setup.rs
+@@ -21,6 +21,7 @@ impl Position {
+             occupied: Bitboard::EMPTY,
+             by_color: [Bitboard::EMPTY; COLOR_COUNT],
+             by_kind: [[Bitboard::EMPTY; PIECE_KIND_COUNT]; COLOR_COUNT],
++            sliders: [[Bitboard::EMPTY; 8]; COLOR_COUNT],
+             side_to_move,
+             lion_taken_by_non_lion: None,
+             zobrist: zobrist_keys().side(side_to_move),

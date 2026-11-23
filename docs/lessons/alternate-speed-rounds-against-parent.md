@@ -17,11 +17,13 @@
 探索木を変えない高速化を段階ごとに速度で選別するときは、`scripts/bench_compare.py --reference <照合参照> --baseline <速度の基準> --parent <直前の採用版> --rounds 5`で局面別の一致を終了コード0で確かめたうえで候補と親を交互に5回測り、候補のNPS中央値の増分が親の幅を超える段階だけを残し、残した段階をまとめた版を段階ゲートのSTCとLTCにかける。
 `--rounds`の既定値は3なので、5を明示する。
 親の幅が平常より大きい測定は、[進行中の測定と負荷を確かめて](check-running-measurements-before-cpu-load.md)から測り直す。
-段階ごとの採否をSPRTではなく速度で決めることは、第1期で利用者が「本マイルストーンに限る例外」として決め、第2期の設計書と起案中の第3期の設計書がそれぞれ改めて採った方式であり、新しいマイルストーンで使うときは設計書でその旨を決める。
+段階ごとの採否をSPRTではなく速度で決めることは、第1期で利用者が「本マイルストーンに限る例外」として決め、第2期の設計書が改めて採った方式であり、新しいマイルストーンで使うときは設計書でその旨を決める。
+増分が1%前後の段階は、この測り方では親の幅に収まって判定できないことがある。第3期の試作では、毎秒ノード数の増分0.95%に対して親の幅が1.14%だった。この大きさの段階を扱う第3期の設計書は、毎秒ノード数の交互測定に代えて、サイクル数の対比較で採否を決める。
 1回の測定内の反復の扱いは、[benchを性能コアへ固定する教訓](pin-bench-to-performance-core.md)に従う。
 
 ## 出典
 
 - [measurements/movegen-speedup-2/movegen-speedup-2-stage2-bench-depth5.md](../measurements/movegen-speedup-2/movegen-speedup-2-stage2-bench-depth5.md) の「コマンドライン」節。
 - [plans/movegen-speedup.md](../plans/archived/movegen-speedup.md) の「探索木を変えない変更は局面別一致と速度で採否を決める」節。
-- [plans/movegen-speedup-2.md](../plans/archived/movegen-speedup-2.md) と [plans/movegen-speedup-3.md](../plans/movegen-speedup-3.md) の「探索木を変えない段階の採否」節。
+- [plans/movegen-speedup-2.md](../plans/archived/movegen-speedup-2.md) の「探索木を変えない段階の採否」節。
+- [plans/movegen-speedup-3.md](../plans/movegen-speedup-3.md) の「探索木を変えない段階の採否」節と、[measurements/movegen-speedup-3/movegen-speedup-3-prototypes.md](../measurements/movegen-speedup-3/movegen-speedup-3-prototypes.md) の「結果」節。

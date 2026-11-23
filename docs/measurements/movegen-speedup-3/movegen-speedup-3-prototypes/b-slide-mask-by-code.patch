@@ -1,0 +1,114 @@
+diff --git a/crates/minase-core/src/attacks/tables.rs b/crates/minase-core/src/attacks/tables.rs
+index a1fb787a..302d9821 100644
+--- a/crates/minase-core/src/attacks/tables.rs
++++ b/crates/minase-core/src/attacks/tables.rs
+@@ -27,6 +27,8 @@ pub(crate) struct AttackTables {
+     reach: FixedAttackTable,
+     /// 色×プロファイルごとの走りの絶対方向マスク。
+     slide_directions: [[u8; MOVEMENT_PROFILE_COUNT]; COLOR_COUNT],
++    /// 試作: 照会色×駒コードの生値ごとの走りの絶対方向マスク。照会色の駒でなければ0。
++    slide_mask_by_code: [[u8; 256]; COLOR_COUNT],
+     /// 各升を中心とする5×5の近傍。固定利きの逆引きに使う。
+     neighbourhoods: [Bitboard; RAW_SQUARE_COUNT],
+     /// 対象升への利きが依存する8方向の利き線と5×5近傍の和集合。
+@@ -103,12 +105,29 @@ impl AttackTables {
+             }
+         }
+         let reach = fixed.clone();
++        let mut slide_mask_by_code = [[0_u8; 256]; COLOR_COUNT];
++        for color in Color::ALL {
++            for kind in PieceKind::ALL {
++                for piece in [
++                    crate::piece::PieceCode::new(color, kind),
++                    crate::piece::PieceCode::new_promoted(color, kind),
++                ]
++                .into_iter()
++                .flatten()
++                {
++                    let kind = piece.kind().expect("piece code has a kind");
++                    slide_mask_by_code[color.index()][piece.raw() as usize] = slide_directions
++                        [color.index()][super::fixed::movement_profile(kind).index()];
++                }
++            }
++        }
+         let mut tables = Self {
+             reach,
+             rays,
+             fixed,
+             fixed_attacker_kinds,
+             slide_directions,
++            slide_mask_by_code,
+             lion_jumps,
+             neighbourhoods,
+             attack_dependencies,
+@@ -144,6 +163,12 @@ impl AttackTables {
+         self.slide_directions[color.index()][profile.index()]
+     }
+ 
++    /// 試作: 駒コードから、照会色の駒としての走りの絶対方向マスクを返す。
++    #[inline]
++    pub(crate) fn slide_mask_by_code(&self, color: Color, piece: crate::piece::PieceCode) -> u8 {
++        self.slide_mask_by_code[color.index()][piece.raw() as usize]
++    }
++
+     /// 指定した色・プロファイル・升の固定利きを返す。
+     #[inline]
+     pub(crate) fn fixed(&self, color: Color, profile: MovementProfileId, from: Square) -> Bitboard {
+diff --git a/crates/minase-core/src/movegen/control.rs b/crates/minase-core/src/movegen/control.rs
+index 5b6dd863..c3e71acf 100644
+--- a/crates/minase-core/src/movegen/control.rs
++++ b/crates/minase-core/src/movegen/control.rs
+@@ -142,17 +142,11 @@ fn sliding_attackers_to<const INCREASING: bool>(
+         let Some(blocker) = blocker else {
+             continue;
+         };
+-        if !own.contains(blocker) {
+-            continue;
+-        }
+-        let kind = position
+-            .piece_at(blocker)
+-            .and_then(|piece| piece.kind())
+-            .expect("blocker must be a piece");
+-        let mask = tables.slide_directions(color, movement_profile(kind));
++        let mask = tables.slide_mask_by_code(color, position.code_at(blocker));
+         if (mask >> direction.opposite().index()) & 1 != 0 {
+             attackers.set(blocker);
+         }
++        let _ = own;
+     }
+     attackers
+ }
+diff --git a/crates/minase-core/src/piece/code.rs b/crates/minase-core/src/piece/code.rs
+index caaf78e1..5ee946f1 100644
+--- a/crates/minase-core/src/piece/code.rs
++++ b/crates/minase-core/src/piece/code.rs
+@@ -15,6 +15,12 @@ impl PieceCode {
+     /// 盤外の番兵を表すコード。
+     pub const WALL: Self = Self(0xff);
+ 
++    /// 試作: 駒コードの生値を返す。
++    #[inline]
++    pub(crate) const fn raw(self) -> u8 {
++        self.0
++    }
++
+     /// 後手の駒を示すビット。
+     const WHITE_BIT: u8 = 0x40;
+     /// 成駒を示すビット。
+diff --git a/crates/minase-core/src/position/mod.rs b/crates/minase-core/src/position/mod.rs
+index f86d7073..27a22014 100644
+--- a/crates/minase-core/src/position/mod.rs
++++ b/crates/minase-core/src/position/mod.rs
+@@ -59,6 +59,12 @@ impl Position {
+         (!piece.is_empty()).then_some(piece)
+     }
+ 
++    /// 試作: 指定升の駒コードを空升も含めて返す。
++    #[inline]
++    pub(crate) fn code_at(&self, square: Square) -> PieceCode {
++        self.board[square.raw_index()]
++    }
++
+     /// 駒がある升の集合を返す。
+     #[inline]
+     pub const fn occupied(&self) -> Bitboard {
