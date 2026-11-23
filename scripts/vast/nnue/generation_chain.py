@@ -57,7 +57,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / 'common'))
 import common
 
 REMOTE = '/workspace/job'
-# docs/plans/nnue-decay-to-end.mdの設計判断「検証損失の使い方」で定めた見張りの閾値。
+# 見張りの閾値とその根拠は、次のADRの「決定」と「結果」を参照。
+# docs/adr/train-the-nnue-for-four-epochs-decaying-the-learning-rate-to-the-end-and-export-the-last-network.md
 MAX_FINAL_VALIDATION_LOSS_RATIO = 1.02
 
 
