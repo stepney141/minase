@@ -17,8 +17,9 @@
 
 状態は進行中である。
 2026年11月23日に起案し、同じ日に着手した。
-フェーズ1の学習器の修正を行っている。
-次の一手は、直した学習器の確認と、第1世代の教師での関門の測定である。
+フェーズ1は完了し、直した学習器の2つの確認が通った（[確認の記録](../measurements/nnue-decay-to-end/nnue-decay-to-end-trainer-check.md)）。フェーズ1のコミットのmasterへの統合は、利用者の許可を待っている。
+フェーズ2も完了した。第1世代の教師を2つの条件で学び（[学習の記録](../measurements/nnue-decay-to-end/nnue-decay-to-end-gen1-training.md)）、関門の対局は`H1`で通過した（[判定の記録](../measurements/nnue-decay-to-end/nnue-decay-to-end-gen1-stc.md)）。
+次の一手は、第3世代の教師129本がそろった後に、学習機を借りて第3世代を2つの条件で学び、第3世代の教師での対局で第3世代のネットを選ぶことである。
 
 ## 目的
 
