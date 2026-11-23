@@ -11,18 +11,26 @@
 第1世代の教師から較正した勝率尺度K_tを世代の記録へ保存し、全世代の学習へ渡す。
 --superbatchesで学習の上限、--validation-superbatchesで検証の間隔を指定する。
 --lr-scheduleの期間はsuperbatchで指定する。--validation-patienceを指定すると、検証損失が最小のネットを使う。
+--validation-patienceを指定しないときは最後の重みを使い、最後の検証損失が学習中の最小値の1.02倍を超えるか、
+検査に必要な検証損失がなければ、見張りの条件を満たせないので世代を登録しない。
 --train-place generatorは借りた機械で学習と診断を行い、localは作業機で実行する。
 教師がすべて作業機にある世代では、--train-place generatorと--offerで学習機を借り、学習と診断だけを行う。
 機械を借りずに作業機で学習を再開するにはlocalを明示する。ネットの保管とbenchはどちらも作業機で行う。
 作業機では--run-dirに接続先とgen-<N>/{received,teacher,logs,train}を置く。
 借りた機械での各ステップのログと最大常駐メモリの記録（<ステップ名>.rusage.json）はgen-<N>/training-logs/に置く。
---repoの--refが指す--commitを全世代で使い、--gen0-networkを第0世代のネットとする。
+--repoの--refが指す--commitは教師の生成とヘッダの照合に使い、--gen0-networkを第0世代のネットとする。
+学習には--trainer-refが指す--trainer-commitを使う。同じコミットで学ぶ場合も両方を明示する。
+生成と学習の作業者は借りた機械で作業ツリーを共有するため、コミットを分けられるのは教師の生成が不要なときだけである。
+localでは--trainer-binをそのまま使うので、学習器のコミットのビルドであることは起動する側が保証する。
+gen-<N>/train-request.jsonに学習器のコミットと実行場所によらない学習の引数を記録し、
+再開では記録と一致する場合だけ学習の成果物を使う。
 ネットは--network-storeへSHA-256の名前で保管し、gen-<N>/generation.jsonで完了を表す。
 生成機へはコードのバンドルとネットを別々に転送し、job.jsonにnetworkとnetwork_sha256を書く。
 生成機には同じディレクトリのgeneration_worker.pyを/workspace/job/へ送る。
 SIGTERMとSIGINTでは子プロセスだけを止め、同じ引数での再実行に備える。
 
-暫定最良世代に勝てなかった第N世代を37本から74本へ増量して学び直すときは、まずgen-<N>/のtrain、removal.json、train.log、training-logsのうち存在するものをgen-<N>/books37/へ移す。
+暫定最良世代に勝てなかった第N世代を37本から74本へ増量して学び直すときは、まずgen-<N>/のtrain、
+train-request.json、removal.json、train.log、training-logsのうち存在するものをgen-<N>/books37/へ移す。
 gen-<N>/generation.jsonもgen-<N>/books37/へ移し、NASのネットは残す。
 --books-per-generationを74、--first-generationと--last-generationをNにして再実行する。
 番号37〜73の本だけが生成され、74本で学び直す。
@@ -49,6 +57,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / 'common'))
 import common
 
 REMOTE = '/workspace/job'
+# docs/plans/nnue-decay-to-end.mdの設計判断「検証損失の使い方」で定めた見張りの閾値。
+MAX_FINAL_VALIDATION_LOSS_RATIO = 1.02
 
 
 def low_priority() -> None:
@@ -243,6 +253,7 @@ class Chain:
         record = {'generation': generation, 'commit': self.args.commit,
                   'network_path': str(network), 'network_sha256': checksum}
         if generation > 0:
+            record['trainer_commit'] = self.args.trainer_commit
             record['teacher_cp_per_logit'] = self.teacher_scale(generation)
         temporary.write_text(json.dumps(record) + '\n')
         temporary.replace(path)
@@ -407,13 +418,19 @@ class Chain:
         self.concurrency = self.cpu_count()
         self.ssh(f'touch {REMOTE}/started', 60)
 
-    def send_bundle(self) -> str:
-        destination = f'{REMOTE}/bundles/{self.args.commit}.bundle'
+    def send_bundle(self, reference: str, commit: str) -> str:
+        destination = f'{REMOTE}/bundles/{commit}.bundle'
         if not self.remote_exists(destination):
             self.ssh(f'mkdir -p {REMOTE}/bundles', 60)
             with tempfile.TemporaryDirectory() as temporary:
                 path = Path(temporary) / 'source.bundle'
-                self.git('bundle', 'create', str(path), self.args.ref)
+                references = [reference]
+                # 同じコミットのbundleを共用する場合は、どちらの参照からも取得できるようにする。
+                if self.args.commit == self.args.trainer_commit:
+                    other = self.args.trainer_ref if reference == self.args.ref else self.args.ref
+                    if other != reference:
+                        references.append(other)
+                self.git('bundle', 'create', str(path), *references)
                 self.upload(path, destination + '.tmp')
             self.ssh(f'mv {destination}.tmp {destination}', 60)
         return destination
@@ -533,7 +550,7 @@ class Chain:
         while True:
             try:
                 if bundle is None:
-                    bundle = self.send_bundle()
+                    bundle = self.send_bundle(self.args.ref, commit)
                 if sent != tuple(sorted(books.items())):
                     self.send_job(generation, commit, bundle, books)
                     sent = tuple(sorted(books.items()))
@@ -584,20 +601,25 @@ class Chain:
             raise ChainStop('記録した教師の勝率尺度が正の有限値ではありません')
         return scale
 
-    def training_commands(self, trainer: Path, training_books: list[Path], current_books: list[Path], teacher_scale: float,
-                          directory: Path) -> dict[str, list[str]]:
+    def training_arguments(self, teacher_scale: float) -> list[str]:
+        """実行場所によらない学習の引数を組み立てる。"""
+        args = self.args
+        arguments = [args.structure, '--rules', 'lishogi', '--teacher-cp-per-logit', str(teacher_scale),
+                     '--lambda', str(args.mix), '--seed', str(args.train_seed)]
+        for key in ('batch', 'superbatches', 'validation_superbatches', 'device', 'lr_schedule'):
+            arguments.extend(['--' + key.replace('_', '-'), str(getattr(args, key))])
+        for key in ('batches_per_superbatch', 'validation_patience', 'train_subsample'):
+            if hasattr(args, key):
+                arguments.extend(['--' + key.replace('_', '-'), str(getattr(args, key))])
+        return arguments
+
+    def training_commands(self, trainer: Path, training_books: list[Path], current_books: list[Path],
+                          arguments: list[str], directory: Path) -> dict[str, list[str]]:
         """実行場所によらず、同じ条件で学習・診断のコマンドを組み立てる。"""
         args = self.args
         train = directory / 'train'
-        command = [str(trainer), 'nnue', 'train', args.structure, '--data', *map(str, training_books),
-                   '--rules', 'lishogi', '--teacher-cp-per-logit', str(teacher_scale),
-                   '--lambda', str(args.mix),
-                   '--seed', str(args.train_seed), '--threads', str(args.train_threads), '--output-dir', str(train)]
-        for key in ('batch', 'superbatches', 'validation_superbatches', 'device', 'lr_schedule'):
-            command.extend(['--' + key.replace('_', '-'), str(getattr(args, key))])
-        for key in ('batches_per_superbatch', 'validation_patience', 'train_subsample'):
-            if hasattr(args, key):
-                command.extend(['--' + key.replace('_', '-'), str(getattr(args, key))])
+        command = [str(trainer), 'nnue', 'train', *arguments, '--data', *map(str, training_books),
+                   '--threads', str(args.train_threads), '--output-dir', str(train)]
         checkpoint = 'best.npz' if hasattr(args, 'validation_patience') else 'latest.npz'
         commands = {
             'train': command,
@@ -607,6 +629,58 @@ class Chain:
                         '--output', str(directory / 'removal.json')],
         }
         return commands
+
+    def check_train_request(self, generation: int, arguments: list[str], remote_job_exists: bool = False) -> None:
+        """学習の開始前に条件を記録し、再開では成果物の条件を照合する。"""
+        directory = self.root / f'gen-{generation}'
+        path = directory / 'train-request.json'
+        request = {'trainer_commit': self.args.trainer_commit, 'arguments': arguments}
+        if path.exists():
+            try:
+                recorded = json.loads(path.read_text())
+            except (OSError, ValueError) as error:
+                raise ChainStop(f'第{generation}世代のtrain-request.jsonを読めません: {error}') from error
+            if recorded != request:
+                raise ChainStop(f'第{generation}世代の学習条件がtrain-request.jsonと一致しません')
+            return
+        train = directory / 'train'
+        if remote_job_exists or (directory / 'removal.json').exists() or (train.is_dir() and any(train.iterdir())):
+            raise ChainStop(f'第{generation}世代に学習のジョブまたは成果物がありますが、train-request.jsonがありません')
+        directory.mkdir(parents=True, exist_ok=True)
+        temporary = path.with_suffix('.json.tmp')
+        temporary.write_text(json.dumps(request) + '\n')
+        temporary.replace(path)
+
+    def check_final_validation_loss(self, generation: int, completed: int | None) -> None:
+        """最後の重みの検証損失を、学習開始後の最小値と比べる。"""
+        path = self.root / f'gen-{generation}/train/training.jsonl'
+        best = final = None
+        if type(completed) is not int or completed < 1:
+            raise ChainStop(f'第{generation}世代の学習結果に完了したsuperbatch数がありません')
+        try:
+            with path.open() as log:
+                for line_number, line in enumerate(log, 1):
+                    row = json.loads(line)
+                    superbatch, loss = row['superbatch'], row['validation_loss']
+                    if type(superbatch) is not int or not 0 <= superbatch <= completed:
+                        raise ValueError(f'{line_number}行目のsuperbatchが不正です')
+                    if superbatch == 0 or loss is None:
+                        continue
+                    if type(loss) not in (float, int) or not math.isfinite(loss) or loss < 0:
+                        raise ValueError(f'{line_number}行目のvalidation_lossが不正です')
+                    best = loss if best is None else min(best, loss)
+                    if superbatch == completed:
+                        final = loss
+        except (OSError, KeyError, TypeError, ValueError, OverflowError) as error:
+            raise ChainStop(f'第{generation}世代の見張りの条件を検査できません: {path}: {error}') from error
+        if best is None:
+            raise ChainStop(f'第{generation}世代の学習開始後の検証損失がないため世代を登録しません')
+        if final is None:
+            raise ChainStop(f'第{generation}世代の最後のsuperbatchに検証損失がないため世代を登録しません')
+        if final > best * MAX_FINAL_VALIDATION_LOSS_RATIO:
+            ratio = final / best if best else math.inf
+            raise ChainStop(f'第{generation}世代: 最後の検証損失={final}、最小値={best}、比={ratio}。'
+                            '見張りの条件に当たったので世代を登録しません')
 
     def training_complete(self, generation: int) -> bool:
         directory = self.root / f'gen-{generation}'
@@ -650,15 +724,17 @@ class Chain:
 
     def train_on_generator(self, generation: int, commit: str, books: dict[int, int]) -> None:
         """生成とは独立した作業者へ学習を渡し、結果を取得するまで生成機を保持する。"""
+        arguments = self.training_arguments(self.teacher_scale(generation))
         if self.training_complete(generation):
+            self.check_train_request(generation, arguments)
             return
         resume = '本は作業機にあるので、--train-place localで再開できます'
         if self.address is None:
             raise ChainStop(f'学習できる生成機がありません。--offerを指定して学習機を借りられます。{resume}')
-        scale = self.teacher_scale(generation)
         training_books = self.training_books(generation)
         directory = Path(REMOTE) / 'training' / f'gen-{generation}'
         teacher = Path(REMOTE) / 'teacher' / f'gen-{generation}'
+        job_path = directory / 'job.json'
         logs = self.root / f'gen-{generation}/training-logs'
         logs.mkdir(parents=True, exist_ok=True)
         started = time.monotonic()
@@ -669,11 +745,24 @@ class Chain:
                 raise ChainStop(f'第{generation}世代の学習待ちが上限時間に達しました。ログ: {logs}。{resume}')
             try:
                 if not prepared:
-                    bundle = self.send_bundle()
+                    job_exists = self.remote_exists(str(job_path))
+                    self.check_train_request(generation, arguments, job_exists)
+                    if job_exists:
+                        try:
+                            job = json.loads(self.ssh(f'cat {job_path}', 60))
+                            command = next(step['command'] for step in job['steps'] if step['name'] == 'train')
+                            end = command.index('--data')
+                            matches = job['commit'] == self.args.trainer_commit and command[3:end] == arguments
+                        except (KeyError, TypeError, ValueError, StopIteration) as error:
+                            raise ChainStop(f'第{generation}世代の学習ジョブの条件を読めません: {error}') from error
+                        if not matches:
+                            raise ChainStop(f'第{generation}世代の学習ジョブがtrain-request.jsonと一致しません')
+                    bundle = self.send_bundle(self.args.ref, commit)
                     self.send_job(generation, commit, bundle, books)
                     self.upload(Path(__file__).with_name('generation_worker.py'), REMOTE + '/generation_worker.py.tmp')
                     self.ssh(f'mv {REMOTE}/generation_worker.py.tmp {REMOTE}/generation_worker.py', 60)
-                    if not self.remote_exists(str(directory / 'job.json')):
+                    if not job_exists:
+                        trainer_bundle = self.send_bundle(self.args.trainer_ref, self.args.trainer_commit)
                         self.ssh(f'mkdir -p {directory}', 60)
                         try:
                             for source in dict.fromkeys(path.parent for path in training_books):
@@ -687,7 +776,7 @@ class Chain:
                             [Path(REMOTE) / 'teacher' / path.parent.parent.name / path.name
                              for path in training_books],
                             [teacher / f'book-{number}.mnsd' for number in sorted(books)],
-                            scale, directory)
+                            arguments, directory)
                         steps = [{'name': 'build',
                                   'command': ['cargo', 'build', '--release', '--locked', '--bin', 'minase-trainer'],
                                   'done': None, 'clean': None, 'resume_file': None, 'resume_args': None}]
@@ -697,12 +786,13 @@ class Chain:
                                           'clean': str(directory / name) if name == 'train' else None,
                                           'resume_file': str(directory / 'train/latest.npz') if name == 'train' else None,
                                           'resume_args': ['--resume', str(directory / 'train')] if name == 'train' else None})
-                        job = {'commit': commit, 'bundle': bundle, 'reference': self.args.ref, 'steps': steps}
+                        job = {'commit': self.args.trainer_commit, 'bundle': trainer_bundle,
+                               'reference': self.args.trainer_ref, 'steps': steps}
                         with tempfile.TemporaryDirectory() as temporary:
                             path = Path(temporary) / 'job.json'
                             path.write_text(json.dumps(job) + '\n')
                             self.upload(path, str(directory / 'job.json.tmp'))
-                        self.ssh(f'mv {directory}/job.json.tmp {directory}/job.json', 60)
+                        self.ssh(f'mv {directory}/job.json.tmp {job_path}', 60)
                     prepared = True
                 try:
                     common.rsync_to(*self.address, str(directory / 'logs') + '/', logs)
@@ -733,10 +823,11 @@ class Chain:
         args = self.args
         directory = self.root / f'gen-{generation}'
         train = directory / 'train'
+        arguments = self.training_arguments(self.teacher_scale(generation))
+        self.check_train_request(generation, arguments)
         train.mkdir(parents=True, exist_ok=True)
-        scale = self.teacher_scale(generation)
         commands = self.training_commands(args.trainer_bin, self.training_books(generation),
-                                          self.book_paths(generation), scale, directory)
+                                          self.book_paths(generation), arguments, directory)
         summary = train / 'summary.json'
         if not summary.is_file():
             command = commands['train']
@@ -748,6 +839,8 @@ class Chain:
         result = json.loads(summary.read_text())
         if result['status'] != 'candidate':
             raise ChainStop(f'第{generation}世代の学習結果がcandidateではありません: {result["status"]}')
+        if not hasattr(args, 'validation_patience'):
+            self.check_final_validation_loss(generation, result.get('completed_superbatches'))
         removal = directory / 'removal.json'
         if not removal.is_file():
             self.children.run(commands['removal'], cwd=args.repo, preexec_fn=low_priority)
@@ -828,9 +921,15 @@ class Chain:
         path = self.root / 'instance-id'
         if path.is_file():
             self.instance_id = int(path.read_text())
-        commit = self.git('rev-parse', '--verify', '--end-of-options', self.args.ref + '^{commit}')
-        if commit != self.args.commit:
-            raise ChainStop('--refが--commitを指していません')
+        for reference, expected, flags in (
+                (self.args.ref, self.args.commit, '--refが--commit'),
+                (self.args.trainer_ref, self.args.trainer_commit, '--trainer-refが--trainer-commit')):
+            try:
+                actual = self.git('rev-parse', '--verify', '--end-of-options', reference + '^{commit}')
+            except subprocess.CalledProcessError as error:
+                raise ChainStop(f'{flags}を指していません') from error
+            if actual != expected:
+                raise ChainStop(f'{flags}を指していません')
         self.initialize_generation_zero()
         for generation in range(self.args.first_generation):
             if self.generation_record(generation) is None:
@@ -840,6 +939,9 @@ class Chain:
         if pending:
             needs_generation = any(len(self.book_paths(generation)) < self.args.books_per_generation
                                    for generation in pending)
+            if needs_generation and self.args.trainer_commit != self.args.commit:
+                raise ChainStop('教師の生成が残っています。生成と学習は借りた機械の作業ツリーを共有するため、'
+                                '--trainer-commitと--commitを分けられるのは教師がすべてそろったときだけです')
             self.prepare_machine(pending, needs_generation)
         for generation in pending:
             self.current = generation
@@ -925,7 +1027,7 @@ def arguments(argv: list[str]) -> argparse.Namespace:
         run.add_argument('--' + name, required=True, type=absolute_path, help='配置先の絶対パス')
     for name in ('minase-bin', 'trainer-bin'):
         run.add_argument('--' + name, required=True, type=lambda value: Path(value).resolve(), help='固定した実行ファイルのパス')
-    for name in ('ref', 'commit', 'device', 'image', 'cpu-pattern'):
+    for name in ('ref', 'commit', 'trainer-ref', 'trainer-commit', 'device', 'image', 'cpu-pattern'):
         run.add_argument('--' + name, required=True, help='実行条件を明示する')
     for name in ('first-generation', 'last-generation', 'books-per-generation', 'games', 'nodes',
                  'max-ply', 'hash-mb', 'chunk-games', 'calibration-books', 'batch',
@@ -955,8 +1057,9 @@ def arguments(argv: list[str]) -> argparse.Namespace:
                      help='generatorは借りた機械、localは作業機で学習と診断を行う。'
                           '教師がそろっていればgeneratorと--offerで学習機だけを借りられる')
     args = parser.parse_args(argv)
-    if re.fullmatch(r'[0-9a-fA-F]{40}', args.commit) is None:
-        parser.error('commitは40桁の16進数にしてください')
+    for name, commit in (('commit', args.commit), ('trainer-commit', args.trainer_commit)):
+        if re.fullmatch(r'[0-9a-fA-F]{40}', commit) is None:
+            parser.error(f'{name}は40桁の16進数にしてください')
     if args.first_generation > args.last_generation:
         parser.error('first-generationはlast-generation以下にしてください')
     if not math.isfinite(args.mix) or not 0 <= args.mix <= 1:

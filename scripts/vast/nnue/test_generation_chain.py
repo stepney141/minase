@@ -75,6 +75,7 @@ def cli_values(root: Path) -> dict[str, str | list[str]]:
             'minase-bin': str(root / 'inspect'), 'trainer-bin': str(root / 'trainer'),
             'commit': '0' * 40, 'first-generation': '1', 'last-generation': '2', 'train-place': 'local',
             'ref': 'refs/heads/iteration', 'books-per-generation': '1',
+            'trainer-ref': 'refs/heads/iteration', 'trainer-commit': '0' * 40,
             'replay-buffer-generations': '1', 'games': '10', 'nodes': '20000',
             'random-moves': '0', 'max-ply': '4000', 'hash-mb': '16', 'chunk-games': '250',
             'seed-base': '9000000000',
@@ -107,12 +108,22 @@ def option_values(command: list[str], option: str) -> list[str]:
     return result
 
 
-def write_training_result(directory: Path, generation: int) -> None:
+VALIDATION_ROWS = ((0, 0.5), (8, 1.0), (63, None), (64, 1.01))
+
+
+def write_validation_log(path: Path, rows: tuple) -> None:
+    path.write_text(''.join(json.dumps({'superbatch': batch, 'validation_loss': loss}) + '\n'
+                            for batch, loss in rows))
+
+
+def write_training_result(directory: Path, generation: int, rows: tuple | None = VALIDATION_ROWS) -> None:
     """学習器の出力形式で、実際の重みや損失に依存しない成果物を置く。"""
     (directory / 'train').mkdir(parents=True, exist_ok=True)
     (directory / 'train/summary.json').write_text('{"status": "candidate", "completed_superbatches": 64, "completed_steps": 390656}')
     (directory / 'train/nnue.bin').write_bytes(network(generation))
     (directory / 'train/latest.npz').write_bytes(b'checkpoint')
+    if rows is not None:
+        write_validation_log(directory / 'train/training.jsonl', rows)
     (directory / 'removal.json').write_text('{}')
 
 
@@ -169,6 +180,7 @@ class Commands:
         self.fail_command = None
         self.interrupt_command = None
         self.train_status = 'candidate'
+        self.validation_rows = VALIDATION_ROWS
         self.training_jobs = []
         self.training_exit = None
         self.training_stall = False
@@ -193,7 +205,7 @@ class Commands:
             return
         if self.training_stall:
             return
-        write_training_result(directory, generation)
+        write_training_result(directory, generation, self.validation_rows)
         for name in self.training_missing:
             path = directory / name
             if path.is_dir():
@@ -364,6 +376,8 @@ class Commands:
                     return self.result(command, '', 1, kwargs)
                 (directory / 'nnue.bin').write_bytes(network(generation))
                 (directory / 'latest.npz').touch()
+                if self.validation_rows is not None:
+                    write_validation_log(directory / 'training.jsonl', self.validation_rows)
             elif args[:2] == ['diag', 'nnue-removal']:
                 Path(args[args.index('--output') + 1]).write_text('{}')
             else:
@@ -503,6 +517,48 @@ class ChainTests(ChainTestCase):
         self.assertFalse((self.root / 'run/gen-0/generation.json').exists())
         self.assertTrue(all(call[0] == 'git' for call in self.commands.calls))
 
+    def test_trainer_reference_must_point_to_trainer_commit(self) -> None:
+        self.values['trainer-ref'] = 'refs/heads/trainer'
+        self.commands.refs[self.values['trainer-ref']] = 'a' * 40
+        runner = chain.Chain(chain.arguments(argv(self.values)))
+        with self.assertRaisesRegex(chain.ChainStop, '--trainer-ref.*--trainer-commit'):
+            runner.execute()
+        self.assertFalse((self.root / 'run/gen-0/generation.json').exists())
+        self.assertTrue(all(call[0] == 'git' for call in self.commands.calls))
+
+    def test_trainer_commit_must_have_forty_hex_digits(self) -> None:
+        for value in ('a' * 39, 'a' * 41, 'z' * 40):
+            with self.subTest(value=value), self.assertRaises(SystemExit):
+                chain.arguments(argv(self.values | {'trainer-commit': value}))
+        self.assertFalse(self.commands.calls)
+
+    def test_different_trainer_commit_cannot_rent_when_books_need_generation(self) -> None:
+        self.values.update({'trainer-ref': 'refs/heads/trainer', 'trainer-commit': 'a' * 40,
+                            'train-place': 'generator', 'last-generation': '1'})
+        self.commands.refs[self.values['trainer-ref']] = self.values['trainer-commit']
+        runner = chain.Chain(chain.arguments(argv(self.values)))
+        with self.assertRaisesRegex(chain.ChainStop, '作業ツリー.*共有'):
+            runner.execute()
+        self.assertFalse(any(call[0] in ('vastai', 'ssh', 'scp', 'rsync') for call in self.commands.calls))
+
+    def test_old_generation_records_allow_next_generation_with_different_trainer(self) -> None:
+        self.assertEqual(self.execute(), 0, self.errors.getvalue())
+        for generation in (1, 2):
+            record = self.record(generation)
+            del record['trainer_commit']
+            (self.root / f'run/gen-{generation}/generation.json').write_text(json.dumps(record))
+        self.save_book(3, 0, 100)
+        self.values.update({'first-generation': '3', 'last-generation': '3',
+                            'trainer-ref': 'refs/heads/trainer', 'trainer-commit': 'a' * 40,
+                            'replay-buffer-generations': '2'})
+        self.commands.refs[self.values['trainer-ref']] = self.values['trainer-commit']
+        self.assertEqual(self.execute(), 0, self.errors.getvalue())
+        self.assertEqual(self.record(3)['trainer_commit'], 'a' * 40)
+        self.assertEqual(self.record(3)['commit'], '0' * 40)
+        self.assertEqual(option_values(self.train_calls(3)[0], '--data'),
+                         [str(self.root / f'run/gen-{generation}/teacher/book-0.mnsd')
+                          for generation in (2, 3)])
+
     def test_completed_records_skip_generation_training_and_bench(self) -> None:
         self.assertEqual(self.execute(), 0, self.errors.getvalue())
         initial = [self.record(n) for n in (0, 1, 2)]
@@ -534,14 +590,15 @@ class ChainTests(ChainTestCase):
         runner.calibrate(1)
         with patch.object(self.commands, 'run', run):
             runner.complete_generation(1)
-        self.assertEqual(self.record(1), {'generation': 1, 'commit': '0' * 40, 'teacher_cp_per_logit': 1234,
-                                        'network_path': str(destination), 'network_sha256': checksum})
+        self.assertEqual(self.record(1), {'generation': 1, 'commit': '0' * 40, 'trainer_commit': '0' * 40,
+                                        'teacher_cp_per_logit': 1234, 'network_path': str(destination),
+                                        'network_sha256': checksum})
 
     def test_superbatch_training_commands_use_teacher_scale_and_latest_checkpoint(self) -> None:
         directory = self.root / 'run/gen-1'
         runner = chain.Chain(chain.arguments(argv(self.values)))
         commands = runner.training_commands(self.root / 'trainer', [self.root / 'book.mnsd'],
-                                            [self.root / 'book.mnsd'], 1234, directory)
+                                            [self.root / 'book.mnsd'], runner.training_arguments(1234), directory)
         for flag, value in (('--superbatches', '64'), ('--validation-superbatches', '8'),
                             ('--lr-schedule', 'cosine:3:0.1')):
             self.assertEqual(option_values(commands['train'], flag), [value])
@@ -554,7 +611,8 @@ class ChainTests(ChainTestCase):
                             'train-subsample': 'positions:4:0'})
         runner = chain.Chain(chain.arguments(argv(self.values)))
         books = [self.root / 'book.mnsd']
-        commands = runner.training_commands(self.root / 'trainer', books, books, 1234, directory)
+        commands = runner.training_commands(self.root / 'trainer', books, books,
+                                            runner.training_arguments(1234), directory)
         self.assertEqual(option_values(commands['train'], '--train-subsample'), ['positions:4:0'])
         self.assertEqual(option_values(commands['train'], '--validation-patience'), ['2'])
         self.assertEqual(option_values(commands['train'], '--batches-per-superbatch'), ['763'])
@@ -797,11 +855,16 @@ class ChainTests(ChainTestCase):
         """事例14: 完成した要約は再学習せず、途中のチェックポイントは再開する。"""
         self.save_book(1, 0, 100)
         train = self.root / 'run/gen-1/train'
-        train.mkdir()
-        (train / 'latest.npz').touch()
+        self.commands.interrupt_command = [str(self.root / 'trainer'), 'nnue', 'train']
         runner = chain.Chain(chain.arguments(argv(self.values)))
         runner.initialize_generation_zero()
         runner.calibrate(1)
+        with self.assertRaises(chain.Interrupted):
+            runner.train(1)
+        self.commands.calls.clear()
+        self.commands.interrupt_command = None
+        train.mkdir(exist_ok=True)
+        (train / 'latest.npz').touch()
         runner.train(1)
         self.assertEqual(self.train_calls(1)[0][-2:], ['--resume', str(train)])
         runner.train(1)
@@ -1013,6 +1076,77 @@ class ChainTests(ChainTestCase):
         self.assertNotEqual(self.execute(), 0)
         self.assertFalse(self.commands.started)
         self.assertFalse((self.root / 'run/instance-id').exists())
+
+
+class TrainingGuardTests(ChainTestCase):
+    """学習の成果物を登録する前に、検証ログと学習条件を照合する。"""
+
+    def setUp(self) -> None:
+        super().setUp()
+        self.values['last-generation'] = '1'
+        self.save_book(1, 0, 100)
+        self.directory = self.root / 'run/gen-1'
+
+    def test_final_loss_above_limit_stops_before_registration_including_on_resume(self) -> None:
+        self.commands.validation_rows = ((0, 0.5), (8, 1.0), (63, None), (64, 1.021))
+        for attempt in range(2):
+            with self.subTest(attempt=attempt):
+                self.assertEqual(self.execute(), 1)
+                self.assertFalse((self.directory / 'generation.json').exists())
+                self.assertFalse(self.commands.bench_inputs)
+                for value in ('最後の検証損失=1.021', '最小値=1.0', '比=1.021',
+                              '見張りの条件に当たったので世代を登録しません'):
+                    self.assertIn(value, self.errors.getvalue())
+        self.assertEqual(len(self.train_calls(1)), 1)
+
+    def test_final_loss_at_limit_registers_using_only_post_training_losses(self) -> None:
+        self.commands.validation_rows = ((0, 0.5), (8, 1.0), (63, None), (64, 1.02))
+        self.assertEqual(self.execute(), 0, self.errors.getvalue())
+        self.assertEqual(self.record(1)['generation'], 1)
+
+    def test_missing_final_loss_or_no_post_training_loss_stops_registration(self) -> None:
+        path = self.directory / 'train/training.jsonl'
+        for rows in (((0, 0.5), (8, 1.0), (64, None)), ((0, 0.5), (64, None)),
+                     ((0, 0.5), (8, 1.0))):
+            with self.subTest(rows=rows):
+                self.commands.validation_rows = rows
+                if path.is_file():
+                    write_validation_log(path, rows)
+                self.assertEqual(self.execute(), 1)
+                self.assertFalse((self.directory / 'generation.json').exists())
+                self.assertFalse(self.commands.bench_inputs)
+
+    def test_validation_patience_does_not_require_training_log(self) -> None:
+        self.values['validation-patience'] = '2'
+        self.commands.validation_rows = None
+        self.assertEqual(self.execute(), 0, self.errors.getvalue())
+        self.assertFalse((self.directory / 'train/training.jsonl').exists())
+        self.assertEqual(self.record(1)['generation'], 1)
+
+    def test_local_checkpoint_without_training_request_is_rejected(self) -> None:
+        train = self.directory / 'train'
+        train.mkdir()
+        (train / 'latest.npz').touch()
+        self.assertEqual(self.execute(), 1)
+        self.assertIn('train-request.jsonがありません', self.errors.getvalue())
+        self.assertFalse(self.train_calls(1))
+        self.assertFalse((self.directory / 'generation.json').exists())
+
+    def test_local_training_request_is_saved_before_launch_and_must_match_on_restart(self) -> None:
+        self.commands.interrupt_command = [str(self.root / 'trainer'), 'nnue', 'train']
+        self.assertEqual(self.execute(), 128 + signal.SIGTERM)
+        path = self.directory / 'train-request.json'
+        original = path.read_bytes()
+        self.commands.interrupt_command = None
+        self.values['batch'] = '8192'
+        self.assertEqual(self.execute(), 1)
+        self.assertIn('train-request.json', self.errors.getvalue())
+        self.assertEqual(path.read_bytes(), original)
+        self.assertEqual(len(self.train_calls(1)), 1)
+        self.values['batch'] = '16384'
+        self.assertEqual(self.execute(), 0, self.errors.getvalue())
+        self.assertEqual(len(self.train_calls(1)), 2)
+        self.assertEqual(self.record(1)['generation'], 1)
 
 
 class StandardRecipeTests(ChainTestCase):
@@ -1320,6 +1454,33 @@ class GeneratorTrainingTests(ChainTestCase):
         self.assertFalse(self.commands.instances)
         self.assert_no_local_training()
 
+    def test_training_only_dispatches_trainer_commit_and_keeps_iteration_job(self) -> None:
+        teacher = self.save_book(1, 0, 100)
+        self.values.update({'trainer-ref': 'refs/heads/trainer', 'trainer-commit': 'a' * 40})
+        self.commands.refs[self.values['trainer-ref']] = self.values['trainer-commit']
+        self.assertEqual(self.execute(), 0, self.errors.getvalue())
+        self.assertEqual(inspect_book(teacher)['generation_commit'], '0' * 40)
+        iteration, training = self.commands.jobs[0], self.commands.training_jobs[0]
+        self.assertEqual((iteration['commit'], iteration['reference'], iteration['bundle']),
+                         ('0' * 40, 'refs/heads/iteration', f'/workspace/job/bundles/{"0" * 40}.bundle'))
+        self.assertEqual(iteration['skip_books'], list(range(iteration['target_books'])))
+        self.assertEqual((training['commit'], training['reference'], training['bundle']),
+                         ('a' * 40, 'refs/heads/trainer', f'/workspace/job/bundles/{"a" * 40}.bundle'))
+        self.assertTrue(self.commands.local(training['bundle']).is_file())
+        self.assertIn('refs/heads/trainer',
+                      [call[-1] for call in self.commands.calls if call[3:5] == ['bundle', 'create']])
+        self.assertEqual(self.record(1)['trainer_commit'], 'a' * 40)
+
+    def test_same_commit_under_two_refs_is_in_one_bundle_with_both_refs(self) -> None:
+        self.completed_books()
+        self.values['trainer-ref'] = 'refs/heads/trainer'
+        self.commands.refs[self.values['trainer-ref']] = self.values['trainer-commit']
+        self.assertEqual(self.execute(), 0, self.errors.getvalue())
+        bundles = [call[6:] for call in self.commands.calls if call[3:5] == ['bundle', 'create']]
+        self.assertEqual(len(bundles), 1)
+        self.assertCountEqual(bundles[0], ['refs/heads/iteration', 'refs/heads/trainer'])
+        self.assertEqual(self.commands.training_jobs[0]['reference'], 'refs/heads/trainer')
+
     def test_replaces_deleted_machine_for_training_only(self) -> None:
         self.completed_books()
         run = self.root / 'run'
@@ -1359,11 +1520,10 @@ class GeneratorTrainingTests(ChainTestCase):
         books = [f'/workspace/job/teacher/gen-1/book-{number}.mnsd' for number in (0, 1, 2)]
         expected = [
             ['cargo', 'build', '--release', '--locked', '--bin', 'minase-trainer'],
-            [trainer, 'nnue', 'train', 'layerstack', '--data', *books, '--rules', 'lishogi',
-             '--teacher-cp-per-logit', '1234',
-             '--lambda', '1.0', '--seed', '1', '--threads', '8',
-             '--output-dir', directory + '/train', '--batch', '16384', '--superbatches', '64', '--validation-superbatches', '8',
-             '--device', 'cuda', '--lr-schedule', 'cosine:3:0.1'],
+            [trainer, 'nnue', 'train', 'layerstack', '--rules', 'lishogi', '--teacher-cp-per-logit', '1234',
+             '--lambda', '1.0', '--seed', '1', '--batch', '16384', '--superbatches', '64',
+             '--validation-superbatches', '8', '--device', 'cuda', '--lr-schedule', 'cosine:3:0.1',
+             '--data', *books, '--threads', '8', '--output-dir', directory + '/train'],
             [trainer, 'diag', 'nnue-removal', '--float', directory + '/train/latest.npz',
              '--net', directory + '/train/nnue.bin', '--data', *books, '--sample', '10', '--seed', '3',
              '--output', directory + '/removal.json'],
@@ -1463,6 +1623,23 @@ class GeneratorTrainingTests(ChainTestCase):
         self.assertEqual(len(self.commands.training_jobs), 1)
         self.assert_no_local_training()
 
+    def test_existing_remote_job_with_different_conditions_is_rejected(self) -> None:
+        self.completed_books()
+        self.commands.interrupt_training = True
+        self.assertEqual(self.execute(), 128 + signal.SIGTERM)
+        path = self.commands.remote / 'training/gen-1/job.json'
+        job = json.loads(path.read_text())
+        train = next(step['command'] for step in job['steps'] if step['name'] == 'train')
+        train[train.index('--batch') + 1] = '8192'
+        path.write_text(json.dumps(job))
+        del self.values['offer']
+        self.commands.interrupt_training = False
+        self.assertEqual(self.execute(), 1)
+        self.assertIn('学習ジョブがtrain-request.jsonと一致しません', self.errors.getvalue())
+        self.assertFalse((path.parent / 'done').exists())
+        self.assert_no_commit()
+        self.assert_no_local_training()
+
     def test_completed_books_without_offer_stop_without_account_queries(self) -> None:
         """本だけがあり出品指定がなければ借りず、学習機を借りる方法と作業機での再開を案内する。"""
         self.completed_books()
@@ -1474,10 +1651,59 @@ class GeneratorTrainingTests(ChainTestCase):
         self.assert_no_local_training()
         self.assert_no_commit()
 
+    def complete_local_training(self) -> None:
+        runner = chain.Chain(chain.arguments(argv(self.values)))
+        runner.initialize_generation_zero()
+        runner.calibrate(1)
+        runner.train(1)
+        self.commands.calls.clear()
+
+    def test_received_training_request_rejects_changed_conditions_and_allows_resume(self) -> None:
+        self.completed_books()
+        self.values.update({'batches-per-superbatch': '763', 'train-subsample': 'positions:4:0'})
+        self.commands.bench_output = 'info string summary: positions=15\n'
+        self.assertEqual(self.execute(), 1)
+        self.assert_no_commit()
+        path = self.root / 'run/gen-1/train-request.json'
+        request = json.loads(path.read_text())
+        self.assertEqual(request, {'trainer_commit': '0' * 40, 'arguments': [
+            'layerstack', '--rules', 'lishogi', '--teacher-cp-per-logit', '1234',
+            '--lambda', '1.0', '--seed', '1', '--batch', '16384', '--superbatches', '64',
+            '--validation-superbatches', '8', '--device', 'cuda', '--lr-schedule', 'cosine:3:0.1',
+            '--batches-per-superbatch', '763', '--train-subsample', 'positions:4:0',
+        ]})
+        self.commands.bench_output = 'info string end\n'
+        self.commands.calls.clear()
+        original = self.values.copy()
+        self.commands.refs['refs/heads/trainer'] = 'a' * 40
+        for changes in ({'validation-patience': '2'}, {'lr-schedule': 'cosine:4:0.1'},
+                        {'trainer-ref': 'refs/heads/trainer', 'trainer-commit': 'a' * 40}):
+            with self.subTest(changes=changes):
+                self.values = original | changes
+                self.assertEqual(self.execute(), 1)
+                self.assertIn('train-request.json', self.errors.getvalue())
+                self.assert_no_commit()
+                self.assertEqual(json.loads(path.read_text()), request)
+        self.values = original | {'train-threads': '4'}
+        self.assertEqual(self.execute(), 0, self.errors.getvalue())
+        self.assertFalse(any(call[0] in ('vastai', 'ssh', 'scp', 'rsync') for call in self.commands.calls))
+        self.assertEqual(len(self.commands.training_jobs), 1)
+        self.assert_no_local_training()
+
+    def test_completed_results_without_training_request_are_rejected(self) -> None:
+        self.completed_books()
+        write_training_result(self.root / 'run/gen-1', 1)
+        self.assertEqual(self.execute(), 1)
+        self.assertIn('train-request.jsonがありません', self.errors.getvalue())
+        self.assert_no_commit()
+        self.assert_no_local_training()
+        self.assertFalse((self.root / 'run/gen-1/train-request.json').exists())
+        self.assertFalse(any(call[0] in ('vastai', 'ssh', 'scp', 'rsync') for call in self.commands.calls))
+
     def test_completed_results_skip_remote_training(self) -> None:
         """学習と診断の結果がそろっていれば、出品指定があっても借りずに世代を記録する。"""
         self.completed_books()
-        write_training_result(self.root / 'run/gen-1', 1)
+        self.complete_local_training()
         self.assertEqual(self.execute(), 0, self.errors.getvalue())
         self.assertFalse(any(call[0] in ('vastai', 'ssh', 'scp', 'rsync') for call in self.commands.calls))
         self.assertEqual(self.record(1)['commit'], '0' * 40)
@@ -1487,7 +1713,7 @@ class GeneratorTrainingTests(ChainTestCase):
         """最終結果の取得後に再開すると、接続確認を挟まず保存先へSSHで停止を要求する。"""
         self.completed_books()
         self.saved_machine()
-        write_training_result(self.root / 'run/gen-1', 1)
+        self.complete_local_training()
         self.commands.fail_command = ['vastai']
         self.assertEqual(self.execute(), 1)
         calls = self.commands.calls
@@ -1507,7 +1733,7 @@ class GeneratorTrainingTests(ChainTestCase):
         self.completed_books()
         self.saved_machine()
         directory = self.root / 'run/gen-1'
-        write_training_result(directory, 1)
+        self.complete_local_training()
         (directory / 'removal.json').unlink()
         (directory / 'train/stale').touch()
         replace = os.replace
