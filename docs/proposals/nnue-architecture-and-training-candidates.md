@@ -58,7 +58,7 @@ minaseの1世代の教師データは約1億局面なので、同じ利得が得
 | 対局結果を教師値へ一定の割合で混ぜる（探索値の割合λ=0.75） | 2026年11月5日に対象から外れた（調査メモの冒頭） |
 | 線形の経路の学習率の変更、学習後の線形の経路の補正、および直前の世代の教師データの併用 | 標準レシピv1を決める3つの測定で採らなかった（[標準レシピの設計書](../plans/archived/nnue-standard-recipe.md)の「状態」の節） |
 | 要素積へ127/128を掛けて、学習時の実数の計算と推論時の整数の計算の目盛りをそろえる | 現行の学習器が入れている（`crates/minase-trainer/src/nnue/reference/head.rs`） |
-| 自玉の位置で条件付ける入力特徴 | 採らない（[ADR](../adr/archive/use-p-type-input-features-for-the-nnue.md)）。この入力特徴で起きる第1層の全再計算を差分の更新に置き換える[Finny tablesの設計書](../plans/nnue-finny-tables.md)は待機中である |
+| 自玉の位置で条件付ける入力特徴 | 採らない（[ADR](../adr/archive/use-p-type-input-features-for-the-nnue.md)）。この入力特徴で起きる第1層の全再計算を差分の更新に置き換える[Finny tablesの設計書](../plans/nnue-finny-tables.md)は、HalfKP_vmの学習の前に着手する |
 | 利きを入力に足す特徴、重みのノルムの正則化、整数の順伝播での追加学習、およびチェス向けの係数を持つ勝率モデルの損失 | 調査メモが、費用か根拠の不足を理由に試さないとした |
 | 別の評価器による教師値の付け直し | [教師の局面と教師値を変える候補](nnue-teacher-content-candidates.md)が扱う |
 
