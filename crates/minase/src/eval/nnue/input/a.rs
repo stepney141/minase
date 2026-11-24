@@ -2,12 +2,12 @@ use super::{AnchorError, FeatureSet, Indexer};
 use crate::eval::features::FEATURE_COUNT;
 use minase_core::{Color, Position};
 
-/// 基底特徴をそのまま第1層の行へ写すP型の番号付け。
+/// 基底特徴をそのまま第1層の行へ写すA型の番号付け。
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct P;
+pub struct A;
 
-impl Indexer for P {
-    const FEATURE_SET: FeatureSet = FeatureSet::P;
+impl Indexer for A {
+    const FEATURE_SET: FeatureSet = FeatureSet::A;
     type Context = ();
 
     fn context(_: &Position, _: Color) -> Result<(), AnchorError> {

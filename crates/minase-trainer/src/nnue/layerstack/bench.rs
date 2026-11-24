@@ -112,7 +112,7 @@ pub(super) fn run(args: BenchArgs) -> train::Result<Value> {
                 scale,
                 args.check.batch,
             )?);
-            let ring = Box::new(HostRing::new(&device, FeatureSet::P, args.check.batch)?);
+            let ring = Box::new(HostRing::new(&device, FeatureSet::A, args.check.batch)?);
             let bytes = step.device_bytes()?;
             let (free, total) = device.memory_info()?;
             let transfer_bytes = ring.transfer_bytes();
@@ -127,7 +127,7 @@ pub(super) fn run(args: BenchArgs) -> train::Result<Value> {
     };
     let warmup = build_batches(
         &dataset,
-        FeatureSet::P,
+        FeatureSet::A,
         &[&dataset.training_indices()[..args.check.batch]],
     )?
     .remove(0);
@@ -153,7 +153,7 @@ pub(super) fn run(args: BenchArgs) -> train::Result<Value> {
         }
         let supply = Instant::now();
         let ranges: Vec<_> = group.iter().map(Vec::as_slice).collect();
-        let batches = build_batches(&dataset, FeatureSet::P, &ranges)?;
+        let batches = build_batches(&dataset, FeatureSet::A, &ranges)?;
         let batches = batches
             .into_iter()
             .map(|batch| {

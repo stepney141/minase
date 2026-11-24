@@ -1,15 +1,15 @@
 use super::model::{HALF, canonical, unit};
-use crate::nnue::layerstack::input::decode_p_feature;
+use crate::nnue::layerstack::input::decode_a_feature;
 
 use super::{Error, H, Parameter as P, Parameters, Result, Scale};
 use crate::nnue::data::{BatchSlot, FEATURE_COLUMNS, FeatureSet, SENTINEL};
 use minase::eval::features::active_features_for;
-const FEATURE_COUNT: usize = FeatureSet::P.spec().dimensions();
+const FEATURE_COUNT: usize = FeatureSet::A.spec().dimensions();
 use minase_core::{Color, Position};
 
 const ALPHA: f32 = 127.0 / 128.0;
 
-/// 手番側、相手側の順に並べた、検査済みのP型基底特徴。
+/// 手番側、相手側の順に並べた、検査済みのA型基底特徴。
 #[derive(Clone, Debug)]
 pub struct Features {
     views: [Vec<usize>; 2],
@@ -18,9 +18,9 @@ impl Features {
     /// 各視点145特徴以下、各番号13680未満を要求する。重複は和に含める。
     pub fn new(views: [Vec<usize>; 2]) -> Result<Self> {
         if views.iter().any(|v| {
-            v.len() > FeatureSet::P.spec().max_active() || v.iter().any(|&f| f >= FEATURE_COUNT)
+            v.len() > FeatureSet::A.spec().max_active() || v.iter().any(|&f| f >= FEATURE_COUNT)
         }) {
-            return Err(Error::Invalid("P features"));
+            return Err(Error::Invalid("A features"));
         }
         Ok(Self { views })
     }
@@ -34,14 +34,14 @@ impl Features {
             }),
         }
     }
-    /// 既存のP型バッチの圧縮番号を基底番号へ戻す。
+    /// 既存のA型バッチの圧縮番号を基底番号へ戻す。
     pub fn from_batch(batch: &BatchSlot) -> Result<Vec<Self>> {
-        if batch.feature_set() != FeatureSet::P {
-            return Err(Error::Invalid("LayerStack requires P input"));
+        if batch.feature_set() != FeatureSet::A {
+            return Err(Error::Invalid("LayerStack requires A input"));
         }
         let (rows, remainder) = batch.features().as_chunks::<{ 2 * FEATURE_COLUMNS }>();
         if !remainder.is_empty() || rows.len() != batch.len() {
-            return Err(Error::Invalid("P batch shape"));
+            return Err(Error::Invalid("A batch shape"));
         }
         rows.iter()
             .map(|rows| {
@@ -49,7 +49,7 @@ impl Features {
                     slice
                         .iter()
                         .filter(|&&f| f != SENTINEL)
-                        .map(|&f| Ok(decode_p_feature(f)? as usize))
+                        .map(|&f| Ok(decode_a_feature(f)? as usize))
                         .collect()
                 };
                 Self::new([
@@ -293,7 +293,7 @@ pub fn backward(
     Ok((total_loss / targets.len() as f64, result))
 }
 
-/// 既存の教師混合処理を使い、P型バッチを1回更新する。予定から受け取る倍率を適用する。
+/// 既存の教師混合処理を使い、A型バッチを1回更新する。予定から受け取る倍率を適用する。
 pub fn train_batch(
     w: &mut Parameters,
     optimizer: &mut super::AdamW,

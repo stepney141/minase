@@ -28,7 +28,7 @@ GPU側では第1層の前進、全パラメータの勾配、部分和の縮約�
 | `pst train` | 鏡映共有PSTをCPUで学習する。 | [PSTとFMの学習手順](../../docs/guides/pst-training.md) | `src/pst/` |
 | `fm train`、`fm quarter`、`fm scale` | 固定PSTへ加えるFM補正をCPUで学習し、補正の縮小と倍率の焼き込みを行う。 | [PSTとFMの学習手順](../../docs/guides/pst-training.md#6-fmの補正を学習する) | `src/fm/` |
 | `joint train` | PSTとFMを同時学習する。 | [PSTとFMの学習手順](../../docs/guides/pst-training.md#6-fmの補正を学習する) | `src/joint/` |
-| `nnue train layerstack`、`nnue train simple` | P型のLayerStackとHalfKP_vmのSimpleのNNUEを、CUDAまたはCPUで学習する。 | [NNUEの学習と診断の手順](../../docs/guides/nnue-training.md) | `src/nnue/train/`（学習ループ）、`src/nnue/layerstack/`、`src/nnue/simple/`、`src/nnue/options.rs` |
+| `nnue train layerstack`、`nnue train simple` | A型のLayerStackとHalfKP_vmのSimpleのNNUEを、CUDAまたはCPUで学習する。 | [NNUEの学習と診断の手順](../../docs/guides/nnue-training.md) | `src/nnue/train/`（学習ループ）、`src/nnue/layerstack/`、`src/nnue/simple/`、`src/nnue/options.rs` |
 | `nnue export-handcrafted` | 手書きの評価関数v0を、tataraの形式のLayerStackのネットとして書き出す。 | [NNUEの学習と診断の手順](../../docs/guides/nnue-training.md#学習データと初期値を用意する) | `src/nnue/handcrafted.rs` |
 | `nnue check-equivalence <構造>`、`nnue bench-step <構造>` | GPUの計算をCPU参照と照合し、1更新の時間を測る。 | [NNUEの学習と診断の手順](../../docs/guides/nnue-training.md#学習器を変更したとき) | `src/nnue/layerstack/commands.rs`、`src/nnue/simple/commands.rs`、各構造の`bench.rs` |
 | `diag pst-compare` | 2つのPSTを教師分類と位相帯ごとに比較する。 | [PSTとFMの学習手順](../../docs/guides/pst-training.md#5-pstを診断する) | `src/diagnostics/pst_compare.rs`、`src/diagnostics/pst_statistics.rs` |

@@ -1,6 +1,6 @@
 //! tatara形式の量子化ネットと整数の順伝播。
 //!
-//! P型はLayerStack、HalfKP_vmはSimpleと組み合わせる。第1層の幅Hは2〜1,024の
+//! A型はLayerStack、HalfKP_vmはSimpleと組み合わせる。第1層の幅Hは2〜1,024の
 //! 偶数であり、量子化済みの整数を検査してから非公開のフィールドに保持する。
 //! 第1層は尺度127、後段の重みは64、後段のバイアスとPSQTは8,128を尺度とする。
 //! 評価値は整数の出力を正の`fv_scale`で0方向に除算し、±28,999に制限する。
@@ -291,7 +291,7 @@ impl std::error::Error for FormatError {}
 
 /// ファイルの版により選ぶ、入力特徴集合と構造の固定した組。
 pub enum Network {
-    /// P型と、PSQTを持つLayerStack。
+    /// A型と、PSQTを持つLayerStack。
     LayerStack(LayerStackNetwork),
     /// HalfKP_vmとSimple。
     Simple(SimpleNetwork),
@@ -341,7 +341,7 @@ impl Network {
     /// 入力特徴集合を返す。
     pub fn feature_set(&self) -> FeatureSet {
         match self {
-            Self::LayerStack(_) => FeatureSet::P,
+            Self::LayerStack(_) => FeatureSet::A,
             Self::Simple(_) => FeatureSet::HalfKpVm,
         }
     }
@@ -540,7 +540,7 @@ impl Dense {
 }
 fn version(set: FeatureSet) -> u32 {
     match set {
-        FeatureSet::P => 0x7AF3_2F21,
+        FeatureSet::A => 0x7AF3_2F21,
         FeatureSet::HalfKpVm => 0x7AF3_2F16,
     }
 }
@@ -553,7 +553,7 @@ fn arch(set: FeatureSet, width: usize, scale: i32) -> String {
     );
     let combined = 2 * width;
     match set {
-        FeatureSet::P => format!(
+        FeatureSet::A => format!(
             "{features},PSQT=1,Network=AffineTransform[1<-32](ClippedReLU[32](AffineTransform[32<-30](SqrClippedReLU[30](AffineTransform[16<-{combined}](InputSlice[{combined}(0:{combined})]))))),fv_scale={scale}"
         ),
         FeatureSet::HalfKpVm => format!(
@@ -566,7 +566,7 @@ fn ft_hash(set: FeatureSet, width: usize) -> u32 {
 }
 fn fc_hash(set: FeatureSet, width: usize) -> u32 {
     let first = match set {
-        FeatureSet::P => width,
+        FeatureSet::A => width,
         FeatureSet::HalfKpVm => 32,
     };
     let mut prev = 0xEC42_E90D ^ (2 * width) as u32;

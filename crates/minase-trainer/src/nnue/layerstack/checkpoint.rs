@@ -41,7 +41,7 @@ struct Metadata {
     progress: crate::nnue::train::Progress,
 }
 
-/// P型LayerStackの全パラメータ、最適化器の状態、および再開条件。
+/// A型LayerStackの全パラメータ、最適化器の状態、および再開条件。
 #[derive(Clone, Debug, PartialEq)]
 pub struct Checkpoint {
     /// 自由パラメータ。
@@ -80,7 +80,7 @@ impl Checkpoint {
             "layerstack",
             &Metadata {
                 architecture: "LayerStack".into(),
-                feature_set: minase::eval::nnue::input::FeatureSet::P
+                feature_set: minase::eval::nnue::input::FeatureSet::A
                     .spec()
                     .arch_name()
                     .into(),
@@ -126,7 +126,7 @@ impl Checkpoint {
     fn read_from(input: impl std::io::Read) -> Result<Self> {
         let (mut r, meta): (_, Metadata) = Reader::with_metadata(input, "layerstack")?;
         if meta.architecture != "LayerStack"
-            || meta.feature_set != minase::eval::nnue::input::FeatureSet::P.spec().arch_name()
+            || meta.feature_set != minase::eval::nnue::input::FeatureSet::A.spec().arch_name()
             || r.scalar::<u64>("width")? != H as u64
         {
             return Err(Error::Invalid("checkpoint architecture, features or width"));

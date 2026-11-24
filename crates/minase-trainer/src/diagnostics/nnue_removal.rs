@@ -116,7 +116,7 @@ fn integer_removals(
             continue;
         };
         let state = piece_state(piece);
-        if state == 11 || (net.feature_set() == FeatureSet::P && state == 21) {
+        if state == 11 || (net.feature_set() == FeatureSet::A && state == 21) {
             continue;
         }
         let after = remove_piece(before, square)?;

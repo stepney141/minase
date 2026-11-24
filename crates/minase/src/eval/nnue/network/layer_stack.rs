@@ -1,8 +1,8 @@
-//! P型の第1層、要素積、16→30→32→1の後段、およびPSQT。
+//! A型の第1層、要素積、16→30→32→1の後段、およびPSQT。
 
 use super::*;
 use crate::eval::features::{self, FEATURE_COUNT, mirror_feature};
-use crate::eval::nnue::input::P;
+use crate::eval::nnue::input::A;
 use crate::eval::nnue::transformer::FtAccumulator;
 use minase_core::{Move, Square, position::Undo};
 
@@ -35,19 +35,19 @@ pub struct LayerStackParameters {
     pub output_weights: Vec<i8>,
 }
 
-/// 値域と鏡映共有を検査済みのP型LayerStack。
+/// 値域と鏡映共有を検査済みのA型LayerStack。
 pub struct LayerStackNetwork {
-    ft: FeatureTransformer<P>,
+    ft: FeatureTransformer<A>,
     fv_scale: i32,
     psqt: Box<[i32]>,
     dense: Dense,
     pub(super) accumulator_stats: super::super::stats::SharedStats,
 }
 
-/// P型の第1層と、視点ごとのPSQTの和。
+/// A型の第1層と、視点ごとのPSQTの和。
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct LayerStackAccumulator {
-    ft: FtAccumulator<P>,
+    ft: FtAccumulator<A>,
     psqt: [i32; 2],
 }
 
@@ -68,12 +68,12 @@ pub(crate) struct LayerStackBreakdown {
 }
 
 impl LayerStackNetwork {
-    /// 寸法、累算値の上限、後段とPSQTの値域、P型の鏡映共有を検査して構築する。
+    /// 寸法、累算値の上限、後段とPSQTの値域、A型の鏡映共有を検査して構築する。
     /// 第1層はVecの所有権をBoxへ移し、重みの複製を作らない。
     /// 鏡映対は第1層の半幅回転、バイアスの前後半の一致、PSQTの一致を要求する。
     pub fn new(p: LayerStackParameters) -> Result<Self, FormatError> {
         check_scale(p.fv_scale)?;
-        validate_ft(FeatureSet::P, p.width, &p.ft_biases, &p.ft_weights)?;
+        validate_ft(FeatureSet::A, p.width, &p.ft_biases, &p.ft_weights)?;
         check_len("psqt_weights", FEATURE_COUNT, p.psqt_weights.len())?;
         if p.psqt_bias != 0 {
             return Err(FormatError::PsqtBias { value: p.psqt_bias });
@@ -128,31 +128,31 @@ impl LayerStackNetwork {
     }
     /// tataraのLayerStack形式で、区分数1、PSQTありとして書き出す。
     pub fn encode(&self) -> Vec<u8> {
-        let mut bytes = header(FeatureSet::P, self.width(), self.fv_scale);
+        let mut bytes = header(FeatureSet::A, self.width(), self.fv_scale);
         bytes.extend(1_u32.to_le_bytes());
-        bytes.extend(ft_hash(FeatureSet::P, self.width()).to_le_bytes());
+        bytes.extend(ft_hash(FeatureSet::A, self.width()).to_le_bytes());
         leb128::encode(&mut bytes, self.ft.biases());
         leb128::encode(&mut bytes, self.ft.weights());
         write_i32(&mut bytes, &[0]);
         write_i32(&mut bytes, &self.psqt);
-        bytes.extend(fc_hash(FeatureSet::P, self.width()).to_le_bytes());
+        bytes.extend(fc_hash(FeatureSet::A, self.width()).to_le_bytes());
         self.dense.encode(&mut bytes, self.width(), 30);
         bytes
     }
     /// tataraのLayerStack形式を読み、`new`と同じ値域・鏡映共有条件を検査する。
     pub fn decode(bytes: &[u8]) -> Result<Self, FormatError> {
         let mut r = Reader::new(bytes);
-        let (width, fv_scale) = read_header(&mut r, FeatureSet::P)?;
+        let (width, fv_scale) = read_header(&mut r, FeatureSet::A)?;
         let buckets = r.u32("buckets")?;
         if buckets != 1 {
             return Err(FormatError::Buckets { actual: buckets });
         }
-        check_hash("ft_hash", ft_hash(FeatureSet::P, width), r.u32("ft_hash")?)?;
+        check_hash("ft_hash", ft_hash(FeatureSet::A, width), r.u32("ft_hash")?)?;
         let ft_biases = leb128::decode(&mut r, width, "FT biases")?;
         let ft_weights = leb128::decode(&mut r, FEATURE_COUNT * width, "FT weights")?;
         let psqt_bias = r.i32s(1, "PSQT bias")?[0];
         let psqt_weights = r.i32s(FEATURE_COUNT, "PSQT weights")?;
-        check_hash("fc_hash", fc_hash(FeatureSet::P, width), r.u32("fc_hash")?)?;
+        check_hash("fc_hash", fc_hash(FeatureSet::A, width), r.u32("fc_hash")?)?;
         let dense = Dense::decode(&mut r, width, 16, 30)?;
         r.finish()?;
         Self::new(LayerStackParameters {
@@ -170,7 +170,7 @@ impl LayerStackNetwork {
             output_weights: dense.output_weights,
         })
     }
-    /// 手番側の視点で全再計算する。P型では王駒の文脈を必要としない。
+    /// 手番側の視点で全再計算する。A型では王駒の文脈を必要としない。
     pub fn evaluate(&self, position: &Position) -> i32 {
         self.evaluate_accumulator(&self.refresh(position), position.side_to_move())
     }
@@ -194,7 +194,7 @@ impl LayerStackNetwork {
             psqt,
         }
     }
-    /// 着手による第1層とPSQTの差分を更新する。P型の文脈は変わらないので偽を返す。
+    /// 着手による第1層とPSQTの差分を更新する。A型の文脈は変わらないので偽を返す。
     pub(crate) fn update_after_move(
         &self,
         before: &LayerStackAccumulator,
@@ -238,7 +238,7 @@ impl LayerStackNetwork {
         let mut storage = [0; 1024];
         let input = &mut storage[..width];
         for (part, perspective) in [side, side.opposite()].into_iter().enumerate() {
-            let row = acc.ft.row(perspective).expect("P always has a context");
+            let row = acc.ft.row(perspective).expect("A always has a context");
             for i in 0..width / 2 {
                 input[part * width / 2 + i] = pair(row[i], row[i + width / 2]);
             }

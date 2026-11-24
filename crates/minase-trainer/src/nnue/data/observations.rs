@@ -31,7 +31,7 @@ impl Observations {
     ) -> Result<Self> {
         let mut canonical_counts = vec![
             0;
-            if feature_set == FeatureSet::P {
+            if feature_set == FeatureSet::A {
                 CANONICAL_ROWS
             } else {
                 0
@@ -47,7 +47,7 @@ impl Observations {
                 for row in
                     active_rows(feature_set, &position, side).map_err(super::Error::Anchor)?
                 {
-                    if feature_set == FeatureSet::P && v == 0 {
+                    if feature_set == FeatureSet::A && v == 0 {
                         canonical_counts[canonical_row(row as u32) as usize] += 1;
                     }
                     input_counts[row] += 1;
@@ -60,18 +60,18 @@ impl Observations {
         })
     }
 
-    /// P型では手番側の鏡映込みの回数から左半分を取った6,841行を返す。
+    /// A型では手番側の鏡映込みの回数から左半分を取った6,841行を返す。
     /// 埋め草は0。HalfKP_vmは正準行を共有しないため空列を返す。
     pub fn canonical_counts(&self) -> &[u64] {
         &self.canonical_counts
     }
 
-    /// 両視点を鏡映なしで数えた入力特徴D行を返す。P型では基底特徴の番号順。
+    /// 両視点を鏡映なしで数えた入力特徴D行を返す。A型では基底特徴の番号順。
     pub fn input_counts(&self) -> &[u64] {
         &self.input_counts
     }
 
-    /// P型の第1層で使う正準行のマスクを返す。埋め草はfalse。
+    /// A型の第1層で使う正準行のマスクを返す。埋め草はfalse。
     pub fn canonical_mask(&self) -> Vec<bool> {
         self.canonical_counts
             .iter()

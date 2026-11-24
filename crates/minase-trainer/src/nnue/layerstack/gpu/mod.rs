@@ -1,4 +1,4 @@
-//! P型LayerStackのCUDA学習。幅と特徴集合を起動引数で渡す。
+//! A型LayerStackのCUDA学習。幅と特徴集合を起動引数で渡す。
 //! 検証器は順伝播だけの配列を持ち、学習器は128局面ごとの勾配部分和を持つ。
 //! GPU試験は `cargo test -p minase-trainer layerstack::gpu -- --ignored --test-threads=1`。
 

@@ -2271,7 +2271,7 @@ fn diagnostic_evaluation(
             let mut lines = vec![
                 format!("evaluation {}", d.value),
                 "structure LayerStack".to_owned(),
-                "feature-set P".to_owned(),
+                "feature-set A".to_owned(),
             ];
             lines.extend(diagnostic_grid(7, |square| {
                 d.squares[square.dense_index()].to_string()
@@ -4899,7 +4899,7 @@ mod tests {
                 match &network {
                     Network::LayerStack(_) => {
                         assert_eq!(lines[1], "structure LayerStack");
-                        assert_eq!(lines[2], "feature-set P");
+                        assert_eq!(lines[2], "feature-set A");
                         let mut sum = 0_i64;
                         for (rank, line) in lines[4..16].iter().enumerate() {
                             let cells: Vec<_> = line.split_whitespace().collect();

@@ -3,7 +3,7 @@
 #[path = "common/mnsd.rs"]
 mod mnsd;
 use minase_trainer::data::{Outcome, Sample};
-use minase_trainer::nnue::layerstack::input::decode_p_feature;
+use minase_trainer::nnue::layerstack::input::decode_a_feature;
 use std::{
     fs,
     path::PathBuf,
@@ -365,7 +365,7 @@ fn lambda_one_preserves_previous_sigmoid_target_bits() {
             .iter()
             .map(|_| sample(&Position::initial(), 1, 0, 0, outcome))
             .collect();
-        let batch = BatchSlot::from_records(FeatureSet::P, &records, &scores, &[0; 5]).unwrap();
+        let batch = BatchSlot::from_records(FeatureSet::A, &records, &scores, &[0; 5]).unwrap();
         let actual: Vec<_> = build_targets(&batch, &[321.0], &[1.0])
             .unwrap()
             .into_iter()
@@ -510,7 +510,7 @@ fn observation_counts_match_python_canonical_half_without_doubling() {
 
     let dataset = Dataset::open(&[path], None, std::num::NonZeroUsize::new(1).unwrap()).unwrap();
     {
-        let set = FeatureSet::P;
+        let set = FeatureSet::A;
         let observed = Observations::compute(&dataset, set).unwrap();
         assert_eq!(observed.canonical_counts().len(), 6841);
         // 白歩の手番視点は(29*144 + 10*12 + 8)=4304、正準行は2151。
@@ -532,7 +532,7 @@ fn verify_inverse(slot: &BatchSlot, inverse: &ReverseIndex) {
         2,
         minase_trainer::nnue::layerstack::input::CANONICAL_ROWS,
     );
-    let p_encoded = true;
+    let a_encoded = true;
     assert_eq!(inverse.starts().len(), rows + 1);
     assert_eq!(inverse.starts()[0], 0);
     assert_eq!(inverse.starts()[rows] as usize, inverse.entries().len());
@@ -585,8 +585,8 @@ fn verify_inverse(slot: &BatchSlot, inverse: &ReverseIndex) {
             visited[source] = true;
             let feature = features[source];
             assert_ne!(feature, SENTINEL);
-            assert_eq!(row as u32, if p_encoded { feature / 2 } else { feature });
-            assert_eq!(entry.rotated(), p_encoded && feature & 1 != 0);
+            assert_eq!(row as u32, if a_encoded { feature / 2 } else { feature });
+            assert_eq!(entry.rotated(), a_encoded && feature & 1 != 0);
         }
     }
     for (seen, &feature) in visited.iter().zip(features) {
@@ -611,7 +611,7 @@ fn inverse_segments_preserve_hot_rows_across_fixed_length_boundaries() {
     for count in [127, 128, 129, 256, 257] {
         let indices = vec![0; count];
         {
-            let set = FeatureSet::P;
+            let set = FeatureSet::A;
             let batches = build_batches(&dataset, set, &[&indices]).unwrap();
             assert_eq!(batches, build_batches(&dataset, set, &[&indices]).unwrap());
             let batch = &batches[0];
@@ -639,7 +639,7 @@ fn batches_preserve_order_metadata_and_inverse_occurrences() {
     let dataset = Dataset::open(&[path], None, std::num::NonZeroUsize::new(1).unwrap()).unwrap();
     let batches: &[&[u64]] = &[&[2, 0, 1, 0], &[1, 0], &[2]];
     {
-        let set = FeatureSet::P;
+        let set = FeatureSet::A;
         let slots = build_batches(&dataset, set, batches).unwrap();
         assert_eq!(slots, build_batches(&dataset, set, batches).unwrap());
         for (slot, &indices) in slots.iter().zip(batches) {
@@ -661,11 +661,11 @@ fn batches_preserve_order_metadata_and_inverse_occurrences() {
         assert!(slots[2].first_layer_inverse().entries().is_empty());
     }
     assert!(matches!(
-        build_batches(&dataset, FeatureSet::P, &[&[]]),
+        build_batches(&dataset, FeatureSet::A, &[&[]]),
         Err(minase_trainer::nnue::data::Error::BatchSize { size: 0 })
     ));
     assert!(matches!(
-        build_batches(&dataset, FeatureSet::P, &[&[3], &[0]]),
+        build_batches(&dataset, FeatureSet::A, &[&[3], &[0]]),
         Err(minase_trainer::nnue::data::Error::Data(
             Error::RecordIndex { .. }
         ))
@@ -673,7 +673,7 @@ fn batches_preserve_order_metadata_and_inverse_occurrences() {
 }
 
 #[test]
-fn p_batch_columns_match_known_python_numbers_and_lion_slot() {
+fn a_batch_columns_match_known_python_numbers_and_lion_slot() {
     let fixture = Fixture::new();
     let path = fixture.write(
         "data.bin",
@@ -684,14 +684,14 @@ fn p_batch_columns_match_known_python_numbers_and_lion_slot() {
     );
 
     let dataset = Dataset::open(&[path], None, std::num::NonZeroUsize::new(1).unwrap()).unwrap();
-    let slots = build_batches(&dataset, FeatureSet::P, &[&[0]]).unwrap();
+    let slots = build_batches(&dataset, FeatureSet::A, &[&[0]]).unwrap();
     let slot = &slots[0];
     assert_eq!(slot.features()[20], 4303);
     assert_eq!(slot.features()[145 + 20], 10963);
     assert_eq!(slot.features()[144], 13625);
     assert_eq!(slot.features()[145 + 144], 13589);
     for (offset, expected) in [(20, 4304), (165, 10964), (144, 13629), (289, 13593)] {
-        assert_eq!(decode_p_feature(slot.features()[offset]).unwrap(), expected);
+        assert_eq!(decode_a_feature(slot.features()[offset]).unwrap(), expected);
     }
     for column in 0..144 {
         if column != 20 {

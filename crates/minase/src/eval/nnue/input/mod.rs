@@ -1,9 +1,9 @@
 //! 入力特徴集合の仕様と、基底特徴から第1層の行への番号付け。
 
+mod a;
 mod half_kp_vm;
-mod p;
+pub use a::A;
 pub use half_kp_vm::{HalfKpVm, HalfKpVmContext};
-pub use p::P;
 
 use crate::eval::features::active_features_for;
 use minase_core::{Color, Position};
@@ -13,19 +13,19 @@ use std::fmt;
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum FeatureSet {
     /// 王将を含む駒と先獅子の特徴。
-    P,
+    A,
     /// 王将を除く駒と先獅子を、自陣の基準王駒の72区分に分ける特徴。
     HalfKpVm,
 }
 
 impl FeatureSet {
     /// 対応する入力特徴集合の全種類。
-    pub const ALL: [FeatureSet; 2] = [Self::P, Self::HalfKpVm];
+    pub const ALL: [FeatureSet; 2] = [Self::A, Self::HalfKpVm];
 
     /// 入力特徴集合の仕様を構築する唯一の関数。
     pub const fn spec(self) -> FeatureSetSpec {
         let (arch_name, king_buckets, piece_inputs, mirror, factorized) = match self {
-            Self::P => ("P", 1, 13_680, Mirror::HalfWidthRotation, false),
+            Self::A => ("A", 1, 13_680, Mirror::HalfWidthRotation, false),
             Self::HalfKpVm => ("HalfKPVm", 72, 13_392, Mirror::KingFile, true),
         };
         FeatureSetSpec {
@@ -104,7 +104,7 @@ impl FeatureSetSpec {
 /// 入力特徴集合の左右鏡映の扱い。
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Mirror {
-    /// P型では左右鏡映の対の特徴の第1層の行を半幅回して共有する。
+    /// A型では左右鏡映の対の特徴の第1層の行を半幅回して共有する。
     /// 設計の根拠は`docs/adr/share-p-type-mirror-weights-in-the-first-layer-and-the-psqt.md`にある。
     HalfWidthRotation,
     /// HalfKP_vmでは基準の王駒の筋で盤を左右鏡映して番号を付ける。

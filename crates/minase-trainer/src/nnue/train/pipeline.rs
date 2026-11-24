@@ -340,7 +340,7 @@ mod tests {
             "deferred test backend"
         }
         fn feature_set(&self) -> FeatureSet {
-            FeatureSet::P
+            FeatureSet::A
         }
         fn step(&self) -> u64 {
             self.steps
@@ -400,7 +400,7 @@ mod tests {
                 fail_second: mode == 1,
             };
             let options = BatchOptions {
-                feature_set: FeatureSet::P,
+                feature_set: FeatureSet::A,
                 batch: 2,
                 schedule: "constant:1".parse().unwrap(),
                 batches_per_superbatch: 3.try_into().unwrap(),

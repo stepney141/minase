@@ -904,7 +904,7 @@ mod tests {
                     while let Some(records) = reader.next_chunk(batch).unwrap() {
                         let remaining = memory.training_indices().len() - indices.len();
                         assert_eq!(records.len(), batch.min(remaining));
-                        let slot = BatchSlot::from_spill_records(FeatureSet::P, &records).unwrap();
+                        let slot = BatchSlot::from_spill_records(FeatureSet::A, &records).unwrap();
                         for (record, &index) in records.iter().zip(slot.record_indices()) {
                             assert_eq!(record.index, index);
                             assert_eq!(record.sample, memory.record(index).unwrap());
@@ -944,7 +944,7 @@ mod tests {
             memory.estimate_teacher_cp_per_logit().unwrap()
         );
         {
-            let feature_set = FeatureSet::P;
+            let feature_set = FeatureSet::A;
             let expected = Observations::compute(&memory, feature_set).unwrap();
             let actual = Observations::from_positions(
                 spill

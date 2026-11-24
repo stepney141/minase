@@ -631,7 +631,7 @@ mod tests {
                     )
                     .unwrap();
                     let roots = (BENCH_POSITIONS.len() * count) as u64;
-                    // P型では根だけを再計算し、HalfKP型では文脈の変更時にも再計算する。
+                    // A型では根だけを再計算し、HalfKP型では文脈の変更時にも再計算する。
                     if matches!(nnue, Network::LayerStack(_)) {
                         assert_eq!(run.accumulators.refreshes, roots);
                     } else {

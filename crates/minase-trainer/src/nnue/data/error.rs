@@ -29,8 +29,8 @@ pub enum Error {
     },
     /// 逆索引の局面番号、視点または列が範囲外にある。
     PackedOccurrence,
-    /// P型の符号化された特徴が範囲外にある。
-    PFeature {
+    /// A型の符号化された特徴が範囲外にある。
+    AFeature {
         /// 不正な符号化値。
         value: u32,
     },
@@ -52,7 +52,7 @@ impl fmt::Display for Error {
             Self::Data(error) => error.fmt(f),
             Self::BatchSize { size } => write!(f, "invalid batch size: {size}"),
             Self::PackedOccurrence => f.write_str("inverse-index occurrence is outside its domain"),
-            Self::PFeature { value } => write!(f, "invalid packed P feature: {value}"),
+            Self::AFeature { value } => write!(f, "invalid packed A feature: {value}"),
             Self::WorkerPanicked => f.write_str("batch worker panicked"),
         }
     }
