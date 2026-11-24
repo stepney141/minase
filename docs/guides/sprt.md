@@ -15,7 +15,7 @@
 NNUEのネットはコミットに含まれず、エンジンはオプション`EvalFile`で指定したファイルを読む。
 ハーネスは、候補と基準のそれぞれに`--candidate-option EvalFile=<パス>`と`--baseline-option EvalFile=<パス>`でネットを渡し、エンジンが報告したファイル全体のSHA-256を`manifest.json`に記録して固定する（[ADR](../adr/compare-commits-as-separate-engine-processes-and-pin-networks-by-checksum.md)）。
 探索や時間管理の変更を測るときは、両側に同じネットを渡す。
-特に理由がなければ、[NNUEの評価関数の手引き](evaluation-nnue.md#採用したネットの学習)にある、いまの標準のネットを使う。
+特に理由がなければ、[NNUEの評価関数の手引き](evaluation-nnue.md#探索の測定に使う標準のネット)にある、いまの標準のネットを使う。
 学習したネットどうしを比べるときは、両側に同じコミットを指定し、別々のネットを渡す。
 以下の標準コマンドの`<ネット>`は、NASに置いたネットのファイルの絶対パスである。
 

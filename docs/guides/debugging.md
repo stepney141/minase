@@ -140,7 +140,7 @@ HaChuの規則との食い違いは、`scripts/hachu/hachu_replay.py`でHaChuの
 規則は規則セット`JCSA`に固定で、局面、置換表、およびhistory表はbench専用のものを使うので、セッションの対局と設定には影響しない。
 評価には`isready`で準備したネットを使うので、`bench`の前に`RuleSet`と`EvalFile`を設定して`isready`を送る。
 `RuleSet`の値は`bench`の結果に影響しないが、`isready`が要求する。
-比べる2つの版には同じネットのファイルを渡し、特に理由がなければ[NNUEの評価関数の手引き](evaluation-nnue.md#採用したネットの学習)にある、いまの標準のネットを使う。
+比べる2つの版には同じネットのファイルを渡し、特に理由がなければ[NNUEの評価関数の手引き](evaluation-nnue.md#探索の測定に使う標準のネット)にある、いまの標準のネットを使う。
 `<ネット>`はネットのファイルの絶対パスである。
 
 ```console
