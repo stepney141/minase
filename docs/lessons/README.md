@@ -117,6 +117,8 @@ Rustのコードやテストを書くとき、およびそれらをcodexへ委�
 - [測定機で重い計算を始める前に進行中の測定を確認する](check-running-measurements-before-cpu-load.md) — CPUを多く使う処理の前に`pgrep -af '[m]inase (match run|spsa)|[m]atch_runner|[s]psa_runner'`で進行中の測定を確かめ、走っていればスレッド数（ビルドの並列数と検査内の探索スレッドの和、niceは数えない）を空きコア数以内に抑えるか終了を待ち、ONNX RuntimeのCPUの推論は`taskset`でコアを限る。
 - [判断を待つ前に借りた機械を止める](stop-rented-machines-before-waiting-for-a-decision.md) — 借りた機械の長い処理には正常終了でも異常終了でも機械を止める処理を連鎖させ、利用者の判断を仰ぐ前にはファイルを受け取って機械を止める。
 - [機械を借りる前に現行のコードの全負荷の速さを測り直す](remeasure-generation-speed-with-current-code-before-renting.md) — 借りる機械の費用は、本番と同じコミットと同時実行数で短時間動かして全体の処理速度と常駐メモリを測ってから見積もり、最初の出力が見積もりから大きく外れたら報告して進め方を決める。
+- [借りた機械の速さは、最初の1単位の所要時間で確かめる](check-rented-machine-speed-on-the-first-unit.md) — 借りた機械の最初の1単位の所要時間を同じ機種の実績と比べ、見積りの費用や期限に収まらない遅さなら、その単位を受け入れた後に止めて、機械を除外して借り直す。
+- [借りた機械は、貸し手のAPIの認証が切れても止められるようにしておく](keep-a-way-to-stop-rented-machines-without-the-rental-api.md) — 借りた機械を貸し手のAPIの認証の有効期間より長く動かすときは、認証なしで機械を止める経路と成果物を回収する経路を先に用意し、認証が切れる見込みの時刻を利用者に伝える。
 - [対局と並行する処理はメモリの上限を課したサービスで動かす](cap-memory-of-work-beside-a-running-match.md) — 持ち時間のある対局と並行する学習や診断は、対局中の空きメモリを`free`で確かめて`MemoryMax`と`MemorySwapMax=0`のサービスで動かし、学習は`--buckets`で上限に収め、収まらない診断は対局の後に回す。
 - [転送の時間の上限は、固定の秒数にせず、ファイルの大きさと見込む速さから求める](derive-transfer-time-limits-from-size.md) — 転送の時間の上限は、バイト数を見込む最低の速さで割った時間に余裕を足して求め、送る処理と受け取る処理で同じ規則を使う。
 

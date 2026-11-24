@@ -26,4 +26,4 @@ NNUEの世代反復の1世代の量は教師ファイルの本数で定め、標
 ## 結果
 
 連続生成スクリプトは`--books-per-generation`で1世代の本数を受け取り、標準レシピv1では70を指定する。
-1世代の生成機の費用と時間は、[世代反復の設計書](../../plans/nnue-generation-iteration.md)で見積もる。
+1世代の生成機の費用と時間は、[世代反復の設計書](../../plans/archived/nnue-generation-iteration.md)で見積もる。

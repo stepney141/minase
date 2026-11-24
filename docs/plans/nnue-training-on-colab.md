@@ -25,7 +25,7 @@ Colab機の操作は作業機側の一つのモジュールにまとめ、すで
 教師ファイルの生成は、CPUの計算量が律速なのでColab機に向かず、本書の対象にしない。
 
 費用の差は小さい。
-[世代反復](nnue-generation-iteration.md)のブランチの測定記録`nnue-generation-iteration-gen1-training`と`nnue-generation-iteration-gen2-training`によれば、vast.aiの学習機の実費は、教師ファイル43本を使う第1世代で0.10米ドル、86本を使う第2世代で0.27米ドルだった。
+[世代反復](archived/nnue-generation-iteration.md)のブランチの測定記録`nnue-generation-iteration-gen1-training`と`nnue-generation-iteration-gen2-training`によれば、vast.aiの学習機の実費は、教師ファイル43本を使う第1世代で0.10米ドル、86本を使う第2世代で0.27米ドルだった。
 本数に比例させると、172本の第4世代は約0.5米ドル、215本の第5世代は約0.7米ドルになると推測できる。
 後述の「GPU種別と見込みのCU」の節で推測するとおり、ColabのG4（GPUの種別の一つ）で同じ規模を学ぶと、1世代あたり約8〜16 CU、中央の見込みで約9〜11 CUを使う。追加で購入するCUの価格（100 CUあたり9.99米ドル）で換算すれば、中央の見込みは約0.9〜1.1米ドルにあたる。
 本書が意味を持つのは、サブスクリプションで付与されるCUが余っていて、使わなければ失効する場合である。CUは付与から90日で失効する。
@@ -35,7 +35,7 @@ Colab機の操作は作業機側の一つのモジュールにまとめ、すで
 - **作業機**：制御スクリプトを動かし、教師ファイル、学習の結果、および世代の記録を置く手元の計算機。
 - **学習器**：NNUEを学習させるRustのプログラム`minase-trainer`。学習の後に駒除去差分の診断も行う。
 - **教師ファイルと本**：NNUEの学習に使う、自己対局の局面と探索値を収めたファイル。1本は7,500局を収めた1ファイルであり、約23 MBである。
-- **世代**：前の世代のネットで教師ファイルを新しく生成し、その世代の教師だけから次のネットを学ぶ1回分の単位。第N世代では43N本を新しく生成する（[世代反復の設計書](nnue-generation-iteration.md)）。
+- **世代**：前の世代のネットで教師ファイルを新しく生成し、その世代の教師だけから次のネットを学ぶ1回分の単位。第N世代では43N本を新しく生成する（[世代反復の設計書](archived/nnue-generation-iteration.md)）。
 - **学習機**：1世代の学習のためだけに借りるGPUつきの機械。本書の後は、vast.aiでオンデマンドで借りる機械かColab機のどちらかである。
 - **学習の場所**：1世代の学習を行う機械。連続生成スクリプトの引数`--train-place`で、vast.aiの学習機（`vast`）、Colab機（`colab`）、および作業機（`local`）から選ぶ。今の値`generator`（借りたvast.aiの機械で学ぶ指定）は`vast`に改める。
 - **Colab機**：Colabの有料プランで借りるGPUつきの仮想機械である。止めるとディスクごと消える。AlphaZero型探索で使ってきた機械と同じものであり、GPUの種別にL4、A100、およびG4（RTX PRO 6000 Blackwell）がある（[Colab機の借り方の設計判断の記録](../adr/rent-colab-gpus-through-the-cli-and-keep-state-on-the-nas.md)）。
@@ -76,7 +76,7 @@ Colab機の操作は作業機側の一つのモジュールにまとめ、すで
 
 ## 依存関係
 
-学習機だけを借りる機能は、進行中の[世代反復](nnue-generation-iteration.md)のフェーズ1で作られ、世代反復のブランチ`nnue-generation-iteration`にだけある。
+学習機だけを借りる機能は、進行中の[世代反復](archived/nnue-generation-iteration.md)のフェーズ1で作られ、世代反復のブランチ`nnue-generation-iteration`にだけある。
 masterの連続生成スクリプトでは、教師がすべて作業機にあって生成が要らない世代について、機械を準備する関数`prepare_machine`が新しく機械を借りずに戻るので、学習機を借りられない。
 本書は、このブランチ全体ではなく、学習機だけを借りる機能に関わる変更だけを、masterから切った本書のブランチへ移す（「設計判断」の「ブランチの起点」の行）。
 
@@ -285,7 +285,7 @@ NNUEの学習機にColab機も使えることと、Colab機の操作を専用の
 ## 参考資料
 
 - [Colab機の借り方のADR](../adr/rent-colab-gpus-through-the-cli-and-keep-state-on-the-nas.md)、[Colab機の操作の手引き](../guides/alphazero-machines.md)、および[実現性の実測](../measurements/alphazero-environment/alphazero-feasibility.md)
-- [世代反復の設計書](nnue-generation-iteration.md)と、そのブランチの測定記録`nnue-generation-iteration-gen1-training`、`nnue-generation-iteration-gen2-training`、および`nnue-generation-iteration-training-rental-trial`
+- [世代反復の設計書](archived/nnue-generation-iteration.md)と、そのブランチの測定記録`nnue-generation-iteration-gen1-training`、`nnue-generation-iteration-gen2-training`、および`nnue-generation-iteration-training-rental-trial`
 - [NNUEの学習器のカーネルをNVRTCで書くADR](../adr/write-trainer-kernels-in-cuda-cpp-via-nvrtc.md)
 - google-colab-cli 0.7.5のソースのうち、`colab_cli/commands/ssh.py`の`_select_proxy_session`、`colab_cli/commands/session.py`の`new`と`stop`、`colab_cli/common.py`の`sync_sessions`、`colab_cli/client.py`の`list_assignments`、`get_consumption_user_info`、および`unassign`、`colab_cli/auth.py`のトークンの置き場所、ならびに`colab_cli/cli.py`の`--config`を参照した。
 - Colabのよくある質問（[research.google.com/colaboratory/faq.html](https://research.google.com/colaboratory/faq.html)）から、セッションの上限時間、CUの失効、および無償または残高のないランタイムでのSSHの制限を参照した。
