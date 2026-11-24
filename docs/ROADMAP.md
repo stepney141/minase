@@ -168,7 +168,7 @@ NNUEの作業は、まずNNUEの実装を直して、自玉の升ごとに別の
 自己対局と世代ごとの強さの判定は、オンライン対局サイトlishogiの実装に近い規則セット`lishogi`で行う（[ADR](adr/play-self-play-and-judge-trained-networks-under-the-lishogi-rule-set.md)）。
 
 A型の世代反復（[設計書](plans/archived/nnue-generation-iteration.md)）は、2026年11月25日に、利用者の決定により第3世代で中断して閉じた。
-第3世代のネットは、探索の測定に使う標準のネットになり（[NNUEの評価関数の手引き](guides/evaluation-nnue.md)）、minase 3.0.0のリリースに合わせてHugging Face Hubで公開した。世代ごとの結果は[系列のページ](training/nnue-generation-iteration/README.md)にある。
+第3世代のネットは、探索の測定に使う標準のネットになり（[NNUEの評価関数の手引き](guides/evaluation-nnue.md)）、minase 3.0.0のリリースに合わせてHugging Face Hubで公開した。2026年11月25日に入力特徴集合の名前をP型からA型へ改め（[ADR](adr/rename-the-p-type-input-features-to-a.md)）、A型の名前へ変換したネットをminase 3.0.1とともに公開し直した。世代ごとの結果は[系列のページ](training/nnue-generation-iteration/README.md)にある。
 ネットはgitに入れず、USIのオプション`EvalFile`で外部のファイルから読む（[ネットの外部ファイル化](plans/archived/nnue-external-network-file.md)）。
 A型はtataraのLayerStackに載っており、HalfKP_vmもエンジン、学習器、および教師生成でいつでも使える状態にある（[tatara化とHalfKP_vm](plans/archived/nnue-tatara-framework-and-halfkp-vm.md)）。
 世代反復を再び行うときと、HalfKP_vmの世代反復を行うときは、別の設計書として起案する。
@@ -243,7 +243,7 @@ NNUEの世代反復は2026年11月25日に中断して閉じたので、2回目�
 
 ### 配備
 
-- [lishogi Bot接続](plans/lishogi-bot.md)は公開運用中であり、完了条件の達成状況の確認と配備方式の記述の見直しが残っている。Botは2026年11月24日から、crates.ioのminase 3.0.0と、Hugging Face Hubから取得する世代反復の第3世代のネットを使う。エンジンの起動引数`--rules`の削除と、規則セットとネットをUSIのオプションで必須にした変更（[起動引数と診断ツールをUSIへ移す計画](plans/archived/cli-to-usi.md)）への追従は、Botと開発用GUIの両方で同じ日に終えた。ネットだけを替えるときは、エンジンの[リリース](guides/release.md)を要さず、Botの配備一式が指定するネットを替える。
+- [lishogi Bot接続](plans/lishogi-bot.md)は公開運用中であり、完了条件の達成状況の確認と配備方式の記述の見直しが残っている。Botと開発用GUIは2026年11月25日から、minase 3.0.1と、Hugging Face Hubから取得する世代反復の第3世代のA型のネットを使う。エンジンの起動引数`--rules`の削除と、規則セットとネットをUSIのオプションで必須にした変更（[起動引数と診断ツールをUSIへ移す計画](plans/archived/cli-to-usi.md)）への追従は、2026年11月24日にBotと開発用GUIの両方で終えた。ネットだけを替えるときは、エンジンの[リリース](guides/release.md)を要さず、Botの配備一式が指定するネットを替える。
 
 ### 前提の見直しが要る計画
 
