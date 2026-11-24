@@ -140,8 +140,9 @@
 | NNUEに隠れ層を加えて第1層を広げ、整数化の精度を上げる | [plans/archived/nnue-architecture-revision.md](plans/archived/nnue-architecture-revision.md) | 完了（一部不採用） | 2026年11月4日 |
 | NNUE教師生成を探索結果を変えずに速くする | [plans/archived/teacher-generation-speedup.md](plans/archived/teacher-generation-speedup.md) | 完了 | 2026年11月6日 |
 | NNUEの標準レシピv1と、学習器および教師の生成器の変更 | [plans/archived/nnue-standard-recipe.md](plans/archived/nnue-standard-recipe.md) | 完了（採用） | 2026年11月15日 |
-| 標準レシピv3でのP型のNNUEの世代反復のやり直し | [plans/nnue-generation-iteration.md](plans/nnue-generation-iteration.md) | 進行中 | |
+| 標準レシピv3でのP型のNNUEの世代反復のやり直し | [plans/nnue-generation-iteration.md](plans/nnue-generation-iteration.md) | 待機中 | |
 | NNUEの学習で端数バッチを捨て、学習率を学習の終わりまでに下げきる | [plans/archived/nnue-decay-to-end.md](plans/archived/nnue-decay-to-end.md) | 完了（採用） | 2026年11月23日 |
+| NNUEの学習機としてColab機も選べるようにする | [plans/nnue-training-on-colab.md](plans/nnue-training-on-colab.md) | 起案 | |
 | MCTSの葉での王駒の捕獲の判定と方策の温度 | [plans/archived/mcts-royal-capture-temperature.md](plans/archived/mcts-royal-capture-temperature.md) | 完了（採用） | 2026年11月9日 |
 | 起動引数と診断ツールをUSIへ移す | [plans/archived/cli-to-usi.md](plans/archived/cli-to-usi.md) | 完了（採用） | 2026年11月12日 |
 | NNUEの教師生成を中断の後に再開できるようにする | [plans/archived/resumable-nnue-teacher-generation.md](plans/archived/resumable-nnue-teacher-generation.md) | 完了（採用） | 2026年11月14日 |
@@ -176,6 +177,7 @@ HalfKP_vmの世代反復は、P型の世代反復で評価関数の癖をつか�
 | 設計書 | 内容 | 状態と次の判断 | 前提 |
 |---|---|---|---|
 | [P型の世代反復](plans/nnue-generation-iteration.md) | 第n世代に約n億局面の教師を使い、v0から最大第5世代までP型の世代反復を行う。第1世代と第2世代は標準レシピv3で、第3世代以降は標準レシピv4で学ぶ。教師の生成と学習に借りる計算機の費用は、各世代を上限まで学んだ場合で約300米ドルと見込む。 | 待機中である。2026年11月24日に第3世代を終え、第1世代はv0に、第2世代は第1世代に、第3世代は第2世代に、それぞれ`H1`を取った（[系列のページ](training/nnue-generation-iteration/README.md)）。利用者の決定で第3世代で反復をいったん中断し、ここまでの変更と記録をmasterへ統合して、第3世代のネットをHugging Face Hubへ公開した。第4世代へ進むか、採否の測定へ進むかは、利用者の指示を待つ。 | なし（外部ファイル化とtatara化は完了した） |
+| [NNUEの学習機にColab機](plans/nnue-training-on-colab.md) | NNUEの学習機として、vast.aiの機械に加えてColab機も実行のたびに選べるようにし、毎月付与されるColabのCUを学習に充てる。Colab機の操作は作業機側の一つのモジュールにまとめ、AlphaZero型探索の実行器もそれを使う。 | 起案の段階である。レビューの後に利用者の着手の指示を待つ。Colab機を試走で借りる前に、残高と見込みのCUを示して承認を得る。 | なし（学習機だけを借りる経路は世代反復のブランチから移植する） |
 | [先読みなしの教師での間引きの比較](plans/nnue-subsample-no-lookahead.md) | 同じ局面数を少数の対局から採る学習と多数の対局から採る学習を比べ、対局数が多いほど良いという効果が、後続の局面の探索値を混ぜない現行の教師でも残るかを確かめる。 | 起案の段階である。2026年11月20日に、記録する局面の間引きの着手の前提から外した。世代反復の結果を見て、続けるかを決める。 | なし |
 | [記録する局面の間引き](plans/sparse-teacher-recording.md) | 4分の1の手だけを2万ノードで探索して記録し、残りの手を少ないノード数で指して、同じ計算量で対局数を増やす。世代反復で最後に強いと判定された世代の教師と同じネットを使い、生成の計算量をそろえて教師を生成し、学んだネットをその世代のネットと段階ゲートで比べる。 | 起案の段階である。計算機を借りるので、世代反復の完了の後に利用者の着手の指示を待つ。 | 世代反復の完了（その教師とネットを基準に使い、標準レシピv3が固定した教師の作り方を変えるため） |
 | [第1層の全再計算の差分化（Finny tables）](plans/nnue-finny-tables.md) | 自玉が別の区分へ動いたときに起きる第1層の値の全再計算を、保存した値からの差分の更新に置き換える。 | 待機中である。本文はtatara化で削除するHalfKP-hm-b8を前提にしているので、着手の前にHalfKP_vmに合わせて改める。着手するかは、tatara化で測ったHalfKP_vmの全再計算の割合（深さ5の`bench`で累算器の更新の1.17%、[記録](measurements/nnue-tatara-framework-and-halfkp-vm/nnue-tatara-framework-and-halfkp-vm-halfkp-vm-check.md)）を見て、HalfKP_vmの世代反復を起案するときに決める。 | なし（tatara化は完了した） |
@@ -236,7 +238,7 @@ PV-MCTSには、勝率尺度をオプション`NnCpPerLogit`で渡す。
 
 ### 合法手生成と対局ハーネス
 
-- [合法手生成と利き計算の高速化（第3期）](plans/movegen-speedup-3.md)は、起案のまま着手していない。[教師生成の高速化候補](proposals/nnue-teacher-generation-speedup.md)のうち攻撃駒の存在判定の候補は、同書と同じ利きの計算を変えるので、どちらかを起案するときに改善の重なりを確かめる。
+- [合法手生成と利き計算の高速化（第3期）](plans/movegen-speedup-3.md)は、探索の結果を変えずに探索の時間を減らす。升の駒を表す値から駒種や走りの方向を求める処理を表引きにまとめる変更が中心であり、目標は探索に費やすCPUのサイクル数で基準比1.05倍である。起案の段階である。持ち時間の自己対局による採否測定に代えて、固定200ペアの対局で異常がないことだけを確かめる方式を提案しており、この方式への利用者の判断と着手の指示を待つ。[教師生成の高速化候補](proposals/nnue-teacher-generation-speedup.md)のうち攻撃駒の存在判定の候補は、同書が再診断の件数に基づいて扱いを決める。
 - [早期投了の導入判定](plans/match-early-resignation.md)は待機中である。校正群とは別に、仮想投了が3,000回以上発火する検証群を確保できる記録量に達しておらず、統計契約も確定していない。
 
 ### プロトコルと起動引数

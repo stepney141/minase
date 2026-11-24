@@ -1,0 +1,112 @@
+total samples 53012
+  incl%   self%  function
+ 100.00    0.76  [libc.so.6]
+  99.90    0.00  selfplay_gen::play::play_game
+  99.90    0.00  selfplay_gen::output::generate_chunks::{closure#2}::{closure#0}
+  99.90    0.00  selfplay_gen::output::generate_chunks::{closure#2}::{closure#0}::{closure#0}
+  99.90    0.00  <selfplay_gen::output::generate_chunks::{closure#2}::{closure#0}::{closure#0} as core::ops::function::FnOnce<(
+  99.89    0.00  selfplay_gen::play::play_game_from_opening
+  99.66    0.00  selfplay_gen::play::search_position
+  99.62    0.00  search::handle::search
+  99.62    0.10  team::run_search_team
+  99.39    0.00  team::run_worker_team::<(&mut alloc::boxed::Box<[[[i32; 144]; 144]; 2]>, &mut capture_history::CaptureHistory,
+  99.39    0.00  team::run_worker_guarded::<team::WorkerOutcome, team::run_worker_team<(&mut alloc::boxed::Box<[[[i32; 144]; 14
+  99.39    0.00  team::run_worker_team::<(&mut alloc::boxed::Box<[[[i32; 144]; 144]; 2]>, &mut capture_history::CaptureHistory,
+  99.39    0.00  team::run_worker_team::<(&mut alloc::boxed::Box<[[[i32; 144]; 144]; 2]>, &mut capture_history::CaptureHistory,
+  99.39    0.00  team::run_search_team::{closure#5}
+  99.35    0.00  deepening::run_main_worker
+  99.35    0.01  deepening::run_main_worker_with_iteration_hook::<deepening::run_main_worker::{closure#0}>
+  99.14    0.17  <searcher::Searcher>::search_root
+  99.14    0.00  <searcher::Searcher>::search_iteration
+  97.32    0.47  <searcher::Searcher>::search_move
+  96.90    2.35  <searcher::Searcher>::negamax
+  46.05    1.17  <searcher::Searcher>::quiesce
+  25.91    5.72  <ordering::MovePicker>::next
+  23.35    0.00  <searcher::Searcher>::evaluate_at
+  19.99    0.35  <eval::nnue::network::evaluator::SearchEvaluator>::evaluate
+  19.64    0.02  <eval::nnue::network::layer_stack::LayerStackNetwork>::evaluate_accumulator
+  19.51    4.29  <eval::nnue::network::layer_stack::LayerStackNetwork>::dense
+  17.86    0.05  <searcher::Searcher>::search_null_move
+   9.74    0.85  see::see_prunes
+   9.73    9.09  eval::nnue::network::affine
+   9.09    0.67  <mc:position::Position>::attackers_to_by
+   7.72    0.34  <quiesce::QsearchBuffers>::initialize
+   7.52    0.13  <tt::TranspositionTable>::probe
+   7.32    7.32  tt::unpack_critical
+   7.25    0.91  mc:movegen::control::ordinary_attackers_to
+   5.49    0.48  <mc:movegen::MoveGenerator>::collect_ordinary_capturers
+   5.06    0.46  ordering::quiet_move_ordering_value
+   4.97    0.72  mc:movegen::control::capture_targets_without_special
+   4.03    0.53  <mc:movegen::MoveGenerator>::ordinary_capturer
+   3.90    0.15  mc:movegen::generate::generate_moves::<true, false>
+   3.90    0.00  <mc:movegen::MoveGenerator>::generate_captures_with_scratch
+   3.80    0.13  <searcher::Searcher>::ensure_accumulator
+   3.76    0.00  <eval::nnue::network::layer_stack::LayerStackNetwork>::dense::{closure#0}
+   3.68    3.50  <mc:board::bitboard::Bitboard>::pop_lsb
+   3.68    0.00  <mc:board::bitboard::SquareIter as core::iter::traits::iterator::Iterator>::next
+   3.66    0.07  <eval::nnue::network::evaluator::SearchEvaluator>::update_after_move
+   3.58    0.25  <eval::nnue::network::layer_stack::LayerStackNetwork>::update_after_move
+   3.33    0.49  mc:movegen::generate::generate_piece_moves::<true, false>
+   3.29    0.08  mc:movegen::generate::generate_moves::<false, true>
+   3.29    0.00  <mc:movegen::MoveGenerator>::generate_quiets
+   2.81    2.81  eval::nnue::network::pair
+   2.79    0.12  <eval::nnue::transformer::FeatureTransformer<eval::nnue::input::p::P>>::update_after_move
+   2.79    0.01  mc:movegen::generate::generate_piece_moves::<false, true>
+   2.78    0.37  mc:movegen::generate::generate_piece_quiets
+   2.66    0.09  eval::features::for_each_move_change::<<eval::nnue::transformer::FeatureTransformer<eval::nnue::input::p::P>>:
+   2.64    0.77  <mc:movegen::gives_check::CheckContext>::gives_check
+   2.42    2.42  <mc:board::bitboard::Bitboard>::intersects
+   2.37    0.32  mc:movegen::control::piece_control_without_special
+   2.31    0.00  <eval::nnue::transformer::FeatureTransformer<eval::nnue::input::p::P>>::update_after_move::{closure#0}
+   2.30    2.30  <eval::nnue::transformer::FeatureTransformer<eval::nnue::input::p::P>>::add_row
+   2.26    0.71  mc:movegen::control::sliding_attackers_to::<false>
+   2.24    0.18  <quiesce::QsearchBuffers>::next
+   2.16    0.60  mc:movegen::control::sliding_attackers_to::<true>
+   2.09    0.07  <ordering::LesserPieceThreats>::new
+   2.06    0.40  <quiesce::QsearchBuffers>::generate_group
+   2.01    0.08  <searcher::Searcher>::correction_weighted_sum_at
+   1.85    0.14  ordering::qualifies_for_check_bonus
+   1.69    0.04  <eval::nnue::network::Network>::quiet_move_delta
+   1.66    0.12  mc:movegen::control::piece_control_with_occupancy
+   1.65    0.17  <eval::nnue::network::layer_stack::LayerStackNetwork>::quiet_move_psqt_delta
+   1.63    0.88  eval::features::feature_index
+   1.61    1.60  <mc:board::bitboard::Bitboard>::contains
+   1.57    0.63  eval::features::piece_state
+   1.55    1.55  <mc:board::bitboard::Bitboard as core::ops::bit::BitOr>::bitor
+   1.54    1.54  <mc:board::bitboard::Bitboard as core::ops::bit::BitAnd>::bitand
+   1.49    0.55  <mc:piece::code::PieceCode>::kind
+   1.49    0.07  mc:movegen::control::piece_control_with_tables
+   1.46    1.46  <history::ContinuationHistory>::read
+   1.43    0.25  <eval::nnue::network::layer_stack::LayerStackNetwork>::quiet_move_psqt_delta::{closure#0}
+   1.41    0.03  <mc:movegen::MoveGenerator>::is_legal_move
+   1.41    0.67  <ordering::DirectCheckSquares>::contains
+   1.33    0.02  <mc:movegen::MoveGenerator>::generate_special_captures::<<quiesce::QsearchBuffers>::initialize::{closure#0}>
+   1.33    1.11  <mc:position::Position>::piece_at
+   1.28    1.28  eval::nnue::network::square_activation
+   1.27    1.27  eval::nnue::network::activation
+   1.27    0.83  <mc:mv::Move as core::cmp::PartialEq>::eq
+   1.27    0.03  <searcher::Searcher>::order_root_moves
+   1.25    0.22  <mc:movegen::MoveGenerator>::emit_ordinary_captures::<<quiesce::QsearchBuffers>::generate_group::{closure#3}>
+   1.21    0.06  <mc:movegen::MoveGenerator>::generate_special_piece_captures::<<quiesce::QsearchBuffers>::initialize::{closure
+   1.18    0.20  <mc:board::bitboard::Bitboard as core::ops::bit::BitOrAssign>::bitor_assign
+   1.17    0.25  mc:movegen::expand::push_with_promotion
+   1.15    0.02  <searcher::Searcher>::continuation_value
+   1.13    0.10  ordering::continuation_value
+   1.13    0.01  eval::piece_values::piece_value
+   1.11    0.02  <searcher::Searcher>::checking_move_exempts_qsearch_pruning
+   1.07    0.90  <mc:attacks::tables::AttackTables>::fixed
+   1.06    0.35  <mc:position::Position>::make_move_with_captures_unchecked
+   1.05    0.37  mc:movegen::control::special_attackers_to
+   1.05    0.35  <searcher::Searcher>::order_root_moves::{closure#3}
+   1.03    0.00  ordering::continuation_value::{closure#0}
+   1.00    0.02  ordering::quiet_move_ordering_value::{closure#0}
+   0.98    0.10  mc:movegen::generate::generate_piece_moves::<false, false>
+   0.97    0.00  <mc:movegen::MoveGenerator>::generate_moves_from
+   0.97    0.01  <mc:movegen::MoveGenerator>::generate_from::<false>
+   0.95    0.06  capture_history::index
+   0.94    0.94  <mc:piece::kind::PieceKind>::from_index
+   0.93    0.32  correction::correction_piece_keys_after_move
+   0.91    0.37  <mc:position::Position>::unmake_move
+   0.89    0.81  <mc:board::bitboard::Bitboard>::lsb
+   0.87    0.39  <mc:attacks::tables::AttackTables>::sliding_control
+   0.85    0.85  <mc:position::Position>::pieces_of_kind
