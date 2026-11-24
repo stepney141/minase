@@ -651,9 +651,14 @@ tatara化の前の学習器は、平均絶対値が勝率尺度の1/40を超え�
 
 ### 探索の測定に使う標準のネット
 
-本書の構成で標準とするネットは、[tatara化の設計書](../plans/archived/nnue-tatara-framework-and-halfkp-vm.md)で載せ替えを確かめるために学んだP型のネット（`/mnt/synology_nas/minase/nnue/nets/37054c9e49c9218bb18efdd1814fe1b298de5cbfc9c14352f6ad6eaecbb70dea.bin`）である。
-教師、学習の条件、および書き出しの結果は[学習の記録](../measurements/nnue-tatara-framework-and-halfkp-vm/nnue-tatara-framework-and-halfkp-vm-training.md)にある。
-このネットはSTCで載せ替える前のP型に約64 Elo負けたが（[測定記録](../measurements/nnue-tatara-framework-and-halfkp-vm/nnue-tatara-framework-and-halfkp-vm-stc.md)）、2026年11月19日に開発者は、載せ替えたP型を採用すると決めた（[構造のADR](../adr/compose-p-as-a-tatara-layerstack-with-a-psqt-and-halfkp-vm-as-a-simple-network.md)）。
+本書の構成で標準とするネットは、[P型の世代反復](../plans/nnue-generation-iteration.md)の第3世代のP型のネット（`/mnt/synology_nas/minase/nnue/nets/cbbccf6f5ee7097fd890086d2cf4bca72ed969da28353cb0c4a2f4d781acc244.bin`）である。
+同じファイルを、Hugging Face Hubのモデルリポジトリ`stepney141/minase-nets`に`nnue/p/minase-nnue-p-lishogi-20261124-cbbccf6f.nnue`として公開している（[公開の手順](release.md#評価ネットの公開手順hugging-face-hub)）。
+教師、学習の条件、および書き出しの結果は[学習の記録](../measurements/nnue-generation-iteration/nnue-generation-iteration-gen3-training.md)にあり、世代ごとの推移は[系列のページ](../training/nnue-generation-iteration/README.md)にある。
+このネットは、教師の生成も学習も規則セット`lishogi`で行ったものである。
+2026年11月24日に開発者は、世代反復を第3世代でいったん中断して、このネットを標準にすると決めた。
+それまでの標準は、[tatara化の設計書](../plans/archived/nnue-tatara-framework-and-halfkp-vm.md)で載せ替えを確かめるために規則セット`JCSA`で学んだP型のネット（SHA-256は`37054c9e49c9218bb18efdd1814fe1b298de5cbfc9c14352f6ad6eaecbb70dea`）だった。
+第3世代のネットは、規則セット`lishogi`のSTCで、それまでの標準のネットに対して`H1`（109ペア、得点率0.899）となった（[測定記録](../measurements/nnue-generation-iteration/nnue-generation-iteration-gen3-master-stc.md)）。
+規則セット`JCSA`での2本の強さは比べていない。世代反復の設計書が定める採否の測定（世代反復を始める前のネットを埋め込んだ版との配置の距離、STC、およびLTC）も行っていない。
 
 ## 損失で決めないもの
 

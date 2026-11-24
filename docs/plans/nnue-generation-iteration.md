@@ -27,9 +27,10 @@ HalfKP_vmの世代反復は、本書でP型の評価関数の癖をつかんだ�
 フェーズ3では、第2世代が86本（記録局面数217,189,481）から学び（[学習の記録](../measurements/nnue-generation-iteration/nnue-generation-iteration-gen2-training.md)）、第1世代との判定で`H1`を取って暫定最良世代になった（[判定の記録](../measurements/nnue-generation-iteration/nnue-generation-iteration-gen2-stc.md)）。
 第3世代は129本（記録局面数329,916,365）から標準レシピv4で学び（[学習の記録](../measurements/nnue-generation-iteration/nnue-generation-iteration-gen3-training.md)）、第2世代との判定で`H1`を取って暫定最良世代になった（[判定の記録](../measurements/nnue-generation-iteration/nnue-generation-iteration-gen3-stc.md)）。
 第1世代と第2世代の学習がどちらも1.5エポックの重みを選んで止まった原因を調べた結果（[診断の測定](../measurements/adhoc/nnue-early-stop-diagnosis.md)）、[端数バッチと学習率の設計書](archived/nnue-decay-to-end.md)が学習器を直して標準レシピをv4に改めたので、第3世代以降はv4で学ぶ。連続生成スクリプトは、学習だけを別のコミットで行えるように直した。
-2026年11月24日に利用者が、第3世代の学習の後に世代反復をいったん止め、第3世代を第2世代およびmasterとSTCで比べると決めた。masterのエンジンに標準のネットを渡した対照との比較も`H1`だった（[比較の記録](../measurements/nnue-generation-iteration/nnue-generation-iteration-gen3-master-stc.md)）。この比較は「最終候補の採否」の測定ではない。
+2026年11月24日に利用者が、第3世代の学習の後に世代反復をいったん止め、第3世代を第2世代およびmasterとSTCで比べると決めた。masterのエンジンにそれまでの標準のネット（SHA-256は`37054c9e…`）を渡した対照との比較も`H1`だった（[比較の記録](../measurements/nnue-generation-iteration/nnue-generation-iteration-gen3-master-stc.md)）。この比較は「最終候補の採否」の測定ではない。
 同じ日に利用者が、第3世代で反復をいったん中断し、ここまでのスクリプトの変更と測定記録をmasterへ統合し、第3世代のネットをHugging Face Hubへ公開すると決めた。
 第3世代のネットは、モデルリポジトリ`stepney141/minase-nets`の`nnue/p/minase-nnue-p-lishogi-20261124-cbbccf6f.nnue`に置いた（ファイル全体のSHA-256は`cbbccf6f5ee7097fd890086d2cf4bca72ed969da28353cb0c4a2f4d781acc244`）。
+同じ日に利用者が、第3世代のネットを探索の測定に使う標準のネットにすると決めたので、[NNUEの評価関数の手引き](../guides/evaluation-nnue.md)の標準のネットを替えた。
 統合する変更は`scripts/vast/nnue/`と`docs/`だけであり、反復のコミットとmasterのあいだにエンジンの対局の挙動に関わる差はない。
 待機の理由は利用者の決定であり、第4世代の教師は生成していない。フェーズ4の採否の測定（旧基準との配置の距離、STC、およびLTC）とフェーズ5は行っていない。
 再開の条件は、利用者が第4世代へ進むか、第3世代を最終候補としてフェーズ4へ進むかを指示することである。第4世代の教師172本の生成には、これまでの単価で約70米ドルを要する。
