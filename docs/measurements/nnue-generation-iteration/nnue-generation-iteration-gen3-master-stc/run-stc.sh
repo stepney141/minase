@@ -2,7 +2,7 @@
 # 世代反復の第N世代のネットを、masterのエンジンと標準のネットを対照としてSTCのGSPRTで比べる。
 # 使い方: run-stc.sh <世代N> <候補（第N世代）のネット> <対照のmasterのコミット> <対照のネット> <シード> <同時対局数>
 # 候補は反復のコミットのエンジンに第N世代のネットを渡したもの、対照は指定したmasterのコミットのエンジンに
-# 標準のネット（docs/guides/evaluation-nnue.md の「探索の測定に使う標準のネット」）を渡したものである。
+# 測定の時点で標準だったネット（SHA-256は 37054c9e…）を渡したものである。
 # 測定名は nnue-generation-iteration-gen<N>-master-stc である。
 set -euo pipefail
 generation=$1
