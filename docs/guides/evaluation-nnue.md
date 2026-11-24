@@ -652,7 +652,7 @@ tatara化の前の学習器は、平均絶対値が勝率尺度の1/40を超え�
 ### 探索の測定に使う標準のネット
 
 本書の構成で標準とするネットは、[P型の世代反復](../plans/archived/nnue-generation-iteration.md)の第3世代のP型のネット（`/mnt/synology_nas/minase/nnue/nets/cbbccf6f5ee7097fd890086d2cf4bca72ed969da28353cb0c4a2f4d781acc244.bin`）である。
-同じファイルを、Hugging Face Hubのモデルリポジトリ`stepney141/minase-nets`に`nnue/p/minase-nnue-p-lishogi-20261124-cbbccf6f.nnue`として公開している（[公開の手順](release.md#評価ネットの公開手順hugging-face-hub)）。
+同じファイルを、Hugging Face Hubのモデルリポジトリ`stepney141/minase-nets`に`nnue/p/minase-nnue-sfnn_p_256x16x32_psqt-lishogi-20261124-cbbccf6f.nnue`として公開している（[公開の手順](release.md#評価ネットの公開手順hugging-face-hub)）。
 教師、学習の条件、および書き出しの結果は[学習の記録](../measurements/nnue-generation-iteration/nnue-generation-iteration-gen3-training.md)にあり、世代ごとの推移は[系列のページ](../training/nnue-generation-iteration/README.md)にある。
 このネットは、教師の生成も学習も規則セット`lishogi`で行ったものである。
 2026年11月24日に開発者は、世代反復を第3世代でいったん中断して、このネットを標準にすると決めた。

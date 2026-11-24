@@ -444,7 +444,8 @@ PSTは駒の種類と升ごとの値の表による評価、FMはFactorization M
 - 2026年11月19日 [NNUEの世代反復では、学習したネットをgitの外に置いてそのまま次の世代の教師の生成に使い、学習の後に補正しない](use-each-trained-nnue-outside-git-for-the-next-generation.md)
 - 2026年11月19日 [NNUEの学習期間は未学習対局での検証損失から選ぶ](archive/select-the-nnue-checkpoint-on-held-out-games.md)（置き換え済み）
 - 2026年11月21日 [masterへのトランクベース開発を維持し、必要時だけrelease/*ブランチを切り、出口条件でリリースする](release-from-master-with-on-demand-release-branches-and-milestone-criteria.md)
-- 2026年11月21日 [評価ネットをエンジンの版数から分離し、Hugging Face Hubのモデルリポジトリへ置く](host-evaluation-networks-on-hugging-face-hub.md)
+- 2026年11月21日 [評価ネットをエンジンの版数から分離し、Hugging Face Hubのモデルリポジトリへ置く](archive/host-evaluation-networks-on-hugging-face-hub.md)（置き換え済み）
 - 2026年11月21日 [GitHub Actionsで定型検査とタグ起点の下書きリリース作成を自動化し、crates.ioへの公開は手動に残す](verify-commits-and-draft-releases-in-github-actions.md)
 - 2026年11月23日 [NNUEの学習は、エポックの最後に残る1バッチ未満の局面を、そのエポックでは学ばない](drop-the-tail-batch-of-each-nnue-training-epoch.md)
 - 2026年11月23日 [NNUEは約4エポックの学習の終わりまでに学習率を余弦減衰で下げきり、最後のネットを書き出して、検証損失は見張りに使う](train-the-nnue-for-four-epochs-decaying-the-learning-rate-to-the-end-and-export-the-last-network.md)
+- 2026年11月25日 [評価ネットをHugging Face Hubのモデルリポジトリへ置き、NNUEの公開名にやねうら王に倣った構造名を入れる](host-evaluation-networks-on-hugging-face-hub-and-name-them-by-structure.md)

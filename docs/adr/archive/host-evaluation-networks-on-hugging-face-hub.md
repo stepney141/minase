@@ -2,12 +2,12 @@
 
 ## ステータス
 
-承認済み。決定日は2026年11月21日。
+置き換え済み。決定日は2026年11月21日。[評価ネットをHugging Face Hubのモデルリポジトリへ置き、NNUEの公開名にやねうら王に倣った構造名を入れる](../host-evaluation-networks-on-hugging-face-hub-and-name-them-by-structure.md)によって置き換えられた。
 
 ## コンテキスト
 
-αβ探索のNNUEとPV-MCTSのONNXネットはいずれも実行ファイルに埋め込まず、USIオプション`EvalFile`または`NnModel`で外部ファイルを読み込む（[EvalFileでのNNUE読み込みのADR](search-with-an-evalfile-nnue-whose-structure-is-chosen-on-load.md)）。
-これまでの方針では、採用したネットをエンジンのバージョンタグ（`vX.Y.Z`）のGitHubリリースへ直接添付することにしていた（[旧外部ファイル化のADR](archive/use-an-nnue-read-from-evalfile-as-the-only-search-evaluation.md)）。
+αβ探索のNNUEとPV-MCTSのONNXネットはいずれも実行ファイルに埋め込まず、USIオプション`EvalFile`または`NnModel`で外部ファイルを読み込む（[EvalFileでのNNUE読み込みのADR](../search-with-an-evalfile-nnue-whose-structure-is-chosen-on-load.md)）。
+これまでの方針では、採用したネットをエンジンのバージョンタグ（`vX.Y.Z`）のGitHubリリースへ直接添付することにしていた（[旧外部ファイル化のADR](use-an-nnue-read-from-evalfile-as-the-only-search-evaluation.md)）。
 しかし、この方式では同じ評価形式のまま強いネットを学習できた場合でも配布のためにエンジンのセマンティックバージョニング（SemVer）の版数を上げる必要があり、コード変更と重み更新の周期が結びついてしまう。
 また、HalfKP_vmのネットは約500 MBに達し、今後もNNUEやAlphaZero型探索の大きなモデルファイルが増えていくため、ソースコード管理の場であるGitHubリリースへ重みを積み上げ続けるのは管理上も効率が悪い。
 
@@ -32,5 +32,5 @@ GitHubリリースにネット専用タグ（`net-*`）を設けて添付する�
 
 同じ評価形式のまま強いネットが得られたときに、`minase`クレートの版数を上げず、コードリポジトリにタグも増やさずにネット単体を公開できる。
 公開ファイル名に構造・規則・日付・ハッシュ先頭8桁を含めるため、単体で保存しても素性が分かり、既存のファイルが上書きされることもない。
-エンジンはファイル名ではなくファイル全体のSHA-256でネットを識別するため（[SHA-256による識別のADR](identify-nnue-networks-by-the-sha256-of-the-whole-file.md)）、公開名とNAS保管名が異なっても照合の契約は変わらない。
-アップロードには公式CLIの`hf upload`を使い、具体的なディレクトリ構成、モデルカードの記載項目、および公開手順は[リリースの手引き](../guides/release.md#評価ネットの公開手順hugging-face-hub)にある。
+エンジンはファイル名ではなくファイル全体のSHA-256でネットを識別するため（[SHA-256による識別のADR](../identify-nnue-networks-by-the-sha256-of-the-whole-file.md)）、公開名とNAS保管名が異なっても照合の契約は変わらない。
+アップロードには公式CLIの`hf upload`を使い、具体的なディレクトリ構成、モデルカードの記載項目、および公開手順は[リリースの手引き](../../guides/release.md#評価ネットの公開手順hugging-face-hub)にある。
