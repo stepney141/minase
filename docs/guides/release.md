@@ -174,36 +174,39 @@ cargo publish -p minase
 `<規則>` は学習・評価の規則セットを小文字で書く（`jcsa`、`lishogi` など）。
 
 NNUE の `<構造>` は、やねうら王の構造名に倣い、`[sfnn_]<特徴>_<片側の幅>x<第1隠れ層の出力数>x<第2隠れ層の出力数>[_psqt]` の形で書く。
-各部分は、重みファイルの先頭にある構造記述（`Features=P(Friend)[13680->256x2],PSQT=1,Network=…` の文字列）から次のように決まる。
+各部分は、重みファイルの先頭にある構造記述（`Features=A(Friend)[13680->256x2],PSQT=1,Network=…` の文字列）から次のように決まる。
 構造記述は `head -c 400 <ファイル> | strings | head -1` で表示できる。
 
 - `sfnn_` は、2視点の出力の要素ごとの積を後段へ渡す Stockfish 型のネット（SFNN）に付ける。tatara の LayerStack がこれに当たり、2視点の出力を連結する Simple には付けない。
-- `<特徴>` は `Features=` の後の名前を小文字にしたもので、P 型は `p`、HalfKP_vm は `halfkpvm` である。
+- `<特徴>` は `Features=` の後の名前を小文字にしたもので、A 型は `a`、HalfKP_vm は `halfkpvm` である。
 - `<片側の幅>` は、`Features=` の `[<入力の次元>-><片側の幅>x2]` で `->` の直後にある数であり、`[13680->256x2]` なら `256` である。
 - `<第1隠れ層の出力数>` と `<第2隠れ層の出力数>` は、`Network=` の式で入力側から1つ目と2つ目の `AffineTransform`（Simple の1つ目は `AffineTransformSparseInput`）の出力数である。SFNN の第1隠れ層の出力数は skip に回す1つを含む。やねうら王は同じ層を skip を除いた数で書き、たとえば出力数 16 の層を 15 と書くので、値が1だけ違う。
 - `_psqt` は、構造記述に `PSQT=1` があるネットに付ける。
 
 モデルリポジトリ内のパスは、次の形になる。
 
-- `nnue/p/minase-nnue-sfnn_p_<片側の幅>x<第1隠れ層の出力数>x<第2隠れ層の出力数>_psqt-<規則>-<YYYYMMDD>-<SHA256先頭8桁>.nnue`（P 型の NNUE、tatara LayerStack。片側の幅が 256 なら構造名は `sfnn_p_256x16x32_psqt`）
+- `nnue/a/minase-nnue-sfnn_a_<片側の幅>x<第1隠れ層の出力数>x<第2隠れ層の出力数>_psqt-<規則>-<YYYYMMDD>-<SHA256先頭8桁>.nnue`（A 型の NNUE、tatara LayerStack。片側の幅が 256 なら構造名は `sfnn_a_256x16x32_psqt`）
 - `nnue/halfkp-vm/minase-nnue-halfkpvm_<片側の幅>x<第1隠れ層の出力数>x<第2隠れ層の出力数>-<規則>-<YYYYMMDD>-<SHA256先頭8桁>.nnue`（HalfKP_vm の NNUE、Simple。片側の幅が 256 なら構造名は `halfkpvm_256x32x32`）
 - `zero/minase-zero-<構造>-<規則>-<YYYYMMDD>-<SHA256先頭8桁>.onnx`（AlphaZero 型探索の ONNX ネット。例: `minase-zero-b20c256-lishogi-20261116-9a0b1c2d.onnx`）
 - `README.md`（公開ネットの一覧と説明を載せるモデルカード）
 
-具体例は `nnue/p/minase-nnue-sfnn_p_256x16x32_psqt-lishogi-20261124-cbbccf6f.nnue` である。
+具体例は `nnue/a/minase-nnue-sfnn_a_256x16x32_psqt-lishogi-20261124-41502087.nnue` である。
 単体ファイルをダウンロードしてディレクトリ階層が外れても、ファイル名だけで構造、規則セット、作成日、および SHA-256 の先頭8桁を判別でき、同日に再学習しても末尾のハッシュで衝突しない。
 2026年11月25日より前は、NNUE の `<構造>` に入力特徴集合の種類だけを書き、`minase-nnue-p-<規則>-<YYYYMMDD>-<SHA256先頭8桁>.nnue` の名前で公開していた。
-この名前で公開した2本は、モデルリポジトリのコミット `01ccc6f471e9696a37acfb3a2ac753c0add15a39` で今の名前へ付け替えた。それより前のリビジョンを固定した URL は、古い名前のまま使える。
+この名前で公開した2本は、まずモデルリポジトリのコミット `01ccc6f471e9696a37acfb3a2ac753c0add15a39` で、`<構造>` に構造記述の詳細を入れた `sfnn_p_256x16x32_psqt` の名前へ付け替えた。それより前のリビジョンを固定した URL は、`minase-nnue-p-…` の名前のまま使える。
+同じ日に、入力特徴集合の名前を P 型から A 型へ改め、重みファイルの構造記述の名前も `P` から `A` へ変えた（[改名のADR](../adr/rename-the-p-type-input-features-to-a.md)）。
+構造記述の名前が `P` のネットは minase 3.0.0 までのエンジンだけが読むので、main の `nnue/p/` から外した。minase 3.0.0 用のネットは、リビジョン `01ccc6f471e9696a37acfb3a2ac753c0add15a39` の `nnue/p/` から取得できる。
+同じネットを名前 `A` へ変換したファイルは、モデルリポジトリのコミット `e10de30a70477a8c03d1fb951cdf664cef5c4ec1` から `nnue/a/` に置き、変換したファイルの SHA-256 で名前を付ける。`<YYYYMMDD>` は変換した日ではなく、変換前のネットを作った日とする。
 一方で NAS（`/mnt/synology_nas/minase/nnue/nets/` など）の内部保管名は、既存の測定記録や学習スクリプトとの互換性を保つため `<64桁SHA-256>.bin` のままとし、Hugging Face Hub へ公開する段階でこの命名規則へ変換する。
 エンジンはファイル名ではなくファイル全体のバイト列の SHA-256 を `info string network_sha256` として報告するため、公開名を変えても照合の仕組みは変わらない（[ファイル全体のSHA-256で識別するADR](../adr/identify-nnue-networks-by-the-sha256-of-the-whole-file.md)）。
-ダウンロード URL はコミットハッシュまたはモデルリポジトリ側のタグで固定できる（`https://huggingface.co/stepney141/minase-nets/resolve/<リビジョン>/nnue/p/minase-nnue-sfnn_p_256x16x32_psqt-<規則>-<YYYYMMDD>-<SHA256先頭8桁>.nnue`）。
+ダウンロード URL はコミットハッシュまたはモデルリポジトリ側のタグで固定できる（`https://huggingface.co/stepney141/minase-nets/resolve/<リビジョン>/nnue/a/minase-nnue-sfnn_a_256x16x32_psqt-<規則>-<YYYYMMDD>-<SHA256先頭8桁>.nnue`）。
 
 ### モデルカード（`README.md`）の記載項目
 
 新しいネットをアップロードしたら、モデルリポジトリの `README.md` の一覧表へ次の項目を追記する。
 
 - リポジトリ内のパスとファイル全体の SHA-256（64桁の16進数）
-- 評価形式と構造（例: tatara LayerStack P（`sfnn_p_256x16x32_psqt`）、Simple HalfKP_vm（`halfkpvm_256x32x32`）、Zero ONNX 20b256c）
+- 評価形式と構造（例: tatara LayerStack A（`sfnn_a_256x16x32_psqt`）、Simple HalfKP_vm（`halfkpvm_256x32x32`）、Zero ONNX 20b256c）
 - 対応する `minase` の版数範囲（例: `minase >= 3.0.0-alpha.1`）
 - 学習と評価に使った規則セット（例: `lishogi`）
 - PV-MCTS 用ネットの場合は対応する `NnCpPerLogit` の値
@@ -220,8 +223,8 @@ head -c 400 /mnt/synology_nas/minase/nnue/nets/<SHA-256>.bin | strings | head -1
 hf auth login
 hf upload stepney141/minase-nets \
   /mnt/synology_nas/minase/nnue/nets/<SHA-256>.bin \
-  nnue/p/minase-nnue-<構造>-<規則>-<YYYYMMDD>-<先頭8桁>.nnue \
-  --commit-message "Add NNUE P network (<YYYY-MM-DD>, <先頭8桁>)"
+  nnue/a/minase-nnue-<構造>-<規則>-<YYYYMMDD>-<先頭8桁>.nnue \
+  --commit-message "Add NNUE A network (<YYYY-MM-DD>, <先頭8桁>)"
 ```
 
 アップロード後に返されるコミット URL からリビジョンを確認し、モデルカード `README.md` を更新して同じ方法でアップロードする。

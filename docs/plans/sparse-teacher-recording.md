@@ -69,7 +69,7 @@
 - 基準の教師と候補の教師を混ぜた学習。
 - この方式で世代反復を続けること。
 - 先読み教師（同じ対局の後続の局面の探索値を混ぜる教師）との組み合わせ。NNUEの標準の教師は先読みを使わない（[ADR](../adr/train-the-nnue-on-search-value-teachers-with-the-squared-win-rate-difference.md)）。
-- 王の位置を使う入力HalfKP_vmのネットでの確認。本書は、世代反復と同じ、王の位置を使わない入力P型のネットだけを扱う。
+- 王の位置を使う入力HalfKP_vmのネットでの確認。本書は、世代反復と同じ、王の位置を使わない入力A型のネットだけを扱う。
 
 ## 依存関係
 
@@ -279,7 +279,7 @@ N本で目標に届かなければ、別の実行ディレクトリで、`--firs
 2. 実行ディレクトリに、世代反復の`calibration.json`を置く。スクリプトは、このファイルがあれば較正をやり直さず、同じK_tを使う。
 3. 候補の教師の生成ログの記録局面数の合計に0.95を掛けて訓練局面数の見積りMとし、1エポックの更新回数U＝ceil(M÷16,384)、検証の間隔B＝ceil(U÷2)を求める（ceilは整数への切り上げ。Bは1 superbatchの更新回数で、約0.5エポックにあたる）。学習率の減衰の期間の更新回数は、世代反復が第G世代の学習に実際に使った値とし、それをBで割った値を減衰の期間Tとして小数のまま渡し、S＝ceil(T)をsuperbatchの数の上限とする。式は[世代反復の設計書の「世代の手順」](archived/nnue-generation-iteration.md#世代の手順)と同じである。
 
-スクリプトには、`--commit`と`--ref`に生成用のコミットを、`--gen0-network`に第G−1世代のネットを渡し、`--first-generation 1 --last-generation 1`、`--books-per-generation <j+1>`、`--structure layerstack`（P型の学習器の指定）、`--replay-buffer-generations 1 --calibration-books 4`、および「設計判断」の「シード」の行にある3つのシードの引数を指定する。
+スクリプトには、`--commit`と`--ref`に生成用のコミットを、`--gen0-network`に第G−1世代のネットを渡し、`--first-generation 1 --last-generation 1`、`--books-per-generation <j+1>`、`--structure layerstack`（A型の学習器の指定）、`--replay-buffer-generations 1 --calibration-books 4`、および「設計判断」の「シード」の行にある3つのシードの引数を指定する。
 教師の照合のために、フェーズ3と同じ生成の引数（`--record-one-in 4 --cheap-nodes 4000`を含む）も渡す。
 学習の引数は、世代反復の第G世代と同じ`--batch 16384 --lambda 1.0 --validation-superbatches 1 --validation-patience 2 --device cuda --train-seed 1`と、上で求めた`--batches-per-superbatch <B> --superbatches <S> --lr-schedule cosine:<T>:0.027`とし、`--train-subsample`は渡さない。
 作業機で使う学習器と`minase`の実行ファイルには、生成用のコミットを固定したworktreeでビルドしたものを指定する。
@@ -342,7 +342,7 @@ STCとLTCのどちらでも、その時間制御で始めた測定でエンジ�
 
 ## 参考資料
 
-- [標準レシピv3でP型のNNUEの世代反復をやり直す設計書](archived/nnue-generation-iteration.md)
+- [標準レシピv3でA型のNNUEの世代反復をやり直す設計書](archived/nnue-generation-iteration.md)
 - [中将棋の評価関数で過学習が起きる条件の測定記録](../measurements/adhoc/tatara-p-generalization.md)
 - [第2世代の教師での対局数と局面数の比較](../measurements/nnue-generation-reset/nnue-generation-reset-gen2-diversity.md)
 - [対局単位と局面単位の間引きによるNNUEの学習の記録](../measurements/nnue-early-best-epoch/nnue-train-subsample.md)

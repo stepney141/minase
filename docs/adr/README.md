@@ -63,6 +63,7 @@ ADRは次の見出しを順に持つ。
 移したADRは本書の索引に「（置き換え済み）」の印をつけて残し、他の文書からのリンクは archive/ のパスへ直す。
 現行の決定だけが adr/ 直下に並ぶので、読者は置き換え済みの決定を現行と取り違えずに済む。
 誤字とリンク切れの修正だけは、この規則の例外とする。
+2026年11月25日に入力特徴集合の呼び名をP型からA型へ改めたときの用語の置き換え（[改名のADR](rename-the-p-type-input-features-to-a.md)）も、1回限りの例外とした。
 本文を後から追記して更新し続ける運用は、記述が時系列に積み重なって現在の決定が読み取れなくなるので採らない。
 
 ## 既存の設計書からの移行
@@ -95,6 +96,7 @@ PVノードは、窓の幅が1より大きく、最善の応手列である主�
 じっとは、獅子などが隣接升へ進んで同じ着手の中で元の升へ戻る非捕獲の着手であり、盤面を変えないが単なる手番の放棄ではない合法な1手である（[chu-shogi.md](../rules/chu-shogi.md)第3条第13項と第6条第4項）。
 規則コードは、L、P、R、またはEで始まる、ローカルルールを選ぶ記号であり、意味はchu-shogi.md第29条から第32条が定める。たとえばE1は、詰みでは終局せず最後の王駒が実際に取られるまで対局を続ける規則である。
 PSTは駒の種類と升ごとの値の表による評価、FMはFactorization Machineによる2駒の関係の補正であり、2026年10月12日にNNUE（差分更新できる小型のニューラルネットワーク）へ置き換わるまで、この2つが既定の評価関数を構成した。
+A型は、王の位置で条件付けず、盤上の全部の駒の駒状態と升の組と先獅子の対象升を入力にするNNUEの入力特徴集合である。2026年11月25日まではP型と呼んでいたが、文書の呼び名はすべてA型に書き換えた。それより前のコミットメッセージ、ブランチ名、文書のファイル名（`…-p-…`）、変換前のネットのヘッダ（`Features=P(Friend)`）、およびminase 3.0.0までのコード（`FeatureSet::P`）では、`P`がA型を指す（[改名のADR](rename-the-p-type-input-features-to-a.md)）。
 
 ## 索引
 
@@ -221,13 +223,13 @@ PSTは駒の種類と升ごとの値の表による評価、FMはFactorization M
 - 2026年10月10日 [捕獲履歴の寄与を歩兵価値の定数倍に抑え、静止探索の順序にも使う](archive/bound-capture-history-and-use-it-in-qsearch.md)（置き換え済み）
 - 2026年10月10日 [根の2手目以降を前回反復の部分木ノード数で並べる](order-root-moves-by-previous-subtree-nodes.md)
 - 2026年10月10日 [静かな手の順序を減点つきの重力式と線形経路の差分の同点破りで決める](archive/order-quiets-with-malus-and-pst-tiebreak.md)（置き換え済み）
-- 2026年10月12日 [NNUEの入力特徴集合に王の位置で条件付けないP型を使う](archive/use-p-type-input-features-for-the-nnue.md)（置き換え済み）
+- 2026年10月12日 [NNUEの入力特徴集合に王の位置で条件付けないA型を使う](archive/use-p-type-input-features-for-the-nnue.md)（置き換え済み）
 - 2026年10月12日 [NNUEの出力を、PSTを移した線形の経路と隠れ層のない直接内積の和にする](archive/compose-the-nnue-of-a-pst-path-and-a-direct-screlu-head.md)（置き換え済み）
 - 2026年10月12日 [NNUEの学習器は第1層の勾配をホストで作る逆索引から固定の順で足し、アトミック加算を使わない](backpropagate-the-first-layer-through-a-reverse-index.md)
 - 2026年10月12日 [NNUEの学習器をRustのホストとNVRTCで実行時にコンパイルするCUDA C++のカーネルで書く](write-trainer-kernels-in-cuda-cpp-via-nvrtc.md)
 - 2026年10月12日 [NNUEは探索値だけの先読み教師と二値交差エントロピーで学ぶ](archive/train-the-nnue-on-search-value-lookahead-teachers.md)（置き換え済み）
 - 2026年10月12日 [NNUEを入力特徴集合と出力部の型引数で組み立てる](archive/parameterize-the-nnue-by-feature-set-and-head-types.md)（置き換え済み）
-- 2026年10月12日 [P型のNNUEは左右鏡映の対で第1層の重みを半幅だけ回して共有する](archive/share-p-type-mirror-weights-by-half-width-rotation.md)（置き換え済み）
+- 2026年10月12日 [A型のNNUEは左右鏡映の対で第1層の重みを半幅だけ回して共有する](archive/share-p-type-mirror-weights-by-half-width-rotation.md)（置き換え済み）
 - 2026年10月12日 [`unsafe`は学習器のクレートだけに許し、エンジンとライブラリでは禁じ続ける](archive/allow-unsafe-only-in-the-trainer-crate.md)（置き換え済み）
 - 2026年10月12日 [学習器のAdamWはPyTorchと同じバイアス補正つきの式にする](use-pytorch-adamw-with-bias-correction.md)
 - 2026年10月12日 [探索が使う評価関数をNNUEの1つにし、PSTとFMのコードは比較用に残す](archive/use-nnue-as-the-only-search-evaluation.md)（置き換え済み）
@@ -434,9 +436,9 @@ PSTは駒の種類と升ごとの値の表による評価、FMはFactorization M
 - 2026年11月17日 [NNUEを入力特徴集合と出力部の型引数で組み立て、型の合わないネットのファイルは読み込みで拒否する](archive/parameterize-the-nnue-by-types-and-reject-mismatched-network-files-on-load.md)（置き換え済み）
 - 2026年11月17日 [NNUEの世代反復では、線形の経路を学習の後に対局結果で補正せず、学習したネットをgitの外に置いてそのまま次の世代に使う](archive/use-each-trained-nnue-uncorrected-and-outside-git-for-the-next-generation.md)（置き換え済み）
 - 2026年11月19日 [NNUEの入力特徴集合と構造を列挙型で表し、tataraの形式の重みのファイルの構造記述から構造を選ぶ](represent-nnue-feature-sets-and-structures-as-enums-and-select-the-structure-from-the-tatara-file.md)
-- 2026年11月19日 [NNUEの入力特徴集合にP型とHalfKP_vmを置き、HalfKP-hm-b8を削除する](provide-p-and-halfkp-vm-input-features-and-drop-halfkp-hm-b8.md)
-- 2026年11月19日 [P型をtataraのLayerStackにPSQTを足した構造で、HalfKP_vmを256x2-32-32のSimpleで組み、量子化をtataraにそろえる](compose-p-as-a-tatara-layerstack-with-a-psqt-and-halfkp-vm-as-a-simple-network.md)
-- 2026年11月19日 [P型のNNUEは左右鏡映の対で、第1層の重みを半幅だけ回して共有し、PSQTを同じ値にする](share-p-type-mirror-weights-in-the-first-layer-and-the-psqt.md)
+- 2026年11月19日 [NNUEの入力特徴集合にA型とHalfKP_vmを置き、HalfKP-hm-b8を削除する](provide-p-and-halfkp-vm-input-features-and-drop-halfkp-hm-b8.md)
+- 2026年11月19日 [A型をtataraのLayerStackにPSQTを足した構造で、HalfKP_vmを256x2-32-32のSimpleで組み、量子化をtataraにそろえる](compose-p-as-a-tatara-layerstack-with-a-psqt-and-halfkp-vm-as-a-simple-network.md)
+- 2026年11月19日 [A型のNNUEは左右鏡映の対で、第1層の重みを半幅だけ回して共有し、PSQTを同じ値にする](share-p-type-mirror-weights-in-the-first-layer-and-the-psqt.md)
 - 2026年11月19日 [探索は、EvalFileで読んだNNUEだけを使い、その構造を読み込みのときに選んで、評価器の列挙型で着手ごとに分岐する](search-with-an-evalfile-nnue-whose-structure-is-chosen-on-load.md)
 - 2026年11月19日 [探索用駒価値はv0の駒割から作る固定の表とし、エンジンと学習器で共有する](take-search-piece-values-from-the-v0-material-table.md)
 - 2026年11月19日 [NNUEの教師の勝率尺度K_tを学習器の必須の引数で渡し、ネットの出力の換算の尺度K_o＝8,128÷mと分ける](separate-the-nnue-teacher-win-rate-scale-from-the-output-scale.md)
@@ -449,3 +451,4 @@ PSTは駒の種類と升ごとの値の表による評価、FMはFactorization M
 - 2026年11月23日 [NNUEの学習は、エポックの最後に残る1バッチ未満の局面を、そのエポックでは学ばない](drop-the-tail-batch-of-each-nnue-training-epoch.md)
 - 2026年11月23日 [NNUEは約4エポックの学習の終わりまでに学習率を余弦減衰で下げきり、最後のネットを書き出して、検証損失は見張りに使う](train-the-nnue-for-four-epochs-decaying-the-learning-rate-to-the-end-and-export-the-last-network.md)
 - 2026年11月25日 [評価ネットをHugging Face Hubのモデルリポジトリへ置き、NNUEの公開名にやねうら王に倣った構造名を入れる](host-evaluation-networks-on-hugging-face-hub-and-name-them-by-structure.md)
+- 2026年11月25日 [王の位置で条件付けない入力特徴集合の名前をP型からA型へ改め、重みファイルの構造記述の名前も`A`にする](rename-the-p-type-input-features-to-a.md)

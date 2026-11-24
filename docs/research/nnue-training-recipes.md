@@ -22,7 +22,7 @@ Adam系の最適化器は1更新で各重みをおおむね学習率の大きさ
 λは教師値に占める探索値の割合であり、minaseの記法で統一する。
 tataraとbulletの`wdl`は対局結果の割合なので、λ = 1 − `wdl`である。
 群はパラメータの集まりごとに別の学習率を与える単位（parameter group）である。
-P型はminaseの入力特徴集合の1つで、駒と升の組だけを入力とする。
+A型はminaseの入力特徴集合の1つで、駒と升の組だけを入力とする。
 AdamWは重み減衰を勾配から分離したAdamであり、RangerはRAdamの更新に低速の重みへの補間（lookahead）を組み合わせた最適化器である。
 STCとLTCはそれぞれ短い持ち時間と長い持ち時間の対局の条件であり、SPRTとGSPRTは対局の勝敗から強さの差を逐次判定する検定である。
 `H1`は候補が有意に強いという判定、`H0`は有意に強いとは言えないという判定である。
@@ -207,7 +207,7 @@ minaseの`--train-subsample`は同じ部分集合を毎周使うので、同じ�
 | Stockfish（本番） | 因子化の層だけ4e-5（[threats.yaml 68行](https://github.com/vondele/nettest/blob/d0bacd0a2ac2cf8d37ed0839a6720bca53968c1f/threats.yaml#L68)） | 同上 | 同上 | 同上 | 有効（[47行](https://github.com/vondele/nettest/blob/d0bacd0a2ac2cf8d37ed0839a6720bca53968c1f/threats.yaml#L47)） | 同上 |
 | variant-nnue-pytorch | 0 | 未確認 | 出力に近い3つの層（[model.py 131〜135行](https://github.com/fairy-stockfish/variant-nnue-pytorch/blob/0536db20871d5d849402e1541c8a29722dc5a69d/model.py#L131-L135)） | なし | 既定の入力名による | 未確認 |
 | bullet | 0.01（[adam.rs 29行](https://github.com/jw1912/bullet/blob/5d70177680437b7c0ddf958bd4722d95afa78b0c/crates/trainer/src/optimiser/adam.rs#L29)） | 例にはない | ±1.98、層ごとに変える例あり | 例では丸めて保存するだけ | 例によって有効 | 例では正規分布（[main.rs 87行](https://github.com/jw1912/bullet/blob/5d70177680437b7c0ddf958bd4722d95afa78b0c/examples/advanced/main.rs#L87)） |
-| minase | 1e-4、線形の経路は0 | なし | あり（[model/mod.rs 569〜605行](../../crates/minase-trainer/src/nnue/model/mod.rs)） | なし。書き出し時に誤差を検査する | P型には意味がない（[tatara調査](tatara-nnue-transfer.md)） | 入力の次元Dに対して標準偏差√(1/(3D))の正規分布で、tataraとnnue-pytorchの一様分布と同じ分散（[記録](../measurements/nnue-architecture-revision/nnue-architecture-revision-init-training.md)） |
+| minase | 1e-4、線形の経路は0 | なし | あり（[model/mod.rs 569〜605行](../../crates/minase-trainer/src/nnue/model/mod.rs)） | なし。書き出し時に誤差を検査する | A型には意味がない（[tatara調査](tatara-nnue-transfer.md)） | 入力の次元Dに対して標準偏差√(1/(3D))の正規分布で、tataraとnnue-pytorchの一様分布と同じ分散（[記録](../measurements/nnue-architecture-revision/nnue-architecture-revision-init-training.md)） |
 
 ## 学習率の予定を周回数と更新回数へ直した比較
 
@@ -448,7 +448,7 @@ minaseの過去の記録には、λ<1で[対局の勝敗を覚える](../lessons
 - 固定局面数のエポックは当てはまらない。データが数千億局面ある学習の都合であり、minaseは全局面を毎周並べ替えるので周回数がそのまま読める。
 - BulletOuのエポックごとに学習率を戻す形は当てはまらない。第2世代のように2周で頭打ちになる条件で学習率を戻す根拠が見つからない。
 - λ<1とλの周期は扱わない。[設計書](../plans/archived/nnue-generation-reset.md)の2026年11月5日の決定により、第1世代のλ=0.75が第0世代に`H0`（得点率28.4%）だったことを受けて対象外とした。
-- 入力の因子化はP型には意味を持たない（[tatara調査](tatara-nnue-transfer.md)）。HalfKP-hm-b8用の仮想行は実装済みである。
+- 入力の因子化はA型には意味を持たない（[tatara調査](tatara-nnue-transfer.md)）。HalfKP-hm-b8用の仮想行は実装済みである。
 - Stockfishのlc0の評価による付け直しと、段ごとに別のデータを使う学習は、自分より強い評価器も別系統の教師データもないので当てはまらない（[調査](teacher-generation-strong-engines.md)）。
 - 既存のネットから続けて学ぶ追加学習は、世代のやり直しの方針と衝突する。`--base`は探索用駒価値と尺度だけを読み、毎世代初期化する（[設計書](../plans/archived/nnue-generation-reset.md)）。
 - Stockfishの本番の更新回数と総局面数は当てはまらない。同じ延べ局面数を1億局面で流すと約6,700周になる（推論）。

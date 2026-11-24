@@ -83,7 +83,7 @@ minaseは規則セットの既定値を持たないので、GUIや対局用の�
 ### isready
 
 αβ探索で起動したminaseは、`isready`でオプション`EvalFile`のファイルから評価関数NNUEのネットを読み込み、形式を検証する。
-ネットのファイルは将棋のNNUEの学習器tataraの形式であり、minaseはファイルの構造記述から、P型の入力のLayerStackか、HalfKP_vmの入力のSimpleかを選ぶ（[形式のADR](../adr/represent-nnue-feature-sets-and-structures-as-enums-and-select-the-structure-from-the-tatara-file.md)）。
+ネットのファイルは将棋のNNUEの学習器tataraの形式であり、minaseはファイルの構造記述から、A型の入力のLayerStackか、HalfKP_vmの入力のSimpleかを選ぶ（[形式のADR](../adr/represent-nnue-feature-sets-and-structures-as-enums-and-select-the-structure-from-the-tatara-file.md)）。
 minaseはネットを実行ファイルに埋め込まず、既定のネットも持たない（[ADR](../adr/search-with-an-evalfile-nnue-whose-structure-is-chosen-on-load.md)）。
 `EvalFile`が未設定なら`info string error: required option EvalFile is not set`を出し、`readyok`を返さずに終了コード1で終わる。
 ファイルを読めない場合は`info string error: failed to read NNUE network file '<パス>': <原因>`、形式の検証に通らない場合は`info string error: invalid NNUE network file '<パス>': <原因>`を出して、同じく終了する。
@@ -294,7 +294,7 @@ eval
 ネットが準備されていなければ`info string error: eval requires isready`を返す。
 各行に`info string`を付け、最後の行を`info string end`とする。
 
-P型のLayerStackのネットでは、次の行を出す。
+A型のLayerStackのネットでは、次の行を出す。
 PSQT（駒と升ごとの点数の表）の升ごとの寄与は、その升の駒の手番側の視点の値から相手側の視点の値を引いた整数であり、12行12列の表で示す。
 
 ```text

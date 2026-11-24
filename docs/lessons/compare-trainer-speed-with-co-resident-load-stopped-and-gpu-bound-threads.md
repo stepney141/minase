@@ -2,7 +2,7 @@
 
 ## 症状
 
-P型のLayerStackの学習器で、第1層の勾配の区分内の和をf32にした版とf64にした版の実学習の速さを比べた。
+A型のLayerStackの学習器で、第1層の勾配の区分内の和をf32にした版とf64にした版の実学習の速さを比べた。
 `--threads 4`で版の順序を入れ替えて1組ずつ計2組測ると、GPUの1回の更新が3.6 ms短いはずのf32版が、2組ともf64版より5〜9%遅く出た。
 同じ機械で動いていたlishogiのBotを止めて測り直すと、`--threads 4`では2つの版は同じ速さ（f32版÷f64版の比0.998）で、`--threads 16`ではf32版が17%速かった。
 
@@ -21,5 +21,5 @@ Botが対局に応じて最大約8コアを使い、それが2組ともf32版の
 
 ## 出典
 
-- [P型LayerStackの学習器の逆伝播を速くする修正の測定](../measurements/adhoc/layerstack-backward-coalesce.md)
+- [A型LayerStackの学習器の逆伝播を速くする修正の測定](../measurements/adhoc/layerstack-backward-coalesce.md)
 - [対局と並行する処理はメモリの上限を課したサービスで動かす](cap-memory-of-work-beside-a-running-match.md)

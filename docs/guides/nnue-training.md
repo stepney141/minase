@@ -2,7 +2,7 @@
 
 本書は、中将棋エンジンminaseの評価関数NNUE（差分更新可能なニューラルネットワーク）を、学習器`minase-trainer`で学習、検査、診断するための標準レシピ、手順、オプションを定める。
 学習器は、将棋のNNUEの学習器tataraに倣い、ネットの構造ごとにサブコマンドを分けている。
-`nnue train layerstack`は、王の位置を使わない入力特徴集合P型を、第1層の出力どうしの積と2段の隠れ層を持つtataraのLayerStackで学ぶ。
+`nnue train layerstack`は、王の位置を使わない入力特徴集合A型を、第1層の出力どうしの積と2段の隠れ層を持つtataraのLayerStackで学ぶ。
 `nnue train simple`は、自玉の升ごとに別の重みを引く入力特徴集合HalfKP_vmを、両視点の第1層の出力を連結して隠れ層へ通すtataraのSimpleで学ぶ。
 2つのサブコマンドは同じ引数をとり、学習したネットをtataraの形式で書き出す。
 ネットの構造と計算式は[NNUEの評価関数の手引き](evaluation-nnue.md)に、設計判断の記録（ADR、architecture decision record）は`docs/adr/`にある。
@@ -29,10 +29,10 @@
 
 標準レシピv4では、教師を対局単位で訓練用と検証用に分け、訓練用の局面を約4エポック学ぶ。学習率は、学習の終わりまでに初期値の0.027倍まで余弦の形で下げ、学び終えた最後の重みを棋力測定に送る。
 検証用の対局は、重みを選ぶためではなく、最後の重みが悪化していないかを見張るために使う。
-v3までは、検証損失が2回続けて最小値を更新しなければ止めて、最小だった時点の重みを使っていた。この方式では、学習率がほとんど下がらないうちに学習が止まり、止まる時点が検証損失の揺れで決まっていた（[診断の測定](../measurements/adhoc/nnue-early-stop-diagnosis.md)）。進行中の[P型の世代反復](../plans/archived/nnue-generation-iteration.md)の第1世代の教師43本を使った比較では、v4の条件で学んだネットが、v3の条件で学んだネットに対して、短時間の対局の逐次検定で`H1`（候補が有意に強いという判定）を取り、+21.0 Elo（95%信頼区間+6.6〜+35.5）だった（[判定の記録](../measurements/nnue-decay-to-end/nnue-decay-to-end-gen1-stc.md)、[ADR](../adr/train-the-nnue-for-four-epochs-decaying-the-learning-rate-to-the-end-and-export-the-last-network.md)）。
-一方、同じ教師を長く学び続けると弱くなる。P型を同じ教師ファイル30本で学習したところ、2.83エポック以降は訓練損失が下がり続けても検証損失は悪化し、8.02エポックのネットは2.83エポックのネットに対局で負けた（[測定記録](../measurements/adhoc/tatara-p-generalization.md)）。学習の長さは約4エポックより延ばさない。
+v3までは、検証損失が2回続けて最小値を更新しなければ止めて、最小だった時点の重みを使っていた。この方式では、学習率がほとんど下がらないうちに学習が止まり、止まる時点が検証損失の揺れで決まっていた（[診断の測定](../measurements/adhoc/nnue-early-stop-diagnosis.md)）。[A型の世代反復](../plans/archived/nnue-generation-iteration.md)の第1世代の教師43本を使った比較では、v4の条件で学んだネットが、v3の条件で学んだネットに対して、短時間の対局の逐次検定で`H1`（候補が有意に強いという判定）を取り、+21.0 Elo（95%信頼区間+6.6〜+35.5）だった（[判定の記録](../measurements/nnue-decay-to-end/nnue-decay-to-end-gen1-stc.md)、[ADR](../adr/train-the-nnue-for-four-epochs-decaying-the-learning-rate-to-the-end-and-export-the-last-network.md)）。
+一方、同じ教師を長く学び続けると弱くなる。A型を同じ教師ファイル30本で学習したところ、2.83エポック以降は訓練損失が下がり続けても検証損失は悪化し、8.02エポックのネットは2.83エポックのネットに対局で負けた（[測定記録](../measurements/adhoc/tatara-p-generalization.md)）。学習の長さは約4エポックより延ばさない。
 
-学ぶネットは、P型の入力を受けるLayerStackに、駒と升ごとの点数を足す表PSQT（piece-square table）を並べた構造である。
+学ぶネットは、A型の入力を受けるLayerStackに、駒と升ごとの点数を足す表PSQT（piece-square table）を並べた構造である。
 第1層の幅は256であり、LayerStackの後段とPSQTはどちらも、局面の進行度などに応じて重みの組を切り替える区分を1つだけ持つ。
 構造を選んだ理由は[構造のADR](../adr/compose-p-as-a-tatara-layerstack-with-a-psqt-and-halfkp-vm-as-a-simple-network.md)にある。
 
@@ -69,7 +69,7 @@ minase-trainer diag nnue-removal \
 - 学習で出力された`nnue.bin`については、ファイル全体のSHA-256を求め、NASの`/mnt/synology_nas/minase/nnue/nets/`に`<SHA-256の16進数>.bin`の名前で置く。エンジンには、オプション`EvalFile`でこのファイルを渡す。gitにはコミットしない。
 - 上のコマンド例では、診断は駒除去差分だけを示した。採否の測定の前に、[残りの2つの診断](#学習した重みを診断する)も行う。
 
-HalfKP_vmのネットは、`nnue train layerstack`を`nnue train simple`に替え、同じ引数で学ぶ。約4エポックという学習の長さはP型で測って決めた値であり、HalfKP_vmでは測っていない。
+HalfKP_vmのネットは、`nnue train layerstack`を`nnue train simple`に替え、同じ引数で学ぶ。約4エポックという学習の長さはA型で測って決めた値であり、HalfKP_vmでは測っていない。
 HalfKP_vmは、自陣の王将の升（王将がなければ太子の升）に応じて第1層の行を選び、両陣営の王将を入力の駒から除いて、太子は駒として含める。
 Simpleは、両視点の幅256の第1層の出力を連結した512成分を、幅32、幅32、出力1の層へ通す構造（256x2-32-32）である。
 学習器は、tataraの特徴分解と同じく、学習の間だけ王の位置によらない13,392行の仮想行を第1層に足し、書き出しのときに実の行へ畳み込む。
@@ -108,14 +108,14 @@ HalfKP_vmをバッチ16,384局面で学ぶと、学習器がGPUに確保する�
 **初期値**
 
 - 学習器は前の世代のネットを読まず、重みを毎回`--seed`の乱数から初期化する。
-- LayerStackのPSQTはP型の入力特徴ごとに1行を持ち、手書きの評価関数v0の駒割を、出力の換算の尺度K_o（後述）で割った値から始める。そのうち王駒の行と、先獅子の対象の升を表す行は0とする。王駒は王将と太子であり、先獅子は獅子の取り合いを制限する中将棋の規則である。その他の初期化の分布は[引数で変えられない固定値](#引数で変えられない固定値)にある。
+- LayerStackのPSQTはA型の入力特徴ごとに1行を持ち、手書きの評価関数v0の駒割を、出力の換算の尺度K_o（後述）で割った値から始める。そのうち王駒の行と、先獅子の対象の升を表す行は0とする。王駒は王将と太子であり、先獅子は獅子の取り合いを制限する中将棋の規則である。その他の初期化の分布は[引数で変えられない固定値](#引数で変えられない固定値)にある。
 - 第1世代の教師は、v0を表したネット（以下、v0のネット）を`EvalFile`で渡したエンジンで生成する。v0のネットは次のコマンドで書き出す。
 
 ```sh
 minase-trainer nnue export-handcrafted --output <新規のパス>
 ```
 
-- v0のネットはP型のLayerStackであり、第1層と後段の重みとバイアスがすべて0で、PSQTにv0の駒割と位置評価を持つ。後段の寄与がないので、このネットを`EvalFile`で渡すと、探索はv0の評価で動く。
+- v0のネットはA型のLayerStackであり、第1層と後段の重みとバイアスがすべて0で、PSQTにv0の駒割と位置評価を持つ。後段の寄与がないので、このネットを`EvalFile`で渡すと、探索はv0の評価で動く。
 - 書き出しには勝率尺度の引数がなく、整数の出力をcpへ換算する除数`fv_scale`は1に固定する。K_tはv0のネットが生成した教師から求めるので書き出しの時点では決まっておらず、後段を持たないこのネットは除数を1にしてもv0の評価値を正確に再現するからである。
 - コマンドは既存のパスを拒否し、書き出した後に読み直して検査してから、パス、`fv_scale`、およびファイル全体のSHA-256を1行ずつ標準出力へ書く。
 
@@ -339,7 +339,7 @@ systemd-run --user --unit=<サービス名> --setenv=PATH="$PATH" -p WorkingDire
 引数の一覧は`python3 scripts/vast/nnue/generation_chain.py run --help`で確かめ、標準レシピv4では、上記のB、`--superbatches 8`、および`--lr-schedule cosine:8:0.027`を渡し、`--validation-patience`を渡さない。1回の実行で指定できるBは1つなので、教師量が変わる場合は世代ごとに計算して実行する。世代反復での求め方は、[世代反復の設計書](../plans/archived/nnue-generation-iteration.md#世代の手順)にある。
 標準レシピに関わる引数と動作は次のとおりである。
 
-- `--structure layerstack`はP型の学習器を、`--structure simple`はHalfKP_vmの学習器を選ぶ。
+- `--structure layerstack`はA型の学習器を、`--structure simple`はHalfKP_vmの学習器を選ぶ。
 - `--gen0-network`には、`nnue export-handcrafted`で書き出したv0のネットを渡す。スクリプトは、このネットを第0世代のネットとして`gen-0/generation.json`に記録する。
 - 第1世代の教師が`--calibration-books`の本数だけそろうと、スクリプトは番号の小さいほうからその本数の教師で`data calibrate`を実行し、結果を実行ディレクトリの`calibration.json`に置く。第1世代の最初の4本からK_tを求める標準の手順では、`--calibration-books`に4を渡す。
 - スクリプトは、較正の結果の`teacher_cp_per_logit`をK_tとして`gen-0/generation.json`に書き、以後の世代の記録にも同じ値を書く。`classes`が1項目でないか、`at_search_bound`が`true`なら止まる。
@@ -548,7 +548,7 @@ LayerStackの値は`nnue/layerstack/`に、Simpleの値は`nnue/simple/`にあ�
 |---|---|---|
 | AdamWの係数 | β1=0.9、β2=0.999、ε=1e-8 | `nn/adam.rs` |
 | 第1層の幅 | 256 | 各構造の`model.rs`の`H` |
-| 初期値（LayerStack） | 第1層の重みは±√(1/13,680)の一様分布であり、13,680はP型の入力特徴の数である。後段の重みは±0.01の一様分布、バイアスは0とする。PSQTはv0の駒割をK_oで割った値とし、王駒と先獅子の行は0とする | `nnue/layerstack/model.rs` |
+| 初期値（LayerStack） | 第1層の重みは±√(1/13,680)の一様分布であり、13,680はA型の入力特徴の数である。後段の重みは±0.01の一様分布、バイアスは0とする。PSQTはv0の駒割をK_oで割った値とし、王駒と先獅子の行は0とする | `nnue/layerstack/model.rs` |
 | 初期値（Simple） | 第1層を含む全ての重みとバイアスは±0.01の一様分布、特徴分解の仮想行は0 | `nnue/simple/model.rs` |
 | 更新後の切り詰め（第1層） | LayerStackは重みとバイアスを±224/127。Simpleは実の行と仮想行の重みをそれぞれ±112/127、バイアスを±224/127 | 各構造の`model.rs`の`Parameter::limit` |
 | 更新後の切り詰め（後段） | LayerStackの幅16の層の重みは区分ごとの組と共有の組をそれぞれ±127/128。それ以外の後段の重みと、出力のバイアスを除く後段のバイアスを±127/64。出力のバイアスとPSQTは切り詰めない | 各構造の`model.rs`の`Parameter::limit` |
@@ -565,7 +565,7 @@ LayerStackの値は`nnue/layerstack/`に、Simpleの値は`nnue/simple/`にあ�
 | 教師の量 | 第n世代は1億局面に相当する本数k（2026年11月の世代反復では43）のn倍のファイル、1ファイル7,500局、1手2万ノード | 第2世代の教師では、37ファイルが、その半分に対してSTCで`H1`（得点率63.2%）で、まだ頭打ちではない（[記録](../measurements/nnue-generation-reset/nnue-generation-reset-gen2-volume.md)）。自己生成で育てたSaplingとAstraは、世代を追って1世代の量を増やした（[調査の付録](../research/teacher-generation-strong-engines/zero-chess-and-variants.md)）。局面数をそろえると対局の多い教師が`H1`（得点率56.5%）なので、量は対局数で定める（[記録](../measurements/nnue-generation-reset/nnue-generation-reset-gen2-diversity.md)） |
 | リプレイバッファ | その世代の教師だけで学ぶ | 直前の世代の教師を併用した学習はSTCで`H0`（[記録](../measurements/nnue-standard-recipe/nnue-standard-recipe-window-stc.md)） |
 | λ | 1.0 | 終盤に勝敗を25%混ぜると勝敗の予測誤差は小さくなったが、直接対局で棋力の改善は確認できなかった。[終盤の比較](../measurements/adhoc/tatara-p-generalization.md#終盤に勝敗を混ぜた効果) |
-| 構成 | P型のLayerStack（第1層の幅256、後段の区分1つ）に、区分1つのPSQTを並べた構造 | 2026年11月15日にエンジンの開発者が、P型もtataraの枠組みへ載せ替え、重みをtataraの形式にすると決めた（[ADR](../adr/compose-p-as-a-tatara-layerstack-with-a-psqt-and-halfkp-vm-as-a-simple-network.md)） |
+| 構成 | A型のLayerStack（第1層の幅256、後段の区分1つ）に、区分1つのPSQTを並べた構造 | 2026年11月15日にエンジンの開発者が、A型もtataraの枠組みへ載せ替え、重みをtataraの形式にすると決めた（[ADR](../adr/compose-p-as-a-tatara-layerstack-with-a-psqt-and-halfkp-vm-as-a-simple-network.md)） |
 | 最適化手法 | AdamW（β1=0.9、β2=0.999、ε=1e-8） | Stockfishの本番と同じ値（[調査メモ](../research/nnue-training-recipes.md)） |
 | 基準の学習率 | `ft`群と`head`群をどちらも0.001 | 0.001は先行の初期値の範囲内。PSQTはtataraと同じく第1層と同じ`ft`群に入れ、第1層の学習率を使う。載せ替える前の構造が持っていた線形の経路（駒と升ごとの点数を駒数で序盤と終盤の間で補間する部分）の学習率0.03はcp単位の値であり、ネットの出力の単位で表すPSQTへはそのまま移せない。理由の詳細は[ADR](../adr/compose-p-as-a-tatara-layerstack-with-a-psqt-and-halfkp-vm-as-a-simple-network.md)にある |
 | 学習の長さ | 8 superbatch（約4エポック）。 | 検証損失の最小は、訓練局面が2,370万〜2億600万の学習で1.5〜2.7エポックにあり、更新回数よりエポック数のほうが一定に近い。学習率を4エポックで下げきった学習の検証損失は、3.0エポックで最小になり、2.67エポックから4.0エポックまで横ばいだった（[診断の測定](../measurements/adhoc/nnue-early-stop-diagnosis.md)）。長く学び続けると検証損失と棋力が悪化するので（[測定記録](../measurements/adhoc/tatara-p-generalization.md)）、これより延ばさない。 |

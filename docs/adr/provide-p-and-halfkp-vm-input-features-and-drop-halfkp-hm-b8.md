@@ -1,14 +1,14 @@
-# NNUEの入力特徴集合にP型とHalfKP_vmを置き、HalfKP-hm-b8を削除する
+# NNUEの入力特徴集合にA型とHalfKP_vmを置き、HalfKP-hm-b8を削除する
 
 ## ステータス
 
-承認済み。決定日は2026年11月19日。[NNUEの入力特徴集合に王の位置で条件付けないP型を使う](archive/use-p-type-input-features-for-the-nnue.md)を置き換える。
+承認済み。決定日は2026年11月19日。[NNUEの入力特徴集合に王の位置で条件付けないA型を使う](archive/use-p-type-input-features-for-the-nnue.md)を置き換える。
 
 ## コンテキスト
 
 基底特徴は、47種類の駒状態と2陣営と144升の組の13,536個に、先獅子（獅子の取り合いを制限する中将棋の規則）の対象升144個を加えた13,680個の特徴である。
-P型は基底特徴をそのまま入力にし、HalfKP-hm-b8は自陣の王将（なければ太子）の位置を8区分にまとめて区分ごとに別の行を引く。
-[以前の決定](archive/use-p-type-input-features-for-the-nnue.md)は、HalfKP-hm-b8がP型にSTCで2回大差で負けたので（[1回目](../measurements/nnue-replacement/nnue-replacement-features-stc.md)、[2回目](../measurements/nnue-early-best-epoch/halfkp-retrain-stc.md)）、P型を使い、HalfKP-hm-b8を再比較のために残すとした。
+A型は基底特徴をそのまま入力にし、HalfKP-hm-b8は自陣の王将（なければ太子）の位置を8区分にまとめて区分ごとに別の行を引く。
+[以前の決定](archive/use-p-type-input-features-for-the-nnue.md)は、HalfKP-hm-b8がA型にSTCで2回大差で負けたので（[1回目](../measurements/nnue-replacement/nnue-replacement-features-stc.md)、[2回目](../measurements/nnue-early-best-epoch/halfkp-retrain-stc.md)）、A型を使い、HalfKP-hm-b8を再比較のために残すとした。
 2回とも、第1層の幅128、隠れ層のない出力部、および約30本の教師ファイルという条件だった。
 
 エンジンの開発者は2026年11月15日に、大敗の原因を8区分という独自の区分、隠れ層がないこと、および教師の少なさと見た。
@@ -18,7 +18,7 @@ P型は基底特徴をそのまま入力にし、HalfKP-hm-b8は自陣の王将�
 
 ## 決定
 
-入力特徴集合はP型とHalfKP_vmの2つとし、世代反復はP型から行う。
+入力特徴集合はA型とHalfKP_vmの2つとし、世代反復はA型から行う。
 HalfKP_vmは、両陣営の王将だけを入力の駒から除いて太子を含め、基底特徴を2陣営×46駒状態×144升＋先獅子の144升＝13,392個とする。
 基準の王駒は自陣の王将、なければ太子とし、0から数えたその筋の番号が6未満なら盤全体を左右鏡映して、自玉の升を72区分にまとめ、入力の行を72×13,392＝964,224行とする。
 視点の文脈は区分の番号と鏡映の有無の組であり、文脈が変わった視点だけ第1層を全再計算する。
@@ -38,5 +38,5 @@ HalfKP-hm-b8を残す案は、HalfKP_vmが王の位置で条件付ける入力�
 王駒が1枚もない視点と、基準の王駒が2枚以上ある視点は静的評価できないので、HalfKP_vmの探索は根で検査する（[探索のADR](search-with-an-evalfile-nnue-whose-structure-is-chosen-on-load.md)）。
 教師のうち探索値を持つ学習の対象の局面で、基準の王駒が一意でなければ、学習器はエラーで止まる。
 HalfKP_vmの第1層は幅256で約494 MBになり、ネットはファイル全体のSHA-256で識別して外部に置く。
-HalfKP_vmが中将棋で効くかは本決定では確かめておらず、P型の世代反復の後に起案するHalfKP_vmの世代反復で確かめる。
+HalfKP_vmが中将棋で効くかは本決定では確かめておらず、A型の世代反復の後に起案するHalfKP_vmの世代反復で確かめる。
 その比較は入力、後段、および教師の量を同時に変えるので、3つの原因のどれが効いたかは切り分けない。

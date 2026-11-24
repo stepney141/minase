@@ -71,13 +71,13 @@
 
 着手を妨げる未完了の計画はない。
 完了済みの[ネットの外部ファイル化](archived/nnue-external-network-file.md)により、`bench`の前には、USIのオプション`RuleSet`（規則セット）と`EvalFile`（ネットのファイル）を設定して`isready`を送る。
-ネットは、[NNUEの評価関数の手引き](../guides/evaluation-nnue.md)が探索の測定の標準とする、王の位置を使わない入力（P型）のネットを使う。
+ネットは、[NNUEの評価関数の手引き](../guides/evaluation-nnue.md)が探索の測定の標準とする、王の位置を使わない入力（A型）のネットを使う。
 `bench`の規則セットは日本中将棋連盟の規則に基づく`JCSA`に、教師生成の規則セットはオンライン対局サイトlishogiの実装に近い`lishogi`に固定されている。
 
 利きの逆引きの契約は[棋力向上段階3](archived/strength-stage3.md)が、探索専用の捕獲生成の契約は[捕獲生成のADR](../adr/generate-qsearch-captures-by-value-group-per-piece.md)が、静止探索の候補から除く獅子の手の定義は[静止探索の入口のADR](../adr/probe-the-tt-before-the-qsearch-stand-pat-and-blend-fail-highs-toward-beta.md)が定める。
 本マイルストーンはこれらの契約を変えない。
 
-[P型の世代反復](archived/nnue-generation-iteration.md)は、ネットの自己対局で教師を作り、その教師で次のネットを学ぶことを繰り返す計画であり、全世代の教師の生成、学習、および判定に同じコミットを使う。
+[A型の世代反復](archived/nnue-generation-iteration.md)は、ネットの自己対局で教師を作り、その教師で次のネットを学ぶことを繰り返す計画であり、全世代の教師の生成、学習、および判定に同じコミットを使う。
 そのため、本書の変更がmasterへ入っても、進行中の世代反復の速さと結果は変わらない。
 本書の高速化が教師生成に効くのは、次に生成のコミットを決める計画からである。
 

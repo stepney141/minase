@@ -44,7 +44,7 @@ ryzen0ではGitHubから`31c2a46`をcloneして`cargo build --release --locked -
 |---|---|---|
 | 既定値のビット一致 | 1本目の教師データ（`generated-7100000.bin`）で、着手時のmaster `31c2a46`の学習器と変更後の学習器を、スケジュールと間隔の既定値、幅128、先読み教師（γ=0.9、n=40）、バッチ16,384、シード1、1エポック、`--threads 4`で学習し、`nnue.bin`のSHA-256と`training.jsonl`の損失欄を比較。変更後の学習器では`--validation-interval 50`を付けた3条件目も学習 | 3条件とも`nnue.bin`のSHA-256が`5e22b452…`で一致。エポック0の検証損失0.4434798238638906、エポック1の訓練損失0.4501682563548211、検証損失0.438854971494723、符号一致率0.7356848539079357がすべて一致 |
 | 倍率の式 | `schedule.rs`の単体テスト（解析と表示の往復、不正な入力の拒否、t = 0、半減期、総長、下限に達した後の値、`validate`の境界） | 通過 |
-| GPUとCPU参照の等価性（倍率つき） | `gpu_step_matches_parallel_cpu_with_mixed_targets_and_custom_coefficients`を倍率1.0と0.37で実行。`minase-trainer nnue check-equivalence`を両方の型、幅6（バッチ100）と幅128（バッチ4,096）で実行 | 通過。CLIは4条件とも「一致」（最大絶対誤差はP型幅128で1.144×10⁻⁵、HalfKP-hm-b8幅128で4.843×10⁻⁶、許容誤差`1e-6+1e-5×|CPU|`以内） |
+| GPUとCPU参照の等価性（倍率つき） | `gpu_step_matches_parallel_cpu_with_mixed_targets_and_custom_coefficients`を倍率1.0と0.37で実行。`minase-trainer nnue check-equivalence`を両方の型、幅6（バッチ100）と幅128（バッチ4,096）で実行 | 通過。CLIは4条件とも「一致」（最大絶対誤差はA型幅128で1.144×10⁻⁵、HalfKP-hm-b8幅128で4.843×10⁻⁶、許容誤差`1e-6+1e-5×|CPU|`以内） |
 | 指数減衰の再開 | `--lr-schedule exponential:1:0.1`で、2エポック連続で学習した場合と1エポックで中断して再開した場合（CPU、合成データ）の`latest.npz`の重み、AdamWの状態、更新回数、および`nnue.bin`を比較。`training.jsonl`の倍率の欄も式と比較 | ビット単位で一致 |
 | 途中の検証の再開 | 1エポック後に`validation-interval.jsonl`へチェックポイントより後の行を模擬的に追記して再開し、行の切り詰めと再開後の`nnue.bin`の一致を検査（CPU、合成データ） | 通過 |
 | 再開時の学習率スケジュールの変更の拒否 | `--lr-schedule`を変えて`--resume` | `checkpoint settings mismatch`で拒否 |

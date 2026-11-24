@@ -140,7 +140,7 @@
 | NNUEに隠れ層を加えて第1層を広げ、整数化の精度を上げる | [plans/archived/nnue-architecture-revision.md](plans/archived/nnue-architecture-revision.md) | 完了（一部不採用） | 2026年11月4日 |
 | NNUE教師生成を探索結果を変えずに速くする | [plans/archived/teacher-generation-speedup.md](plans/archived/teacher-generation-speedup.md) | 完了 | 2026年11月6日 |
 | NNUEの標準レシピv1と、学習器および教師の生成器の変更 | [plans/archived/nnue-standard-recipe.md](plans/archived/nnue-standard-recipe.md) | 完了（採用） | 2026年11月15日 |
-| 標準レシピv3でのP型のNNUEの世代反復のやり直し | [plans/archived/nnue-generation-iteration.md](plans/archived/nnue-generation-iteration.md) | 中断 | 2026年11月25日 |
+| 標準レシピv3でのA型のNNUEの世代反復のやり直し | [plans/archived/nnue-generation-iteration.md](plans/archived/nnue-generation-iteration.md) | 中断 | 2026年11月25日 |
 | NNUEの学習で端数バッチを捨て、学習率を学習の終わりまでに下げきる | [plans/archived/nnue-decay-to-end.md](plans/archived/nnue-decay-to-end.md) | 完了（採用） | 2026年11月23日 |
 | NNUEの学習機としてColab機も選べるようにする | [plans/nnue-training-on-colab.md](plans/nnue-training-on-colab.md) | 起案 | |
 | MCTSの葉での王駒の捕獲の判定と方策の温度 | [plans/archived/mcts-royal-capture-temperature.md](plans/archived/mcts-royal-capture-temperature.md) | 完了（採用） | 2026年11月9日 |
@@ -164,13 +164,13 @@ NNUEは、着手ごとに差分で更新できる小さなニューラルネッ�
 以下では、ニューラルネットを単にネットと呼ぶ。
 世代反復は、あるネットの自己対局で教師を作り、その教師で次のネットを学習させることの繰り返しである。
 教師は、自己対局の局面に、その局面の探索値と対局結果を付けた学習データであり、学習の目標とする値を教師値と呼ぶ。
-NNUEの作業は、まずNNUEの実装を直して、自玉の升ごとに別の重みを引く入力HalfKP_vmをいつでも使える状態にし、その後に、手書きの評価関数v0から王の位置を使わない入力P型の世代反復をやり直す順で進めてきた（2026年11月15日の利用者の決定）。
+NNUEの作業は、まずNNUEの実装を直して、自玉の升ごとに別の重みを引く入力HalfKP_vmをいつでも使える状態にし、その後に、手書きの評価関数v0から王の位置を使わない入力A型の世代反復をやり直す順で進めてきた（2026年11月15日の利用者の決定）。
 自己対局と世代ごとの強さの判定は、オンライン対局サイトlishogiの実装に近い規則セット`lishogi`で行う（[ADR](adr/play-self-play-and-judge-trained-networks-under-the-lishogi-rule-set.md)）。
 
-P型の世代反復（[設計書](plans/archived/nnue-generation-iteration.md)）は、2026年11月25日に、利用者の決定により第3世代で中断して閉じた。
+A型の世代反復（[設計書](plans/archived/nnue-generation-iteration.md)）は、2026年11月25日に、利用者の決定により第3世代で中断して閉じた。
 第3世代のネットは、探索の測定に使う標準のネットになり（[NNUEの評価関数の手引き](guides/evaluation-nnue.md)）、minase 3.0.0のリリースに合わせてHugging Face Hubで公開した。世代ごとの結果は[系列のページ](training/nnue-generation-iteration/README.md)にある。
 ネットはgitに入れず、USIのオプション`EvalFile`で外部のファイルから読む（[ネットの外部ファイル化](plans/archived/nnue-external-network-file.md)）。
-P型はtataraのLayerStackに載っており、HalfKP_vmもエンジン、学習器、および教師生成でいつでも使える状態にある（[tatara化とHalfKP_vm](plans/archived/nnue-tatara-framework-and-halfkp-vm.md)）。
+A型はtataraのLayerStackに載っており、HalfKP_vmもエンジン、学習器、および教師生成でいつでも使える状態にある（[tatara化とHalfKP_vm](plans/archived/nnue-tatara-framework-and-halfkp-vm.md)）。
 世代反復を再び行うときと、HalfKP_vmの世代反復を行うときは、別の設計書として起案する。
 学習は、[端数バッチの修正と学習率の下げきり](plans/archived/nnue-decay-to-end.md)が定めた標準レシピv4（端数バッチを捨てる学習器で約4エポックを学び、学習率を終わりまでに下げきって、最後の重みを使う条件）で行う。
 次の表の設計書は、学習と教師の生成を安くするためのものか、世代反復の結果を受けて次に試すものである。

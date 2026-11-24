@@ -26,7 +26,7 @@
 
 反証（同じ機能で異なる選択）は次のとおりである。
 
-- 入力は王の条件付けを持たないP型（駒状態47×升144×相対陣営2＋先獅子144＝13,680）であり、HalfKP/HalfKAではない。
+- 入力は王の条件付けを持たないA型（駒状態47×升144×相対陣営2＋先獅子144＝13,680）であり、HalfKP/HalfKAではない。
 - 量子化は第1層 i16・尺度127、第2層以降 i16・尺度4,096・右シフト12であり、Stockfish の i8・尺度64・右シフト6と異なる。
 - センチポーン換算は学習時のKから `scale = round(K × 65,536 / (127 × 4,096))` を作る固定小数点式であり、Stockfish の FV_SCALE=16 や nnue-pytorch の nnue2score=600 を使わない。
 - 学習PSTで初期化した残差線形項（1/8センチポーン単位、`/ self.k` でロジットへ換算）を持つ。Stockfish の PSQT 出力とは初期化元、単位、加算の式が異なる。
@@ -37,7 +37,7 @@
 Stockfish と YaneuraOu の実物との照合結果は次のとおりである。
 
 - Stockfish@sf_12:src/nnue/nnue_common.h:72-76 は `kVersion = 0x7AF32F16`、`FV_SCALE = 16`、`kWeightScaleBits = 6` を定める。同 layers/affine_transform.h:254-255 は隠れ層の重みを i8、同 nnue_feature_transformer.h:368-369 は第1層の重みとバイアスを i16（アキュムレータも i16）とし、:165-167 で `clamp(sum, 0, 127)` を取る。同 evaluate_nnue.cpp:93-112 のヘッダは版、ハッシュ値、アーキテクチャ文字列であり、:138 で `output / FV_SCALE` を返す。minase は第1層バイアスとアキュムレータが i32、隠れ層の重みが i16、右シフト12、Kから作る換算、MNUE ヘッダであり、共通するのは0〜127の切り詰めだけである（ClippedReLU の定義上の必須の一致）。
-- YaneuraOu@v7.50-wcsc32:source/eval/nnue/nnue_common.h:51-57 は Stockfish と同じ定数（FV_SCALE はエンジンオプション）を持つ。同 architectures/k-p_256x2-32-32.h は K と P の特徴に 256×2-32-32 を重ねる。同 features/p.h は「特徴量P：玉以外の駒のBonaPiece」と定義する。minase の「P型」（王の条件付けのない駒×升の特徴）はこの呼称と重なるが、minase の定義は王駒も含む中将棋の駒状態47種で、K特徴を併用しない。呼称の一致だけで、コードの対応はない。
+- YaneuraOu@v7.50-wcsc32:source/eval/nnue/nnue_common.h:51-57 は Stockfish と同じ定数（FV_SCALE はエンジンオプション）を持つ。同 architectures/k-p_256x2-32-32.h は K と P の特徴に 256×2-32-32 を重ねる。同 features/p.h は「特徴量P：玉以外の駒のBonaPiece」と定義する。minase の「A型」（王の条件付けのない駒×升の特徴）はこの呼称と重なるが、minase の定義は王駒も含む中将棋の駒状態47種で、K特徴を併用しない。呼称の一致だけで、コードの対応はない。
 - YaneuraOu@0a6dd2cb^:source/learn/learner.cpp:1579, 1982 は `mirror_percentage` の確率で左右反転して学習する。minase の50%の鏡映拡張は同じ手法だが、比率は固定で、局面ではなく特徴番号の側で反転を選ぶ。
 
 判定は **2（標準的な方式または仕様で説明可能）** とする。1.98 の残存は nnue-pytorch の公開文書に従って設計した痕跡として記録するが、実装固有のコード一致はない。

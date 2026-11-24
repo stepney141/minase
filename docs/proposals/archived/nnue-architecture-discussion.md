@@ -3,22 +3,22 @@
 本提案は、2026年10月12日に[NNUEの共通土台と初代のネットによるPST＋FMの完全代替の設計書](../../plans/archived/nnue-replacement.md)が、PSTを移した線形の経路と隠れ層のない直接内積の和を初代のネットとして採用したことで決着した（[NNUEの出力を、PSTを移した線形の経路と隠れ層のない直接内積の和にする](../../adr/archive/compose-the-nnue-of-a-pst-path-and-a-direct-screlu-head.md)）。
 この構成は2026年10月26日と11月4日に改められて現在は[NNUEを、探索用駒価値で初期化した線形の経路と、要素積と2段の隠れ層を持つ非線形の経路で組み立てる](../../adr/archive/compose-the-nnue-of-a-piece-value-initialized-linear-path-and-pairwise-products-with-two-hidden-layers.md)のとおりであり、本書が強さの源泉とした世代反復は[NNUEの標準レシピv1を対局で決め、v0から世代反復をやり直す設計書](../../plans/archived/nnue-standard-recipe.md)に引き継がれている。
 
-本書は、「現行のPST＋FMより汎用的な表現力を持つNNUEを学習したいが、P型NNUEは過去に不採用になっている。どのアーキテクチャにすべきか」という問いに対する、2026年10月8日のClaudeとcodexの3ラウンドの議論の記録である。
+本書は、「現行のPST＋FMより汎用的な表現力を持つNNUEを学習したいが、A型NNUEは過去に不採用になっている。どのアーキテクチャにすべきか」という問いに対する、2026年10月8日のClaudeとcodexの3ラウンドの議論の記録である。
 第1ラウンドと第2ラウンドは敗因の順位づけと、現行評価を凍結した上に残差を積む構成を扱った。
 第3ラウンドは、利用者が同日に「PST＋FMをNNUEで完全に代替する」と決定したことを受けて、単独で立つネットの構成を詰めた。
 PST（piece-square table）は駒の種類、成り可否、升の組ごとの点数を足す線形の評価表であり、FM（Factorization Machine）はその上に2駒の位置関係の補正を加える2次モデルである。
 NNUE（efficiently updatable neural network）は、第1層の出力を着手ごとに差分更新できるように設計した小さなニューラルネットである。
-P型とは、入力が駒と升の組だけからなり、王駒の位置による条件づけを持たないNNUEをいう（[評価関数の設計書](../../plans/archived/evaluation.md)の設計判断第6）。
+A型とは、入力が駒と升の組だけからなり、王駒の位置による条件づけを持たないNNUEをいう（[評価関数の設計書](../../plans/archived/evaluation.md)の設計判断第6）。
 議論は保存済みの設計書、測定記録、教訓、およびソースコードだけを根拠にし、新しい実験は行っていない。
 数値はすべて既存の記録からの引用または再計算であり、棋力やNPS（1秒あたりの探索ノード数）の予測ではない。
 
 ## 結論
 
-過去2回のP型NNUEの不採用は、入力特徴集合の不足を示す証拠にならない。
+過去2回のA型NNUEの不採用は、入力特徴集合の不足を示す証拠にならない。
 世代1のNNUEは、λ=0.75で対局結果を25%混ぜた教師、PSTの線形項の同時更新、早期終了なし、補正の縮小なしという条件で学習されており、この条件は後にFMの実験で「隠れ層を持つモデルは対局結果を対局の記憶として過学習する」として退けられたものである（[教訓](../../lessons/game-constant-target-memorization.md)）。
 一方、採用された唯一の非線形補正である補正1/4のFMは、PSTの凍結、探索値だけの教師（λ=1.0）、先読み教師、早期終了、補正の縮小という手順で学習されており、NNUEはこの手順でまだ一度も試されていない。
 FMの評価式は符号つきの二乗和であり（`crates/minase/src/eval/pst/fm.rs`の`correction`）、幅32の隠れ層1枚と二乗活性を持つNNUEと同型である。
-議論の第2ラウンドまでは、入力13,680特徴のP型のまま、現行評価を凍結した上に幅64の浅い残差を同じ手順で学習する構成を第1候補とした。
+議論の第2ラウンドまでは、入力13,680特徴のA型のまま、現行評価を凍結した上に幅64の浅い残差を同じ手順で学習する構成を第1候補とした。
 利用者はこれを採らず、PST＋FMをNNUEで完全に代替することを決定した。
 この決定の下での推奨構成は、入力13,680特徴を両視点で共有し、各視点に学習可能な2端点の線形経路（現行PSTを移植する）と幅64のSCReLU（clipped ReLUの二乗）の非線形経路を持つ単一ネットであり、現行評価を蒸留してから探索値だけの教師で全体を微調整する（「完全代替の推奨構成」の節）。
 利用者はさらに同日に、「蒸留では現行以上に強くなりにくい。求めているのは現行をずっと上回るNNUEである」と目標を明確にした。
@@ -36,8 +36,8 @@ FMの評価式は符号つきの二乗和であり（`crates/minase/src/eval/pst
 
 | 候補 | 検証損失や教師誤差 | 固定ノード | 時間制御 | 探索速度 | 出典 |
 |---|---|---:|---:|---:|---|
-| 世代0のP型NNUE（単独、1M局面） | PSTより悪い。獅子の過大評価と歩兵の無価値化 | 得点率2%（`H0`） | 未測定 | 0.69倍 | [固定ノード](../../measurements/evaluation/nnue-gen0-nodes100k.md)、[NPS](../../measurements/evaluation/bench-nnue-gen0-nps.md) |
-| 世代1のP型NNUE（残差線形項つき、11M局面、λ=0.75） | PSTより0.00018良い | 約−27 Elo（`H0`） | 約−150 Elo（`H0`） | 0.815倍 | [固定ノード](../../measurements/evaluation-gen1/nnue-gen1-nodes100k.md)、[時間制御](../../measurements/evaluation-gen1/nnue-gen1-tc.md) |
+| 世代0のA型NNUE（単独、1M局面） | PSTより悪い。獅子の過大評価と歩兵の無価値化 | 得点率2%（`H0`） | 未測定 | 0.69倍 | [固定ノード](../../measurements/evaluation/nnue-gen0-nodes100k.md)、[NPS](../../measurements/evaluation/bench-nnue-gen0-nps.md) |
+| 世代1のA型NNUE（残差線形項つき、11M局面、λ=0.75） | PSTより0.00018良い | 約−27 Elo（`H0`） | 約−150 Elo（`H0`） | 0.815倍 | [固定ノード](../../measurements/evaluation-gen1/nnue-gen1-nodes100k.md)、[時間制御](../../measurements/evaluation-gen1/nnue-gen1-tc.md) |
 | FM倍率1（PST凍結、λ=1.0） | 全局面帯で改善 | 未測定 | STCで約−240 Elo | 0.988倍 | [設計書](../../plans/archived/factorization-machine.md) |
 | FM倍率1/4（現行PST凍結、λ=1.0、先読み） | 改善 | 未測定 | LTCで約+65 Elo（採用） | 0.865倍 | [設計書](../../plans/archived/fm-quarter-current-pst.md) |
 | 半径1の局所2駒表 | 改善 | +9.4 Elo（区間−26〜+45） | STCで約−75 Elo | 0.775倍 | [設計書](../../plans/archived/relational-correction.md) |

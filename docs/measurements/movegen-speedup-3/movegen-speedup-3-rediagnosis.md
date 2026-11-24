@@ -49,7 +49,7 @@ CARGO_TARGET_DIR=<リポジトリ>/target/ms3-rediag/diag cargo build --release 
 ## エンジン
 
 対象はmasterのコミット`b0ad2268`である。
-ネットは[NNUEの評価関数の手引き](../../guides/evaluation-nnue.md)が探索の測定の標準とするP型のネット（SHA-256は`37054c9e49c9218bb18efdd1814fe1b298de5cbfc9c14352f6ad6eaecbb70dea`）であり、構成は`Features=P(Friend)[13680->256x2]`、後段は`AffineTransform[16<-512]`、`AffineTransform[32<-30]`、`AffineTransform[1<-32]`の3層である。
+ネットは[NNUEの評価関数の手引き](../../guides/evaluation-nnue.md)が探索の測定の標準とするA型のネット（SHA-256は`37054c9e49c9218bb18efdd1814fe1b298de5cbfc9c14352f6ad6eaecbb70dea`）であり、構成は`Features=P(Friend)[13680->256x2]`、後段は`AffineTransform[16<-512]`、`AffineTransform[32<-30]`、`AffineTransform[1<-32]`の3層である。
 `bench`の規則セットは`JCSA`に固定されており、教師生成の規則セットは`lishogi`（`L1,L2,P0,P3,R1,E1,E3`）に固定されている。
 ビルドはリポジトリのrelease設定（`target-cpu=native`、インライン閾値1000、LTO有効、`codegen-units=1`）である。
 基準の速さを測ったバイナリのSHA-256は`fb8c569e4410fa91…`である。

@@ -39,7 +39,7 @@ taskset -c 3 perf stat -x, -e cpu_core/cycles/u,cpu_core/instructions/u,cpu_core
 ## エンジン
 
 基準はmasterのコミット`b0ad2268`であり、試作はそれに各差分を当てたものである。
-ネットは探索の測定の標準のP型のネット（SHA-256は`37054c9e49c9218bb18efdd1814fe1b298de5cbfc9c14352f6ad6eaecbb70dea`）をすべてに使った。
+ネットは探索の測定の標準のA型のネット（SHA-256は`37054c9e49c9218bb18efdd1814fe1b298de5cbfc9c14352f6ad6eaecbb70dea`）をすべてに使った。
 `bench`の規則セットは`JCSA`、教師生成の規則セットは`lishogi`である。
 ビルドはリポジトリのrelease設定である。
 

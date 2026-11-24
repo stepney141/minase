@@ -20,7 +20,7 @@ nice -n 19 python3 -I net_spectrum.py crates/minase/nets/nnue.bin
 ## エンジン
 
 対象は次の2本のネットである。
-どちらもP型の幅128であり、規則セットは`engine-default`である。
+どちらもA型の幅128であり、規則セットは`engine-default`である。
 
 - 量子化誤差：先読みなしのネット`data/nnue-early-best-epoch/no-lookahead/nnue.bin`（SHA-256 `faa5fbe2…`）と、その実数のチェックポイント`best.npz`。
 - 列の使われ方と重みの範囲：2026年11月3日のmasterの埋め込みネット`crates/minase/nets/nnue.bin`（SHA-256 `9915da24…`）。

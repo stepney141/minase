@@ -24,7 +24,7 @@
 
 ## 決定
 
-P型の幅128で直接内積の出力部を持つNNUEの教師局面を、静止探索の末端へ置き換えない。
+A型の幅128で直接内積の出力部を持つNNUEの教師局面を、静止探索の末端へ置き換えない。
 本書の理由は、[NNUEの教師の決定](archive/train-the-nnue-on-search-value-teachers-without-lookahead.md)がこの案について挙げた理由に優先する。
 
 ## 検討した代案

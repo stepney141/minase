@@ -9,7 +9,7 @@
 
 駒除去差分の補助損失は、PSTの再学習で生じた符号の反転を防ぐために入れた安全装置であり、NNUEの学習器にも同じ式で引き継がれていた。
 NNUEでは、幅128の1エポック後のネットにおいて罰則が発火した駒除去の割合は対象全体の8×10⁻⁶にとどまり、補助損失は係数1,000を掛けた後でも合計損失の約10⁻⁴だった。
-一方、Rust製の学習器では補助損失の順伝播がGPUの1更新のうちP型で約4分の3、HalfKP-hm-b8で約3分の2を占め、隠れ層を置くと除去ごとに隠れ層の積和が要るので費用はさらに増える。
+一方、Rust製の学習器では補助損失の順伝播がGPUの1更新のうちA型で約4分の3、HalfKP-hm-b8で約3分の2を占め、隠れ層を置くと除去ごとに隠れ層の積和が要るので費用はさらに増える。
 [NNUEの隠れ層と位相補間の出力](../plans/archived/nnue-hidden-layer.md)は、出力部に隠れ層を加える前提として、この補助損失を外すことを決めた。
 
 ## 決定
@@ -27,7 +27,7 @@ NNUEの学習器から補助損失（CUDAカーネル、CPU参照、引数`--rem
 
 ## 結果
 
-1更新の時間はP型で27.3 msから4.7 msへ、HalfKP-hm-b8で31.6 msから8.6 msへ短縮した（[検査の記録](../measurements/nnue-trainer-rust/nnue-trainer-rust-checks.md)）。
+1更新の時間はA型で27.3 msから4.7 msへ、HalfKP-hm-b8で31.6 msから8.6 msへ短縮した（[検査の記録](../measurements/nnue-trainer-rust/nnue-trainer-rust-checks.md)）。
 補助損失なしで同じ条件で学習させたネットは、最良の検証損失が補助損失ありのネットより0.004%低い一方、符号反転の割合は8.9×10⁻⁶から1.7×10⁻²へ増え、反転のほぼすべてが成っていない歩兵の除去であった（[学習の記録](../measurements/nnue-hidden-layer/nnue-hidden-layer-training.md)）。
 発火率の低さは補助損失が符号を保っていた結果であり、不要であることの証拠ではなかった（[教訓](../lessons/low-penalty-activation-does-not-mean-the-penalty-is-unneeded.md)）。
 補助損失なしで学んだネットを現行の埋め込みネット（補助損失あり）と比べた段階ゲートは、STCで`H1`（853ペア、[157, 6, 469, 6, 215]）、LTCで`H1`（966ペア、[187, 5, 519, 11, 244]、異常0件）であり（[STC](../measurements/adhoc/nnue-no-removal-loss-stc.md)、[LTC](../measurements/adhoc/nnue-no-removal-loss-ltc.md)）、符号反転は時間制御の対局では棋力の損失として現れなかった。

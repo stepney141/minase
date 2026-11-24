@@ -139,7 +139,7 @@ minaseの第1層の重みは±8へ切り詰めて量子化値を±1,016に収め
 第1層の幅をHとすると、積の回数はHで現行の2Hの半分であり、内積の長さも半分になるので、推論費用は現行の17.2 ns以下に収まる（推論。[速度の記録](../measurements/nnue-hidden-layer/nnue-hidden-layer-bench.md)）。
 
 minaseには、tataraにない注意点が1つある。
-P型の第1層は成分jとj+H/2が鏡映の対であり、出力重みも対で共有している（[評価関数の手引き](../guides/evaluation-nnue.md) 230〜243行）。
+A型の第1層は成分jとj+H/2が鏡映の対であり、出力重みも対で共有している（[評価関数の手引き](../guides/evaluation-nnue.md) 230〜243行）。
 jとj+H/2をそのまま掛けると、積は盤の左右の鏡映で不変になるので出力重みの対の共有が不要になる一方、掛け合わせる2本の行は独立でなくなる（代数の確認であり、測定ではない）。
 別の組み方として、jとj+H/4、およびその鏡映であるj+H/2とj+3H/4を掛けると、独立な2本の行の積になるのでtataraの形に近く、鏡映の不変性は出力重みの共有で保てる（同上）。
 どちらが良いかは測るまで分からないので、2本とも学習してSTCまでに1つへ絞る。
@@ -193,7 +193,7 @@ Stockfishの[SFNNv18](https://github.com/official-stockfish/Stockfish/commit/5c4
 D2の補間の係数も同じ駒数から作るので、D2が検証損失を下げなかった事実は、進行度bucketの結果を予測しない（推論）。
 
 進行度bucketの費用は、minaseでは次の形になる（推論）。
-P型の絶対位置の特徴だけで回帰すれば、進行度は線形の経路と同じ形の和を1つ増やすだけで差分更新でき、やねうら王も同じ考え方で和をキャッシュしている（evaluate_nnue.cpp 188〜280行、[コミット`9a0df6a5`](https://github.com/yaneurao/YaneuraOu/commit/9a0df6a5)）。
+A型の絶対位置の特徴だけで回帰すれば、進行度は線形の経路と同じ形の和を1つ増やすだけで差分更新でき、やねうら王も同じ考え方で和をキャッシュしている（evaluate_nnue.cpp 188〜280行、[コミット`9a0df6a5`](https://github.com/yaneurao/YaneuraOu/commit/9a0df6a5)）。
 隠れ層のない直接内積なら、bucketで切り替わるのは出力重みの組だけなので積和の回数は変わらない。
 学習器の改修は回帰の学習ツール、bucket別の出力重み、および構造記述の3点で、3〜5日を見込む。
 本書を書いた時点の層積みの設計書（同じ版の49行）は、境界で重みを切り替えるbucketと進行度の推定を対象外としていた。
@@ -242,10 +242,10 @@ Stockfishは[SFNNv17](https://github.com/official-stockfish/Stockfish/commit/a17
 (b) [v0.1.0](https://github.com/SH11235/tatara/releases/tag/v0.1.0)の1,000局ずつの総当たりでは、上位3種の入力の勝率は50.8%、51.1%、および51.8%で区別できなかった。
 特徴分解は[PR #303](https://github.com/SH11235/tatara/pull/303)で既定になり、棋力は+8 ±10 nEloで劣化なし、40 superbatchの時点では+29 Eloと学習が早まった。
 
-(c) 仮想の行は「王の位置を外した駒と升の組」であり、これはminaseのP型そのものである。
-したがってP型には特徴分解は意味を持たない。
+(c) 仮想の行は「王の位置を外した駒と升の組」であり、これはminaseのA型そのものである。
+したがってA型には特徴分解は意味を持たない。
 HalfKP-hm-b8用の仮想行は、minaseの学習器に既に実装されている（[feature_set.rs](../../crates/minase/src/eval/nnue/feature_set.rs) 44行、[model/mod.rs](../../crates/minase-trainer/src/nnue/model/mod.rs) 398行）。
-HalfKP-hm-b8はSTCでP型に2回大敗しており（[ADR](../adr/archive/use-p-type-input-features-for-the-nnue.md)）、ADRは教師の量か幅が大きく変わったときだけ測り直すとしている。
+HalfKP-hm-b8はSTCでA型に2回大敗しており（[ADR](../adr/archive/use-p-type-input-features-for-the-nnue.md)）、ADRは教師の量か幅が大きく変わったときだけ測り直すとしている。
 
 (d) 本書は再提案しない。
 2回の対局の棋譜で配置を集計していないので、偏りへの影響は分からない。
@@ -406,7 +406,7 @@ tataraのシャッフルの窓は、高速な記憶装置では0.43〜6.41%遅�
 
 (c) minaseの全体シャッフルと対局単位の検証分割はtataraより厳密である（[ADR](../adr/shuffle-the-whole-training-set-per-epoch-with-rao-sandelius-buckets.md)）。
 対局の間の重複の割合は確認していない。
-minaseは静止探索の末端への置換を、PSTの学習の不採用と元の局面と末端の値の差（静かな局面でも平均185.8 cp）を理由に退けているが（[旧ADR](../adr/archive/train-the-nnue-on-search-value-lookahead-teachers.md)）、この理由は成り立たなかった。その後のP型の幅128での[比較](../measurements/nnue-qsearch-leaf/nnue-qsearch-leaf-stc.md)は`H0`だった（[ADR](../adr/do-not-replace-nnue-teacher-positions-with-qsearch-leaves.md)）。
+minaseは静止探索の末端への置換を、PSTの学習の不採用と元の局面と末端の値の差（静かな局面でも平均185.8 cp）を理由に退けているが（[旧ADR](../adr/archive/train-the-nnue-on-search-value-lookahead-teachers.md)）、この理由は成り立たなかった。その後のA型の幅128での[比較](../measurements/nnue-qsearch-leaf/nnue-qsearch-leaf-stc.md)は`H0`だった（[ADR](../adr/do-not-replace-nnue-teacher-positions-with-qsearch-leaves.md)）。
 minaseの生成器は最善手が捕獲または成りの局面を既に除いており、役割が一部重なる（[調査](teacher-generation-prior-art.md)の表）。
 
 (d) minaseのネットは隠れ層がないので、効果の大きかったHalfKPに近い可能性があるものの、隠れ層の有無が効果を分けたとは確かめられていない（推論）。

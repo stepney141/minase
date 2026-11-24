@@ -10,7 +10,7 @@
 補正の命令`nnue fit-linear`は、教師や`--lambda`（探索値と対局結果を混ぜる比率λ）を変えたときに残る偏りを調べる診断としてだけ残していた。
 補正を続ける案を退けた理由は、第2世代の教師で学んだネットで補正したネットが補正しないネットより弱かったこと、および学習後に線形の経路を補正する先行例が見つからなかったことである。
 
-P型はtataraのLayerStackへ載せ替え、補間つきの線形の経路は区分1つのPSQTに替わった（[構造のADR](compose-p-as-a-tatara-layerstack-with-a-psqt-and-halfkp-vm-as-a-simple-network.md)）。
+A型はtataraのLayerStackへ載せ替え、補間つきの線形の経路は区分1つのPSQTに替わった（[構造のADR](compose-p-as-a-tatara-layerstack-with-a-psqt-and-halfkp-vm-as-a-simple-network.md)）。
 補正は、序中盤と終盤の2列を持つ線形の経路のうち序中盤の列だけを書き換えるので、補間のないPSQTには同じ意味で移せない。
 学習器は前の世代のネットを`--base`で受け取らなくなった（[学習器の構成のADR](split-the-nnue-trainer-into-a-shared-loop-and-structure-backends.md)）。
 

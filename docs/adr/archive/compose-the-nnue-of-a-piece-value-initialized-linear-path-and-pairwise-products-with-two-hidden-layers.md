@@ -2,7 +2,7 @@
 
 ## ステータス
 
-置き換え済み。[P型をtataraのLayerStackにPSQTを足した構造で、HalfKP_vmを256x2-32-32のSimpleで組み、量子化をtataraにそろえる](../compose-p-as-a-tatara-layerstack-with-a-psqt-and-halfkp-vm-as-a-simple-network.md)によって置き換えられた。
+置き換え済み。[A型をtataraのLayerStackにPSQTを足した構造で、HalfKP_vmを256x2-32-32のSimpleで組み、量子化をtataraにそろえる](../compose-p-as-a-tatara-layerstack-with-a-psqt-and-halfkp-vm-as-a-simple-network.md)によって置き換えられた。
 
 ## コンテキスト
 
@@ -53,7 +53,7 @@ NNUEの評価を、線形の経路と非線形の経路の和とする。
 - 要素積の出力を、幅15の層、その2乗とclipped ReLUの連結30個（dual activation）、および幅32の層へ通し、出力へ直接足す経路（skip接続）を加える。後段の配置はtataraのLayerStackとやねうら王のSFNN-1536と同じである。局面に応じた後段の切り替えは入れない。
 - 第1層は尺度255のi16、累算値はi16とする。第1層の重みは絶対値220以下、バイアスは510以下とし、最大145行の発火でもi16に収まるようにする。
 - 隠れ層の重みはi16の尺度256とする。先行エンジンのi8の尺度64は、minaseの勝率尺度では粗い。skip接続と幅32の層の出力重みもi16の尺度4,096とする。
-- P型では、第1層の重みとバイアスを成分$`j`$と$`j+H/2`$で、skip接続の重みと幅15の層の各行を各視点の成分$`j`$と$`j+H/4`$で共有する。これで局面とその鏡映の評価が一致する。推論はこの共有を使って積和の回数を減らす。
+- A型では、第1層の重みとバイアスを成分$`j`$と$`j+H/2`$で、skip接続の重みと幅15の層の各行を各視点の成分$`j`$と$`j+H/4`$で共有する。これで局面とその鏡映の評価が一致する。推論はこの共有を使って積和の回数を減らす。
 
 学習器は、第1層の重みを標準偏差$`\sqrt{1/(3\times13{,}680)}\approx0.00494`$の正規分布で初期化する。
 tataraの`uniform:fanin`とnnue-pytorchの一様分布±$`\sqrt{1/D}`$と同じ分散である。
