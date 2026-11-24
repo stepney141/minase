@@ -46,7 +46,7 @@ impl IntegerNetwork {
     }
     pub(super) fn feature_set(&self) -> minase::eval::nnue::input::FeatureSet {
         match self.network {
-            Network::LayerStack(_) => minase::eval::nnue::input::FeatureSet::P,
+            Network::LayerStack(_) => minase::eval::nnue::input::FeatureSet::A,
             Network::Simple(_) => minase::eval::nnue::input::FeatureSet::HalfKpVm,
         }
     }
@@ -88,7 +88,7 @@ pub(super) enum FloatAccumulator {
 impl FloatCheckpoint {
     pub(super) fn read(path: &Path, set: FeatureSet) -> Result<Self> {
         Ok(match set {
-            FeatureSet::P => Self::LayerStack(ls::Checkpoint::read(path)?),
+            FeatureSet::A => Self::LayerStack(ls::Checkpoint::read(path)?),
             FeatureSet::HalfKpVm => Self::Simple(simple::Checkpoint::read(path)?),
         })
     }

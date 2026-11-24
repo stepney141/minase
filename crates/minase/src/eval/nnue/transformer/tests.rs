@@ -1,5 +1,5 @@
 use super::*;
-use crate::eval::nnue::input::{HalfKpVm, P};
+use crate::eval::nnue::input::{A, HalfKpVm};
 use Color::{Black, White};
 use PieceKind::*;
 use minase_core::rng::XorShift64;
@@ -282,8 +282,8 @@ fn random_games<I: Indexer + PartialEq + fmt::Debug>(net: &FeatureTransformer<I>
 }
 
 #[test]
-fn p_updates_match_refresh_for_move_shapes_and_four_random_games() {
-    let net = transformer::<P>(32);
+fn a_updates_match_refresh_for_move_shapes_and_four_random_games() {
+    let net = transformer::<A>(32);
     move_shapes(&net, false);
     random_games(&net);
 }
@@ -299,25 +299,25 @@ fn half_kp_vm_updates_match_refresh_for_move_shapes_and_four_random_games() {
 fn constructor_rejects_invalid_dimensions() {
     for width in [0, 1, 3] {
         assert!(
-            matches!(FeatureTransformer::<P>::new(width, Box::new([]), Box::new([])), Err(TransformerError::Width { width: actual }) if actual == width)
+            matches!(FeatureTransformer::<A>::new(width, Box::new([]), Box::new([])), Err(TransformerError::Width { width: actual }) if actual == width)
         );
     }
     assert!(matches!(
-        FeatureTransformer::<P>::new(2, Box::new([0]), Box::new([])),
+        FeatureTransformer::<A>::new(2, Box::new([0]), Box::new([])),
         Err(TransformerError::BiasLength {
             expected: 2,
             actual: 1
         })
     ));
     assert!(matches!(
-        FeatureTransformer::<P>::new(2, Box::new([0, 0]), Box::new([])),
+        FeatureTransformer::<A>::new(2, Box::new([0, 0]), Box::new([])),
         Err(TransformerError::WeightLength {
             expected: Some(27_360),
             actual: 0
         })
     ));
     assert!(matches!(
-        FeatureTransformer::<P>::new(usize::MAX - 1, Box::new([]), Box::new([])),
+        FeatureTransformer::<A>::new(usize::MAX - 1, Box::new([]), Box::new([])),
         Err(TransformerError::WeightLength {
             expected: None,
             actual: 0
@@ -385,7 +385,7 @@ fn intermediate_i16_overflow_preserves_final_sum_and_difference() {
             weights[row * width..(row + 1) * width].copy_from_slice(&[value, -value]);
         }
     }
-    let net = FeatureTransformer::<P>::new(
+    let net = FeatureTransformer::<A>::new(
         width,
         Box::new([30_000, -30_000]),
         weights.into_boxed_slice(),

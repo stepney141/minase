@@ -1,8 +1,8 @@
-# NNUEの初代（P型、幅128）の段階ゲート　LTC
+# NNUEの初代（A型、幅128）の段階ゲート　LTC
 
 ## 目的
 
-[NNUEの共通土台と初代のネットの設計書](../../plans/archived/nnue-replacement.md)のフェーズ6として、[STC](nnue-replacement-stc.md)で`H1`となったP型の幅128のNNUEを埋め込んだコミットの採否を、基準M（PST＋FM）に対する長時間条件（LTC）で判定する。
+[NNUEの共通土台と初代のネットの設計書](../../plans/archived/nnue-replacement.md)のフェーズ6として、[STC](nnue-replacement-stc.md)で`H1`となったA型の幅128のNNUEを埋め込んだコミットの採否を、基準M（PST＋FM）に対する長時間条件（LTC）で判定する。
 
 ## コマンドライン
 
@@ -17,7 +17,7 @@ cargo run --release --bin minase -- match run \
 
 ## エンジン
 
-- 候補: `90280a0`（P型の学習済みネット（幅128、最良エポック1）を`nets/nnue.bin`に埋め込み、探索が使う評価関数をNNUEにしたコミット。バイナリのSHA-256 `02f25af1…`）。
+- 候補: `90280a0`（A型の学習済みネット（幅128、最良エポック1）を`nets/nnue.bin`に埋め込み、探索が使う評価関数をNNUEにしたコミット。バイナリのSHA-256 `02f25af1…`）。
 - 基準: `8d0e382`（基準M。評価関数はPST＋FM、探索は候補と同じ。SHA-256 `2dd1490f…`）。
 - 規則セットは`L0,P0,R1,E0`、`USI_Hash`は両者256 MB、`Threads`は1。
 
@@ -43,4 +43,4 @@ Intel Core Ultra 7 265KF（物理20コア、論理20コア）、メモリ32 GB�
 ## 結論
 
 判定は`H1`で異常は0件であり、[測定の手引き](../../guides/sprt.md)の採用条件を満たす。
-P型の幅128のNNUEを埋め込んだ`90280a0`を採用し、探索が使う評価関数をPST＋FMからNNUEへ切り替える。
+A型の幅128のNNUEを埋め込んだ`90280a0`を採用し、探索が使う評価関数をPST＋FMからNNUEへ切り替える。

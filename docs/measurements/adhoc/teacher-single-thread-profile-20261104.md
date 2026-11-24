@@ -40,8 +40,8 @@ taskset -c 3 perf stat -x, \
 
 | 対象 | コミット | 同梱ネットの構成 |
 |---|---|---|
-| 旧版 | `9f393ecce304ba2b8aa83abdf624562224c879b5` | P、幅128、direct-screlu |
-| 生成0 | `6f874692fb91544c94394ca0e8df25299ef2e02d` | P、幅256、pairwise-l16-l32 |
+| 旧版 | `9f393ecce304ba2b8aa83abdf624562224c879b5` | A、幅128、direct-screlu |
+| 生成0 | `6f874692fb91544c94394ca0e8df25299ef2e02d` | A、幅256、pairwise-l16-l32 |
 
 両版の規則セットは `L0,P0,R1,E0` とした。
 バイナリとネットのSHA-256は [集計値](teacher-single-thread-profile-20261104/baseline-summary.json) に記録した。

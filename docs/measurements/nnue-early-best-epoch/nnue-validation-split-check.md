@@ -17,7 +17,7 @@ NNUEの学習で検証損失がエポック1から2で最良になり、その�
 入力は[再生成した教師](../nnue-lr-schedule/nnue-lr-schedule-training.md)の30ファイル（`data/nnue-lr-schedule-gen/generated-*.bin`）である。
 損失は、ネットの整数評価をそのネットの勝率尺度でロジスティック関数にかけた確率と、教師の確率との二値交差エントロピーである。
 訓練側は各ファイルの訓練局面を10局面ごとに選んだ7,945,793局面、検証側は全4,153,303局面で計算した。
-ネットは、エポック0の関数と同じ`crates/minase/nets/nnue-epoch0.bin`（PSTの初期値だけを持ち、データを学習していない）、現行の埋め込みネットであるP型のD0b（`data/nnue-hidden-layer-train/d0b/nnue.bin`、SHA-256 `046be0e6…`）、および[再学習したHalfKP-hm-b8](halfkp-retrain-stc.md)（`data/halfkp-retrain/train/nnue.bin`、SHA-256 `1af4c8f9…`）である。
+ネットは、エポック0の関数と同じ`crates/minase/nets/nnue-epoch0.bin`（PSTの初期値だけを持ち、データを学習していない）、現行の埋め込みネットであるA型のD0b（`data/nnue-hidden-layer-train/d0b/nnue.bin`、SHA-256 `046be0e6…`）、および[再学習したHalfKP-hm-b8](halfkp-retrain-stc.md)（`data/halfkp-retrain/train/nnue.bin`、SHA-256 `1af4c8f9…`）である。
 局面の同一性は`Position::zobrist`で判定した。
 
 ## 環境
@@ -61,7 +61,7 @@ NNUEの学習で検証損失がエポック1から2で最良になり、その�
 |---|---:|---:|---:|---:|---:|
 | 損失の下限 | 0.439837 | 0.441147 | +0.00131 | ― | ― |
 | エポック0（PSTの初期値） | 0.455793 | 0.457074 | +0.00128 | 0.01596 | 0.01593 |
-| P型 D0b | 0.446246 | 0.448904 | +0.00266 | 0.00641 | 0.00776 |
+| A型 D0b | 0.446246 | 0.448904 | +0.00266 | 0.00641 | 0.00776 |
 | HalfKP-hm-b8 | 0.444921 | 0.450014 | +0.00509 | 0.00508 | 0.00887 |
 
 データを学習していないエポック0のネットでも、検証の損失は訓練より0.00128高く、損失の下限の差0.00131とほぼ等しい。

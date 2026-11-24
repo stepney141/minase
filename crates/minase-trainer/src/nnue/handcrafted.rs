@@ -1,4 +1,4 @@
-//! 手書き評価v0を幅256のP型LayerStackへ書き出す。PSQT以外はすべて0とする。
+//! 手書き評価v0を幅256のA型LayerStackへ書き出す。PSQT以外はすべて0とする。
 
 use crate::nn::hex;
 use minase::eval::{

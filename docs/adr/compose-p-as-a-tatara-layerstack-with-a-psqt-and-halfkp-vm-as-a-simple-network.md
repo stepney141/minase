@@ -1,4 +1,4 @@
-# P型をtataraのLayerStackにPSQTを足した構造で、HalfKP_vmを256x2-32-32のSimpleで組み、量子化をtataraにそろえる
+# A型をtataraのLayerStackにPSQTを足した構造で、HalfKP_vmを256x2-32-32のSimpleで組み、量子化をtataraにそろえる
 
 ## ステータス
 
@@ -6,10 +6,10 @@
 
 ## コンテキスト
 
-[以前の決定](archive/compose-the-nnue-of-a-piece-value-initialized-linear-path-and-pairwise-products-with-two-hidden-layers.md)は、P型のNNUEを、序中盤と終盤の2列を駒数で補間する線形の経路と、第1層を4分割する独自の要素積と2段の隠れ層を持つ非線形の経路の和で組み、後段を16ビット（尺度256と4,096）で量子化した。
+[以前の決定](archive/compose-the-nnue-of-a-piece-value-initialized-linear-path-and-pairwise-products-with-two-hidden-layers.md)は、A型のNNUEを、序中盤と終盤の2列を駒数で補間する線形の経路と、第1層を4分割する独自の要素積と2段の隠れ層を持つ非線形の経路の和で組み、後段を16ビット（尺度256と4,096）で量子化した。
 線形の経路の学習率は0.03に保っていた（[ADR](archive/keep-the-nnue-linear-path-learning-rate-at-0-03.md)）。
 
-エンジンの開発者は2026年11月15日に、P型もtataraの枠組みへ載せ替え、重みをtataraの形式にすると決めた。
+エンジンの開発者は2026年11月15日に、A型もtataraの枠組みへ載せ替え、重みをtataraの形式にすると決めた。
 tataraの形式は、補間つきの線形の経路を表せない。
 tataraのLayerStackは、第1層（幅H）の出力の成分jとj＋H/2の積、16出力の第1後段層（最後の1成分を出力へ直接足す）、2乗とそのままの2つの活性化、32出力の層、および出力からなり、駒と升ごとの点数を足す表PSQT（piece-square table）を並べられる。
 Simpleは、両視点の第1層の出力を連結して隠れ層へ通す、区分もPSQTもない形である。
@@ -17,7 +17,7 @@ HalfKP_vmと後段256x2-32-32は、将棋エンジンやねうら王が使って
 
 ## 決定
 
-P型は、tataraのLayerStack（後段の区分1つ）に区分1つのPSQTを並べた構造とし、第1層の幅を256とする。
+A型は、tataraのLayerStack（後段の区分1つ）に区分1つのPSQTを並べた構造とし、第1層の幅を256とする。
 PSQTの寄与は手番側と相手側のPSQTの和の差の半分であり、後段の整数の出力に足してから`fv_scale`で割る。
 HalfKP_vmは、tataraのSimple（活性化は0〜1へ切り詰めるCReLU、第1層の幅256を両視点で連結して32、32、1の層へ通す256x2-32-32）とする。
 量子化はtataraにそろえ、第1層は16ビットで尺度127、後段の重みは8ビットで尺度64、後段のバイアスとPSQTは32ビットで尺度127×64＝8,128とする。
@@ -42,8 +42,8 @@ v0は序盤と終盤に同じ値を置いているので、区分1つのPSQTで�
 これはtataraにない、minaseの安全策である。
 LayerStackの区分ごとのL1と、全区分に共通のtataraの`L1 shared`は、区分が1つでも別に学び、書き出しで足してから1回だけ量子化する。
 書き出しで量子化の範囲を超える値はエラーで止め、tataraのように切り詰めない。
-載せ替えたP型は、載せ替えの確認のSTCで`H1`となり、載せ替える前のP型が+64.4 Elo（95%信頼区間+37.2〜+92.4）強かった（[測定記録](../measurements/nnue-tatara-framework-and-halfkp-vm/nnue-tatara-framework-and-halfkp-vm-stc.md)）。
-載せ替え後のP型は、同じ教師で学んだ載せ替え前のP型を相手にすると、後段の重みを通常どおり8ビットに量子化するより全層を実数で計算した方が得点率が高かった。
-一方、8ビットに量子化した載せ替え後のP型を相手にすると、全層を実数で計算しても優位は見られなかった（[棋力低下の調査報告](../audits/tatara-p-regression-2026-11-19.md)）。
-2026年11月19日に開発者は、このSTCの結果と調査報告を踏まえ、載せ替えたP型を採用すると決めた。
-[設計書](../plans/archived/nnue-tatara-framework-and-halfkp-vm.md)は「載せ替える前のP型より10 Elo以上弱いとは言えないこと」を採用の条件にしていたが、この決定はその条件を満たさないまま下した。
+載せ替えたA型は、載せ替えの確認のSTCで`H1`となり、載せ替える前のA型が+64.4 Elo（95%信頼区間+37.2〜+92.4）強かった（[測定記録](../measurements/nnue-tatara-framework-and-halfkp-vm/nnue-tatara-framework-and-halfkp-vm-stc.md)）。
+載せ替え後のA型は、同じ教師で学んだ載せ替え前のA型を相手にすると、後段の重みを通常どおり8ビットに量子化するより全層を実数で計算した方が得点率が高かった。
+一方、8ビットに量子化した載せ替え後のA型を相手にすると、全層を実数で計算しても優位は見られなかった（[棋力低下の調査報告](../audits/tatara-p-regression-2026-11-19.md)）。
+2026年11月19日に開発者は、このSTCの結果と調査報告を踏まえ、載せ替えたA型を採用すると決めた。
+[設計書](../plans/archived/nnue-tatara-framework-and-halfkp-vm.md)は「載せ替える前のA型より10 Elo以上弱いとは言えないこと」を採用の条件にしていたが、この決定はその条件を満たさないまま下した。

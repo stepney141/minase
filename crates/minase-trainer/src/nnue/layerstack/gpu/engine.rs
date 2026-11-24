@@ -45,7 +45,7 @@ impl BackwardLengths {
 /// and pinned host memory. Includes the two input faces of HostRing.
 pub(crate) fn memory_bytes(n: usize, training: bool) -> Result<usize> {
     capacity(n)?;
-    let ring = crate::nnue::gpu::ring::device_bytes(FeatureSet::P, n)?;
+    let ring = crate::nnue::gpu::ring::device_bytes(FeatureSet::A, n)?;
     let forward = ForwardLengths::new(n).bytes();
     Ok(ring
         + forward
@@ -97,7 +97,7 @@ impl ForwardBuffers {
             .arg(&columns)
             .arg(&p)
             .arg(&mut self.nonfinite);
-        // SAFETY: validated P input has n*2*145 entries; values has capacity*FORWARD,
+        // SAFETY: validated A input has n*2*145 entries; values has capacity*FORWARD,
         // weights has the fixed layout. One block owns each position, on compute.
         unsafe {
             args.launch(grid(input.len, 1)?)?;
@@ -319,7 +319,7 @@ impl Evaluator {
             weights: upload(&device, weights)?,
             buffers: ForwardBuffers::new(&device, n)?,
             targets: Targets::new(&device, n)?,
-            ring: HostRing::new(&device, FeatureSet::P, n)?,
+            ring: HostRing::new(&device, FeatureSet::A, n)?,
             device,
             scale,
             capacity: n,
@@ -327,8 +327,8 @@ impl Evaluator {
     }
     fn prepare(&mut self, batch: &BatchSlot, values: &[f32]) -> Result<()> {
         targets(self.capacity, batch.len(), values)?;
-        if batch.feature_set() != FeatureSet::P {
-            return Err(invalid("LayerStack requires P input"));
+        if batch.feature_set() != FeatureSet::A {
+            return Err(invalid("LayerStack requires A input"));
         }
         self.targets.upload(&self.device, values)?;
         let ticket = self.ring.upload(batch)?;

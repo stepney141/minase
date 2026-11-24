@@ -17,7 +17,7 @@ target/release/minase match run \
 ## エンジン
 
 - 候補: `a8a7b7fd`（ブランチ`nnue-cosine-vs-master`。master `446c6e19`に対し、`crates/minase/nets/nnue.bin`をcosineのネット（SHA-256 `311be801…`）へ差し替えただけのコミット）。
-- 基準: `446c6e19`（master。埋め込みのネットは[NNUEの完全代替](../../plans/archived/nnue-replacement.md)で採用したP型の幅128、SHA-256 `3679bebf…`）。
+- 基準: `446c6e19`（master。埋め込みのネットは[NNUEの完全代替](../../plans/archived/nnue-replacement.md)で採用したA型の幅128、SHA-256 `3679bebf…`）。
 - 規則セットは`L0,P0,R1,E0`、`USI_Hash`は両者256 MB、`Threads`は両者1（既定値）。
 - 候補のネットの学習は[学習の記録](nnue-lr-schedule-training.md)にある。基準のネットは、評価関数がPST＋FMだった基準M `8d0e382`で生成した約8,000万局面から学んだものであり、候補のネットは評価関数がNNUEのmaster `31c2a46`で生成し直した約8,000万局面から学んだものなので、この測定は学習率の違いと教師データの世代の違いを合わせて測る。
 

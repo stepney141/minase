@@ -2,7 +2,7 @@
 
 ## 症状
 
-v3.0.0-alpha.1で、tatara形式のLayerStackに載せ替えたP型のNNUEの学習器は、載せ替え前の学習器の約半分の速さ（毎秒271,154局面）になった。
+v3.0.0-alpha.1で、tatara形式のLayerStackに載せ替えたA型のNNUEの学習器は、載せ替え前の学習器の約半分の速さ（毎秒271,154局面）になった。
 1回の更新にかかる60.42 msのうち54 msを、逆伝播で縮約を行う3つのカーネルが占めていた。
 同じリリースの開発中に、HalfKP_vmが使うSimpleの構造の学習器では同じ型の遅さを直していた。しかしLayerStackの学習器の速さはその修正の前に測っており、修正の後には測り直していなかった。
 
@@ -20,5 +20,5 @@ GPUのカーネルの遅さを直したら、同じ書き方をしている別�
 
 ## 出典
 
-- [P型LayerStackの学習器の逆伝播を速くする修正の測定](../measurements/adhoc/layerstack-backward-coalesce.md)
+- [A型LayerStackの学習器の逆伝播を速くする修正の測定](../measurements/adhoc/layerstack-backward-coalesce.md)
 - [HalfKP_vmの動作の確認の記録](../measurements/nnue-tatara-framework-and-halfkp-vm/nnue-tatara-framework-and-halfkp-vm-halfkp-vm-check.md)

@@ -101,10 +101,10 @@ fn header_rejections_distinguish_all_causes() {
         let a = arch(net.feature_set(), net.width(), 128);
         for name in [
             "HalfKP",
-            if net.feature_set() == FeatureSet::P {
+            if net.feature_set() == FeatureSet::A {
                 "HalfKPVm"
             } else {
-                "P"
+                "A"
             },
         ] {
             let wrong = a.replacen(net.feature_set().spec().arch_name(), name, 1);

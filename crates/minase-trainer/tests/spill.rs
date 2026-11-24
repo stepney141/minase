@@ -362,7 +362,7 @@ fn spill_store_matches_the_in_memory_dataset_bit_for_bit() {
     }
 
     {
-        let feature_set = FeatureSet::P;
+        let feature_set = FeatureSet::A;
         let memory = Observations::compute(&dataset, feature_set).unwrap();
         let spilled = Observations::from_positions(
             store.training_records().map(|record| {

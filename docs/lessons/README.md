@@ -18,7 +18,7 @@ Rustのコードやテストを書くとき、およびそれらをcodexへ委�
 - [並行処理の回帰テストは連続実行で確認する](repeat-concurrency-regression-tests.md) — スケジューリング依存の不具合を修正したら回帰テストを10回以上連続で通してから採用する。
 - [回帰テストは修正を外して失敗を確認する](confirm-regression-test-fails-without-fix.md) — 回帰テストを追加したら修正を一時的に外して失敗することを確認してから採用する。
 - [移動だけの再編は出力と試験名の一致で確かめる](verify-move-only-reorganization.md) — 処理を変えない移動の再編は、経過時間の欄を除くbench出力（または固定シードの出力）の全行一致と試験名の末尾の集合の一致で確かめ、NPSが揺れを外れたら`nm --size-sort`で生成コードを比べる。
-- [探索のテストは学習済みの埋め込みネットに依存させない](search-tests-use-a-fixed-net.md) — 探索のテストは`test_network()`の固定ネット（コードで組み立てるP型のLayerStack）で書き、期待値を学習で変わる重みに結びつけず、ネットのファイルの読み込みと識別子を確かめるテストも固定ネットのファイル`nets/test-layer-stack.bin`で書く。
+- [探索のテストは学習済みの埋め込みネットに依存させない](search-tests-use-a-fixed-net.md) — 探索のテストは`test_network()`の固定ネット（コードで組み立てるA型のLayerStack）で書き、期待値を学習で変わる重みに結びつけず、ネットのファイルの読み込みと識別子を確かめるテストも固定ネットのファイル`nets/test-layer-stack.bin`で書く。
 - [試験用の固定ネットは、後段の出力が整数の除算の後にも評価値に現れる大きさにする](keep-the-dense-output-of-a-test-network-visible-after-integer-division.md) — 固定ネットの後段の寄与が`fv_scale`の除算の後にも数十cp残り駒割が支配する範囲に重みを選び、その性質を試験に固定し、固定ネットを替えて落ちた探索の試験の検査を外さない。
 - [合成データのテストの許容誤差は標準誤差から決め、入力を中立な値に固定しない](derive-synthetic-test-tolerance-from-standard-error.md) — 乱数で合成したデータで推定値を検査するときは標準誤差を先に見積もって許容誤差を3σ以上にし、式の各項は解析解を計算できる事例で0でない値を与えて検査する。
 - [合法手生成を疑似利きへ置き換える判定では、置き換えが成り立たない規則の例外を固定例で試験する](pin-rule-exceptions-when-replacing-generation-with-attacks.md) — 疑似利きや部分的な生成への置き換えは乱数対局の突き合わせだけで確かめず、獅子の捕獲制限や先獅子のように置き換えが成り立たない例外ごとに食い違いの固定例を書き、置き換えの誤りを入れて試験が失敗することを確かめる。

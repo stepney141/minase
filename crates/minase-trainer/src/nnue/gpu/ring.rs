@@ -444,7 +444,7 @@ mod tests {
     fn gpu_workers_fill_and_reuse_three_owned_host_buffers() {
         let device = Device::new(0).unwrap();
         {
-            let set = FeatureSet::P;
+            let set = FeatureSet::A;
             let mut ring = HostRing::new(&device, set, 3).unwrap();
             let bytes = ring.transfer_bytes();
             let buffers = ring.take_host_buffers().unwrap();
@@ -509,8 +509,8 @@ mod tests {
     #[ignore = "requires a CUDA GPU"]
     fn gpu_transfer_timing_survives_reused_input_and_host_slots() {
         let device = Device::new(0).unwrap();
-        let batch = crate::nnue::data::synthetic::synthetic_batch(FeatureSet::P, 3, 71).unwrap();
-        let mut ring = HostRing::new(&device, FeatureSet::P, 3).unwrap();
+        let batch = crate::nnue::data::synthetic::synthetic_batch(FeatureSet::A, 3, 71).unwrap();
+        let mut ring = HostRing::new(&device, FeatureSet::A, 3).unwrap();
         let mut timings = Vec::new();
         for _ in 0..5 {
             let ticket = ring.upload(&batch).unwrap();
@@ -531,7 +531,7 @@ mod tests {
     fn gpu_ring_transfers_all_arrays_and_reuses_three_host_two_device_slots() {
         let device = Device::new(0).unwrap();
         {
-            let set = FeatureSet::P;
+            let set = FeatureSet::A;
             let mut ring = HostRing::new(&device, set, 100).unwrap();
             // 2面を同時に保持し、完了を記録してからだけ次の面へ進める。
             for iteration in 0..4 {

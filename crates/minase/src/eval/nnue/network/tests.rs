@@ -5,7 +5,7 @@ use super::test_util::{
 };
 use super::*;
 use crate::eval::features::{self, FEATURE_COUNT};
-use crate::eval::nnue::input::{HalfKpVm, P, for_each_active_row};
+use crate::eval::nnue::input::{A, HalfKpVm, for_each_active_row};
 use minase_core::rng::XorShift64;
 use minase_core::test_util::{
     bench_positions, position_from_codes, reflect_ranks_and_swap_colors, sampled_random_positions,
@@ -41,15 +41,15 @@ fn specified_integer_stages() {
 #[test]
 fn architecture_and_hashes_match_tatara_formula() {
     assert_eq!(
-        arch(FeatureSet::P, 256, 12),
-        "Features=P(Friend)[13680->256x2],PSQT=1,Network=AffineTransform[1<-32](ClippedReLU[32](AffineTransform[32<-30](SqrClippedReLU[30](AffineTransform[16<-512](InputSlice[512(0:512)]))))),fv_scale=12"
+        arch(FeatureSet::A, 256, 12),
+        "Features=A(Friend)[13680->256x2],PSQT=1,Network=AffineTransform[1<-32](ClippedReLU[32](AffineTransform[32<-30](SqrClippedReLU[30](AffineTransform[16<-512](InputSlice[512(0:512)]))))),fv_scale=12"
     );
     assert_eq!(
         arch(FeatureSet::HalfKpVm, 256, 12),
         "Features=HalfKPVm(Friend)[964224->256x2],Network=AffineTransform[1<-32](ClippedReLU[32](AffineTransform[32<-32](ClippedReLU[32](AffineTransformSparseInput[32<-512](InputSlice[512(0:512)]))))),fv_scale=12"
     );
     for (set, name, first) in [
-        (FeatureSet::P, b"P".as_slice(), 256),
+        (FeatureSet::A, b"A".as_slice(), 256),
         (FeatureSet::HalfKpVm, b"HalfKPVm".as_slice(), 32),
     ] {
         let feature = name.iter().fold(0x811C_9DC5_u32, |h, &b| {
@@ -169,7 +169,7 @@ fn reference_layer(p: &Position, side: Color, n: &LayerStackParameters) -> i32 {
     let mut x = Vec::new();
     let mut sums = [0_i64; 2];
     for (part, perspective) in [side, side.opposite()].into_iter().enumerate() {
-        let acc = reference_ft::<P>(p, perspective, n.width, &n.ft_biases, &n.ft_weights);
+        let acc = reference_ft::<A>(p, perspective, n.width, &n.ft_biases, &n.ft_weights);
         for i in 0..n.width / 2 {
             x.push((acc[i].clamp(0, 127) * acc[i + n.width / 2].clamp(0, 127)) >> 7);
         }

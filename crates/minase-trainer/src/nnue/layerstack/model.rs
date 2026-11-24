@@ -1,9 +1,9 @@
 use super::{Error, Result};
 use minase::eval::{nnue::input::FeatureSet, piece_values::piece_value_of_state};
-const FEATURE_COUNT: usize = FeatureSet::P.spec().dimensions();
+const FEATURE_COUNT: usize = FeatureSet::A.spec().dimensions();
 use std::ops::{Index, IndexMut};
 
-/// P型LayerStackの第1層の幅。
+/// A型LayerStackの第1層の幅。
 pub const H: usize = 256;
 /// 左右鏡映を共有した6,840行と、常に0の埋め草1行。
 pub const ROWS: usize = super::input::CANONICAL_ROWS;

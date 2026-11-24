@@ -1,4 +1,4 @@
-//! P型LayerStackのCPU学習、再開、およびtatara形式への書き出し。
+//! A型LayerStackのCPU学習、再開、およびtatara形式への書き出し。
 //! パラメータ、AdamWの状態、局面ごとの演算はf32、局面方向の縮約はf64とする。
 
 mod checkpoint;

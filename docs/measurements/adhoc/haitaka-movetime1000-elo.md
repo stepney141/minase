@@ -25,7 +25,7 @@ target/release/minase match run \
 ## エンジン
 
 候補はminaseのコミット`97e2da0d7215a0e1f5fe3f0456a20b593594fd4f`（バイナリのSHA-256 `623abc10e2ded0ca7bdd34a37a2f999b82b54f2ee4db88825b2d2bcad6974621`）であり、`Threads`は1である。
-ネットは[NNUEの評価関数の手引き](../../guides/evaluation-nnue.md)が標準とするP型のネットで、`network_sha256`は`37054c9e49c9218bb18efdd1814fe1b298de5cbfc9c14352f6ad6eaecbb70dea`である。
+ネットは[NNUEの評価関数の手引き](../../guides/evaluation-nnue.md)が標準とするA型のネットで、`network_sha256`は`37054c9e49c9218bb18efdd1814fe1b298de5cbfc9c14352f6ad6eaecbb70dea`である。
 
 基準は[haitaka-variants](https://github.com/na2hiro/haitaka-variants)のコミット`6222835915ea2a3886696e96c14034ca4294a7e2`（2026年11月19日）である。
 rustc 1.100.0で`cargo build --release -p haitaka_cli --features chushogi`を実行してビルドした`haitaka_cli`（SHA-256 `41e35a552f626dc798dcd32ce6e0abb3cd49b804abb236cb1b8b596a567bc8f3`）を、`data/external-engines/haitaka-variants-6222835/`へ複写して使った。

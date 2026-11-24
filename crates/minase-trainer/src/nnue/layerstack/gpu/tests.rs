@@ -64,7 +64,7 @@ fn batch(n: usize) -> BatchSlot {
             .unwrap(),
         );
     }
-    BatchSlot::from_records(FeatureSet::P, &records, &vec![0.0; n], &vec![0; n]).unwrap()
+    BatchSlot::from_records(FeatureSet::A, &records, &vec![0.0; n], &vec![0; n]).unwrap()
 }
 fn weights() -> Parameters {
     let mut w = Parameters::initialize(19, scale());
@@ -147,7 +147,7 @@ fn memory_16384_uses_block_partials_and_forward_only_evaluation() {
     let head = 128 * 5_265 * 8;
     // Independent specification count: forward=850 floats, backward=561 floats;
     // the shared L1 contributes one gradient, copied to both parameter arrays.
-    let expected = crate::nnue::gpu::ring::device_bytes(FeatureSet::P, n).unwrap()
+    let expected = crate::nnue::gpu::ring::device_bytes(FeatureSet::A, n).unwrap()
         + 16 * params
         + 4 * n * (850 + 561 + 2)
         + head
@@ -177,7 +177,7 @@ fn gpu_forward_backward_validation_and_repeat_bits() {
     let mut f = ForwardBuffers::new(&device, 4096).unwrap();
     let mut d = BackwardBuffers::new(&device, 4096).unwrap();
     let mut t = Targets::new(&device, 4096).unwrap();
-    let mut ring = HostRing::new(&device, FeatureSet::P, 4096).unwrap();
+    let mut ring = HostRing::new(&device, FeatureSet::A, 4096).unwrap();
     for n in [100, 4096] {
         let batch = batch(n);
         let targets: Vec<_> = (0..n).map(|i| (i % 11) as f32 / 10.0).collect();
@@ -314,8 +314,8 @@ fn gpu_one_three_updates_reproducibility_and_snapshot_resume() {
         .unwrap();
         let mut gpu = Step::new(device.clone(), &w, &optimizer, scale(), n).unwrap();
         let mut repeat = Step::new(device.clone(), &w, &optimizer, scale(), n).unwrap();
-        let mut ring = HostRing::new(&device, FeatureSet::P, n).unwrap();
-        let mut repeated_ring = HostRing::new(&device, FeatureSet::P, n).unwrap();
+        let mut ring = HostRing::new(&device, FeatureSet::A, n).unwrap();
+        let mut repeated_ring = HostRing::new(&device, FeatureSet::A, n).unwrap();
         let mut resumed = None;
         for iteration in 1..=3 {
             let (loss, g) = backward(&w, scale(), &features, &values).unwrap();
@@ -370,7 +370,7 @@ fn gpu_one_three_updates_reproducibility_and_snapshot_resume() {
                 assert!(q.l1_weights.iter().all(|&v| i16::from(v).abs() <= 127));
                 resumed = Some((
                     Step::new(device.clone(), &gw, &go, scale(), n).unwrap(),
-                    HostRing::new(&device, FeatureSet::P, n).unwrap(),
+                    HostRing::new(&device, FeatureSet::A, n).unwrap(),
                 ));
             }
         }
@@ -382,7 +382,7 @@ fn gpu_one_three_updates_reproducibility_and_snapshot_resume() {
 fn gpu_asynchronous_results_reject_reuse_and_nonfinite_snapshot() {
     let device = Device::new(0).unwrap();
     let batch = batch(100);
-    let mut ring = HostRing::new(&device, FeatureSet::P, 100).unwrap();
+    let mut ring = HostRing::new(&device, FeatureSet::A, 100).unwrap();
     let w = weights();
     let opt = AdamW::new(OptimizerConfig::default()).unwrap();
     let mut gpu = Step::new(device.clone(), &w, &opt, scale(), 100).unwrap();
@@ -504,7 +504,7 @@ fn gpu_activation_derivatives_at_zero_and_one_match_reference() {
     let mut backward = BackwardBuffers::new(&device, 100).unwrap();
     let mut uploaded = Targets::new(&device, 100).unwrap();
     uploaded.upload(&device, &targets).unwrap();
-    let mut ring = HostRing::new(&device, FeatureSet::P, 100).unwrap();
+    let mut ring = HostRing::new(&device, FeatureSet::A, 100).unwrap();
     let ticket = ring.upload(&batch).unwrap();
     let input = ring.input(&ticket).unwrap();
     forward

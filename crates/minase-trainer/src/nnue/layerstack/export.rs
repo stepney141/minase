@@ -7,7 +7,7 @@ use minase::eval::{
 };
 use minase_core::{Color, Position};
 
-const FEATURE_COUNT: usize = FeatureSet::P.spec().dimensions();
+const FEATURE_COUNT: usize = FeatureSet::A.spec().dimensions();
 
 fn quantized(
     name: &'static str,
@@ -152,7 +152,7 @@ pub fn quantization_report(
         let f = forward_validated(w, &Features::from_position(position, side));
         let integer = network
             .evaluate_for(position, side)
-            .map_err(|_| Error::Invalid("P network evaluation"))?;
+            .map_err(|_| Error::Invalid("A network evaluation"))?;
         let diff = f64::from(integer) - scale.output() * f.output;
         report.mean_absolute_cp += diff.abs();
         report.mean_signed_cp += diff;

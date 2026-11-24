@@ -101,12 +101,12 @@ impl PackedOccurrence {
         ((self.0 >> PERSPECTIVE_SHIFT) & ((1 << PERSPECTIVE_BITS) - 1)) as u8
     }
 
-    /// P型では元のdense升または先獅子の列144、HalfKP_vmでは特徴列挙順の位置を返す。
+    /// A型では元のdense升または先獅子の列144、HalfKP_vmでは特徴列挙順の位置を返す。
     pub fn column(self) -> u8 {
         ((self.0 >> COLUMN_SHIFT) & ((1 << COLUMN_BITS) - 1)) as u8
     }
 
-    /// P型の第1層で半幅回転するかどうかを返す。
+    /// A型の第1層で半幅回転するかどうかを返す。
     pub fn rotated(self) -> bool {
         (self.0 >> ROTATION_SHIFT) & 1 != 0
     }
@@ -152,9 +152,9 @@ impl ReverseIndex {
     /// 1行の中を[`REVERSE_INDEX_SEGMENT_LEN`]の128要素以下に区切り、空行には区分を作らない。
     /// この固定順を後退の縮約順として使う。
     /// 理由は`docs/adr/backpropagate-the-first-layer-through-a-reverse-index.md`にある。
-    fn build(features: &[u32], rows: usize, perspectives: usize, p_encoded: bool) -> Result<Self> {
+    fn build(features: &[u32], rows: usize, perspectives: usize, a_encoded: bool) -> Result<Self> {
         let row_of = |feature: u32| {
-            if p_encoded {
+            if a_encoded {
                 feature as usize / 2
             } else {
                 feature as usize
@@ -180,7 +180,7 @@ impl ReverseIndex {
             let position = index / (perspectives * FEATURE_COLUMNS);
             let perspective = (index / FEATURE_COLUMNS % perspectives) as u8;
             let column = (index % FEATURE_COLUMNS) as u8;
-            let rotated = p_encoded && feature & 1 != 0;
+            let rotated = a_encoded && feature & 1 != 0;
             let occurrence = PackedOccurrence::new(position, perspective, column, rotated)?;
             let row = row_of(feature);
             entries[next[row] as usize] = occurrence.word();
@@ -210,8 +210,8 @@ impl ReverseIndex {
 /// CPUで構築し、そのまま転送できる1バッチの面。配列はいずれも連続したVec。
 ///
 /// 局面数をBとすると、`features`は`[B, 2, 145]`。
-/// 局面、視点（手番側0、相手側1）、列の順で行優先に並ぶ。P型の列は元の盤面のdense升である。
-/// P型の列144は先獅子である。HalfKP_vmはエンジンの列挙順に詰め、残りを番兵とする。
+/// 局面、視点（手番側0、相手側1）、列の順で行優先に並ぶ。A型の列は元の盤面のdense升である。
+/// A型の列144は先獅子である。HalfKP_vmはエンジンの列挙順に詰め、残りを番兵とする。
 /// 残る局面ごとの配列はすべて`[B]`。
 /// 第1層の逆索引は[行数＋1]の開始位置と、発火数個のu32を持つ。
 /// 後退用の区分表もワーカーが構築し、行・逆索引要素とも昇順を保つ。
@@ -243,7 +243,7 @@ impl BatchSlot {
     pub fn record_indices(&self) -> &[u64] {
         &self.record_indices
     }
-    /// 両視点の特徴`[B, 2, 145]`。P型は正準行×2＋回転、HalfKP_vmは実の行番号。
+    /// 両視点の特徴`[B, 2, 145]`。A型は正準行×2＋回転、HalfKP_vmは実の行番号。
     pub fn features(&self) -> &[u32] {
         &self.features
     }
@@ -409,7 +409,7 @@ impl BatchSlot {
             &features,
             super::first_layer_rows(feature_set),
             2,
-            feature_set == FeatureSet::P,
+            feature_set == FeatureSet::A,
         )?;
         Ok(Self {
             feature_set,

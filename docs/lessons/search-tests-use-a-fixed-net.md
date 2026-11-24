@@ -13,7 +13,7 @@
 ## 以後の規則
 
 探索のテストは、学習済みの本番のネットを読まず、`search/alphabeta/tests/mod.rs`の`test_network()`が返す固定ネットで書く。
-このネットは、コードで組み立てるP型のLayerStack（`eval::nnue::network::test_util::fixed_layer_stack()`）であり、駒割のPSQTに決まった後段を足したものである。
+このネットは、コードで組み立てるA型のLayerStack（`eval::nnue::network::test_util::fixed_layer_stack()`）であり、駒割のPSQTに決まった後段を足したものである。
 期待値は評価値から計算で導くか、評価値に依存しない形にし、学習で変わる重みに結びつけない。
 ネットのファイルの読み込みと識別子を確かめるテストも、本番のネットではなく、固定ネットを書き出したファイル`nets/test-layer-stack.bin`で書く。
 本番のネットは実行ファイルに埋め込まず、リポジトリにも置かないので（[ADR](../adr/search-with-an-evalfile-nnue-whose-structure-is-chosen-on-load.md)）、テストからは読めない。

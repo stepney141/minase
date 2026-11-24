@@ -75,9 +75,9 @@ minase-trainer fm scale --input $ROOT/data/pst-fm-joint-training/j75/pst.bin --f
   --fm-scale 0 --output <出力先>/pst-base.bin --data <小さな4ファイル>
 minase-trainer diag pst-compare --data <小さな4ファイル> --lambda 0.75 --teacher-cp-per-logit calibrate --lookahead-gamma 0.9 --lookahead-plies 40 \
   --base <出力先>/pst-base.bin --candidate <PSTの出力>/pst.bin --candidate-float <PSTの出力>/pst-float.npz --output-dir <出力先> --sample-size 10000 --seed 1
-minase-trainer diag nnue-removal --float <NNUE Pの出力>/best.npz --net <NNUE Pの出力>/nnue.bin --data $D/teacher/measure-*.bin --sample 10000 --seed 1 --output <報告>
-minase-trainer diag nnue-distribution --pair base $ROOT/crates/minase/nets/pst.bin <NNUE Pの出力>/nnue.bin --data <小さな4ファイル> --sample 5000 --seed 1 --output <報告>
-minase-trainer diag nnue-moves --net <NNUE Pの出力>/nnue.bin --base $ROOT/crates/minase/nets/pst.bin --positions $D/teacher/lishogi.bin --output <報告>
+minase-trainer diag nnue-removal --float <NNUE Aの出力>/best.npz --net <NNUE Aの出力>/nnue.bin --data $D/teacher/measure-*.bin --sample 10000 --seed 1 --output <報告>
+minase-trainer diag nnue-distribution --pair base $ROOT/crates/minase/nets/pst.bin <NNUE Aの出力>/nnue.bin --data <小さな4ファイル> --sample 5000 --seed 1 --output <報告>
+minase-trainer diag nnue-moves --net <NNUE Aの出力>/nnue.bin --base $ROOT/crates/minase/nets/pst.bin --positions $D/teacher/lishogi.bin --output <報告>
 ```
 
 照合する値は、使い捨てのスクリプトで出力から抜き出した。
@@ -96,7 +96,7 @@ minase-trainer diag nnue-moves --net <NNUE Pの出力>/nnue.bin --base $ROOT/cra
 | FM | 229,145 | 2257.6687870305573、2028.841203308032、推定なし | 0.5812846676384875、0.5807905881903817、0.5797951814421396 | `d4d2d9b3…` |
 | 同時学習 | 229,145 | 2257.6687870305573、2028.841203308032、推定なし | 0.5610121595691713、0.5614939577622491、0.5622069033665366 | `3443bb1d…` |
 
-NNUEの訓練と検証の通し番号の列のSHA-256は`2cdd100f…`と`5b0014c9…`、量子化の検査の標本（10,000局面）のSHA-256は`90d79f6e…`であり、量子化誤差の平均はPで17.10 cp、HalfKP-hm-b8で16.30 cp、符号反転の割合は順に0.0413と0.0622だった。
+NNUEの訓練と検証の通し番号の列のSHA-256は`2cdd100f…`と`5b0014c9…`、量子化の検査の標本（10,000局面）のSHA-256は`90d79f6e…`であり、量子化誤差の平均はAで17.10 cp、HalfKP-hm-b8で16.30 cp、符号反転の割合は順に0.0413と0.0622だった。
 実戦対局の分類はλが0なので教師の勝率尺度を推定しない。
 抜き出した全欄の値（約293 KB）は、照合の作業データとして`$D/phase0/values.json`に保存した。
 

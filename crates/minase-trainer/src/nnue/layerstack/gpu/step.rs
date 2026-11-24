@@ -151,7 +151,7 @@ impl Step {
         if self.failed.load(Ordering::Relaxed) {
             return Err(invalid("LayerStack step has failed"));
         }
-        ring.validate_streams(&self.device, FeatureSet::P)?;
+        ring.validate_streams(&self.device, FeatureSet::A)?;
         let n = ring.input(ticket)?.len;
         targets(self.capacity, n, values)?;
         let count = self

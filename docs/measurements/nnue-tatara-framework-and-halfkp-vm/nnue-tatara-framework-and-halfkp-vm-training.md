@@ -1,8 +1,8 @@
-# 載せ替えの確認に使う前と後のP型の学習
+# 載せ替えの確認に使う前と後のA型の学習
 
 ## 目的
 
-[tatara化とHalfKP_vmの設計書](../../plans/archived/nnue-tatara-framework-and-halfkp-vm.md)の「載せ替えの確認」の節に従い、載せ替える前のP型と、tataraのLayerStackへ載せ替えた後のP型を、同じ教師から同じ条件で1本ずつ学び、学習の経過、書き出しの量子化誤差、および学習の速さを記録する。
+[tatara化とHalfKP_vmの設計書](../../plans/archived/nnue-tatara-framework-and-halfkp-vm.md)の「載せ替えの確認」の節に従い、載せ替える前のA型と、tataraのLayerStackへ載せ替えた後のA型を、同じ教師から同じ条件で1本ずつ学び、学習の経過、書き出しの量子化誤差、および学習の速さを記録する。
 2本の強さは、別の測定のGSPRT（[STC](nnue-tatara-framework-and-halfkp-vm-stc.md)とLTC）で比べる。
 
 ## 教師と共通の条件
@@ -19,7 +19,7 @@
 どちらも本体のリポジトリのルートで、メモリ上限18 GiB、スワップなしの`systemd-run`のサービスとして実行した。
 `$DATA`は37本を番号順に並べたものである。
 
-載せ替える前のP型は、本書のブランチを切ったmasterのコミット`a48f03aa`に固定したworktreeの学習器で学んだ。
+載せ替える前のA型は、本書のブランチを切ったmasterのコミット`a48f03aa`に固定したworktreeの学習器で学んだ。
 
 ```console
 minase-trainer nnue train --data $DATA --base data/nnue-generation-reset/base.bin \
@@ -28,7 +28,7 @@ minase-trainer nnue train --data $DATA --base data/nnue-generation-reset/base.bi
   --lr-schedule cosine:64:0.027 --validation-superbatches 8 --seed 1 --device cuda --threads 4
 ```
 
-載せ替えた後のP型は、ブランチのコミット`8389b160`に固定したworktreeの学習器で学んだ。
+載せ替えた後のA型は、ブランチのコミット`8389b160`に固定したworktreeの学習器で学んだ。
 
 ```console
 minase-trainer nnue train layerstack --data $DATA \
@@ -47,16 +47,16 @@ minase-trainer nnue train layerstack --data $DATA \
 後の学習の間、14時45分から15時5分ごろまで、同じGPUで学習器のGPUの試験と、HalfKP_vmの学習器のメモリを測る短い学習を動かした。
 lishogiのBotのエンジンは、どちらの学習の間も対局に応じて動いていた。
 
-## 後のP型の1回目の学習における書き出しの失敗
+## 後のA型の1回目の学習における書き出しの失敗
 
-後のP型は、はじめコミット`84b652bd`の学習器で学んだ。
+後のA型は、はじめコミット`84b652bd`の学習器で学んだ。
 64 superbatchまで学び終えた後、書き出しで次のエラーになり、ネットは書かれなかった。
 
 ```text
 quantization overflow: l1_weights+l1_shared_weights[843] = -133
 ```
 
-LayerStackの幅16の層の重みは、区分（tataraのLayerStackが局面によって切り替える後段の組で、P型では1つ）ごとの組と全区分に共通の組（tataraの`L1 shared`）を別々に学び、書き出しで足してから8ビット整数へ量子化する。
+LayerStackの幅16の層の重みは、区分（tataraのLayerStackが局面によって切り替える後段の組で、A型では1つ）ごとの組と全区分に共通の組（tataraの`L1 shared`）を別々に学び、書き出しで足してから8ビット整数へ量子化する。
 学習中は2組をそれぞれtataraと同じ±127/64に収めていたので、和を64倍して丸めた値が8ビット整数の範囲±127を超えた。
 tataraは書き出しで和を8ビットへ切り詰めるが、minaseの書き出しは範囲外の値を切り詰めずにエラーで止める。
 そこでコミット`8389b160`で2組をそれぞれ±127/128に収めるよう改め、学び直した。
@@ -67,7 +67,7 @@ tataraは書き出しで和を8ビットへ切り詰めるが、minaseの書き�
 
 ### 検証損失
 
-| superbatch | 前のP型 | 後のP型 |
+| superbatch | 前のA型 | 後のA型 |
 |---:|---:|---:|
 | 0 | 0.0087956 | 0.0087956 |
 | 8 | 0.0012590 | 0.0012973 |
@@ -85,7 +85,7 @@ superbatch 64の後の値は前より2.3%大きい。
 
 ### 書き出し
 
-| 項目 | 前のP型 | 後のP型 |
+| 項目 | 前のA型 | 後のA型 |
 |---|---:|---:|
 | 量子化誤差の平均（絶対値） | 3.50 cp | 14.33 cp |
 | 量子化誤差の符号つきの平均（整数の評価−実数の評価） | 記録なし | +10.18 cp |
@@ -107,6 +107,6 @@ superbatch 64の後の値は前より2.3%大きい。
 前の学習器の訓練の速さは、64 superbatchの中央値で毎秒560,207局面、後は毎秒271,154局面であり、後は前の約2.07倍の時間を要した。
 訓練の時間の合計は、前が12,109秒、後が23,633秒である。
 GPUのメモリの使用量は機械全体の値で、前の学習の最大は2,087,714,816バイトだった。
-後のP型は、ほかのGPUの処理と重ならなかった1回目の学習で、最大900,464,640バイトだった。
+後のA型は、ほかのGPUの処理と重ならなかった1回目の学習で、最大900,464,640バイトだった。
 設計書は学習2本の所要を約3時間と見込んでいたが、実際は2本で約10.2時間だった。
 後の学習器の遅さの原因は、この測定では調べていない。

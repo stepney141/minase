@@ -26,15 +26,15 @@ fn rows<I: Indexer>(position: &Position, perspective: Color) -> Result<Vec<usize
 
 #[test]
 fn specifications_match_phase_one_contract() {
-    assert_eq!(FeatureSet::ALL, [FeatureSet::P, FeatureSet::HalfKpVm]);
+    assert_eq!(FeatureSet::ALL, [FeatureSet::A, FeatureSet::HalfKpVm]);
     for (set, name, buckets, inputs, dimensions, hash, mirror, factorized) in [
         (
-            FeatureSet::P,
-            "P",
+            FeatureSet::A,
+            "A",
             1,
             13_680,
             13_680,
-            0xD50C118F,
+            0xC40BF6CC,
             Mirror::HalfWidthRotation,
             false,
         ),
@@ -61,27 +61,27 @@ fn specifications_match_phase_one_contract() {
         assert_eq!(spec.factorized(), factorized);
         assert_eq!(FeatureSet::from_arch_name(name), Some(set));
     }
-    for name in ["p", "HalfKP", ""] {
+    for name in ["a", "HalfKP", ""] {
         assert_eq!(FeatureSet::from_arch_name(name), None);
     }
 }
 
 #[test]
-fn p_preserves_every_base_feature_without_an_anchor() {
+fn a_preserves_every_base_feature_without_an_anchor() {
     let empty = position_from_codes(Black, &[]);
-    assert_eq!(P::check_search_root(&empty), Ok(()));
+    assert_eq!(A::check_search_root(&empty), Ok(()));
     for perspective in Color::ALL {
-        assert_eq!(P::context(&empty, perspective), Ok(()));
+        assert_eq!(A::context(&empty, perspective), Ok(()));
     }
     for base in 0..FEATURE_COUNT {
-        assert_eq!(P::row((), base), Some(base));
+        assert_eq!(A::row((), base), Some(base));
     }
 }
 
 #[test]
 #[should_panic(expected = "base feature out of range")]
-fn p_rejects_out_of_range_base() {
-    P::row((), 13_680);
+fn a_rejects_out_of_range_base() {
+    A::row((), 13_680);
 }
 
 #[test]
@@ -343,7 +343,7 @@ fn feature_symmetries_hold_for_bench_random_and_missing_royal_positions() {
                 rows::<HalfKpVm>(&reflected, perspective)
             );
         }
-        assert_rank_symmetry::<P>(&position);
+        assert_rank_symmetry::<A>(&position);
         assert_rank_symmetry::<HalfKpVm>(&position);
     }
 }

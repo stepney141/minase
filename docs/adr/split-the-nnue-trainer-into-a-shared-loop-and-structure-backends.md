@@ -6,11 +6,11 @@
 
 ## コンテキスト
 
-NNUEの学習器は、1種類の構造（P型またはHalfKP-hm-b8の入力と、要素積と2段の隠れ層の出力部）を前提にした1つのモデルを持ち、GPUかCPUかだけを列挙で切り替えていた。
+NNUEの学習器は、1種類の構造（A型またはHalfKP-hm-b8の入力と、要素積と2段の隠れ層の出力部）を前提にした1つのモデルを持ち、GPUかCPUかだけを列挙で切り替えていた。
 前の世代のネットを`--base`で受け取り、駒価値、勝率尺度、および規則セットを引き継いでいた。
 重みは世代ごとに初期化していたので、`--base`が学習の出発点を決めていたわけではない（[世代反復の設計書](../plans/archived/nnue-generation-iteration.md)）。
 
-P型のLayerStackとHalfKP_vmのSimpleを同じ学習器で学ぶことになった（[構造のADR](compose-p-as-a-tatara-layerstack-with-a-psqt-and-halfkp-vm-as-a-simple-network.md)）。
+A型のLayerStackとHalfKP_vmのSimpleを同じ学習器で学ぶことになった（[構造のADR](compose-p-as-a-tatara-layerstack-with-a-psqt-and-halfkp-vm-as-a-simple-network.md)）。
 いまの1つのモデルに構造の分岐を足していくと、構造ごとのパラメータの配列とカーネルが1つのモデルに混ざる。
 tataraは、学習率の予定、教師の供給、検証、記録、および保存の時期を受け持つ学習ループから、構造ごとの実装をトレイト`TrainerBackend`越しに呼ぶ（コミット`87f1955`の`crates/nnue-train/src/trainer.rs`）、コマンドも構造ごとのサブコマンドに分ける。
 学習器の記録をtataraの`experiment.json`に揃えるかについては、2026年11月18日にエンジンの開発者が、いまの3つのファイル（`training.jsonl`、`summary.json`、`config.json`）を保つと決めた（[設計書の依存関係](../plans/archived/nnue-tatara-framework-and-halfkp-vm.md#依存関係)）。

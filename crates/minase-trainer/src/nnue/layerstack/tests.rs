@@ -56,15 +56,15 @@ fn scales_validate_teacher_and_rounded_divisor() {
 }
 
 #[test]
-fn canonical_mapping_and_rotation_match_every_existing_p_feature() {
-    use crate::nnue::layerstack::input::decode_p_feature;
+fn canonical_mapping_and_rotation_match_every_a_feature() {
+    use crate::nnue::layerstack::input::decode_a_feature;
     for f in 0..FEATURE_COUNT {
         assert_eq!(
             canonical(f),
             f / 144 * 72 + f % 144 / 12 * 6 + (f % 12).min(11 - f % 12)
         );
         let packed = 2 * canonical(f) + usize::from(f % 12 >= 6);
-        assert_eq!(decode_p_feature(packed as u32).unwrap() as usize, f);
+        assert_eq!(decode_a_feature(packed as u32).unwrap() as usize, f);
         assert_eq!(canonical(f), canonical(mirror_feature(f)));
         assert_ne!(f % 12 >= 6, mirror_feature(f) % 12 >= 6);
         for j in 0..H {

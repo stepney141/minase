@@ -10,7 +10,7 @@
 [棋力測定の段階ゲート](../plans/archived/match-staged-gate.md)の旧案は、真の効果が既知のエンジンの組（比較カード）で候補の時間制御の効率を校正してから標準を決める方式だった。
 初回の校正では、負例の比較カードで候補が400局全敗してペア得点の分散が0になり、指標を算出できなかった（[負例の記録](../measurements/match-harness-efficiency/calibration-negative-current.md)）。
 正例の比較カードは200ペアでEloの95%信頼区間が40.43〜108.02と粗く（[正例の記録](../measurements/match-harness-efficiency/calibration-positive-current.md)）、閾値の判定には本測定より大きい標本が要った。
-一方、固定ノード数の条件と時間制御の条件が同じ優劣の向きを示した組は3つあり（[PST世代0](../measurements/evaluation/pst-gen0-tc.md)、[PST世代1](../measurements/evaluation-gen1/pst-gen1-tc.md)、[P型NNUE世代1](../measurements/evaluation-gen1/nnue-gen1-tc.md)）、向きが反転した例は記録になかった。
+一方、固定ノード数の条件と時間制御の条件が同じ優劣の向きを示した組は3つあり（[PST世代0](../measurements/evaluation/pst-gen0-tc.md)、[PST世代1](../measurements/evaluation-gen1/pst-gen1-tc.md)、[A型NNUE世代1](../measurements/evaluation-gen1/nnue-gen1-tc.md)）、向きが反転した例は記録になかった。
 真の効果がH0とH1の中間にある変更は、GSPRTの決着までに多くのペアを要し、必要なペア数の分布の裾も長い。
 
 ## 決定

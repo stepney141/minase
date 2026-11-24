@@ -38,7 +38,7 @@ minase match run \
 2つのコミットのあいだの`crates/minase/src`と`crates/minase-core/src`の差は8ファイルの20行であり、中身はRust 1.100のclippyの指摘への対応と、局面の表示に使う駒の名前の変更である。探索、評価、および時間管理の変更は含まない。
 対局の実行記録`manifest.json`の`network_sha256`は、候補が世代の記録`gen-3/generation.json`の値と、対照が標準のネットのファイル全体のSHA-256と一致した。
 
-2本のネットは、どちらも王の位置を使わない入力P型である。
+2本のネットは、どちらも王の位置を使わない入力A型である。
 標準のネットは、中断した世代反復の第2世代の教師37本（訓練96,462,343局面）から、日本中将棋連盟の規則セット`JCSA`を学習器に渡して学んだものである（[学習の記録](../nnue-tatara-framework-and-halfkp-vm/nnue-tatara-framework-and-halfkp-vm-training.md)）。
 第3世代のネットは、教師も学習器の引数も`lishogi`である。
 本書の対局の規則セットは、オンライン対局サイトlishogiの実装に近い`lishogi`（規則コード`L1,L2,P0,P3,R1,E1,E3`）なので、対照のネットは学んだ規則と違う規則で指している。

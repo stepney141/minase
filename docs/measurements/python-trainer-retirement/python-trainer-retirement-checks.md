@@ -21,7 +21,7 @@ Pythonの照合は本体の作業ツリー（worktreeではない側）の`tools
 ## フェーズ0　クレートの改名
 
 `crates/nnue-trainer`を`crates/minase-trainer`へ改名し、既存のサブコマンドを`nnue`の下へ移した。
-完了条件の検査として、世代3の1ファイル（`data/gen3/generated-1500000.bin`、2,958,151局面）でP型、幅128、1エポックの`nnue train`を改名の前後で実行し、書き出した`nnue.bin`を比べた。
+完了条件の検査として、世代3の1ファイル（`data/gen3/generated-1500000.bin`、2,958,151局面）でA型、幅128、1エポックの`nnue train`を改名の前後で実行し、書き出した`nnue.bin`を比べた。
 
 ```sh
 minase-trainer nnue train --feature-set P --width 128 \
@@ -53,22 +53,22 @@ Pythonは標本の番号をNumPyの乱数（`numpy.random.default_rng(1).choice`
 | 診断 | 比較した値の数 | 結果 |
 |---|---|---|
 | `nnue-distribution`（2つのネット） | 整数76、実数434 | すべて一致（実数の最大絶対差8.2×10⁻¹²） |
-| `nnue-removal`（P型、510,845件の除去） | 整数106、実数44 | すべて一致（実数の最大絶対差8.0×10⁻¹⁴） |
+| `nnue-removal`（A型、510,845件の除去） | 整数106、実数44 | すべて一致（実数の最大絶対差8.0×10⁻¹⁴） |
 | `nnue-removal`（HalfKP-hm-b8、510,845件の除去） | 整数106、実数40 | すべて一致（実数の最大絶対差1.1×10⁻¹³） |
-| `nnue-moves`（P型、2万局面の全合法手） | 整数160,004、実数320,000 | すべて一致（実数の最大相対差1.3×10⁻¹⁵） |
+| `nnue-moves`（A型、2万局面の全合法手） | 整数160,004、実数320,000 | すべて一致（実数の最大相対差1.3×10⁻¹⁵） |
 | `nnue-moves`（HalfKP-hm-b8） | 整数160,004、実数320,000 | すべて一致（実数の最大相対差1.2×10⁻¹⁵） |
 
 駒除去差分の報告では、`float`欄のSHA-256だけが異なる。
 Pythonはチェックポイントをnpzへ変換したファイルを読み、Rustは学習器のチェックポイント`nnue-float.bin`を直接読むので、識別するファイルが違うためである。
-駒除去差分の一括計算と除去後の局面の再評価の最大差は、P型で1.8×10⁻¹²、HalfKP-hm-b8で1.9×10⁻¹²センチポーンであり、診断の内部基準（10⁻⁶センチポーン）を満たす。
-v0の参照と逆向きの除去は、P型で3件、HalfKP-hm-b8で0件であり、[NNUEの学習の記録](../nnue-replacement/nnue-replacement-training.md)と同じである。
+駒除去差分の一括計算と除去後の局面の再評価の最大差は、A型で1.8×10⁻¹²、HalfKP-hm-b8で1.9×10⁻¹²センチポーンであり、診断の内部基準（10⁻⁶センチポーン）を満たす。
+v0の参照と逆向きの除去は、A型で3件、HalfKP-hm-b8で0件であり、[NNUEの学習の記録](../nnue-replacement/nnue-replacement-training.md)と同じである。
 Rustの報告では、Pythonの報告にあったプローブのコマンドと実行ファイルのSHA-256の欄がなくなる。
 
 実行時間は、分布の診断が778秒、駒除去差分の診断が各772〜793秒、着手前後の評価差の診断が各約27秒だった。
 前2者の時間のほぼ全部は前処理（`Dataset::open`）であり、その約9割は入力ファイルのSHA-256の検査に使われていた（`perf record`で確認）。
 SHA-256の計算がSSEとAVXの混在による罰で大きく遅くなっていることが後に分かった（「NNUEの学習の速度」の節）。
 
-診断の移植で学習器のデータ経路（特徴の抽出）を共有の関数へ整理したので、フェーズ0と同じ1エポックの学習をP型とHalfKP-hm-b8で実行し、改名前のバイナリの`nnue.bin`とバイト単位で一致することを確かめた。
+診断の移植で学習器のデータ経路（特徴の抽出）を共有の関数へ整理したので、フェーズ0と同じ1エポックの学習をA型とHalfKP-hm-b8で実行し、改名前のバイナリの`nnue.bin`とバイト単位で一致することを確かめた。
 
 一致を確かめた後、PythonのNNUEの学習器と診断（`minase_train.nnue`、`nnue-diagnostics`）、PyTorchとの照合スクリプト（`crosscheck_reference.py`、`crosscheck_batch.py`、`rust_float_to_npz.py`）とそのテスト、およびRustの`nnue dump-batch`を削除した。
 削除後の検査の結果は次のとおりである。
@@ -721,7 +721,7 @@ Pythonの学習ツール（`tools/train/`の`minase_train`、テスト、`uv.loc
 | `pst train`の`pst.bin`と`pst-float.npz` | 世代3の1ファイル、候補Lの条件で2エポック |
 | `fm train`の`fm.bin`と`fm-float.npz` | 同じ1ファイル、候補Faの条件で2エポック |
 | `joint train`の`pst.bin`と`pst-float.npz` | 同じ1ファイル、J75の条件で2エポック |
-| `nnue train`の`nnue.bin` | 同じ1ファイル、P型とHalfKP-hm-b8、幅128で1エポック（フェーズ0の改名前と同一） |
+| `nnue train`の`nnue.bin` | 同じ1ファイル、A型とHalfKP-hm-b8、幅128で1エポック（フェーズ0の改名前と同一） |
 | `diag nnue-moves`の報告 | フェーズ1と同じ2万局面 |
 | `fm quarter`と`fm scale --fm-scale 611`の出力 | 候補Faの`fm-quarter.bin`と、現行の`crates/minase/nets/pst.bin` |
 
@@ -742,10 +742,10 @@ Pythonの学習ツール（`tools/train/`の`minase_train`、テスト、`uv.loc
 
 | 型 | 1エポックの訓練（改名前） | 1エポックの訓練（最終） | 実行全体（改名前） | 実行全体（最終） |
 |---|---:|---:|---:|---:|
-| P型 | 4.85〜4.88秒 | 4.86〜4.88秒 | 34.7〜39.3秒 | 36.6〜36.9秒 |
+| A型 | 4.85〜4.88秒 | 4.86〜4.88秒 | 34.7〜39.3秒 | 36.6〜36.9秒 |
 | HalfKP-hm-b8 | 5.21〜5.24秒 | 5.21〜5.22秒 | 87.6〜89.1秒 | 34.2〜38.6秒 |
 
-訓練の速度は変わらず（P型約58万局面/秒、HalfKP-hm-b8約54万局面/秒）、HalfKP-hm-b8の実行全体だけが約50秒短くなった。
+訓練の速度は変わらず（A型約58万局面/秒、HalfKP-hm-b8約54万局面/秒）、HalfKP-hm-b8の実行全体だけが約50秒短くなった。
 各フェーズのバイナリで二分すると、短くなったのはフェーズ2a（`b0a245b`）からだった。
 改名前のバイナリでは、196 MBのチェックポイントの符号化（`Checkpoint::encode`）が1回約11秒かかり、1回の学習で5回呼ばれていた。
 最終のバイナリでは同じ符号化が1回0.04秒であり、ソースは同じである。
@@ -773,7 +773,7 @@ AVXの上位ビットが汚れた状態でSSE形式の命令を実行すると�
 | `diag nnue-distribution`（30ファイル、2万局面、2つのネット） | 778秒 | 30秒 |
 | `diag pst-compare`（候補Lの10ファイル、各分類と帯で最大1万局面） | 280秒 | 45秒 |
 
-対処の前後で、PST、FM、同時学習、NNUE（P型とHalfKP-hm-b8）の学習の出力、`fm quarter`と`fm scale`の出力、`diag nnue-moves`と`diag pst-compare`の出力（標本の番号、局面、報告を含む14ファイル）が、すべてバイト単位で同じだった。
+対処の前後で、PST、FM、同時学習、NNUE（A型とHalfKP-hm-b8）の学習の出力、`fm quarter`と`fm scale`の出力、`diag nnue-moves`と`diag pst-compare`の出力（標本の番号、局面、報告を含む14ファイル）が、すべてバイト単位で同じだった。
 テストは、ワークスペース全体1,096件とGPUの30件が通った。
 分布の診断の対処前の時間は、`--replay-sample`で標本を与えたフェーズ1の実行の値である。
 

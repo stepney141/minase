@@ -70,7 +70,7 @@ fn compare(report: &mut [f64; 3], actual: f64, expected: f64) -> train::Result<(
 pub fn check(args: CheckArgs) -> train::Result<Value> {
     args.training.validate()?;
     let scale = Scale::new(args.teacher_cp_per_logit)?;
-    let batch = synthetic_batch(FeatureSet::P, args.batch, args.seed)?;
+    let batch = synthetic_batch(FeatureSet::A, args.batch, args.seed)?;
     let features = Features::from_batch(&batch)?;
     let targets = crate::nnue::data::build_targets(
         &batch,
@@ -110,7 +110,7 @@ pub fn check(args: CheckArgs) -> train::Result<Value> {
     }
     drop(evaluator);
     let mut step = Step::new(device.clone(), &weights, &optimizer, scale, args.batch)?;
-    let mut ring = HostRing::new(&device, FeatureSet::P, args.batch)?;
+    let mut ring = HostRing::new(&device, FeatureSet::A, args.batch)?;
     for _ in 0..3 {
         let (loss, gradients) = backward(&weights, scale, &features, &targets)?;
         optimizer.update(&mut weights, &gradients, 1.0)?;

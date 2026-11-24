@@ -41,30 +41,32 @@ minaseのNNUEは、入力特徴集合とネットの構造の組で決まる。
 
 | 入力特徴集合 | 構造 | 第1層の行数 | 第1層より後ろの計算 |
 |---|---|---:|---|
-| P型 | LayerStack | 13,680 | 第1層の2成分の積、幅16と幅32の層、出力、およびPSQT |
+| A型 | LayerStack | 13,680 | 第1層の2成分の積、幅16と幅32の層、出力、およびPSQT |
 | HalfKP_vm | Simple | 964,224 | 幅32と幅32の層、および出力 |
 
-P型は、王駒の位置で特徴を条件付けない入力特徴集合である。
-P型と組むLayerStackは、局面に応じて後段の重みの組を切り替える区分を1つだけ持ち、その横に、駒と升の組ごとの点数を足す表を並べる。
+A型は、王駒の位置で特徴を条件付けない入力特徴集合である。
+名前のAは、Stockfishの学習器nnue-pytorchで王を含む全部の駒と升の特徴を指す名前に合わせたものである。
+2026年11月25日まではP型と呼び、構造記述の名前も`P`だった（[改名のADR](../adr/rename-the-p-type-input-features-to-a.md)）。文書の呼び名はすべてA型に書き換えたが、それより前のコミットメッセージ、ブランチ名、文書のファイル名、変換前のネットのヘッダ、およびminase 3.0.0までのコードでは、`P`がA型を指す。
+A型と組むLayerStackは、局面に応じて後段の重みの組を切り替える区分を1つだけ持ち、その横に、駒と升の組ごとの点数を足す表を並べる。
 この表はtataraとStockfishの呼び名でPSQT（piece-square table）といい、NNUEの中の1つの項であって、以前の評価関数PSTとは別物である。
 HalfKP_vmは、視点側の王駒の升ごとに第1層の別の行を引く入力特徴集合である。
 HalfKP_vmと組むSimpleは、将棋エンジンやねうら王の構成256x2-32-32と同じく、両視点の第1層の出力を0以上1以下へ切り詰めて連結し、2つの隠れ層へ通す。
-世代反復と、探索の変更を測る対局はP型のネットで行い、HalfKP_vmが中将棋で効くかは、P型の世代反復の後に起案するHalfKP_vmの世代反復で確かめる。
-構造の決定は[P型をLayerStackとPSQTで、HalfKP_vmをSimpleで組むADR](../adr/compose-p-as-a-tatara-layerstack-with-a-psqt-and-halfkp-vm-as-a-simple-network.md)に、2つを列挙型で表して読み込みのときに選ぶ決定は[入力特徴集合と構造を列挙型で表すADR](../adr/represent-nnue-feature-sets-and-structures-as-enums-and-select-the-structure-from-the-tatara-file.md)にある。
+世代反復と、探索の変更を測る対局はA型のネットで行い、HalfKP_vmが中将棋で効くかは、A型の世代反復の後に起案するHalfKP_vmの世代反復で確かめる。
+構造の決定は[A型をLayerStackとPSQTで、HalfKP_vmをSimpleで組むADR](../adr/compose-p-as-a-tatara-layerstack-with-a-psqt-and-halfkp-vm-as-a-simple-network.md)に、2つを列挙型で表して読み込みのときに選ぶ決定は[入力特徴集合と構造を列挙型で表すADR](../adr/represent-nnue-feature-sets-and-structures-as-enums-and-select-the-structure-from-the-tatara-file.md)にある。
 
 NNUEという名前が指すのは第1層を差分で更新できる構造のことであり、第1層より後ろの計算はエンジンごとに異なる。
 たとえば、やねうら王が採用した将棋用NNUEの代表的な構成であるHalfKP 256x2-32-32は、第1層の出力を2つの隠れ層に通して1つの値を出力し、線形の項を持たない（[やねうら王の構成](https://github.com/yaneurao/YaneuraOu/blob/c1b80eaa09fe13d5f12b1599d1ae4d53c224de30/source/eval/nnue/architectures/halfkp_256x2-32-32.h#L30-L37)）。
 一方でチェスエンジンのStockfishは、第1層と同じ入力から線形の出力も計算し、隠れ層を通した出力との和を評価値にしている（[2つの出力の和](https://github.com/official-stockfish/Stockfish/blob/17a6c8f1eb0da45c2ca405321919519bf4e211ba/src/evaluate.cpp#L50-L52)）。
 この線形の出力は、自玉の位置、駒、および升の組ごとの点数を、盤上の駒数で8区分した表から引いて足し合わせたものであり、tataraのPSQTも同じ役割を持つ（[線形の出力の計算](https://github.com/official-stockfish/Stockfish/blob/17a6c8f1eb0da45c2ca405321919519bf4e211ba/src/nnue/nnue_feature_transformer.h#L233-L236)）。
 minaseのPSQTは区分が1つであり、王駒の位置で条件付けない。
-tatara化の前のP型は、序中盤と終盤の2組の点数を駒数で補間する線形の経路と、minase独自の要素積の出力部を持っていたが、tataraの形式で表せないので置き換えた（[以前の構造のADR](../adr/archive/compose-the-nnue-of-a-piece-value-initialized-linear-path-and-pairwise-products-with-two-hidden-layers.md)）。
+tatara化の前のA型は、序中盤と終盤の2組の点数を駒数で補間する線形の経路と、minase独自の要素積の出力部を持っていたが、tataraの形式で表せないので置き換えた（[以前の構造のADR](../adr/archive/compose-the-nnue-of-a-piece-value-initialized-linear-path-and-pairwise-products-with-two-hidden-layers.md)）。
 
 学習した実数の重みは、整数へ丸めて（量子化して）重みファイルに保存し、エンジンは整数演算だけで評価する。
 重みファイルはtataraの形式であり、学習器が書き出すファイルの名前は`nnue.bin`である。
 重みファイルは実行ファイルに埋め込まず、gitにも入れない。
 エンジンは、USI（将棋のエンジンとGUIの通信規約）のオプション`EvalFile`で指定したファイルを、対局の準備を確かめるコマンド`isready`を受けたときに1回だけ読んで検証し、ファイル全体のSHA-256を`info string network_sha256`で始まる行で報告する。
 `EvalFile`が未設定の場合、ファイルを読めない場合、または検証に通らない場合は停止する（[EvalFileのNNUEで探索するADR](../adr/search-with-an-evalfile-nnue-whose-structure-is-chosen-on-load.md)）。
-エンジンはファイルの先頭から構造を読み取るので、同じ実行ファイルでP型とHalfKP_vmのどちらのネットも使える。
+エンジンはファイルの先頭から構造を読み取るので、同じ実行ファイルでA型とHalfKP_vmのどちらのネットも使える。
 推論のRust実装は`crates/minase/src/eval/nnue/`にあり、学習器は`crates/minase-trainer`の実行ファイル`minase-trainer`のサブコマンド`nnue train layerstack`と`nnue train simple`である。
 
 局面 $`p`$ の評価値 $`E(p)`$ は、どちらの構造でも、ネットの整数の出力 $`N(p)`$ を正の整数の除数 $`m`$ で割って求める。
@@ -123,11 +125,11 @@ NNUEは、手番側と相手側の両方の視点で特徴を作る。
 入力特徴集合は $`\mathcal{A}_v(p)`$ の各番号を第1層の行の番号へ写し、本書ではその行の集合を $`\mathcal{R}_v(p)`$ と書く。
 入力特徴集合ごとの行数、発火数（1局面の1視点で成り立つ特徴の数）の上限145、構造記述での名前、および鏡映の扱いは、`crates/minase/src/eval/nnue/input/mod.rs`の`FeatureSet::spec`が返す、仕様を表す1つの値にまとめてあり、エンジンと学習器は同じ値を参照する。
 
-### P型の入力特徴集合
+### A型の入力特徴集合
 
-P型は、基底特徴の番号をそのまま第1層の行の番号にする入力特徴集合である。
+A型は、基底特徴の番号をそのまま第1層の行の番号にする入力特徴集合である。
 したがって第1層の行数は13,680であり、$`\mathcal{R}_v(p) = \mathcal{A}_v(p)`$ となる。
-P型は王駒の位置で特徴を条件付けないので、どの着手でも特徴の番号の付け方は変わらない。
+A型は王駒の位置で特徴を条件付けないので、どの着手でも特徴の番号の付け方は変わらない。
 左右鏡映は番号付けでは扱わず、後述の「左右鏡映による重みの共有」で重みを共有して扱う。
 
 ### HalfKP_vmの入力特徴集合
@@ -139,7 +141,7 @@ HalfKP_vmは、視点側の基準の王駒の升を72区分にまとめ、区分
 一方で太子は王将と併存できるので、王将を基準にしている間の太子の位置は駒として表す必要がある。
 王将を除いた駒状態は46通りなので、1区分の行は2陣営×46駒状態×144升＋先獅子の144升＝13,392行であり、全体では72×13,392＝964,224行になる。
 通常の対局では、1つの視点で使う行は、王将を除く駒の90枚と先獅子の1個を合わせた91行以下である。
-入力特徴集合を選んだ理由は、[P型とHalfKP_vmを置くADR](../adr/provide-p-and-halfkp-vm-input-features-and-drop-halfkp-hm-b8.md)にある。
+入力特徴集合を選んだ理由は、[A型とHalfKP_vmを置くADR](../adr/provide-p-and-halfkp-vm-input-features-and-drop-halfkp-hm-b8.md)にある。
 
 基準の王駒は、視点側の王将とし、王将がなければ視点側の太子とする。
 基準の王駒の筋を $`f_a`$ とし、基準の王駒の段を $`r_{\mathrm{rel}}`$ と同じ規則で視点から見た段に直して $`r_a`$ とする。
@@ -201,7 +203,7 @@ HalfKP_vmでは、入力に含めない王将の特徴の変化を飛ばす。
 1つの特徴を足し引きする計算量は、視点ごとに第1層の $`H`$ 成分であり、LayerStackではこれにPSQTの和1つが加わる。
 
 探索の根では、両方の視点の累算器を最初から計算する（全再計算）。
-P型では着手で番号の付け方が変わらないので、根の後は全再計算をしない。
+A型では着手で番号の付け方が変わらないので、根の後は全再計算をしない。
 HalfKP_vmでは、着手の後に視点ごとの文脈を求め直し、着手の前と同じならその視点を差分で更新し、違えばその視点だけを全再計算する。
 区分の番号と鏡映の有無の組は基準の王駒の升を一意に決めるので、文脈が変わるのは、その視点の基準の王駒が動いた場合と、王将を取られて基準が太子へ移った場合である。
 王将が残っている間の太子の移動と、醉象が太子に成る着手は、基準の王駒を変えないので、通常の差分の更新になる。
@@ -241,7 +243,7 @@ Cargoのフィーチャ`invariants`を有効にしたビルドでは、探索中
 
 ## PSQT
 
-PSQTは、基底特徴ごとに1つの重みを持つ表であり、P型のLayerStackだけにある。
+PSQTは、基底特徴ごとに1つの重みを持つ表であり、A型のLayerStackだけにある。
 実数の重みを $`q_i`$、量子化した整数を $`Q_i`$ とし、視点 $`v`$ のPSQTの和を次のように定める。
 
 ```math
@@ -385,7 +387,7 @@ N &= \sum_{k=0}^{31} \hat{w}^{(3)}_k\, G'_k + \hat{b}^{(3)}.
 
 ## 左右鏡映による重みの共有
 
-P型のネットは、局面とその左右鏡映に厳密に同じ評価を返すように、鏡映の対で第1層とPSQTの重みを共有する。
+A型のネットは、局面とその左右鏡映に厳密に同じ評価を返すように、鏡映の対で第1層とPSQTの重みを共有する。
 盤面全体を左右に裏返す（鏡映する）と、特徴 $`i`$ は筋 $`f`$ を $`11 - f`$ に替えた特徴 $`\mu(i)`$ に写る。
 基底特徴の番号は12個ずつ同じ段に並ぶので、写像は $`\mu(i) = 12 \lfloor i / 12 \rfloor + 11 - (i \bmod 12)`$ と書ける。
 第1層では鏡映の対の行どうしで、成分を半幅 $`H/2`$ だけ回した位置の重みを共有し、バイアスは成分 $`j`$ と $`j + H/2`$ で同じ値を持ち、PSQTは鏡映の対で同じ値を持つ。
@@ -411,7 +413,7 @@ PSQTの和も鏡映で変わらないので、評価値全体が鏡映で不変�
 第1層のバイアスは $`H/2`$ 個を自由なパラメータとし、使うときに全幅へ展開する。
 鏡映の対の勾配は平均せずに足し、書き出しでは全行に展開してtataraの配置で保存する。
 このように重みそのものを共有するので、FMの学習で使っていた、局面を確率的に鏡映するデータ拡張は行わない。
-共有の方式を選んだ理由は[P型の鏡映の対で第1層とPSQTを共有するADR](../adr/share-p-type-mirror-weights-in-the-first-layer-and-the-psqt.md)にある。
+共有の方式を選んだ理由は[A型の鏡映の対で第1層とPSQTを共有するADR](../adr/share-p-type-mirror-weights-in-the-first-layer-and-the-psqt.md)にある。
 HalfKP_vmは基準の王駒の筋で盤を鏡映して番号を付けるので、この共有を使わない。
 
 ## 重みファイル
@@ -421,10 +423,10 @@ HalfKP_vmは基準の王駒の筋で盤を鏡映して番号を付けるので�
 構造記述の文字列とは、ネットの構造を表すUTF-8の文字列であり、tataraと同じ組み立て方で、入力特徴集合の名前、行数、幅、構造ごとの層の並び、および末尾の`,fv_scale=<m>`を書く。
 主な違いは次のとおりである。
 
-| 項目 | LayerStack（P型） | Simple（HalfKP_vm） |
+| 項目 | LayerStack（A型） | Simple（HalfKP_vm） |
 |---|---|---|
 | 版の番号 | `0x7AF32F21` | `0x7AF32F16` |
-| 構造記述の先頭 | `Features=P(Friend)[13680->256x2],PSQT=1,` | `Features=HalfKPVm(Friend)[964224->256x2],` |
+| 構造記述の先頭 | `Features=A(Friend)[13680->256x2],PSQT=1,` | `Features=HalfKPVm(Friend)[964224->256x2],` |
 | 第1層のバイアスと重み | 符号付きLEB128（可変長の整数の符号化）で圧縮した16ビット整数 | 圧縮しない16ビット整数 |
 | PSQT | 0のバイアスと13,680個の32ビット整数 | なし |
 | 後段 | 幅16、幅32、出力1の層のバイアスと重み | 幅32、幅32、出力1の層のバイアスと重み |
@@ -435,7 +437,7 @@ LayerStackでは、構造記述の後に区分の数（常に1）を置く。
 
 エンジンは、先頭の版の番号でLayerStackかSimpleかを選び、構造記述の文字列から入力特徴集合の名前、幅、および $`m`$ を読み取る。
 読み取った値から構造記述を組み立て直し、ファイルの文字列とバイト単位で一致することと、ハッシュが一致することを確かめてから本体を復号する。
-版の番号に対応する構造がない、構造記述が一致しない、幅が2から1,024の偶数でない、$`m`$ が1以上でない、ファイルが途中で切れている、末尾に余りのバイトがある、詰め物が0でない、値が値域を外れている、またはP型の鏡映の共有に違反している場合は、原因ごとのエラーで読み込みを拒否する。
+版の番号に対応する構造がない、構造記述が一致しない、幅が2から1,024の偶数でない、$`m`$ が1以上でない、ファイルが途中で切れている、末尾に余りのバイトがある、詰め物が0でない、値が値域を外れている、またはA型の鏡映の共有に違反している場合は、原因ごとのエラーで読み込みを拒否する。
 LayerStackのファイルは第1層を圧縮するので、長さは重みの値で変わり、固定の長さとは比べない。
 Simpleの第1層は964,224行×256成分×2バイト＝493,682,688バイト（約494 MB）である。
 バイト配置の詳細と検査の一覧は、`crates/minase/src/eval/nnue/network/mod.rs`、`layer_stack.rs`、`simple.rs`、および`leb128.rs`のdocコメントと、[ファイル形式の一覧](file-formats.md)にある。
@@ -443,7 +445,7 @@ Simpleの第1層は964,224行×256成分×2バイト＝493,682,688バイト（�
 
 ### v0の表現
 
-v0は、P型のLayerStackの後段と第1層をすべて0にし、PSQTにv0の駒割と位置評価を入れたネットとして書き出せる。
+v0は、A型のLayerStackの後段と第1層をすべて0にし、PSQTにv0の駒割と位置評価を入れたネットとして書き出せる。
 書き出しのコマンドは`minase-trainer nnue export-handcrafted`である。
 視点側の駒の行には、その駒の持ち主から見た升でのv0の点数 $`V`$（駒価値と升の点数の和）を入れ、相手の駒の行には $`-V`$ を入れる。
 王駒の行にもv0の点数を入れ、先獅子の行は0とする。
@@ -587,7 +589,7 @@ HalfKP_vmの学習では、tataraの`FtFactorizeMode::Base`と同じく、学習
 仮想行の勾配は、同じ基底特徴に当たる全ての区分の行の勾配の和になる。
 こうすると、基準の王駒が稀にしか行かない升の区分の行でも、仮想行を通じて王の位置によらない駒と升の価値を学べる。
 書き出しのときは、仮想行を実の行へ足し込んでから1回だけ量子化するので、エンジンのネットに仮想行は残らない。
-特徴分解を使う理由は[P型とHalfKP_vmを置くADR](../adr/provide-p-and-halfkp-vm-input-features-and-drop-halfkp-hm-b8.md)にある。
+特徴分解を使う理由は[A型とHalfKP_vmを置くADR](../adr/provide-p-and-halfkp-vm-input-features-and-drop-halfkp-hm-b8.md)にある。
 
 ### 最適化と制約
 
@@ -651,12 +653,13 @@ tatara化の前の学習器は、平均絶対値が勝率尺度の1/40を超え�
 
 ### 探索の測定に使う標準のネット
 
-本書の構成で標準とするネットは、[P型の世代反復](../plans/archived/nnue-generation-iteration.md)の第3世代のP型のネット（`/mnt/synology_nas/minase/nnue/nets/cbbccf6f5ee7097fd890086d2cf4bca72ed969da28353cb0c4a2f4d781acc244.bin`）である。
-同じファイルを、Hugging Face Hubのモデルリポジトリ`stepney141/minase-nets`に`nnue/p/minase-nnue-sfnn_p_256x16x32_psqt-lishogi-20261124-cbbccf6f.nnue`として公開している（[公開の手順](release.md#評価ネットの公開手順hugging-face-hub)）。
+本書の構成で標準とするネットは、[世代反復](../plans/archived/nnue-generation-iteration.md)の第3世代のA型のネット（`/mnt/synology_nas/minase/nnue/nets/415020879b9086772acb168397dfa406a1432350c151f87b635b3f271153d1a9.bin`）である。
+このファイルは、構造記述の名前が`P`だった第3世代のネットを、名前`A`へ変換したものである（[改名のADR](../adr/rename-the-p-type-input-features-to-a.md)）。
+同じファイルを、Hugging Face Hubのモデルリポジトリ`stepney141/minase-nets`に`nnue/a/minase-nnue-sfnn_a_256x16x32_psqt-lishogi-20261124-41502087.nnue`として公開している（[公開の手順](release.md#評価ネットの公開手順hugging-face-hub)）。
 教師、学習の条件、および書き出しの結果は[学習の記録](../measurements/nnue-generation-iteration/nnue-generation-iteration-gen3-training.md)にあり、世代ごとの推移は[系列のページ](../training/nnue-generation-iteration/README.md)にある。
 このネットは、教師の生成も学習も規則セット`lishogi`で行ったものである。
 2026年11月24日に開発者は、世代反復を第3世代でいったん中断して、このネットを標準にすると決めた。
-それまでの標準は、[tatara化の設計書](../plans/archived/nnue-tatara-framework-and-halfkp-vm.md)で載せ替えを確かめるために規則セット`JCSA`で学んだP型のネット（SHA-256は`37054c9e49c9218bb18efdd1814fe1b298de5cbfc9c14352f6ad6eaecbb70dea`）だった。
+それまでの標準は、[tatara化の設計書](../plans/archived/nnue-tatara-framework-and-halfkp-vm.md)で載せ替えを確かめるために規則セット`JCSA`で学んだA型のネット（SHA-256は`37054c9e49c9218bb18efdd1814fe1b298de5cbfc9c14352f6ad6eaecbb70dea`）だった。
 第3世代のネットは、規則セット`lishogi`のSTCで、それまでの標準のネットに対して`H1`（109ペア、得点率0.899）となった（[測定記録](../measurements/nnue-generation-iteration/nnue-generation-iteration-gen3-master-stc.md)）。
 規則セット`JCSA`での2本の強さは比べていない。世代反復の設計書が定める採否の測定（世代反復を始める前のネットを埋め込んだ版との配置の距離、STC、およびLTC）も行っていない。
 
@@ -671,12 +674,12 @@ $`K_t`$ は世代反復の第1世代の教師から一度だけ較正した値�
 STCは持ち時間10秒と1手ごとの加算0.1秒、LTCは持ち時間60秒と1手ごとの加算0.2秒であり、手順は[棋力測定の手引き](sprt.md)にある。
 初代のNNUEは、置き換え前のPST＋FM（コミット`8d0e382`）に対して、[STC](../measurements/nnue-replacement/nnue-replacement-stc.md)と[LTC](../measurements/nnue-replacement/nnue-replacement-ltc.md)の両方で有意に強いと判定された。
 入力特徴集合の選択も、検証損失ではなく対局で決めてきた。
-王の位置を8区分にまとめるminase独自の入力HalfKP-hm-b8は、P型との直接対局で負けたので採らず（[記録](../measurements/nnue-replacement/nnue-replacement-features-stc.md)）、コードからも削除した。
-HalfKP_vmが中将棋で効くかどうかも、P型の世代反復の後に起案するHalfKP_vmの世代反復で、対局によって確かめる。
+王の位置を8区分にまとめるminase独自の入力HalfKP-hm-b8は、A型との直接対局で負けたので採らず（[記録](../measurements/nnue-replacement/nnue-replacement-features-stc.md)）、コードからも削除した。
+HalfKP_vmが中将棋で効くかどうかも、A型の世代反復の後に起案するHalfKP_vmの世代反復で、対局によって確かめる。
 
 ## 学習器の使い方
 
-P型の学習は `minase-trainer nnue train layerstack` で、HalfKP_vmの学習は `minase-trainer nnue train simple` で行い、標準ではGPUを使う。
+A型の学習は `minase-trainer nnue train layerstack` で、HalfKP_vmの学習は `minase-trainer nnue train simple` で行い、標準ではGPUを使う。
 入力には、minase独自の形式MNSDの教師ファイルを指定し、必須の引数として、教師の勝率尺度 `--teacher-cp-per-logit`、規則セット `--rules`、混合比 `--lambda`、学習率の予定 `--lr-schedule`、superbatchの数 `--superbatches`、検証の間隔 `--validation-superbatches`、および出力先 `--output-dir` を与える。
 前の世代のネットは引数に取らず、重みは世代ごとに初期化する（[学習したネットをgitの外に置いて次の世代に使うADR](../adr/use-each-trained-nnue-outside-git-for-the-next-generation.md)）。
 標準の学習では、先読み教師の引数 `--lookahead-gamma` と `--lookahead-plies` を指定しない。
@@ -691,12 +694,12 @@ GPUの学習器を設計した理由は、[NNUEの学習器をRustのホスト�
 - [PSTとFMによる評価関数と学習の目的関数](evaluation-pst-fm.md)
 - [NNUEをtataraに倣った枠組みへ載せ替え、HalfKP_vmを加える設計書](../plans/archived/nnue-tatara-framework-and-halfkp-vm.md)
 - [NNUEの入力特徴集合と構造を取り得る値を固定した列挙型で表し、tataraの形式のファイルの構造記述から構造を選ぶ](../adr/represent-nnue-feature-sets-and-structures-as-enums-and-select-the-structure-from-the-tatara-file.md)
-- [P型をtataraのLayerStackにPSQTを足した構造で、HalfKP_vmを256x2-32-32のSimpleで組み、量子化をtataraにそろえる](../adr/compose-p-as-a-tatara-layerstack-with-a-psqt-and-halfkp-vm-as-a-simple-network.md)
+- [A型をtataraのLayerStackにPSQTを足した構造で、HalfKP_vmを256x2-32-32のSimpleで組み、量子化をtataraにそろえる](../adr/compose-p-as-a-tatara-layerstack-with-a-psqt-and-halfkp-vm-as-a-simple-network.md)
 - [探索は、EvalFileで読んだNNUEだけを使い、その構造を読み込みのときに選んで、評価器の列挙型で着手ごとに分岐する](../adr/search-with-an-evalfile-nnue-whose-structure-is-chosen-on-load.md)
-- [NNUEの入力特徴集合にP型とHalfKP_vmを置き、HalfKP-hm-b8を削除する](../adr/provide-p-and-halfkp-vm-input-features-and-drop-halfkp-hm-b8.md)
+- [NNUEの入力特徴集合にA型とHalfKP_vmを置き、HalfKP-hm-b8を削除する](../adr/provide-p-and-halfkp-vm-input-features-and-drop-halfkp-hm-b8.md)
 - [探索用駒価値はv0の駒割から作る固定の表とし、エンジンと学習器で共有する](../adr/take-search-piece-values-from-the-v0-material-table.md)
 - [NNUEの教師の勝率尺度K_tを学習器の必須の引数で渡し、ネットの出力の換算の尺度K_o＝8,128÷mと分ける](../adr/separate-the-nnue-teacher-win-rate-scale-from-the-output-scale.md)
-- [P型のNNUEは左右鏡映の対で、第1層の重みを半幅だけ回して共有し、PSQTを同じ値にする](../adr/share-p-type-mirror-weights-in-the-first-layer-and-the-psqt.md)
+- [A型のNNUEは左右鏡映の対で、第1層の重みを半幅だけ回して共有し、PSQTを同じ値にする](../adr/share-p-type-mirror-weights-in-the-first-layer-and-the-psqt.md)
 - [NNUEの世代反復では、学習したネットをgitの外に置いてそのまま次の世代の教師の生成に使い、学習の後に補正しない](../adr/use-each-trained-nnue-outside-git-for-the-next-generation.md)
 - [NNUEの学習器を、構造によらない学習ループと構造ごとの実装に分け、構造ごとのサブコマンドで呼ぶ](../adr/split-the-nnue-trainer-into-a-shared-loop-and-structure-backends.md)
 - [NNUEは先読みを使わない探索値だけの教師で、勝率の差の2乗を損失として学ぶ](../adr/train-the-nnue-on-search-value-teachers-with-the-squared-win-rate-difference.md)
