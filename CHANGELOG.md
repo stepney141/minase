@@ -1,3 +1,13 @@
+## v3.0.0 (2026-11-24)
+
+minase 3.0.0 is the first stable release of the 3.0 series. It contains every change listed under v3.0.0-alpha.1, plus the change in this section.
+The engine no longer embeds an NNUE network and no longer accepts the `--rules` startup argument: start it with `--protocol` only, then send the `RuleSet` and `EvalFile` options before `isready` (USI) or `new` (CECP).
+`EvalFile` reads networks in the tatara format (LayerStack for the P-type input, Simple for HalfKP_vm); networks are published at [stepney141/minase-nets on Hugging Face Hub](https://huggingface.co/stepney141/minase-nets).
+
+### Features
+
+- **usi:** Show drunk elephant, blind tiger, and ferocious leopard as 象, 虎, and 豹 in d
+
 ## v3.0.0-alpha.1 (2026-11-20)
 
 ### Features
