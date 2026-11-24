@@ -22,7 +22,8 @@
 同じ4本から較正した教師の勝率尺度は733.12 cp（cpはセンチポーンで、歩兵1枚の100分の1）であり、全世代で同じ値を使う。
 第1世代と第2世代は標準レシピv3で学び、第3世代は、学習器の不具合を直したコミットと標準レシピv4で学んだ（[端数バッチと学習率の設計書](../../plans/archived/nnue-decay-to-end.md)）。
 第3世代のネットは、masterのエンジンに標準のネットを渡した対照との比較でも`H1`を取った（[比較の記録](../../measurements/nnue-generation-iteration/nnue-generation-iteration-gen3-master-stc.md)）。
-第4世代の教師は生成していない。再開するか、第3世代を最終候補として設計書の採否の測定へ進むかは、利用者が決める。
+第3世代のネットは、利用者の決定でHugging Face Hubのモデルリポジトリ`stepney141/minase-nets`に`nnue/p/minase-nnue-p-lishogi-20261124-cbbccf6f.nnue`として公開した。
+第4世代の教師は生成していない。設計書の採否の測定（旧基準との配置の距離、STC、およびLTC）も行っていない。再開は利用者の指示を待つ。
 
 ## 進捗
 
