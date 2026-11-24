@@ -29,7 +29,7 @@
 
 標準レシピv4では、教師を対局単位で訓練用と検証用に分け、訓練用の局面を約4エポック学ぶ。学習率は、学習の終わりまでに初期値の0.027倍まで余弦の形で下げ、学び終えた最後の重みを棋力測定に送る。
 検証用の対局は、重みを選ぶためではなく、最後の重みが悪化していないかを見張るために使う。
-v3までは、検証損失が2回続けて最小値を更新しなければ止めて、最小だった時点の重みを使っていた。この方式では、学習率がほとんど下がらないうちに学習が止まり、止まる時点が検証損失の揺れで決まっていた（[診断の測定](../measurements/adhoc/nnue-early-stop-diagnosis.md)）。進行中の[P型の世代反復](../plans/nnue-generation-iteration.md)の第1世代の教師43本を使った比較では、v4の条件で学んだネットが、v3の条件で学んだネットに対して、短時間の対局の逐次検定で`H1`（候補が有意に強いという判定）を取り、+21.0 Elo（95%信頼区間+6.6〜+35.5）だった（[判定の記録](../measurements/nnue-decay-to-end/nnue-decay-to-end-gen1-stc.md)、[ADR](../adr/train-the-nnue-for-four-epochs-decaying-the-learning-rate-to-the-end-and-export-the-last-network.md)）。
+v3までは、検証損失が2回続けて最小値を更新しなければ止めて、最小だった時点の重みを使っていた。この方式では、学習率がほとんど下がらないうちに学習が止まり、止まる時点が検証損失の揺れで決まっていた（[診断の測定](../measurements/adhoc/nnue-early-stop-diagnosis.md)）。進行中の[P型の世代反復](../plans/archived/nnue-generation-iteration.md)の第1世代の教師43本を使った比較では、v4の条件で学んだネットが、v3の条件で学んだネットに対して、短時間の対局の逐次検定で`H1`（候補が有意に強いという判定）を取り、+21.0 Elo（95%信頼区間+6.6〜+35.5）だった（[判定の記録](../measurements/nnue-decay-to-end/nnue-decay-to-end-gen1-stc.md)、[ADR](../adr/train-the-nnue-for-four-epochs-decaying-the-learning-rate-to-the-end-and-export-the-last-network.md)）。
 一方、同じ教師を長く学び続けると弱くなる。P型を同じ教師ファイル30本で学習したところ、2.83エポック以降は訓練損失が下がり続けても検証損失は悪化し、8.02エポックのネットは2.83エポックのネットに対局で負けた（[測定記録](../measurements/adhoc/tatara-p-generalization.md)）。学習の長さは約4エポックより延ばさない。
 
 学ぶネットは、P型の入力を受けるLayerStackに、駒と升ごとの点数を足す表PSQT（piece-square table）を並べた構造である。
@@ -59,7 +59,7 @@ minase-trainer diag nnue-removal \
   --data <教師...> --sample 10000 --seed 1 --output <新規の報告.json>
 ```
 
-- `--data`には、その世代の教師だけを指定する。第n世代の教師は、1億局面に相当する本数k（見込みは37）のn倍の教師ファイルである。
+- `--data`には、その世代の教師だけを指定する。第n世代の教師は、1億局面に相当する本数kのn倍の教師ファイルである。kは世代反復の第1世代の最初の4本から測り、2026年11月の世代反復では43だった（[記録](../measurements/nnue-generation-iteration/nnue-generation-iteration-gen1-training.md)）。
 - `--rules`には、教師の生成器と同じ規則セット`lishogi`（対局サイトLishogiに近い対局条件の規則コードの組）を渡す。学習器は、全ての教師ファイルのヘッダの規則セットがこれと一致することを確かめ、一致しなければ学習を始めずに止まる。
 - `--teacher-cp-per-logit`には、教師の探索値を勝率へ換算する尺度K_tを数値で渡す。単位は1ロジットあたりのcp（センチポーン、評価値の単位で歩兵1枚の100分の1）である。K_tは第1世代の教師の最初の4本から一度だけ求め、全世代に同じ値を渡す。求め方は[学習データと初期値を用意する](#学習データと初期値を用意する)にある。
 - 訓練局面数をM、1エポックの更新回数をU＝floor(M / 16,384)とし、1 superbatchの更新回数にはB＝ceil(U / 2)を使う。間引く場合のMには抽出後の局面数を用いる。floorは整数への切り捨て、ceilは整数への切り上げを表す。Mは同じ教師の `config.json` にある `preprocessing.training_positions`、間引いた場合は `preprocessing.train_subsample.training_positions_after` で、Uは `preprocessing.updates_per_epoch` で確認する。初めて使う教師では約5%の対局を検証に充てるため、生成時の適格局面数の95%に訓練局面の抽出率を掛けて見積もり、学習記録の `epochs` で実際の間隔を確認する。例えば訓練79,458,082局面ならU＝4,849、B＝2,425となる。
@@ -336,7 +336,7 @@ systemd-run --user --unit=<サービス名> --setenv=PATH="$PATH" -p WorkingDire
 ### 連続生成スクリプトで世代を作る
 
 連続生成スクリプト`scripts/vast/nnue/generation_chain.py`は、世代ごとに、足りない教師の生成、教師の検査、学習、駒除去差分の診断、ネットの保管、およびエンジンでの動作確認を続けて行う。
-引数の一覧は`python3 scripts/vast/nnue/generation_chain.py run --help`で確かめ、標準レシピv4では、上記のB、`--superbatches 8`、および`--lr-schedule cosine:8:0.027`を渡し、`--validation-patience`を渡さない。1回の実行で指定できるBは1つなので、教師量が変わる場合は世代ごとに計算して実行する。世代反復での求め方は、[世代反復の設計書](../plans/nnue-generation-iteration.md#世代の手順)にある。
+引数の一覧は`python3 scripts/vast/nnue/generation_chain.py run --help`で確かめ、標準レシピv4では、上記のB、`--superbatches 8`、および`--lr-schedule cosine:8:0.027`を渡し、`--validation-patience`を渡さない。1回の実行で指定できるBは1つなので、教師量が変わる場合は世代ごとに計算して実行する。世代反復での求め方は、[世代反復の設計書](../plans/archived/nnue-generation-iteration.md#世代の手順)にある。
 標準レシピに関わる引数と動作は次のとおりである。
 
 - `--structure layerstack`はP型の学習器を、`--structure simple`はHalfKP_vmの学習器を選ぶ。
@@ -562,7 +562,7 @@ LayerStackの値は`nnue/layerstack/`に、Simpleの値は`nnue/simple/`にあ�
 
 | 項目 | 値 | 根拠 |
 |---|---|---|
-| 教師の量 | 第n世代は1億局面に相当する本数k（見込みは37）のn倍のファイル、1ファイル7,500局、1手2万ノード | 第2世代の教師では、37ファイルが、その半分に対してSTCで`H1`（得点率63.2%）で、まだ頭打ちではない（[記録](../measurements/nnue-generation-reset/nnue-generation-reset-gen2-volume.md)）。自己生成で育てたSaplingとAstraは、世代を追って1世代の量を増やした（[調査の付録](../research/teacher-generation-strong-engines/zero-chess-and-variants.md)）。局面数をそろえると対局の多い教師が`H1`（得点率56.5%）なので、量は対局数で定める（[記録](../measurements/nnue-generation-reset/nnue-generation-reset-gen2-diversity.md)） |
+| 教師の量 | 第n世代は1億局面に相当する本数k（2026年11月の世代反復では43）のn倍のファイル、1ファイル7,500局、1手2万ノード | 第2世代の教師では、37ファイルが、その半分に対してSTCで`H1`（得点率63.2%）で、まだ頭打ちではない（[記録](../measurements/nnue-generation-reset/nnue-generation-reset-gen2-volume.md)）。自己生成で育てたSaplingとAstraは、世代を追って1世代の量を増やした（[調査の付録](../research/teacher-generation-strong-engines/zero-chess-and-variants.md)）。局面数をそろえると対局の多い教師が`H1`（得点率56.5%）なので、量は対局数で定める（[記録](../measurements/nnue-generation-reset/nnue-generation-reset-gen2-diversity.md)） |
 | リプレイバッファ | その世代の教師だけで学ぶ | 直前の世代の教師を併用した学習はSTCで`H0`（[記録](../measurements/nnue-standard-recipe/nnue-standard-recipe-window-stc.md)） |
 | λ | 1.0 | 終盤に勝敗を25%混ぜると勝敗の予測誤差は小さくなったが、直接対局で棋力の改善は確認できなかった。[終盤の比較](../measurements/adhoc/tatara-p-generalization.md#終盤に勝敗を混ぜた効果) |
 | 構成 | P型のLayerStack（第1層の幅256、後段の区分1つ）に、区分1つのPSQTを並べた構造 | 2026年11月15日にエンジンの開発者が、P型もtataraの枠組みへ載せ替え、重みをtataraの形式にすると決めた（[ADR](../adr/compose-p-as-a-tatara-layerstack-with-a-psqt-and-halfkp-vm-as-a-simple-network.md)） |
@@ -584,7 +584,7 @@ LayerStackの値は`nnue/layerstack/`に、Simpleの値は`nnue/simple/`にあ�
 |---|---|
 | 構造と計算式、学習の目的関数 | [NNUEの評価関数の手引き](evaluation-nnue.md) |
 | 採否の判定 | [棋力測定の手引き](sprt.md) |
-| 世代反復の手順 | [世代反復の設計書](../plans/nnue-generation-iteration.md) |
+| 世代反復の手順（第3世代で中断した反復の設計書） | [世代反復の設計書](../plans/archived/nnue-generation-iteration.md) |
 | 引数の既定値と値域の定義 | `crates/minase-trainer/src/nnue/`の`options.rs`、`train/args.rs`、`schedule.rs` |
 | 学習ループと保存物の各項目 | `crates/minase-trainer/src/nnue/train/mod.rs`と`train/record.rs` |
 | 構造ごとの式、初期化、切り詰め、量子化 | `crates/minase-trainer/src/nnue/layerstack/`と`nnue/simple/` |

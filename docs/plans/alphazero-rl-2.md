@@ -144,7 +144,7 @@ AlphaZero（19ブロック256チャネル）とAobaZero（20ブロック256チ�
 [強さを測る固定の相手](archived/mcts-fixed-opponents.md)は、固定したαβ探索とHaChuとの対局の条件を定め、1回目の学習のネットで基準を測り、対局のスクリプトを用意したもので、完了している。
 [固定の検証用データ](archived/zero-validation-games.md)は、lishogiの人間同士の棋譜から検証用データを作り、診断の道具を対応させたもので、完了している。
 [学習レシピを先行実装に揃える設計書](archived/zero-recipe-precedents.md)は、自己対局の開始局面と指し手、探索回数、投了、ネットの構成、損失、学習率、およびリプレイバッファを、先行するエンジンの方法と値に改める。
-[NNUEの世代反復のやり直しの計画](nnue-generation-iteration.md)とは並行して進める。
+[NNUEの世代反復のやり直しの計画](archived/nnue-generation-iteration.md)とは並行して進める。
 NNUEは借りたCPU機を、本書は借りたGPUの機械を使うので、生成と学習の計算機は競合しない。
 どちらの計画も対局の測定を開発に使う作業機で行うので、作業機の測定だけは重ならないように順番を調整する。
 

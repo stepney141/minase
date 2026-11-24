@@ -45,4 +45,4 @@ Pruneの規則のように、判定に落ちた世代だけ同じ生成器で本
 1世代の生成の時間と費用、および学習の常駐メモリは本数に比例して増える。
 連続生成スクリプト`scripts/vast/generation_chain.py`には、世代ごとに`--books-per-generation`でknを与える。
 各世代の学習期間は、訓練に使わなかった対局での検証損失から選ぶ。[学習期間の決め方](archive/select-the-nnue-checkpoint-on-held-out-games.md)
-反復の上限と費用の見積りは、[世代反復の設計書](../plans/nnue-generation-iteration.md)が定める。
+反復の上限と費用の見積りは、[世代反復の設計書](../plans/archived/nnue-generation-iteration.md)が定める。

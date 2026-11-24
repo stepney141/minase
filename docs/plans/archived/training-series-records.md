@@ -334,7 +334,7 @@ minaseの学習器が書く3つのファイル（`training.jsonl`、`summary.jso
 利用者は、NNUEの学習器と抽象化をtataraの設計に揃えることを優先すると決めている（2026年11月15日）。
 記録の形式までtataraに揃えるかどうかは、tatara化の設計書に着手する前に、上の影響を示して利用者に諮る。
 
-NNUEの世代反復の系列のページは、[世代反復の設計書](../nnue-generation-iteration.md)に着手するときに`docs/training/`に作る。
+NNUEの世代反復の系列のページは、[世代反復の設計書](nnue-generation-iteration.md)に着手するときに`docs/training/`に作る。
 世代は最大5つで、点が5つ以下の推移は表で読めるので、世代をまたぐ強さは図にしない。
 同書が定める、それまでで最も強いと判定された世代との対局の結果を、表に書く。
 

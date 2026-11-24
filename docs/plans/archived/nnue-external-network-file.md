@@ -73,7 +73,7 @@ HalfKP_vmの入力特徴集合と出力部（第1層より後ろの層）の実�
 NNUEの次の2つの設計書は、本書の完了を前提とする。
 
 - [tatara化とHalfKP_vmの設計書](nnue-tatara-framework-and-halfkp-vm.md)は、本書の完了を前提とし、P型とHalfKP_vmをtataraに倣った同じ枠組みに載せ、重みのファイルの形式をtataraの形式に揃える（2026年11月15日の利用者の決定）。
-- P型の[世代反復の設計書](../nnue-generation-iteration.md)は、本書とtatara化の完了を前提とし、2026年11月15日に外部のネットを使う形へ書き直してある。同書のフェーズ1は、連続生成スクリプトに学習だけのために機械を借りる処理を足すので本書と同じファイルを変えるが、本書の完了後に行う。
+- P型の[世代反復の設計書](nnue-generation-iteration.md)は、本書とtatara化の完了を前提とし、2026年11月15日に外部のネットを使う形へ書き直してある。同書のフェーズ1は、連続生成スクリプトに学習だけのために機械を借りる処理を足すので本書と同じファイルを変えるが、本書の完了後に行う。
 
 本書の変更は、次の設計書の手順にも及ぶ。
 どれも本書の完了を待つ必要はないが、本書の後に着手するなら、次のとおりに手順を合わせる。
@@ -241,7 +241,7 @@ PV-MCTSのネットの検査（`tools/train/zero/minase_zero/runner.py`）は、
   - [診断をUSIの命令にするADR](../../adr/archive/run-engine-diagnostics-as-usi-commands-and-keep-experiment-tools-as-subcommands.md)の、`bench`には`isready`が要らないという決定。
   - [NNUEを入力特徴集合と出力部の型で表すADR](../../adr/archive/parameterize-the-nnue-by-feature-set-and-head-types.md)の、埋め込んだネットを起動時に検証するという記述。
   - [学習の後に線形の経路を補正しないADR](../../adr/archive/do-not-correct-the-nnue-linear-path-after-training.md)の、世代のネットをコミットして次の世代の初期値にするという記述。
-- [世代反復の設計書](../nnue-generation-iteration.md)の手順を、外部のネットを使う形に書き直している。
+- [世代反復の設計書](nnue-generation-iteration.md)の手順を、外部のネットを使う形に書き直している。
 
 ## 参考資料
 
