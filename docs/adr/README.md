@@ -452,3 +452,4 @@ A型は、王の位置で条件付けず、盤上の全部の駒の駒状態と�
 - 2026年11月23日 [NNUEは約4エポックの学習の終わりまでに学習率を余弦減衰で下げきり、最後のネットを書き出して、検証損失は見張りに使う](train-the-nnue-for-four-epochs-decaying-the-learning-rate-to-the-end-and-export-the-last-network.md)
 - 2026年11月25日 [評価ネットをHugging Face Hubのモデルリポジトリへ置き、NNUEの公開名にやねうら王に倣った構造名を入れる](host-evaluation-networks-on-hugging-face-hub-and-name-them-by-structure.md)
 - 2026年11月25日 [王の位置で条件付けない入力特徴集合の名前をP型からA型へ改め、重みファイルの構造記述の名前も`A`にする](rename-the-p-type-input-features-to-a.md)
+- 2026年11月25日 [評価ネットの重みをCC BY 4.0で配布する](license-evaluation-networks-under-cc-by-4-0.md)

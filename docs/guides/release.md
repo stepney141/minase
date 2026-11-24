@@ -210,7 +210,10 @@ NNUE の `<構造>` は、やねうら王の構造名に倣い、`[sfnn_]<特徴
 - 対応する `minase` の版数範囲（例: `minase >= 3.0.0-alpha.1`）
 - 学習と評価に使った規則セット（例: `lishogi`）
 - PV-MCTS 用ネットの場合は対応する `NnCpPerLogit` の値
-- ライセンスと、強さ確認の測定記録（`docs/measurements/` または `docs/training/`）へのリンク
+- 強さ確認の測定記録（`docs/measurements/` または `docs/training/`）へのリンク
+
+モデルリポジトリのファイルはすべて CC BY 4.0 で配布する（[ライセンスのADR](../adr/license-evaluation-networks-under-cc-by-4-0.md)）。
+モデルカード先頭のメタデータにある `license: cc-by-4.0` と本文の「License」の節は全ネットに共通なので、ネットを追加しても書き換えない。
 
 ### アップロード手順
 
