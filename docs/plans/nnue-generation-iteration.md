@@ -25,9 +25,11 @@ HalfKP_vmの世代反復は、本書でP型の評価関数の癖をつかんだ�
 同じ4本から較正した教師の勝率尺度K_tは733.12 cpである。
 第1世代は43本（記録局面数99,642,331）から学び（[学習の記録](../measurements/nnue-generation-iteration/nnue-generation-iteration-gen1-training.md)）、第0世代との判定で`H1`を取って暫定最良世代になった（[判定の記録](../measurements/nnue-generation-iteration/nnue-generation-iteration-gen1-stc.md)）。
 フェーズ3では、第2世代が86本（記録局面数217,189,481）から学び（[学習の記録](../measurements/nnue-generation-iteration/nnue-generation-iteration-gen2-training.md)）、第1世代との判定で`H1`を取って暫定最良世代になった（[判定の記録](../measurements/nnue-generation-iteration/nnue-generation-iteration-gen2-stc.md)）。
-2026年11月22日に利用者が第3世代へ進むと決め、第2世代のネットで第3世代の教師129本を生成している。
+第3世代は129本（記録局面数329,916,365）から標準レシピv4で学び（[学習の記録](../measurements/nnue-generation-iteration/nnue-generation-iteration-gen3-training.md)）、第2世代との判定で`H1`を取って暫定最良世代になった（[判定の記録](../measurements/nnue-generation-iteration/nnue-generation-iteration-gen3-stc.md)）。
 第1世代と第2世代の学習がどちらも1.5エポックの重みを選んで止まった原因を調べた結果（[診断の測定](../measurements/adhoc/nnue-early-stop-diagnosis.md)）、[端数バッチと学習率の設計書](archived/nnue-decay-to-end.md)が学習器を直して標準レシピをv4に改めたので、第3世代以降はv4で学ぶ。連続生成スクリプトは、学習だけを別のコミットで行えるように直した。
-次の一手は、129本がそろった後に学習機を借りて第3世代を標準レシピv4で学び、第2世代との判定を行うことである。
+2026年11月24日に利用者が、第3世代の学習の後に世代反復をいったん止め、第3世代を第2世代およびmasterとSTCで比べると決めた。masterのエンジンに標準のネットを渡した対照との比較も`H1`だった（[比較の記録](../measurements/nnue-generation-iteration/nnue-generation-iteration-gen3-master-stc.md)）。この比較は「最終候補の採否」の測定ではない。
+第4世代の教師は生成していない。
+次の一手は、第4世代へ進んで反復を再開するか、第3世代を最終候補としてフェーズ4の採否の測定へ進むかを、利用者が決めることである。
 
 ## 目的
 
