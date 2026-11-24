@@ -142,6 +142,7 @@
 | NNUEの標準レシピv1と、学習器および教師の生成器の変更 | [plans/archived/nnue-standard-recipe.md](plans/archived/nnue-standard-recipe.md) | 完了（採用） | 2026年11月15日 |
 | 標準レシピv3でのP型のNNUEの世代反復のやり直し | [plans/nnue-generation-iteration.md](plans/nnue-generation-iteration.md) | 起案 | |
 | NNUEの学習で端数バッチを捨て、学習率を学習の終わりまでに下げきる | [plans/archived/nnue-decay-to-end.md](plans/archived/nnue-decay-to-end.md) | 完了（採用） | 2026年11月23日 |
+| NNUEの学習機としてColab機も選べるようにする | [plans/nnue-training-on-colab.md](plans/nnue-training-on-colab.md) | 起案 | |
 | MCTSの葉での王駒の捕獲の判定と方策の温度 | [plans/archived/mcts-royal-capture-temperature.md](plans/archived/mcts-royal-capture-temperature.md) | 完了（採用） | 2026年11月9日 |
 | 起動引数と診断ツールをUSIへ移す | [plans/archived/cli-to-usi.md](plans/archived/cli-to-usi.md) | 完了（採用） | 2026年11月12日 |
 | NNUEの教師生成を中断の後に再開できるようにする | [plans/archived/resumable-nnue-teacher-generation.md](plans/archived/resumable-nnue-teacher-generation.md) | 完了（採用） | 2026年11月14日 |
@@ -176,6 +177,7 @@ HalfKP_vmの世代反復は、P型の世代反復で評価関数の癖をつか�
 | 設計書 | 内容 | 状態と次の判断 | 前提 |
 |---|---|---|---|
 | [P型の世代反復](plans/nnue-generation-iteration.md) | 標準レシピv3で、第n世代に約n億局面の教師を使い、v0から最大第5世代までP型の世代反復を行う。各世代の学習は、訓練に使わない対局での損失が下がらなくなった時点で止める。教師の生成と学習に借りる計算機の費用は、各世代を上限まで学んだ場合で約300米ドルと見込む。 | 起案の段階である。計算機を借りるので、利用者の着手の指示を待つ。 | なし（外部ファイル化とtatara化は完了した） |
+| [NNUEの学習機にColab機](plans/nnue-training-on-colab.md) | NNUEの学習機として、vast.aiの機械に加えてColab機も実行のたびに選べるようにし、毎月付与されるColabのCUを学習に充てる。Colab機の操作は作業機側の一つのモジュールにまとめ、AlphaZero型探索の実行器もそれを使う。 | 起案の段階である。レビューの後に利用者の着手の指示を待つ。Colab機を試走で借りる前に、残高と見込みのCUを示して承認を得る。 | なし（学習機だけを借りる経路は世代反復のブランチから移植する） |
 | [先読みなしの教師での間引きの比較](plans/nnue-subsample-no-lookahead.md) | 同じ局面数を少数の対局から採る学習と多数の対局から採る学習を比べ、対局数が多いほど良いという効果が、後続の局面の探索値を混ぜない現行の教師でも残るかを確かめる。 | 起案の段階である。2026年11月20日に、記録する局面の間引きの着手の前提から外した。世代反復の結果を見て、続けるかを決める。 | なし |
 | [記録する局面の間引き](plans/sparse-teacher-recording.md) | 4分の1の手だけを2万ノードで探索して記録し、残りの手を少ないノード数で指して、同じ計算量で対局数を増やす。世代反復で最後に強いと判定された世代の教師と同じネットを使い、生成の計算量をそろえて教師を生成し、学んだネットをその世代のネットと段階ゲートで比べる。 | 起案の段階である。計算機を借りるので、世代反復の完了の後に利用者の着手の指示を待つ。 | 世代反復の完了（その教師とネットを基準に使い、標準レシピv3が固定した教師の作り方を変えるため） |
 | [第1層の全再計算の差分化（Finny tables）](plans/nnue-finny-tables.md) | 自玉が別の区分へ動いたときに起きる第1層の値の全再計算を、保存した値からの差分の更新に置き換える。 | 待機中である。本文はtatara化で削除するHalfKP-hm-b8を前提にしているので、着手の前にHalfKP_vmに合わせて改める。着手するかは、tatara化で測ったHalfKP_vmの全再計算の割合（深さ5の`bench`で累算器の更新の1.17%、[記録](measurements/nnue-tatara-framework-and-halfkp-vm/nnue-tatara-framework-and-halfkp-vm-halfkp-vm-check.md)）を見て、HalfKP_vmの世代反復を起案するときに決める。 | なし（tatara化は完了した） |
