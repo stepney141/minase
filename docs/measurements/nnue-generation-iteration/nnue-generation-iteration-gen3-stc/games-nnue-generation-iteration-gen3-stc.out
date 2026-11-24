@@ -1,0 +1,24 @@
+games 220 cand wins 179 base wins 23 draws 18
+mean depth cand 17.0 base 17.01 cpu per game cand 24.1 base 26.2
+by plies bucket (cand wins/base wins/draw):
+  0 100 15 0 0 15
+  100 200 8 5 2 1
+  200 300 22 20 1 1
+  300 400 55 50 4 1
+  400 600 109 97 12 0
+  600 2000 11 7 4 0
+short games:
+  63 1 13 draw white adjudicated_draw Repetition ['7d5f', '8f9g', '5f6g', '9g8f', '6g5f', '8f9g', '5f6g', '9g8f', '6g5f', '8f9g', '5f6g', '9g8f'] ccp [0, 0, 0] bcp [0, 0, 0]
+  54 0 17 draw black adjudicated_draw Repetition ['8i8h', '8d8e', '2k2l', '7b5d', '5i5h', '6c7b6c', '7j8i7j', '6c7b6c', '7j8i7j', '6c7b6c', '7j8i7j', '6c7b6c'] ccp [0, 0, 0] bcp [0, 0, 0]
+  85 0 19 draw black adjudicated_draw Repetition ['7j6h', '8d8e', '5i5h', '3d3e', '8i8h', '4c2e', '6h6g', '7c8d', '6j4h', '8d7c', '4h6j', '7c8d'] ccp [0, 0, 0] bcp [0, 0, 0]
+  48 1 20 draw white adjudicated_draw Repetition ['5d5e', '5i5h', '10d10e', '10h10g', '11e11f', '4j6h', '10a9b', '6h6g', '3b7f', '6g7g', '7f3b', '7g6g'] ccp [0, 0, 0] bcp [0, 0, 0]
+  109 1 20 draw white adjudicated_draw Repetition ['5d5e', '10i10h', '6c8e', '5h7h', '9c12f', '8i8h', '4c6e', '9j11h', '8e7f', '11h10i', '7f8e', '10i11h'] ccp [0, 0, 0] bcp [0, 0, 0]
+  46 0 23 draw black adjudicated_draw Repetition ['8f7f', '8i8h', '5d5e', '10i10h', '3d3e', '3i3h', '4c1f', '5i5h', '3b6e', '9j10i', '6e3h', '9h9g'] ccp [0, 0, 0] bcp [0, 0, 0]
+  91 1 23 draw white adjudicated_draw Repetition ['7c4f', '6h7g', '7b7c', '5i5h', '8d8e', '4j6h', '4f1f', '7g8g', '6b6d', '9j11h', '1f2g', '8g10f'] ccp [0, 0, 0] bcp [0, 0, 0]
+  32 1 27 draw white adjudicated_draw Repetition ['7j6h', '4f4e', '8i8h', '5d5e', '6h6g', '8d8e', '4j3j', '7e8d', '6k8i', '3d3e', '10i10h', '5c5d'] ccp [0, 0, 0] bcp [0, 0, 0]
+abs cp cand p50/p90 705 3824 base p50/p90 653 3495
+ply 10 n 220 mean cand cp (own view) 17 mean base cp (own view) 10 std 595 597
+ply 30 n 210 mean cand cp (own view) 80 mean base cp (own view) -40 std 621 630
+ply 60 n 206 mean cand cp (own view) 176 mean base cp (own view) -139 std 657 665
+ply 100 n 205 mean cand cp (own view) 314 mean base cp (own view) -264 std 738 739
+ply 150 n 202 mean cand cp (own view) 575 mean base cp (own view) -516 std 1007 978
