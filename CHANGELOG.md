@@ -1,3 +1,13 @@
+## v3.0.1 (2026-11-24)
+
+minase 3.0.1 renames the king-unconditioned NNUE input feature set from P to A, the name nnue-pytorch uses for features over all pieces including kings; search and evaluation are unchanged.
+`EvalFile` now accepts only networks whose architecture string reads `Features=A(Friend)`, and rejects the `Features=P(Friend)` networks that minase 3.0.0 reads.
+Converted networks are published under `nnue/a/` at [stepney141/minase-nets on Hugging Face Hub](https://huggingface.co/stepney141/minase-nets); the standard network is `nnue/a/minase-nnue-sfnn_a_256x16x32_psqt-lishogi-20261124-41502087.nnue`.
+
+### Refactoring
+
+- **eval:** Rename the P-type NNUE feature set to A
+
 ## v3.0.0 (2026-11-24)
 
 minase 3.0.0 is the first stable release of the 3.0 series. It contains every change listed under v3.0.0-alpha.1, plus the change in this section.
