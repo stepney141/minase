@@ -400,7 +400,15 @@ pub(super) fn record_previous_search(
         .expect("the main worker must return its time reduction");
 }
 
-/// 主ワーカーと補助ワーカーを実行し、パニック時も全ワーカーを回収する。
+/// 探索ワーカーのスレッドのスタック容量。
+///
+/// releaseビルドの探索は1 plyあたり約8.2 KiB（`negamax`と`search_move`の1組）のスタックを使い、
+/// [`MAX_PLY`]の近くまで延長されると約2.1 MiBに達して、Rustのスレッドの既定値2 MiBを超える。
+/// 呼び出し側のスレッドの容量に依存しないよう、主ワーカーも含めて全ワーカーをこの容量のスレッドで動かす。
+/// 値はStockfishの探索スレッドの8 MiB（`TH_STACK_SIZE`）と同じである。
+const WORKER_STACK_BYTES: usize = 8 * 1024 * 1024;
+
+/// 主ワーカーと補助ワーカーを[`WORKER_STACK_BYTES`]のスタックのスレッドで実行し、パニック時も全ワーカーを回収する。
 pub(super) fn run_worker_team<T: Send>(
     histories: &mut [T],
     shared: &SharedSearch<'_>,
@@ -411,16 +419,24 @@ pub(super) fn run_worker_team<T: Send>(
         .split_first_mut()
         .expect("search team must have a main worker");
     thread::scope(|scope| {
+        let worker = &worker;
+        let spawn = |worker_index, history| {
+            thread::Builder::new()
+                .stack_size(WORKER_STACK_BYTES)
+                .spawn_scoped(scope, move || {
+                    run_worker_guarded(shared, || worker(worker_index, history))
+                })
+                .expect("the search worker thread must start")
+        };
+        let main_worker = spawn(0, main_history);
         let auxiliary_workers: Vec<_> = auxiliary_histories
             .iter_mut()
             .enumerate()
-            .map(|(index, history)| {
-                let worker_index = index + 1;
-                let worker = &worker;
-                scope.spawn(move || run_worker_guarded(shared, || worker(worker_index, history)))
-            })
+            .map(|(index, history)| spawn(index + 1, history))
             .collect();
-        let main_outcome = run_worker_guarded(shared, || worker(0, main_history));
+        let main_outcome = main_worker
+            .join()
+            .expect("guarded search worker must not unwind across its thread boundary");
         let mut worker_outcomes = Vec::with_capacity(worker_count);
         let mut panic_payload = match main_outcome {
             Ok(outcome) => {
