@@ -1,3 +1,17 @@
+## v3.1.0 (2026-11-25)
+
+minase 3.1.0 retunes 100 of the search and time-management coefficients for the generation 3 network (`nnue/a/minase-nnue-sfnn_a_256x16x32_psqt-lishogi-20261124-41502087.nnue`), tuned by SPSA over 30,000 game pairs under the `lishogi` rule set.
+Against the same engine before retuning (3.0.1 with the stack fix below), with the same network under `lishogi`, the retuned engine passed both the short time control (10+0.1 s, 0.622 score over 156 pairs) and the long time control (60+0.2 s, 0.615 score over 211 pairs); strength under `JCSA` was not measured.
+Search threads now run on an 8 MiB stack, which fixes a crash when a search was extended close to the maximum ply.
+
+### Features
+
+- **search:** Apply the nnue-gen3-search-retune SPSA values
+
+### Bug fixes
+
+- **search:** Run every search worker on an 8 MiB stack
+
 ## v3.0.1 (2026-11-24)
 
 minase 3.0.1 renames the king-unconditioned NNUE input feature set from P to A, the name nnue-pytorch uses for features over all pieces including kings; search and evaluation are unchanged.
