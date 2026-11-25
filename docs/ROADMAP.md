@@ -151,6 +151,7 @@
 | NNUEのネットを埋め込まず、USIのオプションEvalFileで外部のファイルから読む | [plans/archived/nnue-external-network-file.md](plans/archived/nnue-external-network-file.md) | 完了（採用） | 2026年11月17日 |
 | NNUEをtataraに倣った枠組みへ載せ替え、HalfKP_vm（256x2-32-32）を加える | [plans/archived/nnue-tatara-framework-and-halfkp-vm.md](plans/archived/nnue-tatara-framework-and-halfkp-vm.md) | 完了（採用） | 2026年11月19日 |
 | PV-MCTSのデバッグ道具（根の統計の表示、探索木の不変条件の検査、PV-MCTSのbench） | [plans/archived/mcts-debugging-tools.md](plans/archived/mcts-debugging-tools.md) | 完了（採用） | 2026年11月17日 |
+| ブラウザ内で動く対局アプリ（minase-chushogi-wasm） | [plans/browser-wasm-app.md](plans/browser-wasm-app.md) | 起案 | |
 
 ## 現在地
 
@@ -244,6 +245,7 @@ NNUEの世代反復は2026年11月25日に中断して閉じたので、2回目�
 ### 配備
 
 - [lishogi Bot接続](plans/lishogi-bot.md)は公開運用中であり、完了条件の達成状況の確認と配備方式の記述の見直しが残っている。Botと開発用GUIは2026年11月25日から、minase 3.0.1と、Hugging Face Hubから取得する世代反復の第3世代のA型のネットを使う。エンジンの起動引数`--rules`の削除と、規則セットとネットをUSIのオプションで必須にした変更（[起動引数と診断ツールをUSIへ移す計画](plans/archived/cli-to-usi.md)）への追従は、2026年11月24日にBotと開発用GUIの両方で終えた。ネットだけを替えるときは、エンジンの[リリース](guides/release.md)を要さず、Botの配備一式が指定するネットを替える。
+- [ブラウザ内で動く対局アプリ](plans/browser-wasm-app.md)は、開発用GUIの人間対AIの画面を、minaseをwasmにしてブラウザの中だけで動かす静的なWebアプリとして別リポジトリ`minase-chushogi-wasm`へ切り出し、GitHub Pagesで公開する計画である。起案の段階にあり、レビューの後に利用者の着手の指示を待つ。最初に、探索中の入力をJSPIで受け取れることと、iPhoneのメモリとスタックに収まることを実機で確かめる。
 
 ### 前提の見直しが要る計画
 
