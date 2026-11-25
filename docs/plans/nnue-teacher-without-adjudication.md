@@ -252,6 +252,7 @@ HaChuとの対局で、候補のネットと対照のネットを同時に測り
 
 - [HaChu戦で優勢から勝ち切るまでの速さに関するv2.6.0とv3系の比較](../audits/mating-speed-against-hachu-2026-11-25.md)
 - [3処理のADR](../adr/exclude-checks-screen-openings-and-adjudicate-decided-games-in-teacher-generation.md)
+- [教師生成で王手の局面の除外、開始局面の選別、および大差の対局の打ち切りを行う理由の先行調査](../research/teacher-generation-filters-prior-art.md)。本書の先行例の出典をまとめたもの。
 - [世代反復の設計書](archived/nnue-generation-iteration.md)と[第3世代の学習の記録](../measurements/nnue-generation-iteration/nnue-generation-iteration-gen3-training.md)
 - Halogen PR #789（2025年11月7日にマージ）、https://github.com/KierenP/Halogen/pull/789 。一部の対局だけで打ち切る方式へ改めた。生成器はコミット`1e16bd69`の`src/datagen/datagen.cpp`。
 - tanuki-の学習時の`eval_limit`の比較、https://nodchip.hatenablog.com/entry/2021/09/24/000000 。教師は打ち切らずに詰みまで指して生成している。
