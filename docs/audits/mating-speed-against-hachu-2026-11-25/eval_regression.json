@@ -1,0 +1,38 @@
+{
+ "lead>=3000": {
+  "positions": 4529,
+  "mean_own_near": 0.5491278427909031,
+  "v2.6.0 network": {
+   "intercept": 261.455138885244,
+   "per_material": 1.6257987112945662,
+   "per_own_near": 432.5834485315463,
+   "per_enemy_near": 470.8146149579833,
+   "own_near_in_material": 266.0744196230143
+  },
+  "generation 3 network": {
+   "intercept": -92.03813958724265,
+   "per_material": 1.194569334400928,
+   "per_own_near": 141.497278467352,
+   "per_enemy_near": 349.51661943958015,
+   "own_near_in_material": 118.45045272178558
+  }
+ },
+ "|lead|<1500": {
+  "positions": 5427,
+  "mean_own_near": 0.05380504882992445,
+  "v2.6.0 network": {
+   "intercept": 443.770278252155,
+   "per_material": 1.3480977147614177,
+   "per_own_near": 255.13038869241046,
+   "per_enemy_near": 71.17773385501167,
+   "own_near_in_material": 189.25214834116284
+  },
+  "generation 3 network": {
+   "intercept": 150.76074100216323,
+   "per_material": 1.0169337866293937,
+   "per_own_near": 156.23981020522533,
+   "per_enemy_near": 201.1129861132231,
+   "own_near_in_material": 153.63813481217787
+  }
+ }
+}
