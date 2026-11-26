@@ -1,0 +1,155 @@
+diff --git a/Cargo.toml b/Cargo.toml
+index c7214035..4b17ffaf 100644
+--- a/Cargo.toml
++++ b/Cargo.toml
+@@ -11,7 +11,7 @@ exclude = ["target", "data", ".claude"]
+ 
+ [workspace.lints.rust]
+ missing_docs = "warn"
+-unsafe_code = "forbid"
++unsafe_code = "deny"
+ 
+ [workspace.lints.clippy]
+ all = "warn"
+diff --git a/crates/minase/src/eval/nnue/network/layer_stack.rs b/crates/minase/src/eval/nnue/network/layer_stack.rs
+index 1f7053d7..e30955c4 100644
+--- a/crates/minase/src/eval/nnue/network/layer_stack.rs
++++ b/crates/minase/src/eval/nnue/network/layer_stack.rs
+@@ -41,6 +41,8 @@ pub struct LayerStackNetwork {
+     fv_scale: i32,
+     psqt: Box<[i32]>,
+     dense: Dense,
++    l1_wt: Box<[i8]>,
++    l2_wt: Box<[i8]>,
+     pub(super) accumulator_stats: super::super::stats::SharedStats,
+ }
+ 
+@@ -110,7 +112,29 @@ impl LayerStackNetwork {
+             output_weights: p.output_weights,
+         };
+         dense.validate(p.width, 16, 30)?;
++        let width = p.width;
++        let mut l1_wt = vec![0i8; 16 * width];
++        for i in 0..width / 4 {
++            for o in 0..16 {
++                for k in 0..4 {
++                    l1_wt[i * 64 + o * 4 + k] = dense.l1_weights[o * width + 4 * i + k];
++                }
++            }
++        }
++        let mut l2_wt = vec![0i8; 32 * 32];
++        for c in 0..8 {
++            for o in 0..32 {
++                for k in 0..4 {
++                    let j = 4 * c + k;
++                    if j < 30 {
++                        l2_wt[c * 128 + o * 4 + k] = dense.l2_weights[o * 30 + j];
++                    }
++                }
++            }
++        }
+         Ok(Self {
++            l1_wt: l1_wt.into_boxed_slice(),
++            l2_wt: l2_wt.into_boxed_slice(),
+             ft: transformer(p.width, p.ft_biases, p.ft_weights),
+             fv_scale: p.fv_scale,
+             psqt: p.psqt_weights.into_boxed_slice(),
+@@ -235,6 +259,18 @@ impl LayerStackNetwork {
+     /// L2の32成分を6ビット右シフトして制限し、出力層の積和とskipを足す。
+     fn dense(&self, acc: &LayerStackAccumulator, side: Color) -> i32 {
+         let width = self.width();
++        if width == 256 {
++            #[allow(unsafe_code)]
++            return unsafe {
++                simd::dense256(
++                    &self.dense,
++                    &self.l1_wt,
++                    &self.l2_wt,
++                    acc.ft.row(side).expect("P always has a context"),
++                    acc.ft.row(side.opposite()).expect("P always has a context"),
++                )
++            };
++        }
+         let mut storage = [0; 1024];
+         let input = &mut storage[..width];
+         for (part, perspective) in [side, side.opposite()].into_iter().enumerate() {
+@@ -332,3 +368,79 @@ impl LayerStackNetwork {
+         }
+     }
+ }
++
++#[allow(unsafe_code)]
++mod simd {
++    use super::{Dense, activation, square_activation};
++    use std::arch::x86_64::*;
++
++    #[target_feature(enable = "avx2,avxvnni")]
++    pub(super) unsafe fn dense256(d: &Dense, l1_wt: &[i8], l2_wt: &[i8], stm: &[i16], nstm: &[i16]) -> i32 {
++        const W: usize = 256;
++        const H: usize = 128;
++        assert!(stm.len() == W && nstm.len() == W && l1_wt.len() == 16 * W && l2_wt.len() == 1024);
++        let mut input = [0u8; W];
++        let zero = _mm256_setzero_si256();
++        let c127 = _mm256_set1_epi16(127);
++        unsafe {
++            for (part, row) in [stm, nstm].into_iter().enumerate() {
++                let p = row.as_ptr();
++                for j in 0..H / 32 {
++                    let ld = |o: usize| {
++                        _mm256_min_epi16(
++                            _mm256_max_epi16(_mm256_loadu_si256(p.add(o) as *const __m256i), zero),
++                            c127,
++                        )
++                    };
++                    let p0 = _mm256_srli_epi16(_mm256_mullo_epi16(ld(j * 32), ld(H + j * 32)), 7);
++                    let p1 = _mm256_srli_epi16(_mm256_mullo_epi16(ld(j * 32 + 16), ld(H + j * 32 + 16)), 7);
++                    let packed = _mm256_permute4x64_epi64(_mm256_packus_epi16(p0, p1), 0b11_01_10_00);
++                    _mm256_storeu_si256(input.as_mut_ptr().add(part * H + j * 32) as *mut __m256i, packed);
++                }
++            }
++            let b = d.l1_biases.as_ptr() as *const __m256i;
++            let mut a0 = _mm256_loadu_si256(b);
++            let mut a1 = _mm256_loadu_si256(b.add(1));
++            let w = l1_wt.as_ptr() as *const __m256i;
++            let x32 = input.as_ptr() as *const i32;
++            for i in 0..W / 4 {
++                let x = _mm256_set1_epi32(x32.add(i).read_unaligned());
++                a0 = _mm256_dpbusd_avx_epi32(a0, x, _mm256_loadu_si256(w.add(2 * i)));
++                a1 = _mm256_dpbusd_avx_epi32(a1, x, _mm256_loadu_si256(w.add(2 * i + 1)));
++            }
++            let mut y = [0i32; 16];
++            _mm256_storeu_si256(y.as_mut_ptr() as *mut __m256i, a0);
++            _mm256_storeu_si256(y.as_mut_ptr().add(8) as *mut __m256i, a1);
++            let mut z = [0u8; 32];
++            for i in 0..15 {
++                z[i] = square_activation(y[i]);
++                z[15 + i] = activation(y[i]);
++            }
++            let b = d.l2_biases.as_ptr() as *const __m256i;
++            let mut a = [
++                _mm256_loadu_si256(b),
++                _mm256_loadu_si256(b.add(1)),
++                _mm256_loadu_si256(b.add(2)),
++                _mm256_loadu_si256(b.add(3)),
++            ];
++            let w = l2_wt.as_ptr() as *const __m256i;
++            for c in 0..8 {
++                let x = _mm256_set1_epi32(i32::from_ne_bytes([z[4 * c], z[4 * c + 1], z[4 * c + 2], z[4 * c + 3]]));
++                for q in 0..4 {
++                    a[q] = _mm256_dpbusd_avx_epi32(a[q], x, _mm256_loadu_si256(w.add(4 * c + q)));
++                }
++            }
++            let c127 = _mm256_set1_epi32(127);
++            let mut h = [0i32; 32];
++            for q in 0..4 {
++                let v = _mm256_min_epi32(_mm256_max_epi32(_mm256_srai_epi32(a[q], 6), zero), c127);
++                _mm256_storeu_si256(h.as_mut_ptr().add(8 * q) as *mut __m256i, v);
++            }
++            let mut out = d.output_bias;
++            for k in 0..32 {
++                out += h[k] * i32::from(d.output_weights[k]);
++            }
++            out + y[15]
++        }
++    }
++}
