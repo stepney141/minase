@@ -2,7 +2,7 @@
 
 ## 先に読む要約
 
-minaseの評価関数NNUE（[評価関数の手引き](../guides/evaluation-nnue.md)）は、盤上の駒と升の組を入力特徴とする。第1層の値（累算値）は、先手と後手の視点ごとに、バイアスに発火した入力特徴の重みの行を足したものであり、着手で増減した特徴の行だけを足し引きして更新する。これを差分更新と呼ぶ。
+minaseの評価関数NNUE（[評価関数の手引き](../../guides/evaluation-nnue.md)）は、盤上の駒と升の組を入力特徴とする。第1層の値（累算値）は、先手と後手の視点ごとに、バイアスに発火した入力特徴の重みの行を足したものであり、着手で増減した特徴の行だけを足し引きして更新する。これを差分更新と呼ぶ。
 入力特徴集合HalfKP_vmは、視点の側の王将（王将がなければ太子）の位置で入力特徴を条件付ける。以下、この基準になる駒を基準の王駒と呼ぶ。
 基準の王駒が別の升へ動くと、その視点のすべての特徴の番号が変わるので、差分更新が使えず、第1層をバイアスから計算し直す。これを全再計算と呼ぶ。
 Finny tables（accumulator cache、refresh tableとも呼ぶ）は、基準の王駒の位置ごとに、最後に計算した第1層の値とそのときの駒配置を保存する表である。全再計算の代わりに、保存した駒配置と現在の駒配置の差の分だけを足し引きする。
@@ -18,9 +18,10 @@ Finny tables（accumulator cache、refresh tableとも呼ぶ）は、基準の�
 
 ## 状態
 
-本書は起案の段階にある。2026年10月17日に起案し、2026年11月24日にHalfKP_vmに合わせて書き直した。
-HalfKP_vmは[tatara化とHalfKP_vm](archived/nnue-tatara-framework-and-halfkp-vm.md)で2026年11月19日に加わり、エンジンと教師生成で動く状態にある。
-次の一手は、フェーズ0の準備に着手することである。
+本書は完了時点で凍結した記録であり、以後の変更を反映しない。現行の仕様はコードのdocコメントに、設計判断は[docs/adr/](../../adr/README.md)にある。
+状態は完了（不採用）であり、2026年11月27日に完了した。
+探索ごとの表は探索結果を変えず、HalfKP_vmの`bench`のサイクル数を1.15%減らしたが、教師生成のサイクル数の減少（平均0.14%）は95%信頼区間で0と区別できなかったので、表のコードをmasterへ入れなかった（[最終測定](../../measurements/nnue-finny-tables/nnue-finny-tables-final.md)、[ADR](../../adr/do-not-replace-half-kp-vm-refreshes-with-per-search-finny-tables.md)）。
+フェーズ2の[行数の診断](../../measurements/nnue-finny-tables/nnue-finny-tables-row-counts.md)で対局内の保持の効果が小さかったので、フェーズ3は行わなかった。負荷とシードの条件は[準備の測定記録](../../measurements/nnue-finny-tables/nnue-finny-tables-setup.md)にある。
 
 ## 目的
 
@@ -38,7 +39,7 @@ HalfKP_vmは[tatara化とHalfKP_vm](archived/nnue-tatara-framework-and-halfkp-vm
 次の事項は扱わない。
 
 - A型のネットには表を入れない。A型は文脈が1種類なので、全再計算は探索の根でしか起きない。ただし、探索の準備はA型と共通の経路を通るので、A型の探索結果の一致と速度は最終測定で確かめる。
-- 行を加減算する`add_row`を、SIMD命令（1命令で複数のデータを処理する命令）で明示的に書き直すことはしない。これは親からの差分更新にも効く別の変更であり、先に機械語で自動ベクトル化の有無を確かめる（[教訓](../lessons/check-autovectorization-before-explicit-simd.md)）。
+- 行を加減算する`add_row`を、SIMD命令（1命令で複数のデータを処理する命令）で明示的に書き直すことはしない。これは親からの差分更新にも効く別の変更であり、先に機械語で自動ベクトル化の有無を確かめる（[教訓](../../lessons/check-autovectorization-before-explicit-simd.md)）。
 - Stockfishのhybrid更新（「先行実装」の節）は入れない。これは表に入らない特徴の全加算を避けるための処理であり、minaseのHalfKP_vmのネットには表に入らない特徴がない。
 - 足し引きする行の数が全再計算で足す行の数以上のときに、表を使わず作り直す判定（やねうら王の`USE_FINNY_RESET`の一部）は入れない。フェーズ2で該当する回数を記録し、多ければ別の設計書で扱う。
 - 学習器は変えない。表は推論の計算順序だけを変え、重みと評価値は変えない。
@@ -75,7 +76,7 @@ HalfKP_vmのネットは`network/simple.rs`の`SimpleNetwork`で、第1層の幅
 子へ降りる前に親の累算値は必ず確定するので、差分の連鎖は途切れない。全再計算が起きるのは、探索の根と、新しい文脈がある視点で文脈が変わったときだけである。
 累算器は列挙型`SearchEvaluator`（`network/evaluator.rs`）が深さごとに持ち、探索ごとに作られる。HalfKP_vmのネットで探索するときは、その値`SearchEvaluator::Simple`が使われる。
 ワーカーは探索のたびに`thread::scope`で作り直される（`search/alphabeta/team.rs`の`run_worker_team`）。探索をまたいでワーカーごとに残る状態は、`HistoryTables`（`search/alphabeta/history.rs`）だけが持つ。
-`HistoryTables`は、[対局内で履歴を持ち越す設計判断の記録（ADR）](../adr/carry-histories-and-correction-histories-within-a-game.md)に従って対局の間は保持され、次の契機で消去または作り直される。
+`HistoryTables`は、[対局内で履歴を持ち越す設計判断の記録（ADR）](../../adr/carry-histories-and-correction-histories-within-a-game.md)に従って対局の間は保持され、次の契機で消去または作り直される。
 
 - 将棋の思考エンジンの通信規約USIで動くエンジン（`search/alphabeta/engine.rs`と`protocol/usi.rs`）では、新規対局、規則セットの設定、引き分けの評価値の変更、`EvalFile`、および`USI_Hash`の設定で消去し、`Threads`の値が変わると作り直す。
 - 教師生成（`crates/minase/src/bin/minase/selfplay_gen/play.rs`）は、対局ごとに作り直し、さらに開始局面の候補を探索するたびに消去する。採用した候補の探索結果は、対局の最初の手に使う。
@@ -85,13 +86,13 @@ HalfKP_vmのネットは`network/simple.rs`の`SimpleNetwork`で、第1層の幅
 
 ### 計数、照合、および測定の道具
 
-`bench`は、固定した15局面を固定の深さで探索するUSIの独自コマンドである（[USIの拡張の手引き](../guides/usi-extensions.md)）。
+`bench`は、固定した15局面を固定の深さで探索するUSIの独自コマンドである（[USIの拡張の手引き](../../guides/usi-extensions.md)）。
 `bench`の前には、オプション`RuleSet`と`EvalFile`を設定して`isready`を送る。規則セットを設定しないと`isready`はエラーで終わる。
 累算器の更新の回数は`AccumulatorStats`（`eval/nnue/stats.rs`）が数え、`bench`の`accumulators:`行が`refresh_fraction`として出力する。
 この計数では、1回の更新（両視点を含む）を1回と数え、探索の根か、少なくとも1視点で全再計算が起きた更新を全再計算の回数に入れる。新しい文脈がなく全成分を0にしただけの更新は、全再計算には数えない。
 `invariants`機能を有効にしたビルドでは、静的評価を読む局面ごとに、差分更新の累算値を全再計算の結果と照合する（`SearchEvaluator::assert_accumulator`）。
 
-本書の測定には、[HalfKP_vmの動作の確認](../measurements/nnue-tatara-framework-and-halfkp-vm/nnue-tatara-framework-and-halfkp-vm-halfkp-vm-check.md)で教師37本から学んだHalfKP_vmのネットを使う。SHA-256は`d0d1bf33fa7aef3faa40fb0696872eb632a959313d9b03a6df216d99b4f5441d`である。
+本書の測定には、[HalfKP_vmの動作の確認](../../measurements/nnue-tatara-framework-and-halfkp-vm/nnue-tatara-framework-and-halfkp-vm-halfkp-vm-check.md)で教師37本から学んだHalfKP_vmのネットを使う。SHA-256は`d0d1bf33fa7aef3faa40fb0696872eb632a959313d9b03a6df216d99b4f5441d`である。
 このネットは過学習しており、棋力の判定には使わない。しかし、このネットを使う探索の速度と探索結果の一致は、本書の判定に使える。
 
 ## 設計判断
@@ -108,18 +109,18 @@ HalfKP_vmのネットは`network/simple.rs`の`SimpleNetwork`で、第1層の幅
 | 表の寿命 | まず表を`SearchEvaluator::Simple`に持たせ、探索ごとに作る。フェーズ2の診断で対局の間保持する効果が大きいと分かった場合だけ、`HistoryTables`へ移す | 最初から`HistoryTables`に置いて対局の間保持する。ネットが持つ表を複数のワーカーで使い回す。ワーカー間で1つの表を共有する | 保持の効果は測っていない。先行実装も割れている（「他のエンジン」の節）。探索ごとに作る方式は、ネットとの対応が崩れる経路がなく最も単純なので、効果が示された場合だけ保持を加える。ネットが持つ表を使い回すと、同時に複数の対局を進める教師生成で別の対局の駒配置が混ざり、差分が大きくなる。1つの表を共有すると同期が要る。 |
 | 対局の間保持する場合のネットとの照合 | 表の作成時のネットを示す印を表に持たせ、探索の開始時に照合する（「方式」の節） | USI層の`EvalFile`での消去に任せる。ネットのアドレス、幅、またはファイルのパスで照合する | 公開の`search`は同じ`HistoryTables`に別のネットを渡せるので、USI層の消去だけでは古い値を使う経路が残る。アドレス、幅、パスは、別のネットでも一致し得る。 |
 | 全再計算の計数 | `AccumulatorStats`の全再計算の回数は、表を使った更新も含めて、探索の根か、新しい文脈がある視点で文脈が変わった更新の回数として数え続ける | 表を使った更新を差分更新として数える | 表を入れる前に測った全再計算の割合（1.17%）と同じ意味で比べられる。 |
-| 段階ゲート | 行わない。探索結果の一致とサイクル数の対比較だけでmasterへ統合する | 段階ゲートを行う。固定200ペアの対局で異常がないことだけを確かめる | 2026年11月24日に利用者が、[CONTRIBUTING.md](../../CONTRIBUTING.md)の「棋力測定」の節の規則の例外として決めた。表は、同じ探索ノード数で選ぶ手と評価値を変えない。また、HalfKP_vmには棋力を測れるネットがまだない。 |
-| 速度の測り方 | 性能コアに固定した`perf stat`のCPUサイクル数を、基準と候補で1組ずつ順序を入れ替えて測る | NPSの交互測定 | 1%前後の増分は、NPSの交互測定では測定の揺れに埋もれる（[教訓](../lessons/alternate-speed-rounds-against-parent.md)）。[着手生成の高速化第3期](movegen-speedup-3.md)も同じ理由でサイクル数の対比較を採っている。 |
+| 段階ゲート | 行わない。探索結果の一致とサイクル数の対比較だけでmasterへ統合する | 段階ゲートを行う。固定200ペアの対局で異常がないことだけを確かめる | 2026年11月24日に利用者が、[CONTRIBUTING.md](../../../CONTRIBUTING.md)の「棋力測定」の節の規則の例外として決めた。表は、同じ探索ノード数で選ぶ手と評価値を変えない。また、HalfKP_vmには棋力を測れるネットがまだない。 |
+| 速度の測り方 | 性能コアに固定した`perf stat`のCPUサイクル数を、基準と候補で1組ずつ順序を入れ替えて測る | NPSの交互測定 | 1%前後の増分は、NPSの交互測定では測定の揺れに埋もれる（[教訓](../../lessons/alternate-speed-rounds-against-parent.md)）。[着手生成の高速化第3期](../movegen-speedup-3.md)も同じ理由でサイクル数の対比較を採っている。 |
 | 採用に必要な利益 | 教師生成のサイクル数の合計の減少が、95%信頼区間で0と区別できれば採用する | 0.5%や1%の下限を置く | 2026年11月24日の利用者の決定である。 |
 | 主の負荷（教師生成）の指標 | 組ごとのサイクル数の差（候補−基準）の平均 | 組ごとのサイクル数の比の対数の平均 | 教師生成の組は、開始局面の候補の棄却や終局の手数によって仕事量が違う。比の対数の平均は短い組の改善と長い組の悪化を同じ重みで扱うので、合計が増えても改善と判定し得る。差の平均に組の数を掛けたものは、測った全組の合計の差になる。`bench`は組ごとに仕事量が同じなので、比の対数を使う。 |
 | 再測定 | 最終測定は1回だけ行い、条件を1つでも満たさなければ不採用とする | 従の負荷だけが条件を満たさなかった場合に、直した版で測り直す | 測り直しを認めると、採用の機会が2回になり、誤って採用する確率が1回の検定の水準を超える。 |
-| 効果の見積もり | 時間の割合から上限を見積もらず、行数の診断と、凍結した候補のサイクル数の対比較で決める | 全再計算の処理が探索時間に占める割合pから、アムダールの法則の上限1/(1−p)を見積もる | 1/(1−p)は上限にならない。全再計算は1視点で最大約45 KiBの重みを読むので、ほかの処理のキャッシュを追い出している可能性があり、そうであれば効果は上限を超え得る。これは測っていない推測である。逆に、この式は表の走査、保存、および複写の費用を0と置くので、過大にもなる。[着手生成の高速化第3期](movegen-speedup-3.md)の「対象と方式の選択」の節でも、関数別の時間の内訳から見込んだ割合は実測と合わなかった。 |
+| 効果の見積もり | 時間の割合から上限を見積もらず、行数の診断と、凍結した候補のサイクル数の対比較で決める | 全再計算の処理が探索時間に占める割合pから、アムダールの法則の上限1/(1−p)を見積もる | 1/(1−p)は上限にならない。全再計算は1視点で最大約45 KiBの重みを読むので、ほかの処理のキャッシュを追い出している可能性があり、そうであれば効果は上限を超え得る。これは測っていない推測である。逆に、この式は表の走査、保存、および複写の費用を0と置くので、過大にもなる。[着手生成の高速化第3期](../movegen-speedup-3.md)の「対象と方式の選択」の節でも、関数別の時間の内訳から見込んだ割合は実測と合わなかった。 |
 
 ## Finny tablesの仕組み
 
 着手の前後で番号付けが変わらなければ、動いた駒の特徴の行を引いて足すだけで次の局面の第1層の値が得られる。
 中将棋の通常の着手では、動いた駒の移動元と移動先、取られた駒（獅子などの2回動きでは最大2枚）、および先獅子の消滅と発生の、2〜6個の特徴を更新する。
-先獅子は、獅子以外の駒が相手の獅子を取った直後に、条件によって相手がこちらの獅子を取れなくなる一時的な禁止であり（[規則](../rules/chu-shogi.md)の第15条）、入力特徴としては獅子が取られた升（先獅子の対象升）で表す。
+先獅子は、獅子以外の駒が相手の獅子を取った直後に、条件によって相手がこちらの獅子を取れなくなる一時的な禁止であり（[規則](../../rules/chu-shogi.md)の第15条）、入力特徴としては獅子が取られた升（先獅子の対象升）で表す。
 HalfKP_vmでは、基準の王駒が動くと視点の文脈が変わり、盤上のすべての駒の特徴が別の行へ移るので、差分更新が使えない。
 HalfKP_vmの基底特徴には両陣営の王将が含まれないので、全再計算では、王将を除く盤上のすべての駒と先獅子の特徴を足す。初期配置は両陣営46枚ずつで、王将を除くと90枚である。幅256では1行が512バイトなので、1視点で約45 KiBの重みを読む。
 
@@ -202,8 +203,8 @@ minaseに最も近い構成の先例はrshogiのHalfKP 256x2-32-32の+11.1%で�
 
 文脈を変え得る着手は、王将の移動、王将がない側の太子の移動、および、王将と太子の両方を持つ側が王将を取られる着手である。最後の場合は、基準の王駒が王将から太子に替わる。
 醉象が成って太子が現れても、王将がある側では基準は王将のままなので、文脈は変わらない。
-[HalfKP_vmの動作の確認](../measurements/nnue-tatara-framework-and-halfkp-vm/nnue-tatara-framework-and-halfkp-vm-halfkp-vm-check.md)では、深さ5の`bench`1回で、累算器の更新66,624回のうち781回（1.17%）が全再計算だった。数え方は「計数、照合、および測定の道具」の節のとおりで、根を含む。
-[入力特徴の調査](../proposals/archived/nnue-input-features.md)が教師データの隣接局面26,225,953組を集計したところ、着手した側の王将が動いた着手は全体の7.54%で、150手目より前では0.15%以下、150手目以降では10.63%だった。
+[HalfKP_vmの動作の確認](../../measurements/nnue-tatara-framework-and-halfkp-vm/nnue-tatara-framework-and-halfkp-vm-halfkp-vm-check.md)では、深さ5の`bench`1回で、累算器の更新66,624回のうち781回（1.17%）が全再計算だった。数え方は「計数、照合、および測定の道具」の節のとおりで、根を含む。
+[入力特徴の調査](../../proposals/archived/nnue-input-features.md)が教師データの隣接局面26,225,953組を集計したところ、着手した側の王将が動いた着手は全体の7.54%で、150手目より前では0.15%以下、150手目以降では10.63%だった。
 これは対局で指された手の割合であり、探索が読む局面での割合ではない。
 
 ## 方式
@@ -233,13 +234,13 @@ null moveでは文脈が変わらないので、全再計算も表の参照も�
 
 ## 実装フェーズ
 
-実装はコーディングエージェントへ委任し、Claudeが設計の確定とレビューを担う（[委任の手引き](../guides/codex-delegation.md)）。
+実装はコーディングエージェントへ委任し、Claudeが設計の確定とレビューを担う（[委任の手引き](../../guides/codex-delegation.md)）。
 masterから本書のブランチ`nnue-finny-tables`を切り、worktreeで作業する。
 各フェーズの完了条件にある「検証」は、「検証」の節のコマンドがすべて通ることを指す。
 
 ### フェーズ0　準備
 
-探索結果の一致を確かめるスクリプトと、サイクル数の対比較を行うスクリプトを用意し、測定記録のディレクトリ`docs/measurements/nnue-finny-tables/`の付属資料に置く。[着手生成の高速化第3期](movegen-speedup-3.md)が同じ目的のスクリプトをすでに作っていれば、それを使う。
+探索結果の一致を確かめるスクリプトと、サイクル数の対比較を行うスクリプトを用意し、測定記録のディレクトリ`docs/measurements/nnue-finny-tables/`の付属資料に置く。[着手生成の高速化第3期](../movegen-speedup-3.md)が同じ目的のスクリプトをすでに作っていれば、それを使う。
 次に、基準のコミットで測って、最終測定の負荷の条件を固定する。
 
 - `bench`の深さは、HalfKP_vmとA型のネットのそれぞれについて、深さ16から始め、1局面あたりの探索時間が数秒以上になる深さを選ぶ。
@@ -326,7 +327,7 @@ Aは`Indexer::row`が行を返す特徴の数であり、Dは保存した駒配�
 
 探索結果の一致は、次の2つで確かめる。
 
-- 1ワーカーの`bench`の15局面それぞれで、深さ、ノード数、最善手、および評価値が基準と一致することを確かめる。HalfKP_vmのネットと、[評価関数の手引き](../guides/evaluation-nnue.md)の「探索の測定に使う標準のネット」にあるA型のネットの両方で確かめる。
+- 1ワーカーの`bench`の15局面それぞれで、深さ、ノード数、最善手、および評価値が基準と一致することを確かめる。HalfKP_vmのネットと、[評価関数の手引き](../../guides/evaluation-nnue.md)の「探索の測定に使う標準のネット」にあるA型のネットの両方で確かめる。
 - 教師生成で、対局数、探索ノード数の合計、および教師のファイルのSHA-256が基準と一致することを、最終測定の各組で確かめる。教師生成は、バイナリのコミットではなく、実行時の作業ディレクトリのコミットをファイルに書く。そのため、基準と候補のバイナリを同じコミットの変更のない作業ディレクトリから起動し、実行のたびに空の出力先を使えば、探索結果が同じとき2つのファイルは一致する。
 
 サイクル数は次の3つの負荷で測る。
@@ -359,7 +360,7 @@ taskset -c 3 perf stat -x, -e cpu_core/cycles/u,cpu_core/instructions/u -- \
 
 `bench.usi`は、`setoption name RuleSet value JCSA`、`setoption name EvalFile value <ネット>`、`isready`、`bench depth <深さ> threads 1 repetitions 1`、`quit`の5行である。
 同じ区間で`cpu_core/LLC-load-misses/u`と`cpu_core/dTLB-load-misses/u`も採れる場合は記録し、行数の減少とサイクル数の減少が食い違ったときに原因を調べる手がかりにする。これらの値は判定に使わない。
-測定の前に、`/sys/kernel/mm/transparent_hugepage/enabled`の値を記録し、対局の測定、探索の係数の自動調整（SPSA）、学習、および教師生成が同じ機械で動いていないことを確かめる（[教訓](../lessons/check-running-measurements-before-cpu-load.md)）。
+測定の前に、`/sys/kernel/mm/transparent_hugepage/enabled`の値を記録し、対局の測定、探索の係数の自動調整（SPSA）、学習、および教師生成が同じ機械で動いていないことを確かめる（[教訓](../../lessons/check-running-measurements-before-cpu-load.md)）。
 測定記録は`nnue-finny-tables-final.md`とし、組ごとの値、平均、信頼区間、および探索結果の一致を書く。
 完了条件は、測定記録が書かれ、採否が決まっていることである。
 
@@ -386,7 +387,7 @@ printf 'setoption name RuleSet value JCSA\nsetoption name EvalFile value <HalfKP
 - フェーズ4で、探索結果の一致と、サイクル数の3つの条件をすべて満たした場合は、完了（採用）とする。フェーズ3を行わず探索ごとの表を採用した場合も、表の寿命は1つの候補の中の選択なので、完了（採用）とする。
 - フェーズ2でS+T≤0だった場合、フェーズ4で主の負荷が打ち切りの条件に当たった場合、フェーズ4でサイクル数の条件を1つでも満たさなかった場合、または探索結果が一致しない原因を本書の範囲で直せない場合は、表のコードをmasterへ入れず、測定記録を残して完了（不採用）とする。
 
-どちらの場合も、[設計書の書き方](README.md)の「完了時の移し替えと凍結」に従う。採用した場合は、表の仕様をコードのdocコメントへ、採否の判断をADRへ移してからmasterへ統合する。
+どちらの場合も、[設計書の書き方](../README.md)の「完了時の移し替えと凍結」に従う。採用した場合は、表の仕様をコードのdocコメントへ、採否の判断をADRへ移してからmasterへ統合する。
 
 ## 参考資料
 
@@ -398,6 +399,6 @@ printf 'setoption name RuleSet value JCSA\nsetoption name EvalFile value <HalfKP
 - rshogi（`https://github.com/SH11235/rshogi`）では、HEADの`181a5090`を確認した。表はPR [#1138](https://github.com/SH11235/rshogi/pull/1138)（マージコミット`21342b6f`）で入った。
 - Fairy-Stockfish（`https://github.com/fairy-stockfish/Fairy-Stockfish`）では、masterの`52838835`を確認した。移植は[PR #1045](https://github.com/fairy-stockfish/Fairy-Stockfish/pull/1045)に含まれる`5d78e936281f0f7c69770afe7de3a0a31b949634`である。
 - Etherealの`c5ba24df`、PlentyChessのPR #183、AlexandriaのPR #495、およびRecklessのPR #372は、表の導入だけを検定した変更である。
-- [NNUEの13,680入力を採る根拠と限界](../proposals/archived/nnue-input-features.md)は、自玉が動く着手の割合を教師データで数えている。
-- [HalfKP_vmの動作の確認](../measurements/nnue-tatara-framework-and-halfkp-vm/nnue-tatara-framework-and-halfkp-vm-halfkp-vm-check.md)は、HalfKP_vmのネットでの全再計算の割合と`bench`の速度を含む。
-- [A型をtataraのLayerStackで、HalfKP_vmをSimpleで組むADR](../adr/compose-p-as-a-tatara-layerstack-with-a-psqt-and-halfkp-vm-as-a-simple-network.md)は、第1層の量子化と累算値の上限を定める。
+- [NNUEの13,680入力を採る根拠と限界](../../proposals/archived/nnue-input-features.md)は、自玉が動く着手の割合を教師データで数えている。
+- [HalfKP_vmの動作の確認](../../measurements/nnue-tatara-framework-and-halfkp-vm/nnue-tatara-framework-and-halfkp-vm-halfkp-vm-check.md)は、HalfKP_vmのネットでの全再計算の割合と`bench`の速度を含む。
+- [A型をtataraのLayerStackで、HalfKP_vmをSimpleで組むADR](../../adr/compose-p-as-a-tatara-layerstack-with-a-psqt-and-halfkp-vm-as-a-simple-network.md)は、第1層の量子化と累算値の上限を定める。

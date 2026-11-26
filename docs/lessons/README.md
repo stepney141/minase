@@ -65,6 +65,7 @@ Rustのコードやテストを書くとき、およびそれらをcodexへ委�
 - [ビルド設定を変えた後はコミットのビルドを混ぜて比べない](do-not-mix-builds-across-cargo-config-changes.md) — `.cargo/config.toml`のビルド設定が変わった後は、キャッシュ済みのビルドと新しいビルドを混ぜて比べず、変更前の設定のビルドが要るときはリポジトリの外のworktreeでビルドする。
 - [perfの採取周期はイベントごとに指定する](set-perf-sampling-period-per-event.md)。異なる周期で複数のイベントを採取するときは各イベントの`period=`で指定し、集計前に`perf evlist -v`で実際の周期を確認する。
 - [学習器のGPUの計算を変えた版は、同じ機械の他の処理を止め、GPUが律速になるスレッド数でも速さを比べる](compare-trainer-speed-with-co-resident-load-stopped-and-gpu-bound-threads.md) — 版の実学習の速さはBotや対局の測定を止めて順序を入れ替えた2組以上で測り、本番のスレッド数に加えて供給がGPUの上限を上回るスレッド数でも、局面数の合計÷`training_seconds`の合計で比べる。
+- [教師生成を速くする変更は、benchではなく教師生成の負荷で効果を判断する](judge-teacher-generation-speedups-on-teacher-generation.md) — 教師生成を速くするための変更は、試作の段階で本番と同じノード数と同時対局数の教師生成のサイクル数の対比較で効果を判定し、`bench`の結果や行数などの削減率から効果を見積もらない。
 
 ## 評価関数の学習とGPU
 

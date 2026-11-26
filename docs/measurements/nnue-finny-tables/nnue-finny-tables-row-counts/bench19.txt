@@ -1,0 +1,21 @@
+info string network_sha256 d0d1bf33fa7aef3faa40fb0696872eb632a959313d9b03a6df216d99b4f5441d
+readyok
+info string position=initial depth=19 nodes=153845 best=8i8h score=9 elapsed=0.248636s
+info string position=game-2-ply-40 depth=19 nodes=134405 best=3d2d score=442 elapsed=0.205542s
+info string position=game-2-ply-60 depth=19 nodes=3508576 best=4d5d score=3978 elapsed=5.235881s
+info string position=game-3-ply-310 depth=19 nodes=1413490 best=8l8k score=-2733 elapsed=2.052437s
+info string position=game-3-ply-465 depth=19 nodes=1109085 best=1d1g score=3985 elapsed=1.413453s
+info string position=game-4-ply-164 depth=19 nodes=667574 best=6j4j score=-878 elapsed=0.820945s
+info string position=game-4-ply-246 depth=19 nodes=28775297 best=11h11g score=-1846 elapsed=36.484944s
+info string position=game-5-ply-170 depth=19 nodes=1067201 best=4g5f score=2177 elapsed=1.454045s
+info string position=game-5-ply-255 depth=19 nodes=1189132 best=5a1e score=-4095 elapsed=1.563480s
+info string position=game-6-ply-51 depth=19 nodes=565936 best=5a6b score=-28 elapsed=0.853390s
+info string position=game-6-ply-77 depth=19 nodes=512988 best=8a7b score=-107 elapsed=0.797119s
+info string position=game-8-ply-183 depth=19 nodes=337018 best=9b10c score=107 elapsed=0.444004s
+info string position=game-8-ply-275 depth=19 nodes=139825 best=5e2e score=-462 elapsed=0.153879s
+info string position=game-10-ply-277 depth=19 nodes=735723 best=10i10k score=1220 elapsed=0.970004s
+info string position=game-10-ply-416 depth=19 nodes=2594108 best=6l10h score=-1489 elapsed=2.722831s
+info string summary: positions=15 depth=19 nodes=42904203 elapsed=55.420589s nps=774156
+info string accumulators: accumulator_updates=41118010 accumulator_refreshes=1494759 refresh_fraction=0.036353
+info string finny_diag: root_events=30 root_sum_a=1702 root_search_first_use=30 root_search_d_zero=0 root_search_d_ge_a=30 root_search_sum_d=1702 root_search_sum_excess=0 root_keep_first_use=30 root_keep_d_zero=0 root_keep_d_ge_a=30 root_keep_sum_d=1702 root_keep_sum_excess=0 change_events=1494744 change_sum_a=65765730 change_search_first_use=432 change_search_d_zero=63946 change_search_d_ge_a=1408 change_search_sum_d=8414075 change_search_sum_excess=1583 change_keep_first_use=432 change_keep_d_zero=63946 change_keep_d_ge_a=1408 change_keep_sum_d=8414075 change_keep_sum_excess=1583 total_events=1494774 total_sum_a=65767432 total_search_first_use=462 total_search_d_zero=63946 total_search_d_ge_a=1438 total_search_sum_d=8415777 total_search_sum_excess=1583 total_keep_first_use=462 total_keep_d_zero=63946 total_keep_d_ge_a=1438 total_keep_sum_d=8415777 total_keep_sum_excess=1583 root_S=0 root_T=0 change_S=57351655 change_T=0 S=57351655 T=0
+info string end
