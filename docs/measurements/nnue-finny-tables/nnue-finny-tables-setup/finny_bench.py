@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Finny tablesの設計書（docs/plans/nnue-finny-tables.md）のサイクル数の対比較と探索結果の照合。
+"""Finny tablesの設計書（docs/plans/archived/nnue-finny-tables.md）のサイクル数の対比較と探索結果の照合。
 
 サブコマンド:
   pairs    基準と候補のバイナリを1組ずつ交互に実行し、組ごとのサイクル数と出力の要約をJSON Linesへ追記する。
