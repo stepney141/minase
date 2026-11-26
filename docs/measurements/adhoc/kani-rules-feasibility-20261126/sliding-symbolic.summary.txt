@@ -1,0 +1,28 @@
+08:55:34 Kani Rust Verifier 0.68.0 (cargo plugin)
+08:55:34 CBMC 6.11.0
+08:55:35 Checking harness attacks::tables::kani_proofs::sliding_symbolic_origin...
+08:55:35 CBMC 6.11.0 (cbmc-6.11.0)
+08:56:26 Runtime Symex: 49.5733s
+08:56:26 Runtime Postprocess Equation: 1.69328s
+08:56:36 Runtime Convert SSA: 9.58958s
+08:56:36 Runtime Post-process: 8.241e-06s
+08:56:37 4773562 variables, 20010179 clauses
+08:56:37 SAT checker: instance is SATISFIABLE
+08:56:37 Runtime Solver: 0.224932s
+08:56:55 Runtime decision procedure: 10.1426s
+08:56:56 4773563 variables, 20010180 clauses
+08:56:56 SAT checker: instance is SATISFIABLE
+08:56:56 Runtime Solver: 1.15459s
+09:00:22 Runtime decision procedure: 1.17412s
+09:00:25 4773564 variables, 20010181 clauses
+09:00:25 SAT checker: instance is SATISFIABLE
+09:00:25 Runtime Solver: 2.67671s
+09:00:39 Runtime decision procedure: 2.68892s
+09:00:41 4773565 variables, 20010182 clauses
+09:00:41 SAT checker: instance is SATISFIABLE
+09:00:41 Runtime Solver: 2.26403s
+09:02:56 Runtime decision procedure: 2.27629s
+09:03:47 4773566 variables, 20010183 clauses
+09:03:47 SAT checker: instance is UNSATISFIABLE
+09:03:47 Runtime Solver: 51.1243s
+09:03:47 Runtime decision procedure: 51.1285s

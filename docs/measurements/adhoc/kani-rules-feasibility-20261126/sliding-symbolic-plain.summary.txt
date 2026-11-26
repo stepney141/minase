@@ -1,0 +1,65 @@
+09:09:35 CBMC version 6.11.0 (cbmc-6.11.0) 64-bit x86_64 linux
+09:09:35 Starting Bounded Model Checking
+09:10:39 SAT checker: instance is SATISFIABLE
+09:10:41 SAT checker: instance is SATISFIABLE
+09:10:44 SAT checker: instance is SATISFIABLE
+09:10:47 SAT checker: instance is SATISFIABLE
+09:11:45 SAT checker: instance is UNSATISFIABLE
+09:11:45 ** Results:
+09:11:45 [attacks::sliding::build_ray_table.reachability_check.1] line 18 KANI_CHECK_ID_minase_core.1b21e33116ac9d9c::minase_core_33: FAILURE
+09:11:45 [attacks::sliding::build_ray_table.reachability_check.2] line 18 KANI_CHECK_ID_minase_core.1b21e33116ac9d9c::minase_core_34: FAILURE
+09:11:45 [attacks::tables::AttackTables::ray.reachability_check.1] line 201 KANI_CHECK_ID_minase_core.1b21e33116ac9d9c::minase_core_25: FAILURE
+09:11:45 [attacks::tables::AttackTables::ray.reachability_check.2] line 201 KANI_CHECK_ID_minase_core.1b21e33116ac9d9c::minase_core_26: FAILURE
+09:11:45 [attacks::tables::AttackTables::ray.reachability_check.3] line 201 KANI_CHECK_ID_minase_core.1b21e33116ac9d9c::minase_core_27: FAILURE
+09:11:45 [attacks::tables::AttackTables::ray.reachability_check.4] line 201 KANI_CHECK_ID_minase_core.1b21e33116ac9d9c::minase_core_28: FAILURE
+09:11:45 [attacks::tables::AttackTables::sliding_control.reachability_check.1] line 241 KANI_CHECK_ID_minase_core.1b21e33116ac9d9c::minase_core_35: FAILURE
+09:11:45 [attacks::tables::AttackTables::sliding_control.reachability_check.2] line 242 KANI_CHECK_ID_minase_core.1b21e33116ac9d9c::minase_core_36: FAILURE
+09:11:45 [attacks::tables::AttackTables::sliding_control.reachability_check.3] line 243 KANI_CHECK_ID_minase_core.1b21e33116ac9d9c::minase_core_37: FAILURE
+09:11:45 [attacks::tables::AttackTables::sliding_control.reachability_check.4] line 244 KANI_CHECK_ID_minase_core.1b21e33116ac9d9c::minase_core_38: FAILURE
+09:11:45 [attacks::tables::AttackTables::sliding_control.reachability_check.5] line 244 KANI_CHECK_ID_minase_core.1b21e33116ac9d9c::minase_core_39: FAILURE
+09:11:45 [attacks::tables::AttackTables::sliding_control.reachability_check.6] line 244 KANI_CHECK_ID_minase_core.1b21e33116ac9d9c::minase_core_40: FAILURE
+09:11:45 [attacks::tables::AttackTables::sliding_control.reachability_check.7] line 248 KANI_CHECK_ID_minase_core.1b21e33116ac9d9c::minase_core_41: FAILURE
+09:11:45 [attacks::tables::AttackTables::sliding_control.reachability_check.8] line 248 KANI_CHECK_ID_minase_core.1b21e33116ac9d9c::minase_core_42: FAILURE
+09:11:45 [attacks::tables::AttackTables::sliding_control.reachability_check.9] line 248 KANI_CHECK_ID_minase_core.1b21e33116ac9d9c::minase_core_43: FAILURE
+09:11:45 [attacks::tables::AttackTables::sliding_control.reachability_check.10] line 248 KANI_CHECK_ID_minase_core.1b21e33116ac9d9c::minase_core_44: FAILURE
+09:11:45 [attacks::tables::kani_proofs::any_direction.assertion.1] line 341 [KANI_CHECK_ID_minase_core.1b21e33116ac9d9c::minase_core_53] index out of bounds: the length is less than or equal to the given index: SUCCESS
+09:11:45 [attacks::tables::kani_proofs::any_direction.reachability_check.1] line 341 KANI_CHECK_ID_minase_core.1b21e33116ac9d9c::minase_core_53: FAILURE
+09:11:45 [attacks::tables::kani_proofs::sliding_symbolic_origin.assertion.1] line 387 [KANI_CHECK_ID_minase_core.1b21e33116ac9d9c::minase_core_48] assertion failed: tables.sliding_control(from, direction, occupied) ==
+09:11:45 walk(from, direction, occupied): SUCCESS
+09:11:45 [attacks::tables::kani_proofs::sliding_symbolic_origin.reachability_check.1] line 387 KANI_CHECK_ID_minase_core.1b21e33116ac9d9c::minase_core_48: FAILURE
+09:11:45 [<board::bitboard::Bitboard as std::ops::BitAnd>::bitand.reachability_check.1] line 183 KANI_CHECK_ID_minase_core.1b21e33116ac9d9c::minase_core_3: FAILURE
+09:11:45 [<board::bitboard::Bitboard as std::ops::BitAnd>::bitand.reachability_check.2] line 183 KANI_CHECK_ID_minase_core.1b21e33116ac9d9c::minase_core_4: FAILURE
+09:11:45 [<board::bitboard::Bitboard as std::ops::BitAnd>::bitand.reachability_check.3] line 184 KANI_CHECK_ID_minase_core.1b21e33116ac9d9c::minase_core_5: FAILURE
+09:11:45 [<board::bitboard::Bitboard as std::ops::BitAnd>::bitand.reachability_check.4] line 184 KANI_CHECK_ID_minase_core.1b21e33116ac9d9c::minase_core_6: FAILURE
+09:11:45 [<board::bitboard::Bitboard as std::ops::BitAnd>::bitand.reachability_check.5] line 185 KANI_CHECK_ID_minase_core.1b21e33116ac9d9c::minase_core_7: FAILURE
+09:11:45 [<board::bitboard::Bitboard as std::ops::BitAnd>::bitand.reachability_check.6] line 185 KANI_CHECK_ID_minase_core.1b21e33116ac9d9c::minase_core_8: FAILURE
+09:11:45 [<board::bitboard::Bitboard as std::ops::Not>::not.reachability_check.1] line 233 KANI_CHECK_ID_minase_core.1b21e33116ac9d9c::minase_core_50: FAILURE
+09:11:45 [<board::bitboard::Bitboard as std::ops::Not>::not.reachability_check.2] line 233 KANI_CHECK_ID_minase_core.1b21e33116ac9d9c::minase_core_51: FAILURE
+09:11:45 [<board::bitboard::Bitboard as std::ops::Not>::not.reachability_check.3] line 233 KANI_CHECK_ID_minase_core.1b21e33116ac9d9c::minase_core_52: FAILURE
+09:11:45 [board::bitboard::Bitboard::contains.reachability_check.1] line 97 KANI_CHECK_ID_minase_core.1b21e33116ac9d9c::minase_core_14: FAILURE
+09:11:45 [board::bitboard::Bitboard::contains.reachability_check.2] line 97 KANI_CHECK_ID_minase_core.1b21e33116ac9d9c::minase_core_15: FAILURE
+09:11:45 [board::bitboard::Bitboard::contains.reachability_check.3] line 97 KANI_CHECK_ID_minase_core.1b21e33116ac9d9c::minase_core_16: FAILURE
+09:11:45 [board::bitboard::Bitboard::contains.reachability_check.4] line 97 KANI_CHECK_ID_minase_core.1b21e33116ac9d9c::minase_core_17: FAILURE
+09:11:45 [board::bitboard::Bitboard::from_words.reachability_check.1] line 29 KANI_CHECK_ID_minase_core.1b21e33116ac9d9c::minase_core_45: FAILURE
+09:11:45 [board::bitboard::Bitboard::from_words.reachability_check.2] line 30 KANI_CHECK_ID_minase_core.1b21e33116ac9d9c::minase_core_46: FAILURE
+09:11:45 [board::bitboard::Bitboard::from_words.reachability_check.3] line 31 KANI_CHECK_ID_minase_core.1b21e33116ac9d9c::minase_core_47: FAILURE
+09:11:45 [board::bitboard::Bitboard::msb.reachability_check.1] line 136 KANI_CHECK_ID_minase_core.1b21e33116ac9d9c::minase_core_19: FAILURE
+09:11:45 [board::bitboard::Bitboard::msb.reachability_check.2] line 138 KANI_CHECK_ID_minase_core.1b21e33116ac9d9c::minase_core_20: FAILURE
+09:11:45 [board::bitboard::Bitboard::msb.reachability_check.3] line 138 KANI_CHECK_ID_minase_core.1b21e33116ac9d9c::minase_core_21: FAILURE
+09:11:45 [board::bitboard::Bitboard::msb.reachability_check.4] line 138 KANI_CHECK_ID_minase_core.1b21e33116ac9d9c::minase_core_22: FAILURE
+09:11:45 [board::bitboard::Bitboard::set.reachability_check.1] line 104 KANI_CHECK_ID_minase_core.1b21e33116ac9d9c::minase_core_29: FAILURE
+09:11:45 [board::bitboard::Bitboard::set.reachability_check.2] line 104 KANI_CHECK_ID_minase_core.1b21e33116ac9d9c::minase_core_30: FAILURE
+09:11:45 [board::bitboard::Bitboard::set.reachability_check.3] line 104 KANI_CHECK_ID_minase_core.1b21e33116ac9d9c::minase_core_31: FAILURE
+09:11:45 [board::bitboard::Bitboard::set.reachability_check.4] line 104 KANI_CHECK_ID_minase_core.1b21e33116ac9d9c::minase_core_32: FAILURE
+09:11:45 [board::direction::Direction::raw_delta.reachability_check.1] line 72 KANI_CHECK_ID_minase_core.1b21e33116ac9d9c::minase_core_12: FAILURE
+09:11:45 [board::direction::Direction::raw_delta.reachability_check.2] line 72 KANI_CHECK_ID_minase_core.1b21e33116ac9d9c::minase_core_13: FAILURE
+09:11:45 [<board::square::SquareRange as std::iter::Iterator>::next.reachability_check.1] line 122 KANI_CHECK_ID_minase_core.1b21e33116ac9d9c::minase_core_9: FAILURE
+09:11:45 [board::square::Square::from_dense.reachability_check.1] line 45 KANI_CHECK_ID_minase_core.1b21e33116ac9d9c::minase_core_1: FAILURE
+09:11:45 [board::square::Square::from_dense.reachability_check.2] line 46 KANI_CHECK_ID_minase_core.1b21e33116ac9d9c::minase_core_2: FAILURE
+09:11:45 [board::square::Square::from_raw.reachability_check.1] line 37 KANI_CHECK_ID_minase_core.1b21e33116ac9d9c::minase_core_23: FAILURE
+09:11:45 [board::square::Square::new_unchecked.reachability_check.1] line 56 KANI_CHECK_ID_minase_core.1b21e33116ac9d9c::minase_core_18: FAILURE
+09:11:45 [board::square::Square::offset.reachability_check.1] line 93 KANI_CHECK_ID_minase_core.1b21e33116ac9d9c::minase_core_10: FAILURE
+09:11:45 [board::square::Square::offset.reachability_check.2] line 94 KANI_CHECK_ID_minase_core.1b21e33116ac9d9c::minase_core_11: FAILURE
+09:11:45 [board::square::Square::rank.reachability_check.1] line 68 KANI_CHECK_ID_minase_core.1b21e33116ac9d9c::minase_core_49: FAILURE
+09:11:45 ** 52 of 504 failed (5 iterations)
+09:11:45 VERIFICATION FAILED

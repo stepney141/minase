@@ -1,0 +1,12 @@
+09:17:37 CBMC version 6.11.0 (cbmc-6.11.0) 64-bit x86_64 linux
+09:17:37 Reading GOTO program from file /home/stepney141/board-games/minase/target/fv-exp/core/target/kani/x86_64-unknown-linux-gnu/debug/build/minase-core/3b7c03124c40b0c2/out/minase_core-3b7c03124c40b0c2__RNvNtNtNtCs2kqlDGfrlSq_11minase_core7attacks6tables11kani_proofs25sliding_enumerated_origin.o
+09:17:37 Generating GOTO Program
+09:17:37 Adding CPROVER library (x86_64)
+09:17:37 Removal of function pointers and virtual functions
+09:17:37 Generic Property Instrumentation
+09:17:37 Running with 16 object bits, 48 offset bits (user-specified)
+09:17:37 Starting Bounded Model Checking
+...
+09:37:41 Unwinding loop _RNvNtNtNtCs2kqlDGfrlSq_11minase_core7attacks6tables11kani_proofs4walk.0 iteration 7 file src/attacks/tables.rs line 367 column 9 function attacks::tables::kani_proofs::walk thread 0
+09:37:41 Unwinding loop _RNvNtNtNtCs2kqlDGfrlSq_11minase_core7attacks6tables11kani_proofs4walk.0 iteration 8 file src/attacks/tables.rs line 367 column 9 function attacks::tables::kani_proofs::walk thread 0
+09:37:41 Out of memory

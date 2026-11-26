@@ -1,0 +1,15 @@
+# run.sh の標準出力
+08:55:33 start promotion limit=300s
+08:55:34 end promotion exit=0
+08:55:34 start sliding-symbolic limit=1800s
+09:08:50 end sliding-symbolic exit=143
+09:08:50 start sliding-production limit=900s
+# sliding_symbolic_origin の直接実行（開始と終了の時刻、CBMCの終了コード）
+09:09:35 start
+exit=10
+09:11:53 end
+# plain.sh の標準出力
+09:13:14 start sliding-production limit=900s
+09:17:37 end sliding-production exit=6
+09:17:37 start sliding-enumerated limit=1500s
+09:37:47 end sliding-enumerated exit=6

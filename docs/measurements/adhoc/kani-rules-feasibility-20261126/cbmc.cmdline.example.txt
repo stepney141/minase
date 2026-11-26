@@ -1,0 +1,16 @@
+cbmc
+--no-malloc-may-fail
+--no-undefined-shift-check
+--no-signed-overflow-check
+--nan-check
+--no-self-loops-to-assumptions
+--no-pointer-primitive-check
+--object-bits
+16
+--sat-solver
+cadical
+--slice-formula
+core/target/kani/x86_64-unknown-linux-gnu/debug/build/minase-core/e15d8b4738278d96/out/minase_core-e15d8b4738278d96__RNvNtNtNtCs2kqlDGfrlSq_11minase_core7attacks6tables11kani_proofs25sliding_production_tables.out
+--verbosity
+9
+--json-ui

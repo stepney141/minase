@@ -1,0 +1,28 @@
+08:55:33 Kani Rust Verifier 0.68.0 (cargo plugin)
+08:55:33 CBMC 6.11.0
+08:55:34 Checking harness promotion::kani_proofs::standard_promotion_choice...
+08:55:34 CBMC 6.11.0 (cbmc-6.11.0)
+08:55:34 Runtime Symex: 0.0671353s
+08:55:34 Runtime Postprocess Equation: 0.0013599s
+08:55:34 Runtime Convert SSA: 0.00518825s
+08:55:34 Runtime Post-process: 5.225e-06s
+08:55:34 3061 variables, 9454 clauses
+08:55:34 Runtime Solver: 0.000418985s
+08:55:34 Runtime decision procedure: 0.00571801s
+08:55:34 3062 variables, 9455 clauses
+08:55:34 Runtime Solver: 0.000798724s
+08:55:34 Runtime decision procedure: 0.00083727s
+08:55:34 3063 variables, 9456 clauses
+08:55:34 Runtime Solver: 0.000869274s
+08:55:34 Runtime decision procedure: 0.000901953s
+08:55:34 3064 variables, 9457 clauses
+08:55:34 Runtime Solver: 0.00116941s
+08:55:34 Runtime decision procedure: 0.00120927s
+08:55:34 3065 variables, 9458 clauses
+08:55:34 Runtime Solver: 0.00380543s
+08:55:34 Runtime decision procedure: 0.00383707s
+08:55:34 SUMMARY:
+08:55:34  ** 0 of 73 failed
+08:55:34 VERIFICATION:- SUCCESSFUL
+08:55:34 Verification Time: 0.13727759s
+08:55:34 Complete - 1 successfully verified harnesses, 0 failures, 1 total.
