@@ -1,11 +1,7 @@
 //! 探索の深さごとに、ネットと対応する累算器を保持する。
 
 use super::{LayerStackNetwork, Network, SimpleNetwork, layer_stack::LayerStackAccumulator};
-use crate::eval::nnue::{
-    input::HalfKpVm,
-    stats,
-    transformer::{FinnyTable, FtAccumulator},
-};
+use crate::eval::nnue::{input::HalfKpVm, stats, transformer::FtAccumulator};
 use crate::search::MAX_PLY;
 use minase_core::{Color, Position, Square, position::Undo};
 
@@ -16,32 +12,8 @@ pub(crate) enum SearchEvaluator<'a> {
     },
     Simple {
         net: &'a SimpleNetwork,
-        accumulators: SimpleAccumulators,
+        accumulators: Vec<FtAccumulator<HalfKpVm>>,
     },
-}
-
-/// Simpleの深さごとの累算器と、それらが文脈の変更時に使う探索ごとの表。
-#[cfg_attr(test, derive(Clone))]
-pub(crate) struct SimpleAccumulators {
-    plies: Vec<FtAccumulator<HalfKpVm>>,
-    finny: FinnyTable,
-}
-
-impl std::ops::Index<usize> for SimpleAccumulators {
-    type Output = FtAccumulator<HalfKpVm>;
-
-    /// 指定の深さの累算器を返す。
-    fn index(&self, ply: usize) -> &Self::Output {
-        &self.plies[ply]
-    }
-}
-
-#[cfg(test)]
-impl std::ops::IndexMut<usize> for SimpleAccumulators {
-    /// 指定の深さの累算器を書き換える。探索の表は変更しない。
-    fn index_mut(&mut self, ply: usize) -> &mut Self::Output {
-        &mut self.plies[ply]
-    }
 }
 
 impl<'a> SearchEvaluator<'a> {
@@ -55,20 +27,12 @@ impl<'a> SearchEvaluator<'a> {
                     .chain((0..MAX_PLY).map(|_| net.new_accumulator()))
                     .collect(),
             },
-            Network::Simple(net) => {
-                let accumulator = net.refresh(root);
-                let mut finny = FinnyTable::new(net.width());
-                finny.save_root(root, &accumulator);
-                Self::Simple {
-                    net,
-                    accumulators: SimpleAccumulators {
-                        plies: std::iter::once(accumulator)
-                            .chain((0..MAX_PLY).map(|_| net.new_accumulator()))
-                            .collect(),
-                        finny,
-                    },
-                }
-            }
+            Network::Simple(net) => Self::Simple {
+                net,
+                accumulators: std::iter::once(net.refresh(root))
+                    .chain((0..MAX_PLY).map(|_| net.new_accumulator()))
+                    .collect(),
+            },
         }
     }
     pub(crate) fn update_after_move(&mut self, ply: u32, position: &Position, undo: &Undo) {
@@ -79,14 +43,8 @@ impl<'a> SearchEvaluator<'a> {
                 net.update_after_move(&parents[index - 1], &mut children[0], position, undo)
             }
             Self::Simple { net, accumulators } => {
-                let (parents, children) = accumulators.plies.split_at_mut(index);
-                net.update_after_move_cached(
-                    &parents[index - 1],
-                    &mut children[0],
-                    position,
-                    undo,
-                    &mut accumulators.finny,
-                )
+                let (parents, children) = accumulators.split_at_mut(index);
+                net.update_after_move(&parents[index - 1], &mut children[0], position, undo)
             }
         };
         stats::record(refreshed);
@@ -99,7 +57,7 @@ impl<'a> SearchEvaluator<'a> {
                 net.update_after_null(&parents[index - 1], &mut children[0], lion_before);
             }
             Self::Simple { net, accumulators } => {
-                let (parents, children) = accumulators.plies.split_at_mut(index);
+                let (parents, children) = accumulators.split_at_mut(index);
                 net.update_after_null(&parents[index - 1], &mut children[0], lion_before);
             }
         }
@@ -163,40 +121,20 @@ impl<'a> SearchEvaluator<'a> {
 mod tests {
     use super::*;
     use crate::eval::nnue::network::test_util::{fixed_layer_stack, fixed_simple};
-    use minase_core::{
-        Move, MoveGenerator, MoveRules, PieceCode, PieceKind,
-        rng::XorShift64,
-        test_util::{position_from_codes, sq},
-    };
+    use minase_core::{MoveGenerator, MoveRules, rng::XorShift64};
     use std::num::NonZeroU64;
 
     #[test]
     fn random_games_and_null_moves_match_full_evaluation() {
-        let code = |color, kind| PieceCode::new(color, kind).unwrap();
-        let sparse_root = position_from_codes(
-            Color::Black,
-            &[
-                (sq(0, 0), code(Color::Black, PieceKind::King)),
-                (sq(11, 11), code(Color::White, PieceKind::King)),
-                (sq(4, 1), code(Color::Black, PieceKind::Pawn)),
-                (sq(7, 10), code(Color::White, PieceKind::Pawn)),
-            ],
-        );
         for network in [
             Network::LayerStack(fixed_layer_stack()),
             Network::Simple(fixed_simple()),
         ] {
-            for (seed, mut position, favor_kings) in [
-                (0x1234, Position::initial(), false),
-                (0x5678, Position::initial(), false),
-                (0x9abc, Position::initial(), false),
-                (0xdef0, Position::initial(), false),
-                (0xabcd, sparse_root.clone(), true),
-            ] {
+            for seed in [0x1234, 0x5678, 0x9abc, 0xdef0] {
                 let mut rng = XorShift64::new(NonZeroU64::new(seed).unwrap());
+                let mut position = Position::initial();
                 network.check_search_root(&position).unwrap();
                 let mut evaluator = SearchEvaluator::new(&network, &position);
-                let mut king_moves = 0;
                 for ply in 1..=128.min(MAX_PLY) {
                     assert_eq!(
                         evaluator.evaluate(ply - 1, position.side_to_move()),
@@ -211,14 +149,6 @@ mod tests {
                         MoveGenerator::standard().generate_moves(&position, &mut moves);
                         if moves.is_empty() {
                             break;
-                        }
-                        if favor_kings && ply % 3 != 0 {
-                            let kings =
-                                position.pieces_of_kind(position.side_to_move(), PieceKind::King);
-                            if moves.iter().any(|mv| kings.contains(mv.from)) {
-                                moves.retain(|mv| kings.contains(mv.from));
-                                king_moves += 1;
-                            }
                         }
                         let undo = position.make_move_unchecked(
                             moves[rng.next() as usize % moves.len()],
@@ -241,14 +171,15 @@ mod tests {
                     #[cfg(feature = "invariants")]
                     evaluator.assert_accumulator(&position, ply);
                 }
-                if favor_kings {
-                    assert!(king_moves >= 16, "seed={seed}, king_moves={king_moves}");
-                }
             }
         }
     }
     #[test]
     fn counts_distinguish_anchor_refresh_moves_and_null_updates() {
+        use minase_core::{
+            Move, PieceCode, PieceKind,
+            test_util::{position_from_codes, sq},
+        };
         for network in [
             Network::LayerStack(fixed_layer_stack()),
             Network::Simple(fixed_simple()),
@@ -278,12 +209,7 @@ mod tests {
                     incremental_updates: 0
                 }
             );
-            for (ply, from, to) in [
-                (1, sq(5, 5), sq(5, 6)),
-                (2, sq(11, 11), sq(10, 11)),
-                (3, sq(5, 6), sq(5, 7)),
-                (4, sq(10, 11), sq(11, 11)),
-            ] {
+            for (ply, from, to) in [(1, sq(5, 5), sq(5, 6)), (2, sq(11, 11), sq(10, 11))] {
                 let mv = Move {
                     from,
                     to,
@@ -298,7 +224,7 @@ mod tests {
                 }
                 let undo = position.make_move_unchecked(mv, MoveRules::standard());
                 evaluator.update_after_move(ply, &position, &undo);
-                let refreshed = ply % 2 == 0 && matches!(network, Network::Simple(_));
+                let refreshed = ply == 2 && matches!(network, Network::Simple(_));
                 assert_eq!(
                     network.take_accumulator_stats(),
                     crate::eval::nnue::AccumulatorStats {
@@ -308,7 +234,7 @@ mod tests {
                 );
             }
             position.make_null_move();
-            evaluator.update_after_null(5, None);
+            evaluator.update_after_null(3, None);
             assert_eq!(
                 network.take_accumulator_stats(),
                 crate::eval::nnue::AccumulatorStats {
@@ -318,7 +244,7 @@ mod tests {
             );
             assert_eq!(network.take_accumulator_stats().updates(), 0);
             assert_eq!(
-                evaluator.evaluate(5, position.side_to_move()),
+                evaluator.evaluate(3, position.side_to_move()),
                 network.evaluate(&position).unwrap()
             );
         }

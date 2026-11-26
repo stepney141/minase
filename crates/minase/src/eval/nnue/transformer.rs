@@ -1,11 +1,9 @@
 //! 入力特徴の行を加算する第1層と、両視点の累算器。
 
-use super::input::{HalfKpVm, HalfKpVmContext, Indexer, for_each_active_row};
-use crate::eval::features::{
-    feature_index, for_each_move_change, for_each_null_change, lion_feature_index,
-};
+use super::input::{Indexer, for_each_active_row};
+use crate::eval::features::{for_each_move_change, for_each_null_change};
 use minase_core::position::Undo;
-use minase_core::{BOARD_SQUARE_COUNT, Color, PieceCode, Position, Square};
+use minase_core::{Color, Position, Square};
 use std::{fmt, marker::PhantomData};
 
 /// 行優先の重みとバイアスからなる第1層。
@@ -79,194 +77,6 @@ impl<I: Indexer> FtAccumulator<I> {
     /// 指定視点の文脈を返す。
     pub(crate) fn context(&self, perspective: Color) -> Option<I::Context> {
         self.contexts[perspective.index()]
-    }
-}
-
-const FINNY_ENTRIES: usize = Color::ALL.len() * BOARD_SQUARE_COUNT;
-
-/// 探索ごとに作るHalfKP_vmの累算値の表。
-/// キーは視点と文脈の組で、1視点につき144項目を`2×区分 + 鏡映の有無`で引く。
-/// 各項目には幅ぶんのi16の累算値、144升の駒コード、先獅子の対象升、有効印を保存する。
-/// 有効印が偽の項目は未使用であり、保存領域の値は読まない。
-/// 行の加減算は2^16を法とする剰余演算なので、順序が変わっても全再計算とビット単位で一致する。
-#[cfg_attr(test, derive(Clone))]
-pub(crate) struct FinnyTable {
-    width: usize,
-    rows: Box<[i16]>,
-    entries: Box<[FinnyEntry]>,
-    #[cfg(test)]
-    last_refresh: [Option<FinnyRefresh>; 2],
-}
-
-/// 1項目の累算値と対応する盤面および先獅子の状態。
-#[derive(Clone, Copy)]
-struct FinnyEntry {
-    board: [PieceCode; BOARD_SQUARE_COUNT],
-    lion: Option<Square>,
-    valid: bool,
-}
-
-impl FinnyEntry {
-    const UNUSED: Self = Self {
-        board: [PieceCode::EMPTY; BOARD_SQUARE_COUNT],
-        lion: None,
-        valid: false,
-    };
-
-    /// 現在の駒配置と先獅子を保存し、計算済みの累算値に対応付ける。
-    fn save_position(&mut self, position: &Position) {
-        for (piece, square) in self.board.iter_mut().zip(Square::all()) {
-            *piece = position.piece_at(square).unwrap_or(PieceCode::EMPTY);
-        }
-        self.lion = position.lion_capture_square();
-        self.valid = true;
-    }
-}
-
-/// テストで観測する文脈変更時の表の使用結果。
-#[cfg(test)]
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum FinnyRefresh {
-    /// 未使用の項目を全再計算した。
-    Miss,
-    /// 有効な項目を使い、指定の行数を足し引きした。
-    Hit(usize),
-}
-
-impl FinnyTable {
-    /// 両視点の領域を確保し、全項目を未使用にする。
-    pub(crate) fn new(width: usize) -> Self {
-        Self {
-            width,
-            rows: vec![0; FINNY_ENTRIES * width].into_boxed_slice(),
-            entries: vec![FinnyEntry::UNUSED; FINNY_ENTRIES].into_boxed_slice(),
-            #[cfg(test)]
-            last_refresh: [None; 2],
-        }
-    }
-
-    /// 根の全再計算の結果を、文脈がある視点の項目へ保存する。
-    pub(crate) fn save_root(&mut self, position: &Position, accumulator: &FtAccumulator<HalfKpVm>) {
-        let mut snapshot = FinnyEntry::UNUSED;
-        for perspective in Color::ALL {
-            if let Some(context) = accumulator.context(perspective) {
-                if !snapshot.valid {
-                    snapshot.save_position(position);
-                }
-                let (entry, values) = self.entry_mut(perspective, context);
-                values.copy_from_slice(&accumulator.rows[perspective.index()]);
-                *entry = snapshot;
-            }
-        }
-    }
-
-    /// 指定の視点と文脈に対応する盤面と累算値の領域を借用する。
-    fn entry_mut(
-        &mut self,
-        perspective: Color,
-        context: HalfKpVmContext,
-    ) -> (&mut FinnyEntry, &mut [i16]) {
-        let index = perspective.index() * BOARD_SQUARE_COUNT
-            + 2 * context.bucket()
-            + usize::from(context.mirrored());
-        let start = index * self.width;
-        (
-            &mut self.entries[index],
-            &mut self.rows[start..start + self.width],
-        )
-    }
-
-    /// 未使用なら全再計算し、有効なら保存局面との差だけを足し引きする。
-    /// 項目に結果と現在の局面を残し、結果を累算器へ写す。
-    fn refresh_row(
-        &mut self,
-        transformer: &FeatureTransformer<HalfKpVm>,
-        dest: &mut [i16],
-        context: HalfKpVmContext,
-        perspective: Color,
-        position: &Position,
-    ) {
-        let (entry, values) = self.entry_mut(perspective, context);
-        #[cfg(test)]
-        let refresh;
-        if entry.valid {
-            #[cfg(test)]
-            let mut row_count = 0;
-            let mut apply = |base, sign| {
-                if let Some(row) = HalfKpVm::row(context, base) {
-                    transformer.add_row(values, row, sign);
-                    #[cfg(test)]
-                    {
-                        row_count += 1;
-                    }
-                }
-            };
-            for (previous, square) in entry.board.iter_mut().zip(Square::all()) {
-                let current = position.piece_at(square).unwrap_or(PieceCode::EMPTY);
-                if *previous != current {
-                    if !previous.is_empty() {
-                        apply(feature_index(perspective, *previous, square), -1);
-                    }
-                    if !current.is_empty() {
-                        apply(feature_index(perspective, current, square), 1);
-                    }
-                    *previous = current;
-                }
-            }
-            let lion = position.lion_capture_square();
-            if entry.lion != lion {
-                if let Some(square) = entry.lion {
-                    apply(lion_feature_index(perspective, square), -1);
-                }
-                if let Some(square) = lion {
-                    apply(lion_feature_index(perspective, square), 1);
-                }
-                entry.lion = lion;
-            }
-            #[cfg(test)]
-            {
-                refresh = FinnyRefresh::Hit(row_count);
-            }
-        } else {
-            transformer.refresh_row(values, context, perspective, position);
-            entry.save_position(position);
-            #[cfg(test)]
-            {
-                refresh = FinnyRefresh::Miss;
-            }
-        }
-        dest.copy_from_slice(values);
-        #[cfg(test)]
-        {
-            self.last_refresh[perspective.index()] = Some(refresh);
-        }
-    }
-}
-
-impl FeatureTransformer<HalfKpVm> {
-    /// 着手の差分を更新し、文脈が変わった視点では探索の表を使う。
-    /// 表に当たった場合も文脈が変わった更新は全再計算として数える。
-    pub(crate) fn update_after_move_cached(
-        &self,
-        before: &FtAccumulator<HalfKpVm>,
-        after: &mut FtAccumulator<HalfKpVm>,
-        position_after: &Position,
-        undo: &Undo,
-        table: &mut FinnyTable,
-    ) -> bool {
-        #[cfg(test)]
-        {
-            table.last_refresh = [None; 2];
-        }
-        self.update_after_move_with_refresh(
-            before,
-            after,
-            position_after,
-            undo,
-            |dest, context, perspective| {
-                table.refresh_row(self, dest, context, perspective, position_after);
-            },
-        )
     }
 }
 
@@ -370,26 +180,6 @@ impl<I: Indexer> FeatureTransformer<I> {
         position_after: &Position,
         undo: &Undo,
     ) -> bool {
-        self.update_after_move_with_refresh(
-            before,
-            after,
-            position_after,
-            undo,
-            |values, context, perspective| {
-                self.refresh_row(values, context, perspective, position_after);
-            },
-        )
-    }
-
-    /// 新しい文脈があり、親と異なる視点にだけ、指定の再計算処理を使う。
-    fn update_after_move_with_refresh(
-        &self,
-        before: &FtAccumulator<I>,
-        after: &mut FtAccumulator<I>,
-        position_after: &Position,
-        undo: &Undo,
-        mut refresh: impl FnMut(&mut [i16], I::Context, Color),
-    ) -> bool {
         let mut refreshed = false;
         for perspective in Color::ALL {
             let index = perspective.index();
@@ -406,7 +196,7 @@ impl<I: Indexer> FeatureTransformer<I> {
                     });
                 }
                 Some(context) => {
-                    refresh(values, context, perspective);
+                    self.refresh_row(values, context, perspective, position_after);
                     refreshed = true;
                 }
                 None => values.fill(0),
