@@ -1,0 +1,429 @@
+diff --git a/crates/minase/src/bin/minase/selfplay_gen/output.rs b/crates/minase/src/bin/minase/selfplay_gen/output.rs
+index 52087251..34e8dee4 100644
+--- a/crates/minase/src/bin/minase/selfplay_gen/output.rs
++++ b/crates/minase/src/bin/minase/selfplay_gen/output.rs
+@@ -140,7 +140,7 @@ use super::{
+ use minase::datagen::output::{DirectoryLock, atomic_json, commit_files};
+ use minase::datagen::statistics::{RecordedStatistics, SCORE_VALUE_COUNT, Statistics, score_index};
+ use minase::datagen::{data_error, hex};
+-use minase::eval::nnue::Network;
++use minase::eval::nnue::{Network, finny_diag};
+ use minase::search::{TranspositionTable, TranspositionTableError};
+ use minase::training::records::{
+     self, Exclusion, HEADER_LEN, Header, Reader, TeacherKind, Value, Writer,
+@@ -625,6 +625,7 @@ impl RunReport {
+         );
+         println!("searched_nodes_total: {}", stats.searched_nodes);
+         println!("chunks_reused: {}", self.chunks_reused);
++        println!("finny_diag: {}", finny_diag::take_summary());
+     }
+ }
+ 
+@@ -788,6 +789,10 @@ fn generate_chunks(
+     completed: &mut BTreeMap<u32, ChunkSummary>,
+     started: Instant,
+ ) -> Result<GeneratedRun, OutputError> {
++    assert!(
++        concurrency.get() == 1 || !matches!(nnue, Network::Simple(_)),
++        "finny_diag requires one concurrent HalfKP_vm selfplay game"
++    );
+     let numbers = (0..conditions.config.chunk_count())
+         .filter(|chunk| !completed.contains_key(chunk))
+         .flat_map(|chunk| {
+diff --git a/crates/minase/src/diagnostics/bench.rs b/crates/minase/src/diagnostics/bench.rs
+index 6ad35597..72c613fb 100644
+--- a/crates/minase/src/diagnostics/bench.rs
++++ b/crates/minase/src/diagnostics/bench.rs
+@@ -17,8 +17,7 @@ use std::io;
+ use std::num::{NonZeroU32, NonZeroUsize};
+ use std::time::Instant;
+ 
+-use crate::eval::nnue::AccumulatorStats;
+-use crate::eval::nnue::Network;
++use crate::eval::nnue::{AccumulatorStats, Network, finny_diag};
+ use crate::search::{MAX_PLY, SearchLimits, SearchSnapshot, TranspositionTable, search};
+ use minase_core::notation::usi;
+ use minase_core::{Game, MoveGenerator, Rules, parse_sfen};
+@@ -243,6 +242,10 @@ fn print_accumulator_stats(
+     output(&line).map_err(Error::Output)
+ }
+ 
++fn print_finny_diag(output: &mut dyn FnMut(&str) -> io::Result<()>) -> Result<(), Error> {
++    output(&format!("finny_diag: {}", finny_diag::take_summary())).map_err(Error::Output)
++}
++
+ /// 回数と、分母が正の項目の比だけを1行に整形する。
+ #[cfg(feature = "search-stats")]
+ fn format_stats(stats: &crate::search::SearchStats) -> String {
+@@ -420,6 +423,7 @@ pub fn run(
+     // 新品と同一状態)、NPSは各局面の探索時間の合計から計算する。
+     let mut transposition_table =
+         TranspositionTable::new(crate::search::DEFAULT_TT_SIZE_MB).map_err(Error::Table)?;
++    let _ = finny_diag::take_summary();
+     if arguments.repetitions.get() == 1 {
+         let result = run_bench(
+             nnue,
+@@ -440,6 +444,7 @@ pub fn run(
+         ))
+         .map_err(Error::Output)?;
+         print_accumulator_stats(result.accumulators, output)?;
++        print_finny_diag(output)?;
+         #[cfg(feature = "search-stats")]
+         output(&format_stats(&result.stats)).map_err(Error::Output)?;
+         return Ok(());
+@@ -454,6 +459,7 @@ pub fn run(
+         false,
+         output,
+     )?;
++    let _ = finny_diag::take_summary();
+     let mut runs = Vec::new();
+     runs.try_reserve_exact(arguments.repetitions.get())
+         .map_err(Error::Allocation)?;
+@@ -498,6 +504,7 @@ pub fn run(
+         accumulators += run.accumulators;
+     }
+     print_accumulator_stats(accumulators, output)?;
++    print_finny_diag(output)?;
+     #[cfg(feature = "search-stats")]
+     {
+         let mut stats = crate::search::SearchStats::default();
+diff --git a/crates/minase/src/eval/nnue/mod.rs b/crates/minase/src/eval/nnue/mod.rs
+index bad59299..fcdd8f25 100644
+--- a/crates/minase/src/eval/nnue/mod.rs
++++ b/crates/minase/src/eval/nnue/mod.rs
+@@ -1,6 +1,7 @@
+ //! tatara形式のLayerStackとSimpleの復号、差分更新、および整数評価。
+ 
+ mod file;
++pub mod finny_diag;
+ pub mod input;
+ pub mod network;
+ mod stats;
+diff --git a/crates/minase/src/eval/nnue/network/evaluator.rs b/crates/minase/src/eval/nnue/network/evaluator.rs
+index 858f182d..8887f476 100644
+--- a/crates/minase/src/eval/nnue/network/evaluator.rs
++++ b/crates/minase/src/eval/nnue/network/evaluator.rs
+@@ -56,9 +56,8 @@ impl<'a> SearchEvaluator<'a> {
+                     .collect(),
+             },
+             Network::Simple(net) => {
+-                let accumulator = net.refresh(root);
+                 let mut finny = FinnyTable::new(net.width());
+-                finny.save_root(root, &accumulator);
++                let accumulator = net.refresh_root(root, &mut finny);
+                 Self::Simple {
+                     net,
+                     accumulators: SimpleAccumulators {
+diff --git a/crates/minase/src/eval/nnue/network/simple.rs b/crates/minase/src/eval/nnue/network/simple.rs
+index e6548569..eb4548ed 100644
+--- a/crates/minase/src/eval/nnue/network/simple.rs
++++ b/crates/minase/src/eval/nnue/network/simple.rs
+@@ -144,6 +144,13 @@ impl SimpleNetwork {
+     pub(crate) fn refresh(&self, position: &Position) -> FtAccumulator<HalfKpVm> {
+         self.ft.refresh(position)
+     }
++    pub(crate) fn refresh_root(
++        &self,
++        position: &Position,
++        table: &mut FinnyTable,
++    ) -> FtAccumulator<HalfKpVm> {
++        table.refresh_root(&self.ft, position)
++    }
+     /// 表を通さず着手差分を更新し、文脈が変わった視点だけ全再計算する。
+     #[cfg(test)]
+     pub(crate) fn update_after_move(
+diff --git a/crates/minase/src/eval/nnue/transformer.rs b/crates/minase/src/eval/nnue/transformer.rs
+index 2b8124b8..a1b0a702 100644
+--- a/crates/minase/src/eval/nnue/transformer.rs
++++ b/crates/minase/src/eval/nnue/transformer.rs
+@@ -1,5 +1,6 @@
+ //! 入力特徴の行を加算する第1層と、両視点の累算器。
+ 
++use super::finny_diag::{self, Event};
+ use super::input::{HalfKpVm, HalfKpVmContext, Indexer, for_each_active_row};
+ use crate::eval::features::{
+     feature_index, for_each_move_change, for_each_null_change, lion_feature_index,
+@@ -82,7 +83,7 @@ impl<I: Indexer> FtAccumulator<I> {
+     }
+ }
+ 
+-const FINNY_ENTRIES: usize = Color::ALL.len() * BOARD_SQUARE_COUNT;
++pub(super) const FINNY_ENTRIES: usize = Color::ALL.len() * BOARD_SQUARE_COUNT;
+ 
+ /// 探索ごとに作るHalfKP_vmの累算値の表。
+ /// キーは視点と文脈の組で、1視点につき144項目を`2×区分 + 鏡映の有無`で引く。
+@@ -100,27 +101,73 @@ pub(crate) struct FinnyTable {
+ 
+ /// 1項目の累算値と対応する盤面および先獅子の状態。
+ #[derive(Clone, Copy)]
+-struct FinnyEntry {
++pub(super) struct FinnyEntry {
+     board: [PieceCode; BOARD_SQUARE_COUNT],
+     lion: Option<Square>,
+-    valid: bool,
++    pub(super) valid: bool,
+ }
+ 
+ impl FinnyEntry {
+-    const UNUSED: Self = Self {
++    pub(super) const UNUSED: Self = Self {
+         board: [PieceCode::EMPTY; BOARD_SQUARE_COUNT],
+         lion: None,
+         valid: false,
+     };
+ 
++    pub(super) fn index(perspective: Color, context: HalfKpVmContext) -> usize {
++        perspective.index() * BOARD_SQUARE_COUNT
++            + 2 * context.bucket()
++            + usize::from(context.mirrored())
++    }
++
+     /// 現在の駒配置と先獅子を保存し、計算済みの累算値に対応付ける。
+-    fn save_position(&mut self, position: &Position) {
++    pub(super) fn save_position(&mut self, position: &Position) {
+         for (piece, square) in self.board.iter_mut().zip(Square::all()) {
+             *piece = position.piece_at(square).unwrap_or(PieceCode::EMPTY);
+         }
+         self.lion = position.lion_capture_square();
+         self.valid = true;
+     }
++
++    /// 保存局面との差のうち実在する行を列挙し、現在の局面を保存する。
++    pub(super) fn refresh_position(
++        &mut self,
++        context: HalfKpVmContext,
++        perspective: Color,
++        position: &Position,
++        mut apply_row: impl FnMut(usize, i32),
++    ) -> usize {
++        let mut rows = 0;
++        let mut apply = |base, sign| {
++            if let Some(row) = HalfKpVm::row(context, base) {
++                apply_row(row, sign);
++                rows += 1;
++            }
++        };
++        for (previous, square) in self.board.iter_mut().zip(Square::all()) {
++            let current = position.piece_at(square).unwrap_or(PieceCode::EMPTY);
++            if *previous != current {
++                if !previous.is_empty() {
++                    apply(feature_index(perspective, *previous, square), -1);
++                }
++                if !current.is_empty() {
++                    apply(feature_index(perspective, current, square), 1);
++                }
++                *previous = current;
++            }
++        }
++        let lion = position.lion_capture_square();
++        if self.lion != lion {
++            if let Some(square) = self.lion {
++                apply(lion_feature_index(perspective, square), -1);
++            }
++            if let Some(square) = lion {
++                apply(lion_feature_index(perspective, square), 1);
++            }
++            self.lion = lion;
++        }
++        rows
++    }
+ }
+ 
+ /// テストで観測する文脈変更時の表の使用結果。
+@@ -145,19 +192,22 @@ impl FinnyTable {
+         }
+     }
+ 
+-    /// 根の全再計算の結果を、文脈がある視点の項目へ保存する。
+-    pub(crate) fn save_root(&mut self, position: &Position, accumulator: &FtAccumulator<HalfKpVm>) {
++    /// 根を全再計算し、文脈がある視点の結果を表へ保存する。
++    pub(crate) fn refresh_root(
++        &mut self,
++        transformer: &FeatureTransformer<HalfKpVm>,
++        position: &Position,
++    ) -> FtAccumulator<HalfKpVm> {
+         let mut snapshot = FinnyEntry::UNUSED;
+-        for perspective in Color::ALL {
+-            if let Some(context) = accumulator.context(perspective) {
+-                if !snapshot.valid {
+-                    snapshot.save_position(position);
+-                }
+-                let (entry, values) = self.entry_mut(perspective, context);
+-                values.copy_from_slice(&accumulator.rows[perspective.index()]);
+-                *entry = snapshot;
++        transformer.refresh_with(position, |perspective, context, row, a| {
++            if !snapshot.valid {
++                snapshot.save_position(position);
+             }
+-        }
++            let (entry, values) = self.entry_mut(perspective, context);
++            values.copy_from_slice(row);
++            *entry = snapshot;
++            finny_diag::record(Event::Root, perspective, context, position, a, None);
++        })
+     }
+ 
+     /// 指定の視点と文脈に対応する盤面と累算値の領域を借用する。
+@@ -166,9 +216,7 @@ impl FinnyTable {
+         perspective: Color,
+         context: HalfKpVmContext,
+     ) -> (&mut FinnyEntry, &mut [i16]) {
+-        let index = perspective.index() * BOARD_SQUARE_COUNT
+-            + 2 * context.bucket()
+-            + usize::from(context.mirrored());
++        let index = FinnyEntry::index(perspective, context);
+         let start = index * self.width;
+         (
+             &mut self.entries[index],
+@@ -187,59 +235,23 @@ impl FinnyTable {
+         position: &Position,
+     ) {
+         let (entry, values) = self.entry_mut(perspective, context);
+-        #[cfg(test)]
+-        let refresh;
+-        if entry.valid {
+-            #[cfg(test)]
+-            let mut row_count = 0;
+-            let mut apply = |base, sign| {
+-                if let Some(row) = HalfKpVm::row(context, base) {
+-                    transformer.add_row(values, row, sign);
+-                    #[cfg(test)]
+-                    {
+-                        row_count += 1;
+-                    }
+-                }
+-            };
+-            for (previous, square) in entry.board.iter_mut().zip(Square::all()) {
+-                let current = position.piece_at(square).unwrap_or(PieceCode::EMPTY);
+-                if *previous != current {
+-                    if !previous.is_empty() {
+-                        apply(feature_index(perspective, *previous, square), -1);
+-                    }
+-                    if !current.is_empty() {
+-                        apply(feature_index(perspective, current, square), 1);
+-                    }
+-                    *previous = current;
+-                }
+-            }
+-            let lion = position.lion_capture_square();
+-            if entry.lion != lion {
+-                if let Some(square) = entry.lion {
+-                    apply(lion_feature_index(perspective, square), -1);
+-                }
+-                if let Some(square) = lion {
+-                    apply(lion_feature_index(perspective, square), 1);
+-                }
+-                entry.lion = lion;
+-            }
+-            #[cfg(test)]
+-            {
+-                refresh = FinnyRefresh::Hit(row_count);
+-            }
++        let (a, search_hit_rows) = if entry.valid {
++            let rows = entry.refresh_position(context, perspective, position, |row, sign| {
++                transformer.add_row(values, row, sign);
++            });
++            (finny_diag::active_rows(context, perspective, position), Some(rows))
+         } else {
+-            transformer.refresh_row(values, context, perspective, position);
++            let a = transformer.refresh_row(values, context, perspective, position);
+             entry.save_position(position);
+-            #[cfg(test)]
+-            {
+-                refresh = FinnyRefresh::Miss;
+-            }
+-        }
++            (a, None)
++        };
+         dest.copy_from_slice(values);
+         #[cfg(test)]
+         {
+-            self.last_refresh[perspective.index()] = Some(refresh);
++            self.last_refresh[perspective.index()] =
++                Some(search_hit_rows.map_or(FinnyRefresh::Miss, FinnyRefresh::Hit));
+         }
++        finny_diag::record(Event::Change, perspective, context, position, a, search_hit_rows);
+     }
+ }
+ 
+@@ -340,22 +352,35 @@ impl<I: Indexer> FeatureTransformer<I> {
+         context: I::Context,
+         perspective: Color,
+         position: &Position,
+-    ) {
++    ) -> usize {
+         values.copy_from_slice(&self.biases);
++        let mut rows = 0;
+         for_each_active_row::<I>(context, perspective, position, |row| {
+-            self.add_row(values, row, 1)
++            self.add_row(values, row, 1);
++            rows += 1;
+         });
++        rows
+     }
+ 
+     /// 両視点を全再計算する。基準の王駒が不正な視点は文脈なし、全成分0にする。
+     pub(crate) fn refresh(&self, position: &Position) -> FtAccumulator<I> {
++        self.refresh_with(position, |_, _, _, _| {})
++    }
++
++    fn refresh_with(
++        &self,
++        position: &Position,
++        mut on_row: impl FnMut(Color, I::Context, &[i16], usize),
++    ) -> FtAccumulator<I> {
+         let mut accumulator = FtAccumulator::new(self.width);
+         for perspective in Color::ALL {
+             let index = perspective.index();
+             let context = I::context(position, perspective).ok();
+             accumulator.contexts[index] = context;
+             if let Some(context) = context {
+-                self.refresh_row(&mut accumulator.rows[index], context, perspective, position);
++                let values = &mut accumulator.rows[index];
++                let rows = self.refresh_row(values, context, perspective, position);
++                on_row(perspective, context, values, rows);
+             }
+         }
+         accumulator
+diff --git a/crates/minase/src/eval/nnue/transformer/tests.rs b/crates/minase/src/eval/nnue/transformer/tests.rs
+index e0528d86..10f15445 100644
+--- a/crates/minase/src/eval/nnue/transformer/tests.rs
++++ b/crates/minase/src/eval/nnue/transformer/tests.rs
+@@ -305,7 +305,7 @@ fn half_kp_vm_updates_match_refresh_for_move_shapes_and_four_random_games() {
+ /// 根の全再計算の結果を保存した表を作る。
+ fn rooted_finny(net: &FeatureTransformer<HalfKpVm>, root: &Position) -> FinnyTable {
+     let mut table = FinnyTable::new(net.width());
+-    table.save_root(root, &net.refresh(root));
++    table.refresh_root(net, root);
+     table
+ }
+ 
+diff --git a/crates/minase/src/search/alphabeta/history.rs b/crates/minase/src/search/alphabeta/history.rs
+index 0e553ccc..26e14fec 100644
+--- a/crates/minase/src/search/alphabeta/history.rs
++++ b/crates/minase/src/search/alphabeta/history.rs
+@@ -12,6 +12,8 @@ use minase_core::board::{BOARD_SQUARE_COUNT, Square};
+ use minase_core::piece::{COLOR_COUNT, PieceCode, PieceKind};
+ use minase_core::position::{Position, Undo};
+ 
++use crate::eval::nnue::finny_diag;
++
+ use super::capture_history::CaptureHistory;
+ use super::correction::{ContinuationCorrectionHistory, CorrectionValues};
+ use super::time::PreviousSearch;
+@@ -303,6 +305,7 @@ pub struct HistoryTables {
+ impl HistoryTables {
+     /// 指定したワーカー数の表をそれぞれの初期値で作る。
+     pub fn new(threads: NonZeroUsize) -> Self {
++        finny_diag::clear_history(threads.get());
+         Self {
+             previous_search: PreviousSearch::default(),
+             workers: (0..threads.get())
+@@ -324,6 +327,7 @@ impl HistoryTables {
+ 
+     /// ワーカー数を保ったまま全表と直前の探索の値をそれぞれの初期値へ戻す。
+     pub fn clear(&mut self) {
++        finny_diag::clear_history(self.workers.len());
+         self.previous_search = PreviousSearch::default();
+         for history in &mut self.workers {
+             for value in history.iter_mut().flatten().flatten() {

@@ -20,7 +20,7 @@ Finny tables（accumulator cache、refresh tableとも呼ぶ）は、基準の�
 
 本書は進行中である。2026年10月17日に起案し、2026年11月24日にHalfKP_vmに合わせて書き直し、2026年11月26日に着手した。
 HalfKP_vmは[tatara化とHalfKP_vm](archived/nnue-tatara-framework-and-halfkp-vm.md)で2026年11月19日に加わり、エンジンと教師生成で動く状態にある。
-フェーズ0の準備とフェーズ1の実装を並行して進めている。次の一手は、フェーズ0の測定記録を書き、フェーズ1の実装を検証することである。
+フェーズ0の準備（[測定記録](../measurements/nnue-finny-tables/nnue-finny-tables-setup.md)）、フェーズ1の実装、およびフェーズ2の行数の診断（[測定記録](../measurements/nnue-finny-tables/nnue-finny-tables-row-counts.md)）を終えた。1手2万ノードの教師生成で、探索ごとの表は全再計算で足す行の84.2%を減らし、対局内の保持でさらに減る行数は探索ごとの表で減る行数の3.3%だったので、フェーズ3を行わずにフェーズ4へ進む。次の一手は、フェーズ4の最終測定である。
 
 ## 目的
 
