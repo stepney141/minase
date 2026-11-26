@@ -1,0 +1,9 @@
+reading4-2 L0,P0,R1,E2 ply 16: adjudication=Some(Draw { reason: Repetition }) stalemate_or_mate=Some(Mate) side_to_move=Black royal_attacked=true
+reading4-2 L0,P0,R1,E0 ply 16: adjudication=Some(Draw { reason: Repetition }) stalemate_or_mate=Some(Mate) side_to_move=Black royal_attacked=true
+reading4-3 L0,P0,R1,E0 ply 1: adjudication=Some(Win { winner: Black, reason: PieceExhaustion }) stalemate_or_mate=Some(Mate) side_to_move=Black royal_attacked=false
+reading4-3 L0,P0,R1,E2 ply 1: adjudication=Some(Win { winner: White, reason: Mate }) stalemate_or_mate=Some(Mate) side_to_move=Black royal_attacked=false
+reading4-3 L0,P0,R1,E3 ply 1: adjudication=Some(Win { winner: Black, reason: BareKing }) stalemate_or_mate=Some(Mate) side_to_move=Black royal_attacked=false
+reading4-4 L0,P0,R2,E0 ply 9: adjudication=Some(Draw { reason: PieceExhaustion }) stalemate_or_mate=Some(Stalemate) side_to_move=Black royal_attacked=false
+reading4-4 L0,P0,R2,E3 ply 9: adjudication=Some(Draw { reason: BareKing }) stalemate_or_mate=Some(Stalemate) side_to_move=Black royal_attacked=false
+reading4-4 L0,P0,R2,E2 ply 9: adjudication=Some(Win { winner: White, reason: Stalemate }) stalemate_or_mate=Some(Stalemate) side_to_move=Black royal_attacked=false
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 343 filtered out; finished in 0.01s

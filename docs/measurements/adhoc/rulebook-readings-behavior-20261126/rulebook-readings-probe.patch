@@ -1,0 +1,350 @@
+--- a/crates/minase-core/Cargo.toml
++++ b/crates/minase-core/Cargo.toml
+@@ -15,8 +15,7 @@
+ [package.metadata.release]
+ pre-release-commit-message = "chore(release): minase-core-v{{version}}"
+ 
+-[lints]
+-workspace = true
++[workspace]
+ 
+ [features]
+ # Run the expensive Position::validate check after each move and undo, and panic on failure.
+@@ -32,4 +31,3 @@
+ # 理由は docs/adr/enable-invariant-checks-in-tests-by-feature.md にある。
+ # Cargoは開発依存のフィーチャをテストなど開発依存を使うビルドにだけ統合するので、
+ # `cargo build`と`cargo run`のバイナリには検査が入らない。
+-minase-core = { path = ".", features = ["invariants"] }
+--- a/crates/minase-core/tests/rulebook_readings.rs
++++ b/crates/minase-core/tests/rulebook_readings.rs
+@@ -0,0 +1,199 @@
++//! 規則書の読みが分かれる箇所について、本番の挙動を公開APIで観測する使い捨ての試験。
++//! 座標は`Square::new(筋, 段)`の内部の値である。
++
++use minase_core::rules::parse_rule_set;
++use minase_core::{
++    Color, Game, GameStatus, Move, MoveGenerator, PieceCode, PieceKind, Position, PositionBuilder,
++    Rules, Square,
++};
++
++fn sq(file: u8, rank: u8) -> Square {
++    Square::new(file, rank).unwrap()
++}
++
++fn mv(from: (u8, u8), mid: Option<(u8, u8)>, to: (u8, u8), promote: bool) -> Move {
++    Move {
++        from: sq(from.0, from.1),
++        mid: mid.map(|m| sq(m.0, m.1)),
++        to: sq(to.0, to.1),
++        promote,
++    }
++}
++
++fn step(from: (u8, u8), to: (u8, u8)) -> Move {
++    mv(from, None, to, false)
++}
++
++fn rules(set: &str) -> Rules {
++    Rules::from_codes(&parse_rule_set(set).unwrap()).unwrap()
++}
++
++fn unpromoted(color: Color, kind: PieceKind) -> PieceCode {
++    PieceCode::new(color, kind).unwrap()
++}
++
++fn legal(generator: &MoveGenerator, position: &Position, candidate: Move) -> bool {
++    let mut moves = Vec::new();
++    generator.generate_moves(position, &mut moves);
++    moves.contains(&candidate)
++}
++
++/// 論点1: 双方の獅子がなくなった後に残る先獅子の記録と反復（第24条第1項c）。
++#[test]
++fn reading_1_lion_capture_record_without_remaining_lion() {
++    for set in ["L0,P0,R2,E1,E2", "L0,P0,R3,E1,E2", "L0,P0,R1,E1,E2"] {
++        let mut game = Game::new(rules(set));
++        let mut moves = vec![
++            step((3, 4), (3, 5)),
++            step((6, 9), (6, 7)),
++            step((3, 5), (3, 4)),
++            step((6, 7), (6, 5)),
++            step((3, 4), (3, 5)),
++            step((6, 5), (6, 3)),
++            step((3, 5), (3, 4)),
++            step((6, 3), (5, 2)),
++            step((6, 2), (5, 2)),
++        ];
++        for _ in 0..5 {
++            moves.extend([
++                step((8, 7), (8, 6)),
++                step((3, 4), (3, 5)),
++                step((8, 6), (8, 7)),
++                step((3, 5), (3, 4)),
++            ]);
++        }
++        let mut key_after_ply_9 = 0;
++        for (index, played) in moves.into_iter().enumerate() {
++            let ply = index + 1;
++            match game.play(played) {
++                Ok(status) => {
++                    let key = *game.repetition_key_history().last().unwrap();
++                    if ply == 9 {
++                        key_after_ply_9 = key;
++                    }
++                    if ply == 9 || ply == 13 || status != GameStatus::Ongoing {
++                        println!(
++                            "reading1 {set} ply {ply}: {status:?} record={:?} key_equals_ply_9={}",
++                            game.position()
++                                .lion_capture_square()
++                                .map(|square| (square.file(), square.rank())),
++                            key == key_after_ply_9
++                        );
++                    }
++                    if status != GameStatus::Ongoing {
++                        break;
++                    }
++                }
++                Err(error) => {
++                    println!("reading1 {set} ply {ply}: rejected {error:?}");
++                    break;
++                }
++            }
++        }
++    }
++}
++
++/// 論点2: 成り権を保留した駒が非捕獲で1升進む手の不成（N）と成り（P）（第30条）。
++#[test]
++fn reading_2_deferred_piece_reaching_the_last_rank() {
++    for set in [
++        "L0,P2,R1,E0",
++        "L0,P2,P3,R1,E0",
++        "L0,P2,P3,P6,R1,E0",
++        "L0,P2,P5,P6,R1,E0",
++    ] {
++        for deferred in [true, false] {
++            let mut builder = PositionBuilder::new(Color::Black);
++            let pieces = [
++                (sq(0, 10), unpromoted(Color::Black, PieceKind::Lance)),
++                (sq(1, 10), unpromoted(Color::Black, PieceKind::Pawn)),
++                (sq(2, 9), unpromoted(Color::Black, PieceKind::SilverGeneral)),
++                (sq(5, 0), unpromoted(Color::Black, PieceKind::King)),
++                (sq(5, 5), unpromoted(Color::White, PieceKind::King)),
++            ];
++            for (square, piece) in pieces {
++                builder.put(square, piece).unwrap();
++            }
++            if deferred {
++                for square in [sq(0, 10), sq(1, 10), sq(2, 9)] {
++                    builder.mark_promotion_deferred(square).unwrap();
++                }
++            }
++            let position = builder.finish().unwrap();
++            let generator = MoveGenerator::new(rules(set).moves);
++            let choices = |from: (u8, u8), to: (u8, u8)| {
++                format!(
++                    "{}{}",
++                    if legal(&generator, &position, mv(from, None, to, false)) { "N" } else { "-" },
++                    if legal(&generator, &position, mv(from, None, to, true)) { "P" } else { "-" }
++                )
++            };
++            println!(
++                "reading2 {set} deferred={deferred}: lance_to_last_rank={} pawn_to_last_rank={} silver_inside_zone={}",
++                choices((0, 10), (0, 11)),
++                choices((1, 10), (1, 11)),
++                choices((2, 9), (2, 10))
++            );
++        }
++    }
++}
++
++/// 論点3: 先獅子の記録がある局面で、獅子が隣接する獅子Aと隣接しない獅子Bを取る手（第15条、第16条）。
++#[test]
++fn reading_3_lion_takes_two_lions_under_the_recapture_ban() {
++    for record in [true, false] {
++        let mut builder = PositionBuilder::new(Color::Black);
++        let pieces = [
++            (sq(5, 5), unpromoted(Color::Black, PieceKind::Lion)),
++            (sq(6, 6), unpromoted(Color::White, PieceKind::Lion)),
++            (sq(7, 7), PieceCode::new_promoted(Color::White, PieceKind::Lion).unwrap()),
++            (sq(6, 7), unpromoted(Color::White, PieceKind::GoldGeneral)),
++            (sq(2, 2), unpromoted(Color::White, PieceKind::Rook)),
++            (sq(0, 0), unpromoted(Color::Black, PieceKind::King)),
++            (sq(11, 11), unpromoted(Color::White, PieceKind::King)),
++        ];
++        for (square, piece) in pieces {
++            builder.put(square, piece).unwrap();
++        }
++        let mut position = builder.finish().unwrap();
++        if record {
++            position.set_lion_capture(Some(sq(2, 2))).unwrap();
++        }
++        for set in ["L0,P0,R1,E0", "L0,L4,P0,R1,E0", "L1,P0,R1,E0"] {
++            let generator = MoveGenerator::new(rules(set).moves);
++            println!(
++                "reading3 record={record} {set}: take_a={} igui_a={} a_then_b={} jump_to_b={} a_then_empty={}",
++                legal(&generator, &position, mv((5, 5), None, (6, 6), false)),
++                legal(&generator, &position, mv((5, 5), Some((6, 6)), (5, 5), false)),
++                legal(&generator, &position, mv((5, 5), Some((6, 6)), (7, 7), false)),
++                legal(&generator, &position, mv((5, 5), None, (7, 7), false)),
++                legal(&generator, &position, mv((5, 5), Some((6, 6)), (7, 6), false))
++            );
++        }
++    }
++}
++
++/// 論点4の例1: 裸玉による勝ち（E3）と、相手の合法手なしが同時に成立する局面。
++#[test]
++fn reading_4_bare_king_and_no_legal_move() {
++    for set in ["L1,L2,P0,P3,R1,E1,E3", "L0,P0,R1,E3", "L0,P0,R1,E0", "L0,P0,R1,E2"] {
++        let mut builder = PositionBuilder::new(Color::White);
++        let pieces = [
++            (sq(0, 11), unpromoted(Color::Black, PieceKind::King)),
++            (sq(0, 10), unpromoted(Color::Black, PieceKind::Lance)),
++            (sq(1, 10), unpromoted(Color::Black, PieceKind::Pawn)),
++            (sq(1, 11), unpromoted(Color::Black, PieceKind::Lance)),
++            (sq(5, 5), PieceCode::new_promoted(Color::Black, PieceKind::CrownPrince).unwrap()),
++            (sq(6, 6), unpromoted(Color::White, PieceKind::King)),
++        ];
++        for (square, piece) in pieces {
++            builder.put(square, piece).unwrap();
++        }
++        let chosen = rules(set);
++        let mut game = Game::from_position(chosen, builder.finish().unwrap());
++        let status = game.play(step((6, 6), (5, 5)));
++        let mut moves = Vec::new();
++        MoveGenerator::new(chosen.moves).generate_moves(game.position(), &mut moves);
++        println!("reading4-1 {set}: {status:?} black_legal_moves={}", moves.len());
++    }
++}
+--- a/crates/minase-core/src/game/adjudication/mod.rs
++++ b/crates/minase-core/src/game/adjudication/mod.rs
+@@ -258,3 +258,128 @@
+         piece_exhaustion_grace: exhaustion.next_grace,
+     }
+ }
++
++/// 規則書の読みが分かれる箇所について、裁定の順位と後の順位の条件を並べて観測する使い捨ての試験。
++#[cfg(test)]
++mod rulebook_reading_probe {
++    use super::mate::stalemate_or_mate;
++    use super::*;
++    use crate::rules::{Rules, parse_rule_set};
++    use crate::test_util::{position, sq};
++    use crate::{Color, Move, PieceKind};
++
++    fn step(from: (u8, u8), to: (u8, u8)) -> Move {
++        Move {
++            from: sq(from.0, from.1),
++            mid: None,
++            to: sq(to.0, to.1),
++            promote: false,
++        }
++    }
++
++    /// 手順を審判の層の関数で進め、最後の着手の後の本番の裁定と、
++    /// 同じ局面と履歴に対する合法手なしと詰みの判定を表示する。
++    fn run(label: &str, set: &str, mut board: Position, moves: &[Move]) {
++        let rules = Rules::from_codes(&parse_rule_set(set).unwrap()).unwrap();
++        let generator = MoveGenerator::new(rules.moves);
++        let mut state = AdjudicationState::new(rules.repetition, &board);
++        for (index, &played) in moves.iter().enumerate() {
++            let mover = board.side_to_move();
++            let undo = board
++                .try_make_move_with_undo(played, &generator)
++                .expect("the probe plays legal moves");
++            let repetition = state.record_move(&board, &generator, mover, played, &undo);
++            let adjudication = adjudicate_after_move(
++                &mut board,
++                AdjudicationContext::new(rules, &state, &generator),
++                mover,
++                repetition,
++            );
++            state.set_piece_exhaustion_grace(adjudication.piece_exhaustion_grace());
++            if index + 1 == moves.len() || adjudication.result().is_some() {
++                let later = stalemate_or_mate(
++                    &mut board,
++                    &AdjudicationContext::new(rules, &state, &generator),
++                );
++                let side = board.side_to_move();
++                let royals = board.royal_pieces(side);
++                let in_check = royals.into_iter().any(|royal| {
++                    !board
++                        .attackers_to_by(side.opposite(), royal, board.occupied())
++                        .is_empty()
++                });
++                println!(
++                    "{label} {set} ply {}: adjudication={:?} stalemate_or_mate={later:?} side_to_move={side:?} royal_attacked={in_check}",
++                    index + 1,
++                    adjudication.result()
++                );
++                break;
++            }
++        }
++    }
++
++    #[test]
++    fn reading_4_priority_examples() {
++        // 例2: R1が引き分けと裁定する4回目の出現と、手番側の詰み。
++        let example_2 = position(
++            Color::Black,
++            &[
++                (sq(0, 11), Color::Black, PieceKind::King),
++                (sq(4, 5), Color::Black, PieceKind::GoBetween),
++                (sq(6, 4), Color::White, PieceKind::King),
++                (sq(0, 0), Color::White, PieceKind::Rook),
++                (sq(7, 11), Color::White, PieceKind::Rook),
++                (sq(1, 11), Color::White, PieceKind::Kirin),
++                (sq(9, 5), Color::White, PieceKind::GoBetween),
++            ],
++        );
++        let (x, x2, a, b, p, q) = ((4, 5), (4, 6), (9, 5), (9, 6), (0, 11), (1, 10));
++        let mut moves = vec![step(x, x2), step(a, b), step(p, q), step(b, a), step(x2, x)];
++        for _ in 0..2 {
++            moves.extend([step(a, b), step(q, p), step(b, a), step(p, q)]);
++        }
++        moves.extend([step(a, b), step(q, p), step(b, a)]);
++        run("reading4-2", "L0,P0,R1,E2", example_2.clone(), &moves);
++        run("reading4-2", "L0,P0,R1,E0", example_2, &moves);
++
++        // 例3: 駒枯れによる勝ち（E0）と、勝つ側の詰み。論点5の局面でもある。
++        let example_3 = position(
++            Color::White,
++            &[
++                (sq(0, 11), Color::Black, PieceKind::King),
++                (sq(0, 10), Color::Black, PieceKind::Lance),
++                (sq(1, 11), Color::Black, PieceKind::Pawn),
++                (sq(2, 9), Color::Black, PieceKind::Pawn),
++                (sq(1, 10), Color::White, PieceKind::King),
++            ],
++        );
++        for set in ["L0,P0,R1,E0", "L0,P0,R1,E2", "L0,P0,R1,E3"] {
++            run("reading4-3", set, example_3.clone(), &[step((1, 10), (2, 9))]);
++        }
++
++        // 例4: 死に駒を除いて双方が王駒だけになった引き分けと、R2の禁止による合法手なし。
++        let example_4 = position(
++            Color::White,
++            &[
++                (sq(0, 10), Color::Black, PieceKind::King),
++                (sq(1, 11), Color::Black, PieceKind::Pawn),
++                (sq(0, 9), Color::White, PieceKind::King),
++            ],
++        );
++        let (corner, u, q2, w, v, f) = ((0, 11), (0, 10), (1, 10), (0, 9), (1, 9), (0, 8));
++        let sequence = [
++            step(w, v),
++            step(u, w),
++            step(v, f),
++            step(w, v),
++            step(f, w),
++            step(v, q2),
++            step(w, u),
++            step(q2, corner),
++            step(u, w),
++        ];
++        for set in ["L0,P0,R2,E0", "L0,P0,R2,E3", "L0,P0,R2,E2"] {
++            run("reading4-4", set, example_4.clone(), &sequence);
++        }
++    }
++}

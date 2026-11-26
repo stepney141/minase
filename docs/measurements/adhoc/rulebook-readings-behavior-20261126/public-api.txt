@@ -1,0 +1,28 @@
+reading1 L0,P0,R2,E1,E2 ply 9: Ongoing record=Some((5, 2)) key_equals_ply_9=true
+reading1 L0,P0,R2,E1,E2 ply 13: Ongoing record=None key_equals_ply_9=false
+reading1 L0,P0,R2,E1,E2 ply 14: rejected IllegalMove { mv: Move { from: Square(120), mid: None, to: Square(104), promote: false }, cause: Repetition }
+reading1 L0,P0,R3,E1,E2 ply 9: Ongoing record=Some((5, 2)) key_equals_ply_9=true
+reading1 L0,P0,R3,E1,E2 ply 13: Ongoing record=None key_equals_ply_9=false
+reading1 L0,P0,R3,E1,E2 ply 22: rejected IllegalMove { mv: Move { from: Square(120), mid: None, to: Square(104), promote: false }, cause: Repetition }
+reading1 L0,P0,R1,E1,E2 ply 9: Ongoing record=Some((5, 2)) key_equals_ply_9=true
+reading1 L0,P0,R1,E1,E2 ply 13: Ongoing record=None key_equals_ply_9=false
+reading1 L0,P0,R1,E1,E2 ply 22: Finished(Draw { reason: Repetition }) record=None key_equals_ply_9=false
+reading2 L0,P2,R1,E0 deferred=true: lance_to_last_rank=N- pawn_to_last_rank=NP silver_inside_zone=N-
+reading2 L0,P2,R1,E0 deferred=false: lance_to_last_rank=NP pawn_to_last_rank=NP silver_inside_zone=NP
+reading2 L0,P2,P3,R1,E0 deferred=true: lance_to_last_rank=NP pawn_to_last_rank=NP silver_inside_zone=N-
+reading2 L0,P2,P3,R1,E0 deferred=false: lance_to_last_rank=NP pawn_to_last_rank=NP silver_inside_zone=NP
+reading2 L0,P2,P3,P6,R1,E0 deferred=true: lance_to_last_rank=-P pawn_to_last_rank=-P silver_inside_zone=N-
+reading2 L0,P2,P3,P6,R1,E0 deferred=false: lance_to_last_rank=-P pawn_to_last_rank=-P silver_inside_zone=NP
+reading2 L0,P2,P5,P6,R1,E0 deferred=true: lance_to_last_rank=N- pawn_to_last_rank=-P silver_inside_zone=N-
+reading2 L0,P2,P5,P6,R1,E0 deferred=false: lance_to_last_rank=-P pawn_to_last_rank=-P silver_inside_zone=NP
+reading3 record=true L0,P0,R1,E0: take_a=false igui_a=false a_then_b=true jump_to_b=false a_then_empty=false
+reading3 record=true L0,L4,P0,R1,E0: take_a=true igui_a=true a_then_b=true jump_to_b=false a_then_empty=true
+reading3 record=true L1,P0,R1,E0: take_a=true igui_a=true a_then_b=true jump_to_b=false a_then_empty=true
+reading3 record=false L0,P0,R1,E0: take_a=true igui_a=true a_then_b=true jump_to_b=false a_then_empty=true
+reading3 record=false L0,L4,P0,R1,E0: take_a=true igui_a=true a_then_b=true jump_to_b=false a_then_empty=true
+reading3 record=false L1,P0,R1,E0: take_a=true igui_a=true a_then_b=true jump_to_b=false a_then_empty=true
+reading4-1 L1,L2,P0,P3,R1,E1,E3: Ok(Finished(Win { winner: Black, reason: BareKing })) black_legal_moves=0
+reading4-1 L0,P0,R1,E3: Ok(Finished(Win { winner: Black, reason: BareKing })) black_legal_moves=0
+reading4-1 L0,P0,R1,E0: Ok(Finished(Win { winner: White, reason: Stalemate })) black_legal_moves=0
+reading4-1 L0,P0,R1,E2: Ok(Finished(Win { winner: White, reason: Stalemate })) black_legal_moves=0
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
