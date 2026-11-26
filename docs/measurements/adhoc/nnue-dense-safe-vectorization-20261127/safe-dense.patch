@@ -1,0 +1,103 @@
+diff --git a/crates/minase/src/eval/nnue/network/layer_stack.rs b/crates/minase/src/eval/nnue/network/layer_stack.rs
+index 37ce4ce6..1fef52be 100644
+--- a/crates/minase/src/eval/nnue/network/layer_stack.rs
++++ b/crates/minase/src/eval/nnue/network/layer_stack.rs
+@@ -41,6 +41,8 @@ pub struct LayerStackNetwork {
+     fv_scale: i32,
+     psqt: Box<[i32]>,
+     dense: Dense,
++    l1_w16: Box<[i16]>,
++    l2_wt16: Box<[i16]>,
+     pub(super) accumulator_stats: super::super::stats::SharedStats,
+ }
+ 
+@@ -110,7 +112,16 @@ impl LayerStackNetwork {
+             output_weights: p.output_weights,
+         };
+         dense.validate(p.width, 16, 30)?;
++        let l1_w16 = dense.l1_weights.iter().map(|&w| i16::from(w)).collect();
++        let mut l2_wt16 = vec![0i16; 30 * 32];
++        for o in 0..32 {
++            for j in 0..30 {
++                l2_wt16[j * 32 + o] = i16::from(dense.l2_weights[o * 30 + j]);
++            }
++        }
+         Ok(Self {
++            l1_w16,
++            l2_wt16: l2_wt16.into_boxed_slice(),
+             ft: transformer(p.width, p.ft_biases, p.ft_weights),
+             fv_scale: p.fv_scale,
+             psqt: p.psqt_weights.into_boxed_slice(),
+@@ -235,38 +246,48 @@ impl LayerStackNetwork {
+     /// L2の32成分を6ビット右シフトして制限し、出力層の積和とskipを足す。
+     fn dense(&self, acc: &LayerStackAccumulator, side: Color) -> i32 {
+         let width = self.width();
+-        let mut storage = [0; 1024];
++        let half = width / 2;
++        let mut storage = [0i16; 1024];
+         let input = &mut storage[..width];
+         for (part, perspective) in [side, side.opposite()].into_iter().enumerate() {
+             let row = acc.ft.row(perspective).expect("A always has a context");
+-            for i in 0..width / 2 {
+-                input[part * width / 2 + i] = pair(row[i], row[i + width / 2]);
++            let (lo, hi) = row.split_at(half);
++            for ((o, &a), &b) in input[part * half..(part + 1) * half]
++                .iter_mut()
++                .zip(lo)
++                .zip(hi)
++            {
++                *o = (a.clamp(0, 127) * b.clamp(0, 127)) >> 7;
+             }
+         }
++        let input = &*input;
+         let d = &self.dense;
+-        let mut z = [0; 30];
++        let y: [i32; 16] = std::array::from_fn(|o| {
++            d.l1_biases[o]
++                + self.l1_w16[o * width..(o + 1) * width]
++                    .iter()
++                    .zip(input)
++                    .map(|(&w, &x)| i32::from(w) * i32::from(x))
++                    .sum::<i32>()
++        });
++        let mut z = [0i16; 30];
+         for i in 0..15 {
+-            let y = affine(
+-                d.l1_biases[i],
+-                &d.l1_weights[i * width..(i + 1) * width],
+-                input,
+-            );
+-            z[i] = square_activation(y);
+-            z[15 + i] = activation(y);
++            z[i] = i16::from(square_activation(y[i]));
++            z[15 + i] = i16::from(activation(y[i]));
+         }
+-        let skip = affine(
+-            d.l1_biases[15],
+-            &d.l1_weights[15 * width..16 * width],
+-            input,
+-        );
+-        let h: [u8; 32] = std::array::from_fn(|k| {
+-            activation(affine(
+-                d.l2_biases[k],
+-                &d.l2_weights[k * 30..(k + 1) * 30],
+-                &z,
+-            ))
+-        });
+-        affine(d.output_bias, &d.output_weights, &h) + skip
++        let mut h: [i32; 32] = d.l2_biases[..32].try_into().unwrap();
++        for (z2, w) in z.chunks_exact(2).zip(self.l2_wt16.chunks_exact(64)) {
++            let (w0, w1) = w.split_at(32);
++            for ((h, &w0), &w1) in h.iter_mut().zip(w0).zip(w1) {
++                *h += i32::from(z2[0] * w0 + z2[1] * w1);
++            }
++        }
++        d.output_bias
++            + h.iter()
++                .zip(&d.output_weights)
++                .map(|(&s, &w)| i32::from(activation(s)) * i32::from(w))
++                .sum::<i32>()
++            + y[15]
+     }
+     /// PSQTの両視点の差を0方向に2で割り、後段に足してから`fv_scale`で割る。
+     /// 最後の加算と除算はi64とし、評価値を±28,999に制限する。
