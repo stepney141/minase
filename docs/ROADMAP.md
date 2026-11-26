@@ -128,7 +128,7 @@
 | NNUEの検証損失が早く頭打ちになる原因の切り分け | [plans/archived/nnue-early-best-epoch.md](plans/archived/nnue-early-best-epoch.md) | 完了（採用） | 2026年10月17日 |
 | 先読みなしの教師での対局単位と局面単位の間引きの比較 | [plans/nnue-subsample-no-lookahead.md](plans/nnue-subsample-no-lookahead.md) | 起案 | |
 | 教師生成で記録する局面を間引き、記録しない手を少ないノード数で指す | [plans/sparse-teacher-recording.md](plans/sparse-teacher-recording.md) | 起案 | |
-| 第1層の全再計算の差分化（Finny tables） | [plans/nnue-finny-tables.md](plans/nnue-finny-tables.md) | 進行中 | |
+| 第1層の全再計算の差分化（Finny tables） | [plans/archived/nnue-finny-tables.md](plans/archived/nnue-finny-tables.md) | 完了（不採用） | 2026年11月27日 |
 | 測定記録の再配置 | [plans/archived/measurements-layout.md](plans/archived/measurements-layout.md) | 完了（採用） | 2026年10月18日 |
 | AlphaZero型探索のコードの配置と試験専用コードの整理 | [plans/archived/zero-code-layout.md](plans/archived/zero-code-layout.md) | 完了（採用） | 2026年11月2日 |
 | 固定時間（movetime）の探索の締切と途中結果 | [plans/archived/movetime-deadline.md](plans/archived/movetime-deadline.md) | 完了（採用） | 2026年10月26日 |
@@ -182,7 +182,6 @@ A型はtataraのLayerStackに載っており、HalfKP_vmもエンジン、学習
 | [NNUEの学習機にColab機](plans/nnue-training-on-colab.md) | NNUEの学習機として、vast.aiの機械に加えてColab機も実行のたびに選べるようにし、毎月付与されるColabのCUを学習に充てる。Colab機の操作は作業機側の一つのモジュールにまとめ、AlphaZero型探索の実行器もそれを使う。 | 起案の段階である。レビューの後に利用者の着手の指示を待つ。Colab機を試走で借りる前に、残高と見込みのCUを示して承認を得る。 | なし（学習機だけを借りる経路は、世代反復の中断の時点でmasterへ統合してある） |
 | [先読みなしの教師での間引きの比較](plans/nnue-subsample-no-lookahead.md) | 同じ局面数を少数の対局から採る学習と多数の対局から採る学習を比べ、対局数が多いほど良いという効果が、後続の局面の探索値を混ぜない現行の教師でも残るかを確かめる。 | 起案の段階である。2026年11月20日に、記録する局面の間引きの着手の前提から外した。世代反復は第3世代で中断して閉じたので、その結果を見て、続けるかを利用者が決める。 | なし |
 | [記録する局面の間引き](plans/sparse-teacher-recording.md) | 4分の1の手だけを2万ノードで探索して記録し、残りの手を少ないノード数で指して、同じ計算量で対局数を増やす。世代反復で最後に強いと判定された世代の教師と同じネットを使い、生成の計算量をそろえて教師を生成し、学んだネットをその世代のネットと段階ゲートで比べる。 | 起案の段階である。本文は世代反復の完了を前提に書かれているが、世代反復は第3世代で中断して閉じた。着手の前に、比べる相手を第3世代の教師とネットとして前提の記述を見直し、計算機を借りるので、利用者の着手の指示を待つ。 | 世代反復の第3世代の教師とネット（基準に使い、標準レシピが固定した教師の作り方を変えるため） |
-| [第1層の全再計算の差分化（Finny tables）](plans/nnue-finny-tables.md) | HalfKP_vmのネットで基準の王駒が動いたときに起きる第1層の値の全再計算を、文脈ごとに保存した値からの差分の更新に置き換え、探索結果を変えずに教師生成が速くなるかをCPUサイクル数の対比較で測る。 | 2026年11月26日に着手し、フェーズ0の準備とフェーズ1の実装を進めている。棋力の段階ゲートは行わない（2026年11月24日の利用者の決定）。 | なし（tatara化は完了した） |
 | [3処理を外した教師のNNUE](plans/nnue-teacher-without-adjudication.md) | 第3世代の教師と同じ第2世代のネットとシードで、王手の除外、開始局面の選別、および評価値による打ち切りを外した教師を生成し、学んだネットを第3世代のネットと、`lishogi`の段階ゲートの強さと、HaChuとの対局で優勢から勝ち切るまでの手数（[調査報告](audits/mating-speed-against-hachu-2026-11-25.md)）で比べる。 | 起案の段階である。レビューの後に利用者の着手の指示を待つ。生成機を借りるかryzen0で生成するかは、フェーズ0の貸出なしの測定の後に利用者が決める。 | 世代反復の第2世代のネット、第3世代の教師とネット、および反復のコミット |
 
 世代反復の最終候補は、[NNUEの構成の見直し](plans/archived/nnue-architecture-revision.md)をmasterへ統合する前のネットと比べる。

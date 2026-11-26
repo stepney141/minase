@@ -63,7 +63,7 @@ tataraは、将棋のNNUEで約80億局面以上の教師を学んだ記録を�
 次の項目は扱わない。
 
 - A型の世代反復は[世代反復の設計書](nnue-generation-iteration.md)で、HalfKP_vmの世代反復は、A型の世代反復の後に起案する別の設計書で扱う。
-- 第1層の全再計算を差分の更新に置き換える[Finny tables](../nnue-finny-tables.md)は扱わない。やねうら王でもHalfKP_vmではFinny tablesを使っていないので、本書ではHalfKP_vmの全再計算の頻度と速さを測るだけにする。
+- 第1層の全再計算を差分の更新に置き換える[Finny tables](nnue-finny-tables.md)は扱わない。やねうら王でもHalfKP_vmではFinny tablesを使っていないので、本書ではHalfKP_vmの全再計算の頻度と速さを測るだけにする。
 - LayerStackを局面の進行度で区分する構成（[提案](../../proposals/nnue-architecture-and-training-candidates.md)の未決の候補）と、tataraの利きの入力（threat）は扱わない。
 - 開発用GUIとlishogi Botの配備一式の追従は、それぞれのリポジトリで別に計画する。
 
@@ -85,7 +85,7 @@ minaseには`experiment.json`を読む道具がなく、本書の目的にも要
 本書の変更は、次の設計書にも及ぶ。
 
 - [MultiPV](multipv.md)（上位N手の読み筋を同時に出す機能）は2026年11月17日にmasterへ入り、αβ探索の`root.rs`、`deepening.rs`、および`team.rs`を、各深さで根の探索を読み筋の本数だけ繰り返す形に変えた。2本目以降の根の探索も1本目と同じ`search_iteration`と`search_root`の中で評価器を呼ぶので、本書はMultiPVを含むmasterの実装の上で評価器の呼び出しを列挙型へ改めればよく、改める箇所は増えない。MultiPVの試験（`crates/minase/src/search/alphabeta/tests/multipv.rs`）は固定ネット`test_nnue()`で書いてあり、評価値の具体的な数値に依存しないので、期待値を変えずに通ることを確かめる。
-- [第1層の全再計算の差分化（Finny tables）](../nnue-finny-tables.md)は、本書が削除するHalfKP-hm-b8の8区分の文脈を前提に書かれている。HalfKP_vmの文脈（自玉の72区分と鏡映の有無）に合わせて改めてから着手する。着手するかは、「HalfKP_vmの動作の確認」で測る全再計算の頻度と探索の速さを見て、HalfKP_vmの世代反復の設計書を起案するときに決める。
+- [第1層の全再計算の差分化（Finny tables）](nnue-finny-tables.md)は、本書が削除するHalfKP-hm-b8の8区分の文脈を前提に書かれている。HalfKP_vmの文脈（自玉の72区分と鏡映の有無）に合わせて改めてから着手する。着手するかは、「HalfKP_vmの動作の確認」で測る全再計算の頻度と探索の速さを見て、HalfKP_vmの世代反復の設計書を起案するときに決める。
 - [記録する局面の間引き](../sparse-teacher-recording.md)は、いまのmasterの学習器と生成器を使う前提で書かれているので、着手の前に、本書の後の学習器の引数（`--base`の廃止、構造ごとのサブコマンド）と生成器の`--eval-file`に合わせて改める。
 - [先読みなしの教師での間引きの比較](../nnue-subsample-no-lookahead.md)の学習は、コミット`6b43c663`からビルドした固定の学習器を使い、対局を行わないので、本書の影響を受けない。ただし、集計のプログラム`teacherstat`は作業ツリーの`minase`に依存していまの形式のネットを読むので、本書の後に着手するなら、その依存を本書より前のコミットに固定する。
 - [合法手生成と利き計算の高速化（第3期）](../movegen-speedup-3.md)は、探索の結果が基準と完全に一致することを確かめる。本書の後に着手するなら、評価関数の構造と探索用駒価値が変わるので、基準を本書の後のコミットとネットで取り直す。

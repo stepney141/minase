@@ -453,3 +453,4 @@ A型は、王の位置で条件付けず、盤上の全部の駒の駒状態と�
 - 2026年11月25日 [評価ネットをHugging Face Hubのモデルリポジトリへ置き、NNUEの公開名にやねうら王に倣った構造名を入れる](host-evaluation-networks-on-hugging-face-hub-and-name-them-by-structure.md)
 - 2026年11月25日 [王の位置で条件付けない入力特徴集合の名前をP型からA型へ改め、重みファイルの構造記述の名前も`A`にする](rename-the-p-type-input-features-to-a.md)
 - 2026年11月25日 [評価ネットの重みをCC BY 4.0で配布する](license-evaluation-networks-under-cc-by-4-0.md)
+- 2026年11月27日 [HalfKP_vmの第1層の全再計算を、探索ごとに作るFinny tablesで置き換えない](do-not-replace-half-kp-vm-refreshes-with-per-search-finny-tables.md)
