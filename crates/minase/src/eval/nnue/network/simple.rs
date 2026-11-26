@@ -1,7 +1,10 @@
 //! HalfKP_vmの第1層と、32→32→1の後段。
 
 use super::*;
-use crate::eval::nnue::{input::HalfKpVm, transformer::FtAccumulator};
+use crate::eval::nnue::{
+    input::HalfKpVm,
+    transformer::{FinnyTable, FtAccumulator},
+};
 use minase_core::{Square, position::Undo};
 
 /// Simpleの量子化済みパラメータ。配列は詰め物のない行優先である。
@@ -141,7 +144,8 @@ impl SimpleNetwork {
     pub(crate) fn refresh(&self, position: &Position) -> FtAccumulator<HalfKpVm> {
         self.ft.refresh(position)
     }
-    /// 着手の差分を更新し、王駒の文脈が変わった視点だけ全再計算する。
+    /// 表を通さず着手差分を更新し、文脈が変わった視点だけ全再計算する。
+    #[cfg(test)]
     pub(crate) fn update_after_move(
         &self,
         before: &FtAccumulator<HalfKpVm>,
@@ -151,6 +155,18 @@ impl SimpleNetwork {
     ) -> bool {
         self.ft
             .update_after_move(before, after, position_after, undo)
+    }
+    /// 着手の差分を更新し、王駒の文脈が変わった視点では探索の表を使う。
+    pub(crate) fn update_after_move_cached(
+        &self,
+        before: &FtAccumulator<HalfKpVm>,
+        after: &mut FtAccumulator<HalfKpVm>,
+        position_after: &Position,
+        undo: &Undo,
+        table: &mut FinnyTable,
+    ) -> bool {
+        self.ft
+            .update_after_move_cached(before, after, position_after, undo, table)
     }
     /// 親の累算値を写し、null moveで消える先獅子を引く。
     pub(crate) fn update_after_null(
