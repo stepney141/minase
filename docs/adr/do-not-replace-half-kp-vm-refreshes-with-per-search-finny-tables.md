@@ -17,7 +17,7 @@ Finny tables（accumulator cache、refresh tableとも呼ぶ）は、視点と�
 ## 決定
 
 HalfKP_vmの第1層の全再計算は、Finny tablesを使わず、バイアスからの全再計算のまま残す。
-探索ごとに作る表の実装はmasterへ入れない。実装はブランチ`nnue-finny-tables`のコミット`1576a9a8`に残っている。
+探索ごとに作る表の実装は有効にしない。実装はmasterの履歴のコミット`1576a9a8`に残し、コミット`fcb9ba76`で取り除いた。
 
 ## 検討した代案
 
