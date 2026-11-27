@@ -454,6 +454,6 @@ A型は、王の位置で条件付けず、盤上の全部の駒の駒状態と�
 - 2026年11月25日 [王の位置で条件付けない入力特徴集合の名前をP型からA型へ改め、重みファイルの構造記述の名前も`A`にする](rename-the-p-type-input-features-to-a.md)
 - 2026年11月25日 [評価ネットの重みをCC BY 4.0で配布する](license-evaluation-networks-under-cc-by-4-0.md)
 - 2026年11月27日 [HalfKP_vmの第1層の全再計算を、探索ごとに作るFinny tablesで置き換えない](do-not-replace-half-kp-vm-refreshes-with-per-search-finny-tables.md)
-- 2026年11月27日 [A型の後段を16ビットのレーンで計算し、SIMD命令は自動ベクトル化だけで得る](compute-the-layerstack-dense-stage-in-16-bit-lanes-through-autovectorization.md)
+- 2026年11月27日 [A型のNNUEの後段を16ビットのレーンで計算し、SIMD命令は自動ベクトル化だけで得る](compute-the-layerstack-dense-stage-in-16-bit-lanes-through-autovectorization.md)
 - 2026年11月27日 [駒コードからの駒種、走りの方向、駒状態、および駒価値を、256要素の表で引く](decode-piece-codes-through-256-entry-tables.md)
-- 2026年11月27日 [静止探索から除く獅子の手は、生成の後で除く](keep-filtering-excluded-lion-captures-after-qsearch-generation.md)
+- 2026年11月27日 [静止探索に入れない獅子の手は、捕獲の生成の後で除く](keep-filtering-excluded-lion-captures-after-qsearch-generation.md)

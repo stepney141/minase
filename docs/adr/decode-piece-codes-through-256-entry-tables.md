@@ -7,17 +7,17 @@
 ## コンテキスト
 
 駒コード（`PieceCode`）は、升にある駒を表す1バイトの値であり、対局者、成り、および駒種の番号を詰め、空升と盤外（番兵）にも専用の値を持つ。
-利きの逆引き（`Position::attackers_to_by`）は、最初の遮蔽駒や5×5近傍の駒について、照会した対局者の駒の集合への所属の検査、駒コードから駒種への復号、駒種から動きの定義への変換、および方向マスクの表引きを順に行っていた。
+指定した升に利きが届く駒を求める利きの逆引き（`Position::attackers_to_by`）は、各方向の最初の遮蔽駒と5×5近傍の駒について、照会した対局者の駒の集合に属するかの検査、駒コードから駒種への復号、駒種から動きの定義への変換、および方向マスクの表引きを順に行っていた。
 `PieceCode::kind`は空升と番兵の検査、番号の取り出し、範囲の検査、および駒種の表引きを行い、評価の`piece_state`と`piece_value`は`PieceCode::kind`を経由していた。
-[第3期の高速化の再診断](../measurements/movegen-speedup-3/movegen-speedup-3-rediagnosis.md)と[試作](../measurements/movegen-speedup-3/movegen-speedup-3-prototypes.md)では、駒コードの復号を表引きにまとめると、関数別の内訳に現れる時間より大きくサイクル数と分岐予測ミスが減った。
+[第3期の高速化の再診断](../measurements/movegen-speedup-3/movegen-speedup-3-rediagnosis.md)と[試作](../measurements/movegen-speedup-3/movegen-speedup-3-prototypes.md)では、駒コードの復号を表引きにまとめると、プロファイルの関数別の内訳で復号が占めていた時間から見込むより大きく、全体のサイクル数と分岐予測ミスが減った。
 エンジンの開発者は、[第3期の高速化の設計書](../plans/archived/movegen-speedup-3.md)で、利きの逆引き（段階2）、`PieceCode::kind`（段階3の1つ目）、および`piece_state`と`piece_value`（段階3の2つ目）を別々の測定単位として、固定の仕事量での探索の結果を変えないことを確かめたうえで、サイクル数の対比較で採否を決めた。
 
-親に対する速度比は、`bench`の深さ16と教師生成2局の順に、利きの逆引きが1.035倍と1.045倍（[測定記録](../measurements/movegen-speedup-3/movegen-speedup-3-stage2.md)）、`PieceCode::kind`が1.013倍と1.014倍（[測定記録](../measurements/movegen-speedup-3/movegen-speedup-3-stage3-kind.md)）、`piece_state`と`piece_value`が1.012倍と1.013倍（[測定記録](../measurements/movegen-speedup-3/movegen-speedup-3-stage3-state-value.md)）だった。
+各単位の直前の版に対する速度比は、`bench`の深さ16と教師生成2局の順に、利きの逆引きが1.035倍と1.045倍（[測定記録](../measurements/movegen-speedup-3/movegen-speedup-3-stage2.md)）、`PieceCode::kind`が1.013倍と1.014倍（[測定記録](../measurements/movegen-speedup-3/movegen-speedup-3-stage3-kind.md)）、`piece_state`と`piece_value`が1.012倍と1.013倍（[測定記録](../measurements/movegen-speedup-3/movegen-speedup-3-stage3-state-value.md)）だった。
 
 ## 決定
 
-利きの逆引きは、照会した対局者と駒コードから走りの絶対方向マスクを返す表と、駒コードから駒種のビットを返す表を引く。走りの表は照会した対局者の駒でない駒コードに0を返し、所属の検査を兼ねる。
-`PieceCode::kind`、評価の`piece_state`、および`piece_value`は、駒コードを添字とする256要素の定数の表を引く。`piece_state`と`piece_value`は無効を表す値を引いた場合にパニックし、空升と番兵でパニックする契約を保つ。
+利きの逆引きは、駒コードを添字とする256要素の表を2つ引く。1つは、照会した対局者と駒コードから走りの絶対方向マスクを返す表であり、照会した対局者の駒でない駒コードに0を返すことで、所属の検査を兼ねる。もう1つは、駒コードから駒種のビットを返す表であり、5×5近傍の固定利きの判定に使う。
+`PieceCode::kind`、評価の`piece_state`、および`piece_value`は、駒コードを添字とする256要素の定数の表を引く。`piece_state`と`piece_value`の表は空升と番兵の欄に無効を表す値を持ち、引いた値が無効ならパニックすることで、空升と番兵でパニックする従来の契約を保つ。
 表の添字には`PieceCode::table_index`を使い、添字から駒コードを作る手段は設けない。
 
 ## 検討した代案
@@ -28,6 +28,6 @@
 
 ## 結果
 
-構築できる駒コードのすべてについて、表の値は表を使う前の復号の連鎖の結果と一致し、単体テストがこれを固定する。
-構築できない駒コードのうち、空升以外で駒種の番号の欄が0である7つの値では、`PieceCode::kind`は以前の実装の桁あふれ（リリースビルドで`None`、桁あふれを検査するビルドでパニック）の代わりに、どのビルドでも`None`を返す。これらの値は盤面に現れない。
+公開の構築子で作れるすべての駒コード（両対局者の成っていない駒と成駒、空升、および番兵）について、表の値は表引きに置き換える前の復号の結果と一致し、単体テストがこれを固定する。
+構築子で作れない駒コードのうち、空升以外で駒種の番号の欄が0である7つの値では、以前の実装は減算の桁あふれを起こしていた（リリースビルドでは`None`を返し、桁あふれを検査するビルドではパニックした）が、変更後の`PieceCode::kind`はどのビルドでも`None`を返す。これらの値は盤面に現れない。
 `PieceCode`の内部の値の割り当てを変えるときは、表の作り方も同時に見直す。`table_index`の値は安定した契約ではない。
