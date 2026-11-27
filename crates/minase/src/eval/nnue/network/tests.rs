@@ -1,5 +1,6 @@
 //! 期待値の根拠はフェーズ2a指示書の整数式、形式、および拒否条件。
 
+use super::layer_stack::LayerStackDense;
 use super::test_util::{
     fixed_layer_stack, fixed_simple, layer_stack_parameters, simple_parameters,
 };
@@ -19,10 +20,16 @@ mod format;
 #[test]
 fn specified_integer_stages() {
     for (a, b, expected) in [
-        (127, 100, 99),
+        (127, 100, 99_i16),
         (-5, 100, 0),
         (127, 127, 126),
         (200, 100, 99),
+        (i16::MIN, i16::MAX, 0),
+        (i16::MAX, i16::MIN, 0),
+        (i16::MAX, i16::MAX, 126),
+        (0, 128, 0),
+        (128, 127, 126),
+        (127, 128, 126),
     ] {
         assert_eq!(pair(a, b), expected);
     }
@@ -36,6 +43,155 @@ fn specified_integer_stages() {
     assert_eq!(psqt_half(0, 7), -3);
     assert_eq!(score(40_000 * 8, 8), 28_999);
     assert_eq!(score(-40_000 * 8, 8), -28_999);
+}
+
+const DENSE_WIDTHS: [usize; 9] = [2, 30, 34, 62, 66, 254, 256, 258, 1024];
+
+fn random_dense(width: usize, rng: &mut XorShift64) -> Dense {
+    let mut bias = || (rng.next() % 8001) as i32 - 4000;
+    let l1_biases = (0..16).map(|_| bias()).collect();
+    let l2_biases = (0..32).map(|_| bias()).collect();
+    let output_bias = bias();
+    let mut weights = |len| (0..len).map(|_| rng.next() as i8).collect();
+    Dense {
+        l1_biases,
+        l1_weights: weights(16 * width),
+        l2_biases,
+        l2_weights: weights(32 * 30),
+        output_bias,
+        output_weights: weights(32),
+    }
+}
+
+/// 要素積をu8で保持し、後段とskipの和を独立に計算する参照。
+fn reference_dense(d: &Dense, us: &[i16], them: &[i16]) -> i32 {
+    let width = us.len();
+    let half = width / 2;
+    let mut x = vec![0_u8; width];
+    for (part, row) in [us, them].into_iter().enumerate() {
+        for i in 0..half {
+            let a = i32::from(row[i]).clamp(0, 127);
+            let b = i32::from(row[i + half]).clamp(0, 127);
+            x[part * half + i] = (a * b / 128) as u8;
+        }
+    }
+
+    let dot = |bias: i32, weights: &[i8], input: &[u8]| {
+        let mut y = i64::from(bias);
+        for (i, &x) in input.iter().enumerate() {
+            y += i64::from(weights[i]) * i64::from(x);
+        }
+        y
+    };
+    let mut z = [0_u8; 30];
+    for i in 0..15 {
+        let y = dot(d.l1_biases[i], &d.l1_weights[i * width..][..width], &x);
+        z[i] = ((y * y) / (1 << 19)).clamp(0, 127) as u8;
+        z[15 + i] = (y / 64).clamp(0, 127) as u8;
+    }
+    let skip = dot(d.l1_biases[15], &d.l1_weights[15 * width..], &x);
+    let mut out = i64::from(d.output_bias) + skip;
+    for (k, &w) in d.output_weights.iter().enumerate() {
+        let y = dot(d.l2_biases[k], &d.l2_weights[k * 30..][..30], &z);
+        out += i64::from(w) * (y / 64).clamp(0, 127);
+    }
+    i32::try_from(out).unwrap()
+}
+
+#[test]
+fn layer_stack_dense_matches_reference_at_varied_widths() {
+    let mut rng = XorShift64::new(NonZeroU64::new(0x929c_1e87).unwrap());
+    for width in DENSE_WIDTHS {
+        let d = random_dense(width, &mut rng);
+        let cases: Vec<_> = (0..64)
+            .map(|sample| {
+                let [us, them] = [(); 2].map(|()| {
+                    (0..width)
+                        .map(|_| {
+                            if sample < 32 {
+                                rng.next() as i16
+                            } else {
+                                (rng.next() % 160) as i16 - 16
+                            }
+                        })
+                        .collect::<Vec<_>>()
+                });
+                let expected = reference_dense(&d, &us, &them);
+                (us, them, expected)
+            })
+            .collect();
+        let dense = LayerStackDense::new(d);
+        for (sample, (us, them, expected)) in cases.into_iter().enumerate() {
+            assert_eq!(
+                dense.evaluate(&us, &them),
+                expected,
+                "H={width}, sample={sample}"
+            );
+        }
+    }
+}
+
+#[test]
+fn layer_stack_dense_preserves_tail_elements_and_perspectives() {
+    let mut rng = XorShift64::new(NonZeroU64::new(0x2490_37be).unwrap());
+    for width in DENSE_WIDTHS {
+        let mut d = random_dense(width, &mut rng);
+        let half = width / 2;
+        // 末尾成分の変化はskipだけを通り、視点ごとに異なる重みで出力へ届く。
+        for (i, row) in d.l1_weights.chunks_exact_mut(width).enumerate() {
+            (row[half - 1], row[width - 1]) = if i == 15 { (-3, 5) } else { (0, 0) };
+        }
+        let zero = vec![0_i16; width];
+        let mut both_halves = zero.clone();
+        both_halves[half - 1] = 127;
+        both_halves[width - 1] = 127;
+        let mut smaller = both_halves.clone();
+        smaller[width - 1] = 64;
+        let cases = [
+            (&zero, &zero, 0),
+            (&both_halves, &both_halves, (5 - 3) * 126),
+            (&smaller, &both_halves, 5 * 126 - 3 * 63),
+            (&both_halves, &smaller, 5 * 63 - 3 * 126),
+        ];
+        let baseline = reference_dense(&d, &zero, &zero);
+        let expected = cases.map(|(us, them, delta)| {
+            let expected = reference_dense(&d, us, them);
+            assert_eq!(expected - baseline, delta, "H={width}");
+            expected
+        });
+        let dense = LayerStackDense::new(d);
+        for ((us, them, _), expected) in cases.into_iter().zip(expected) {
+            assert_eq!(dense.evaluate(us, them), expected, "H={width}");
+        }
+    }
+}
+
+#[test]
+fn layer_stack_dense_matches_reference_at_pair_boundaries() {
+    let us = [
+        i16::MIN,
+        i16::MAX,
+        -1,
+        0,
+        1,
+        126,
+        127,
+        128,
+        128,
+        127,
+        127,
+        i16::MAX,
+        127,
+        127,
+        126,
+        127,
+    ];
+    let mut them = us;
+    them.rotate_left(us.len() / 2);
+    let mut rng = XorShift64::new(NonZeroU64::new(0x5058_8127).unwrap());
+    let d = random_dense(us.len(), &mut rng);
+    let expected = reference_dense(&d, &us, &them);
+    assert_eq!(LayerStackDense::new(d).evaluate(&us, &them), expected);
 }
 
 #[test]

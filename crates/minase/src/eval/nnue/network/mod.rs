@@ -463,9 +463,12 @@ fn check_biases(layer: &'static str, values: &[i32]) -> Result<(), FormatError> 
     Ok(())
 }
 
+const PAIR_INPUT_MAX: i16 = 127;
+const _: () = assert!(PAIR_INPUT_MAX as i32 * PAIR_INPUT_MAX as i32 <= i16::MAX as i32);
+
 /// 両因子を0〜127へ制限し、積を7ビット右シフトする。結果の上限は126。
-fn pair(a: i16, b: i16) -> u8 {
-    ((i32::from(a).clamp(0, 127) * i32::from(b).clamp(0, 127)) >> 7) as u8
+fn pair(a: i16, b: i16) -> i16 {
+    (a.clamp(0, PAIR_INPUT_MAX) * b.clamp(0, PAIR_INPUT_MAX)) >> 7
 }
 /// i64で2乗して19ビット右シフトし、0〜127へ制限する。負の入力も2乗する。
 fn square_activation(y: i32) -> u8 {
