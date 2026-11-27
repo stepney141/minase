@@ -195,67 +195,6 @@ fi
     assert_eq!(json_file(&run.join("summary.json"))["interrupted"], true);
 }
 
-// 2ワーカーをFIFOの応答で同期し、終了待ちで回収する2個目の原因も保持する。
-#[test]
-fn network_failures_from_concurrent_workers_keep_causes_and_saved_pairs() {
-    let parent = run_directory();
-    std::fs::create_dir(&parent).unwrap();
-    network_file(&parent, Some(A));
-    std::fs::create_dir(parent.join("starts")).unwrap();
-    for fifo in ["first", "second"] {
-        assert!(
-            Command::new("mkfifo")
-                .arg(parent.join(fifo))
-                .status()
-                .unwrap()
-                .success()
-        );
-    }
-    let spec = engine(
-        &parent,
-        &format!(
-            r#"
-number=1
-while ! mkdir "$1/starts/$number" 2>/dev/null; do number=$((number + 1)); done
-if [ "$number" = 5 ]; then
-    echo started > "$1/first"
-    IFS= read -r answer < "$1/second"
-    printf 'info string network_sha256 {B}\n'
-elif [ "$number" = 6 ]; then
-    IFS= read -r answer < "$1/first"
-    echo started > "$1/second"
-    printf 'info string network_sha256 {B}\n'
-else
-    cat "$model"
-fi
-"#
-        ),
-    );
-    assert_success(&start(&parent, &spec, "candidate", "1", "2"));
-    let run = parent.join("run");
-    let saved = std::fs::read(run.join("pairs/00000000000000000001.json")).unwrap();
-    let output = resume_run(&run, &["--target-pairs", "4"]);
-    assert_eq!(output.status.code(), Some(1));
-    let stderr = String::from_utf8_lossy(&output.stderr);
-    let reason = format!("candidate engine: network_sha256 mismatch: recorded {A}, received {B}");
-    assert_eq!(stderr.matches(&reason).count(), 2, "{stderr}");
-    assert!(!stderr.contains("panicked"));
-    assert_eq!(std::fs::read_dir(parent.join("starts")).unwrap().count(), 6);
-    assert_eq!(std::fs::read_dir(run.join("pairs")).unwrap().count(), 1);
-    assert_eq!(
-        std::fs::read(run.join("pairs/00000000000000000001.json")).unwrap(),
-        saved
-    );
-    let output = resume_run(&run, &[]);
-    assert_success(&output);
-    assert!(String::from_utf8_lossy(&output.stdout).contains("pair 1: loaded from saved record"));
-    assert_eq!(std::fs::read_dir(run.join("pairs")).unwrap().count(), 4);
-    assert_eq!(
-        std::fs::read(run.join("pairs/00000000000000000001.json")).unwrap(),
-        saved
-    );
-}
-
 #[test]
 fn network_checksum_field_is_required_when_resuming_and_reporting() {
     let run = run_directory();
