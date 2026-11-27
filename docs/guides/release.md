@@ -113,7 +113,7 @@ git show --stat HEAD
 
 エンジンも同じ手順でリリースする。
 コミットの件名は `chore(release): v3.0.0`、タグは `v3.0.0`（タグメッセージは `minase v3.0.0`）になる。
-エンジンが新しい版のライブラリを必要とする場合は、ライブラリを先にリリースする。
+エンジンが新しい版のライブラリを必要とする場合は、ライブラリを先にリリースする。`cargo-release`は、ライブラリの版数を上げるときに、エンジンの`Cargo.toml`の`minase-core`の要求も新しい版へ引き上げる。
 
 ```console
 cargo release -p minase 3.0.0
@@ -139,6 +139,16 @@ git tag -f -a v3.0.0 -m "minase v3.0.0"
 git push origin master minase-core-v0.3.1 v3.0.0
 ```
 
+ただし、エンジンの`Cargo.toml`が要求する`minase-core`の版がまだ crates.io にない場合（ライブラリとエンジンを続けてリリースし、エンジンの要求を引き上げた場合）は、エンジンのタグを一緒に push しない。
+エンジンのワークフローが行う`cargo package -p minase`は、`--no-verify`を付けても依存を crates.io の版で解決するので、未公開のライブラリの版を要求すると失敗するからである（2026年11月27日の v3.1.1 で起きた）。
+この場合は、まず`master`とライブラリのタグだけを push し、ライブラリのワークフローの成功を確かめてから5節の手順でライブラリだけを crates.io へ公開し、その後にエンジンのタグを push する。
+
+```console
+git push origin master minase-core-v0.3.1
+cargo publish -p minase-core
+git push origin v3.0.0
+```
+
 `v[0-9]*` または `minase-core-v[0-9]*` のタグを push すると、[.github/workflows/release.yml](../../.github/workflows/release.yml) が自動で起動する（[GitHub Actionsでの検証と下書きリリースのADR](../adr/verify-commits-and-draft-releases-in-github-actions.md)）。
 ワークフローは次の処理を行い、問題がなければ GitHub リリースの下書きを作成する。
 
@@ -154,7 +164,7 @@ git push origin master minase-core-v0.3.1 v3.0.0
 
 crates.io への公開は取り消せないため、タグの検査と push を確認してから手で実行する。
 公開の前に手元でも `cargo package -p minase --list` で、`nets/` 以下にリポジトリ追跡済みの固定ネットと PST 比較用ファイルだけがあることを確かめる。
-エンジンの依存は crates.io 上のライブラリの版数で解決されるので、ライブラリを先に公開する。
+エンジンの依存は crates.io 上のライブラリの版数で解決されるので、ライブラリを先に公開する。4節の場合分けでライブラリを公開済みなら、エンジンだけを公開する。
 
 ```console
 cargo package -p minase --list
