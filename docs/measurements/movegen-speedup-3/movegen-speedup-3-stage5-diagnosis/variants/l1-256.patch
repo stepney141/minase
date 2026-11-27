@@ -1,0 +1,37 @@
+diff --git a/crates/minase/src/eval/nnue/network/layer_stack.rs b/crates/minase/src/eval/nnue/network/layer_stack.rs
+index 6bb6565a..df824484 100644
+--- a/crates/minase/src/eval/nnue/network/layer_stack.rs
++++ b/crates/minase/src/eval/nnue/network/layer_stack.rs
+@@ -352,13 +352,26 @@ impl LayerStackDense {
+         }
+ 
+         let d = &self.original;
++        let (input_chunks, input_tail) = input.as_chunks::<32>();
+         let l1 = |i: usize| {
+-            d.l1_biases[i]
+-                + self.l1_weights[i * width..(i + 1) * width]
+-                    .iter()
+-                    .zip(input.iter())
+-                    .map(|(&w, &x)| i32::from(w) * i32::from(x))
+-                    .sum::<i32>()
++            let weights = &self.l1_weights[i * width..(i + 1) * width];
++            let (weight_chunks, weight_tail) = weights.as_chunks::<32>();
++            let mut sums = [0_i32; 16];
++            for (weights, inputs) in weight_chunks.iter().zip(input_chunks) {
++                for ((sum, &[w0, w1]), &[x0, x1]) in sums
++                    .iter_mut()
++                    .zip(weights.as_chunks::<2>().0)
++                    .zip(inputs.as_chunks::<2>().0)
++                {
++                    *sum += i32::from(w0) * i32::from(x0) + i32::from(w1) * i32::from(x1);
++                }
++            }
++            let tail = weight_tail
++                .iter()
++                .zip(input_tail)
++                .map(|(&w, &x)| i32::from(w) * i32::from(x))
++                .sum::<i32>();
++            d.l1_biases[i] + sums.into_iter().sum::<i32>() + tail
+         };
+         let mut z = [0_i16; 30];
+         for i in 0..15 {

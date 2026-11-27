@@ -1,0 +1,90 @@
+total samples 37932
+  incl%   self%  function
+--- callees
+   4.74  <eval::nnue::network::layer_stack::LayerStackDense  -> <eval::nnue::network::layer_stack::LayerStackDense>::evaluate::{closur
+   2.18  <eval::nnue::network::layer_stack::LayerStackDense  -> (self)
+   1.34  <eval::nnue::network::layer_stack::LayerStackDense  -> eval::nnue::network::square_activation
+   0.35  <eval::nnue::network::layer_stack::LayerStackDense  -> eval::nnue::network::activation
+   0.31  <eval::nnue::network::layer_stack::LayerStackDense  -> eval::nnue::network::pair
+   0.23  <eval::nnue::network::layer_stack::LayerStackDense  -> <eval::nnue::network::layer_stack::LayerStackDense>::evaluate::{closur
+total samples 37932
+  incl%   self%  function
+--- callers
+  99.99  [libc.so.6]  <- [libc.so.6]
+   8.10  [libc.so.6]  <- _start
+   1.43  [libc.so.6]  <- diagnostics::bench::run
+   0.30  [libc.so.6]  <- <searcher::Searcher>::evaluate_at
+   0.15  [libc.so.6]  <- <eval::nnue::network::layer_stack::LayerStackNetwork>::evaluate_accumu
+   0.13  [libc.so.6]  <- <searcher::Searcher>::search_move
+   0.06  [libc.so.6]  <- <searcher::Searcher>::search_null_move
+   0.02  [libc.so.6]  <- deepening::run_main_worker_with_iteration_hook::<deepening::run_main_w
+   0.01  [libc.so.6]  <- <searcher::Searcher>::quiesce
+   0.00  [libc.so.6]  <- [ld-linux-x86-64.so.2]
+   0.00  [libc.so.6]  <- <mimalloc::MiMalloc as core::alloc::global::GlobalAlloc>::realloc
+   0.00  [libc.so.6]  <- _mi_theap_create
+total samples 37932
+  incl%   self%  function
+--- callers
+   0.35  <mc:position::Position>::piece_at  <- ordering::piece_at_for_ordering
+   0.34  <mc:piece::code::PieceCode>::color  <- <mc:position::Position>::captured_squares
+   0.13  mc:attacks::fixed::movement_profile  <- mc:movegen::control::capture_targets_without_special
+   0.09  <mc:position::Position>::piece_at  <- mc:movegen::generate::generate_piece_quiets
+   0.09  <mc:position::Position>::piece_at  <- see::piece_at
+   0.08  <mc:piece::code::PieceCode>::color  <- eval::features::feature_index
+   0.08  <mc:piece::code::PieceCode>::kind  <- see::see_prunes
+   0.07  <mc:piece::code::PieceCode>::color  <- <mc:position::Position>::remove_piece_without_hash
+   0.07  <mc:piece::code::PieceCode>::kind  <- <mc:position::Position>::put_piece_without_hash
+   0.07  <mc:position::Position>::piece_at  <- <mc:rules::set::MoveRules>::promotion_choice
+   0.07  mc:attacks::fixed::movement_profile  <- mc:movegen::control::piece_control_without_special
+   0.07  <mc:position::Position>::piece_at  <- <mc:position::Position>::put_piece_without_hash
+   0.06  <mc:piece::code::PieceCode>::kind  <- correction::continuation_correction_index
+   0.05  <mc:piece::code::PieceCode>::kind  <- correction::continuation_correction_index::{closure#0}
+   0.05  mc:attacks::fixed::movement_profile  <- mc:movegen::control::special_attackers_to
+   0.05  see::piece_at  <- see::see_prunes
+   0.04  mc:attacks::fixed::movement_profile  <- mc:movegen::generate::generate_piece_quiets
+   0.04  <mc:position::Position>::piece_at  <- mc:movegen::lion_capture::captured_lions::{closure#0}::{closure#0}
+   0.04  see::piece_at  <- see::least_valuable_attacker::{closure#0}
+   0.04  <mc:piece::code::PieceCode>::kind  <- <mc:position::Position>::remove_piece_without_hash
+   0.03  <mc:piece::code::PieceCode>::color  <- see::see_prunes
+   0.03  <mc:position::Position>::piece_at  <- <eval::nnue::network::layer_stack::LayerStackNetwork>::quiet_move_psqt
+   0.03  <mc:piece::code::PieceCode>::color  <- ordering::continuation_index
+   0.03  <mc:position::Position>::piece_at  <- <mc:rules::set::MoveRules>::special_move_is_legal
+   0.02  <mc:piece::code::PieceCode>::color  <- correction::piece_square_key
+   0.02  <mc:piece::code::PieceCode>::color  <- correction::piece_key
+   0.02  <mc:piece::code::PieceCode>::kind  <- ordering::continuation_index
+   0.02  <mc:position::Position>::piece_at  <- see::see_prunes
+   0.02  mc:attacks::fixed::movement_profile  <- mc:movegen::control::piece_control_with_tables
+   0.02  <mc:piece::code::PieceCode>::color  <- <mc:position::Position>::put_piece_without_hash
+   0.02  mc:attacks::fixed::movement_profile  <- <mc:movegen::MoveGenerator>::generate_special_piece_captures::<<quiesc
+   0.02  <mc:position::Position>::piece_at  <- <mc:movegen::MoveGenerator>::is_excluded_lion_capture
+   0.02  <mc:piece::code::PieceCode>::kind  <- capture_history::index_from_parts
+   0.02  <mc:position::Position>::piece_at  <- <mc:movegen::MoveGenerator>::generate_special_captures::<<quiesce::Qse
+   0.02  <mc:piece::code::PieceCode>::is_promoted  <- <mc:movegen::MoveGenerator>::push_capture::<<quiesce::QsearchBuffers>:
+   0.02  <mc:piece::code::PieceCode>::is_promoted  <- <mc:piece::code::PieceCode>::promote
+   0.02  <mc:piece::code::PieceCode>::kind  <- <mc:piece::code::PieceCode>::promote
+   0.01  <mc:piece::code::PieceCode>::kind  <- <mc:position::Position>::piece_control
+   0.01  <mc:position::Position>::piece_at  <- <mc:movegen::MoveGenerator>::ordinary_capturer::{closure#0}
+   0.01  <mc:piece::code::PieceCode>::color  <- <mc:movegen::MoveGenerator>::is_legal_move
+   0.01  <mc:piece::code::PieceCode>::kind  <- <ordering::QuietPiece>::new
+   0.01  <mc:position::Position>::piece_at  <- eval::features::for_each_move_change::<<eval::nnue::transformer::Featu
+   0.01  <mc:piece::code::PieceCode>::color  <- <searcher::Searcher>::update_butterfly
+   0.01  <mc:piece::code::PieceCode>::color  <- correction::toggle_piece_square_keys
+   0.01  <mc:piece::code::PieceCode>::kind  <- <ordering::CaptureInfo>::new
+   0.01  <mc:piece::code::PieceCode>::color  <- history::pawn_piece_key
+   0.01  <mc:piece::code::PieceCode>::color  <- <searcher::Searcher>::update_quiet_histories
+   0.01  <mc:piece::code::PieceCode>::kind  <- <mc:movegen::MoveGenerator>::generate_special_piece_captures::<<quiesc
+   0.01  <mc:piece::code::PieceCode>::is_promoted  <- <mc:position::zobrist::ZobristKeys>::piece
+   0.01  mc:attacks::fixed::movement_profile  <- mc:movegen::generate::generate_piece_moves::<true, false>
+   0.01  <mc:piece::code::PieceCode>::kind  <- ordering::continuation_row_offset
+   0.01  <mc:piece::code::PieceCode>::color  <- <ordering::QuietPiece>::new
+   0.01  <mc:piece::code::PieceCode>::kind  <- <mc:movegen::gives_check::CheckContext>::gives_check
+   0.01  <mc:piece::code::PieceCode>::is_promoted  <- <mc:rules::set::MoveRules>::promotion_choice
+   0.01  <mc:piece::code::PieceCode>::color  <- capture_history::index_from_parts
+   0.01  <mc:piece::code::PieceCode>::kind  <- <searcher::Searcher>::quiesce
+   0.01  <mc:piece::code::PieceCode>::kind  <- <<mc:piece::code::PieceCode>::kind as core::ops::function::FnOnce<(mc:
+   0.01  <mc:position::Position>::piece_at  <- <mc:movegen::MoveGenerator>::is_legal_move
+   0.00  <mc:piece::code::PieceCode>::kind  <- <mc:rules::set::MoveRules>::special_move_is_legal::{closure#1}
+   0.00  <mc:piece::code::PieceCode>::kind  <- correction::toggle_piece_square_keys
+   3.94  mc:movegen::control::capture_targets_without_special
+   1.84    <mc:board::bitboard::Bitboard>::intersects
+   0.27    <mc:attacks::fixed::RelativeDirection>::for_color

@@ -1,0 +1,82 @@
+diff --git a/crates/minase/src/eval/nnue/network/layer_stack.rs b/crates/minase/src/eval/nnue/network/layer_stack.rs
+index 6bb6565a..f7e93479 100644
+--- a/crates/minase/src/eval/nnue/network/layer_stack.rs
++++ b/crates/minase/src/eval/nnue/network/layer_stack.rs
+@@ -238,7 +238,7 @@ impl LayerStackNetwork {
+     }
+     /// 各視点の前後半を0〜127へ制限し、その積を7ビット右シフトして連結する。
+     /// L1の最後の出力はskipとし、先頭15個を`clamp(y² >> 19, 0, 127)`と
+-    /// `clamp(y >> 6, 0, 127)`の順に30成分へ展開する。2乗はi64で計算する。
++    /// `clamp(y >> 6, 0, 127)`の順に30成分へ展開する。2乗の前に±8,160へ制限する。
+     /// L2の32成分を6ビット右シフトして制限し、出力層の積和とskipを足す。
+     ///
+     /// 後段のループは自動ベクトル化に依存する。rustcやLLVMの版、後段の型やループ、
+@@ -313,6 +313,14 @@ impl LayerStackNetwork {
+     }
+ }
+ 
++const SQUARE_ACTIVATION_INPUT_MAX: i32 = 8_160;
++const _: () = {
++    // 2乗はi32に収まり、境界以上の絶対値では元の式も127で飽和する。
++    let limit = SQUARE_ACTIVATION_INPUT_MAX;
++    assert!((limit * limit) >> 19 == ACTIVATION_MAX);
++    assert!(square_activation(limit) as i32 == ACTIVATION_MAX);
++};
++
+ const L2_PAIR: usize = 2;
+ const _: () = assert!(
+     ACTIVATION_MAX * (i8::MIN as i32) * (L2_PAIR as i32) >= i16::MIN as i32
+@@ -336,7 +344,7 @@ impl LayerStackDense {
+     /// 同じ幅Hの手番側と相手側の累算値を受け取り、前後半を0〜127へ制限して
+     /// 掛け、7ビット右シフトした要素積を手番側から順に連結する。
+     /// L1の最後の出力はskipとし、先頭15個を`clamp(y² >> 19, 0, 127)`と
+-    /// `clamp(y >> 6, 0, 127)`の順に30成分へ展開する。2乗はi64で計算する。
++    /// `clamp(y >> 6, 0, 127)`の順に30成分へ展開する。2乗の前に±8,160へ制限する。
+     /// L2の32成分を6ビット右シフトして制限し、出力層の積和とskipを足す。
+     pub(super) fn evaluate(&self, us: &[i16], them: &[i16]) -> i32 {
+         let width = us.len();
+@@ -360,15 +368,17 @@ impl LayerStackDense {
+                     .map(|(&w, &x)| i32::from(w) * i32::from(x))
+                     .sum::<i32>()
+         };
+-        let mut z = [0_i16; 30];
+-        for i in 0..15 {
+-            let y = l1(i);
+-            z[i] = i16::from(square_activation(y));
+-            z[15 + i] = i16::from(activation(y));
+-        }
+-        let skip = l1(15);
++        let [y @ .., skip]: [i32; 16] = std::array::from_fn(l1);
++        let z = [
++            y.map(|y| {
++                let limited = y.clamp(-SQUARE_ACTIVATION_INPUT_MAX, SQUARE_ACTIVATION_INPUT_MAX);
++                ((limited * limited) >> 19) as i16
++            }),
++            y.map(|y| i16::from(activation(y))),
++        ];
+         let mut h: [i32; 32] = d.l2_biases.as_slice().try_into().unwrap();
+         for (&[z0, z1], [w0, w1]) in z
++            .as_flattened()
+             .as_chunks::<L2_PAIR>()
+             .0
+             .iter()
+diff --git a/crates/minase/src/eval/nnue/network/mod.rs b/crates/minase/src/eval/nnue/network/mod.rs
+index 48614f6e..2bd9d894 100644
+--- a/crates/minase/src/eval/nnue/network/mod.rs
++++ b/crates/minase/src/eval/nnue/network/mod.rs
+@@ -474,8 +474,13 @@ fn pair(a: i16, b: i16) -> i16 {
+ const ACTIVATION_MAX: i32 = 127;
+ 
+ /// i64で2乗して19ビット右シフトし、0〜127へ制限する。負の入力も2乗する。
+-fn square_activation(y: i32) -> u8 {
+-    ((i64::from(y) * i64::from(y)) >> 19).clamp(0, i64::from(ACTIVATION_MAX)) as u8
++const fn square_activation(y: i32) -> u8 {
++    let scaled = ((y as i64) * (y as i64)) >> 19;
++    if scaled > ACTIVATION_MAX as i64 {
++        ACTIVATION_MAX as u8
++    } else {
++        scaled as u8
++    }
+ }
+ /// 6ビットの算術右シフト後に0〜127へ制限する。
+ fn activation(y: i32) -> u8 {

@@ -1,0 +1,62 @@
+total samples 21242
+  incl%   self%  function
+ 100.00    0.37  [libc.so.6]
+  99.96    0.00  team::run_search_team::{closure#5}
+  99.96    0.00  deepening::run_main_worker
+  99.96    0.00  team::run_worker_team::<(&mut alloc::boxed::Box<[[[i32; 144]; 144]; 2]>, &mut capture_history::CaptureHistory,
+  99.96    0.00  team::run_worker_team::<(&mut alloc::boxed::Box<[[[i32; 144]; 144]; 2]>, &mut capture_history::CaptureHistory,
+  99.96    0.00  deepening::run_main_worker_with_iteration_hook::<deepening::run_main_worker::{closure#0}>
+  99.96    0.00  team::run_worker_guarded::<team::WorkerOutcome, team::run_worker_team<(&mut alloc::boxed::Box<[[[i32; 144]; 14
+  99.96    0.00  <searcher::Searcher>::search_iteration
+  99.96    0.09  <searcher::Searcher>::search_root
+  98.48    0.90  <searcher::Searcher>::search_move
+  98.40    5.39  <searcher::Searcher>::negamax
+  42.35   15.79  <ordering::MovePicker>::next
+  25.83    1.90  <searcher::Searcher>::quiesce
+  16.77    1.89  see::see_prunes
+  14.15    0.56  <mc:position::Position>::attackers_to_by
+  11.96    0.97  mc:movegen::control::ordinary_attackers_to
+   7.34    0.60  <quiesce::QsearchBuffers>::initialize
+   6.26    0.01  <searcher::Searcher>::search_null_move
+   5.73    0.54  ordering::quiet_move_ordering_value
+   5.51    4.89  <mc:board::bitboard::Bitboard>::pop_lsb
+   5.51    0.00  <mc:board::bitboard::SquareIter as core::iter::traits::iterator::Iterator>::next
+   5.16    1.69  <mc:movegen::gives_check::CheckContext>::gives_check
+   4.53    2.04  mc:movegen::control::sliding_attackers_to::<true>
+   4.48    0.36  <quiesce::QsearchBuffers>::next
+   4.29    0.33  <mc:movegen::MoveGenerator>::collect_ordinary_capturers
+   4.08    1.73  <quiesce::QsearchBuffers>::generate_group
+   3.96    0.70  mc:movegen::control::capture_targets_without_special
+   3.58    0.00  <mc:movegen::MoveGenerator>::generate_captures_with_scratch
+   3.58    0.29  mc:movegen::generate::generate_moves::<true, false>
+   3.44    2.41  mc:movegen::control::sliding_attackers_to::<false>
+   3.41    0.68  <mc:movegen::MoveGenerator>::ordinary_capturer
+   3.37    0.15  ordering::qualifies_for_check_bonus
+   3.36    0.17  mc:movegen::generate::generate_moves::<false, true>
+   3.36    0.00  <mc:movegen::MoveGenerator>::generate_quiets
+   3.14    0.37  mc:movegen::control::piece_control_without_special
+   2.96    0.50  mc:movegen::generate::generate_piece_moves::<true, false>
+   2.88    0.18  mc:movegen::control::piece_control_with_occupancy
+   2.69    0.14  mc:movegen::control::piece_control_with_tables
+   2.54    1.34  <mc:mv::Move as core::cmp::PartialEq>::eq
+   2.52    0.02  mc:movegen::generate::generate_piece_moves::<false, true>
+   2.50    0.19  mc:movegen::generate::generate_piece_quiets
+   2.43    2.43  <(core::cmp::Reverse<i64>, core::cmp::Reverse<i64>, usize) as core::cmp::PartialOrd>::lt
+   2.43    0.00  <<(core::cmp::Reverse<i64>, core::cmp::Reverse<i64>, usize) as core::cmp::PartialOrd>::lt as core::ops::functi
+   2.39    2.39  <mc:board::bitboard::Bitboard as core::ops::bit::BitAnd>::bitand
+   2.19    0.56  <ordering::DirectCheckSquares>::contains
+   2.17    0.08  <mc:movegen::MoveGenerator>::is_legal_move
+   1.86    0.50  <ordering::QuietPiece>::new
+   1.63    0.00  <mc:position::Position>::piece_control_with_occupancy
+   1.63    0.00  <ordering::DirectCheckSquares>::contains::{closure#0}
+   1.61    0.02  <searcher::Searcher>::checking_move_exempts_qsearch_pruning
+   1.61    0.64  <mc:movegen::MoveGenerator>::emit_ordinary_captures::<<quiesce::QsearchBuffers>::generate_group::{closure#3}>
+   1.61    0.28  <mc:position::Position>::piece_at
+   1.60    0.74  mc:movegen::control::special_attackers_to
+   1.60    1.54  <mc:position::Position>::code_at
+   1.60    1.18  <mc:attacks::tables::AttackTables>::fixed
+   1.53    1.53  <mc:board::square::Square as core::cmp::PartialEq>::eq
+   1.51    1.31  <mc:board::bitboard::Bitboard>::lsb
+   1.44    0.07  <mc:movegen::MoveGenerator>::generate_special_captures::<<quiesce::QsearchBuffers>::initialize::{closure#0}>
+   1.40    0.10  <ordering::LesserPieceThreats>::new
+   1.35    0.03  <searcher::Searcher>::negamax::{closure#25}

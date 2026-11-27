@@ -1,0 +1,62 @@
+total samples 42899
+  incl%   self%  function
+ 100.00    0.86  [libc.so.6]
+  99.59    0.00  team::run_worker_guarded::<team::WorkerOutcome, team::run_worker_team<(&mut alloc::boxed::Box<[[[i32; 144]; 14
+  99.59    0.00  team::run_worker_team::<(&mut alloc::boxed::Box<[[[i32; 144]; 144]; 2]>, &mut capture_history::CaptureHistory,
+  99.59    0.00  deepening::run_main_worker_with_iteration_hook::<deepening::run_main_worker::{closure#0}>
+  99.59    0.00  team::run_worker_team::<(&mut alloc::boxed::Box<[[[i32; 144]; 144]; 2]>, &mut capture_history::CaptureHistory,
+  99.59    0.00  deepening::run_main_worker
+  99.59    0.00  team::run_search_team::{closure#5}
+  99.50    0.00  <searcher::Searcher>::search_iteration
+  99.50    0.13  <searcher::Searcher>::search_root
+  97.70    0.67  <searcher::Searcher>::search_move
+  97.45    2.93  <searcher::Searcher>::negamax
+  41.42    1.56  <searcher::Searcher>::quiesce
+  28.60    7.44  <ordering::MovePicker>::next
+  13.16    0.00  <searcher::Searcher>::evaluate_at
+  10.56    1.16  see::see_prunes
+   9.81    0.37  <eval::nnue::network::evaluator::SearchEvaluator>::evaluate
+   9.61    0.99  <mc:position::Position>::attackers_to_by
+   9.45    0.01  <eval::nnue::network::layer_stack::LayerStackNetwork>::evaluate_accumulator
+   9.27    0.04  <eval::nnue::network::layer_stack::LayerStackNetwork>::dense
+   9.21    2.16  <eval::nnue::network::layer_stack::LayerStackDense>::evaluate
+   9.02    0.03  <searcher::Searcher>::search_null_move
+   8.73    0.50  <quiesce::QsearchBuffers>::initialize
+   7.17    0.14  <tt::TranspositionTable>::probe
+   6.94    6.94  tt::unpack_critical
+   6.64    0.85  mc:movegen::control::ordinary_attackers_to
+   5.29    0.64  ordering::quiet_move_ordering_value
+   5.06    0.42  <mc:movegen::MoveGenerator>::collect_ordinary_capturers
+   4.99    4.17  <eval::nnue::network::layer_stack::LayerStackDense>::evaluate::{closure#0}
+   4.79    4.59  <mc:board::bitboard::Bitboard>::pop_lsb
+   4.79    0.00  <mc:board::bitboard::SquareIter as core::iter::traits::iterator::Iterator>::next
+   4.59    0.66  mc:movegen::control::capture_targets_without_special
+   4.34    0.12  mc:movegen::generate::generate_moves::<true, false>
+   4.34    0.00  <mc:movegen::MoveGenerator>::generate_captures_with_scratch
+   4.34    1.31  <mc:movegen::gives_check::CheckContext>::gives_check
+   3.78    0.54  <mc:movegen::MoveGenerator>::ordinary_capturer
+   3.68    0.17  <searcher::Searcher>::ensure_accumulator
+   3.66    0.52  mc:movegen::generate::generate_piece_moves::<true, false>
+   3.50    0.05  <eval::nnue::network::evaluator::SearchEvaluator>::update_after_move
+   3.45    0.18  <eval::nnue::network::layer_stack::LayerStackNetwork>::update_after_move
+   3.40    0.23  <quiesce::QsearchBuffers>::next
+   3.26    0.07  mc:movegen::generate::generate_moves::<false, true>
+   3.26    0.00  <mc:movegen::MoveGenerator>::generate_quiets
+   3.16    0.72  <quiesce::QsearchBuffers>::generate_group
+   2.83    0.17  <eval::nnue::transformer::FeatureTransformer<eval::nnue::input::a::A>>::update_after_move
+   2.75    0.01  mc:movegen::generate::generate_piece_moves::<false, true>
+   2.74    0.37  mc:movegen::generate::generate_piece_quiets
+   2.66    0.10  eval::features::for_each_move_change::<<eval::nnue::transformer::FeatureTransformer<eval::nnue::input::a::A>>:
+   2.46    0.35  mc:movegen::control::piece_control_without_special
+   2.44    0.05  <mc:movegen::MoveGenerator>::generate_special_captures::<<quiesce::QsearchBuffers>::initialize::{closure#0}>
+   2.37    0.00  <eval::nnue::transformer::FeatureTransformer<eval::nnue::input::a::A>>::update_after_move::{closure#0}
+   2.34    2.34  <eval::nnue::transformer::FeatureTransformer<eval::nnue::input::a::A>>::add_row
+   2.31    2.31  <mc:board::bitboard::Bitboard>::intersects
+   2.18    0.06  <mc:movegen::MoveGenerator>::is_legal_move
+   2.17    0.02  <mc:movegen::MoveGenerator>::generate_special_piece_captures::<<quiesce::QsearchBuffers>::initialize::{closure
+   2.07    0.14  <searcher::Searcher>::correction_weighted_sum_at
+   1.96    1.96  <mc:board::bitboard::Bitboard as core::ops::bit::BitAnd>::bitand
+   1.92    0.10  <ordering::LesserPieceThreats>::new
+   1.89    0.21  <mc:movegen::MoveGenerator>::emit_ordinary_captures::<<quiesce::QsearchBuffers>::generate_group::{closure#3}>
+   1.86    0.36  mc:movegen::expand::push_with_promotion
+   1.86    0.98  mc:movegen::control::sliding_attackers_to::<true>
