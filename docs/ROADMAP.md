@@ -246,7 +246,7 @@ NNUEの世代反復は2026年11月25日に中断して閉じたので、2回目�
 
 ### 配備
 
-- [lishogi Bot接続](plans/lishogi-bot.md)は公開運用中であり、完了条件の達成状況の確認と配備方式の記述の見直しが残っている。Botと開発用GUIは2026年11月25日から、minase 3.1.0と、Hugging Face Hubから取得する世代反復の第3世代のA型のネットを使う。3.1.0は、探索と時間管理の係数をこのネットに合わせてSPSAで調整し直した版である（[調整の記録](measurements/adhoc/nnue-gen3-search-retune.md)）。エンジンの起動引数`--rules`の削除と、規則セットとネットをUSIのオプションで必須にした変更（[起動引数と診断ツールをUSIへ移す計画](plans/archived/cli-to-usi.md)）への追従は、2026年11月24日にBotと開発用GUIの両方で終えた。ネットだけを替えるときは、エンジンの[リリース](guides/release.md)を要さず、Botの配備一式が指定するネットを替える。
+- [lishogi Bot接続](plans/lishogi-bot.md)は公開運用中であり、完了条件の達成状況の確認と配備方式の記述の見直しが残っている。Botと開発用GUIは2026年11月28日から、minase 3.1.1と、Hugging Face Hubから取得する世代反復の第3世代のA型のネットを使う。3.1.1は、探索と時間管理の係数をこのネットに合わせてSPSAで調整し直した3.1.0（[調整の記録](measurements/adhoc/nnue-gen3-search-retune.md)）を、探索の結果を変えずに速くした版である（[第3期の高速化](plans/archived/movegen-speedup-3.md)）。Botと開発用GUIのイメージはRust 1.98でビルドしており、bench深さ16のサイクル数で比べた3.1.0からの速度比は、Botの`target-cpu=native`のビルドで約1.11倍、開発用GUIの`x86-64`のビルドで約1.18倍であり、測定機のRust 1.100のビルドの1.160倍とは異なる。エンジンの起動引数`--rules`の削除と、規則セットとネットをUSIのオプションで必須にした変更（[起動引数と診断ツールをUSIへ移す計画](plans/archived/cli-to-usi.md)）への追従は、2026年11月24日にBotと開発用GUIの両方で終えた。ネットだけを替えるときは、エンジンの[リリース](guides/release.md)を要さず、Botの配備一式が指定するネットを替える。
 - [ブラウザ内で動く対局アプリ](plans/browser-wasm-app.md)は、開発用GUIの人間対AIの画面を、minaseをwasmにしてブラウザの中だけで動かす静的なWebアプリとして別リポジトリ`minase-chushogi-wasm`へ切り出し、GitHub Pagesで公開する計画である。起案の段階にあり、レビューの後に利用者の着手の指示を待つ。最初に、探索中の入力をJSPIで受け取れることと、iPhoneのメモリとスタックに収まることを実機で確かめる。
 
 ### 前提の見直しが要る計画
