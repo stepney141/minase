@@ -19,10 +19,15 @@ if pgrep -af '[m]inase (match run|spsa)|[m]atch_runner|[s]psa_runner|[s]elfplay 
 fi
 while pgrep -f '^/opt/minase/minase --protocol usi' >/dev/null; do sleep 30; done
 docker stop "$BOT" >/dev/null
-trap 'docker start "$BOT" >/dev/null' EXIT
 echo "bot stopped at $(date -Is)"
+# EXITのtrapに頼らず、測定の成否によらずBotを起動し直してから終了状態を返す。
+status=0
 python3 "$HERE/paired.py" run --workload bench --pairs "$BENCH_PAIRS" --parent "$PARENT" --candidate "$CANDIDATE" \
-  --net "$MS3/net.bin" --cwd "$MS3/cwd" --out "$OUT"
-python3 "$HERE/paired.py" run --workload teacher --pairs "$TEACHER_PAIRS" --parent "$PARENT" --candidate "$CANDIDATE" \
-  --net "$MS3/net.bin" --cwd "$MS3/cwd" --out "$OUT"
-echo "finished at $(date -Is)"
+  --net "$MS3/net.bin" --cwd "$MS3/cwd" --out "$OUT" || status=$?
+if [ "$status" -eq 0 ]; then
+  python3 "$HERE/paired.py" run --workload teacher --pairs "$TEACHER_PAIRS" --parent "$PARENT" --candidate "$CANDIDATE" \
+    --net "$MS3/net.bin" --cwd "$MS3/cwd" --out "$OUT" || status=$?
+fi
+docker start "$BOT" >/dev/null
+echo "bot started at $(date -Is); finished with status $status"
+exit "$status"
