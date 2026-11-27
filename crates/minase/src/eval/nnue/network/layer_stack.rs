@@ -44,7 +44,10 @@ pub struct LayerStackNetwork {
     pub(super) accumulator_stats: super::super::stats::SharedStats,
 }
 
-/// ファイル表現の正本と、積和用にi16へ広げたL1の行優先、L2の入力優先の重み。
+/// 後段の重みをファイル表現と積和用の配置で保持する。
+/// 元の`Dense`がネットのファイル表現の正本である。
+/// L1の複製は出力ごとに入力幅H個の重みを並べた行優先の`i16`配列であり、L2の複製は入力ごとに32出力の重みを並べた`i16`配列である。
+/// 複製は検査を通った値から`LayerStackDense::new`でのみ作る。
 pub(super) struct LayerStackDense {
     original: Dense,
     l1_weights: Box<[i16]>,
@@ -241,8 +244,9 @@ impl LayerStackNetwork {
     /// `clamp(y >> 6, 0, 127)`の順に30成分へ展開する。2乗はi64で計算する。
     /// L2の32成分を6ビット右シフトして制限し、出力層の積和とskipを足す。
     ///
-    /// 後段のループは自動ベクトル化に依存する。rustcやLLVMの版、後段の型やループ、
-    /// またはビルド設定を変えたときは、設計書「第3期の高速化」の手順で測り直す。
+    /// 後段の各ループは、LLVMの自動ベクトル化によって複数の要素を一度に処理するSIMD命令になることを前提とする。
+    /// rustcまたはLLVMの版が変わったとき、および後段の型、ループ、またはビルド設定を変えたときは、サイクル数の対比較で速さを確かめ直す。
+    /// 理由と手順は`docs/adr/compute-the-layerstack-dense-stage-in-16-bit-lanes-through-autovectorization.md`にある。
     fn dense(&self, acc: &LayerStackAccumulator, side: Color) -> i32 {
         let [us, them] = [side, side.opposite()]
             .map(|perspective| acc.ft.row(perspective).expect("A always has a context"));
@@ -335,8 +339,11 @@ impl LayerStackDense {
 
     /// 同じ幅Hの手番側と相手側の累算値を受け取り、前後半を0〜127へ制限して
     /// 掛け、7ビット右シフトした要素積を手番側から順に連結する。
+    /// 要素積は上限126の`i16`であり、入力用に最大幅1,024の`i16`配列を0で初期化して使う。
     /// L1の最後の出力はskipとし、先頭15個を`clamp(y² >> 19, 0, 127)`と
     /// `clamp(y >> 6, 0, 127)`の順に30成分へ展開する。2乗はi64で計算する。
+    /// L2は入力2つ分の積の和を`i16`のまま求め、`i32`の累算値へ足す。
+    /// 2つの積の和の範囲は−32,512〜32,258であり、`i16`に収まることをコンパイル時の表明で保証する。
     /// L2の32成分を6ビット右シフトして制限し、出力層の積和とskipを足す。
     pub(super) fn evaluate(&self, us: &[i16], them: &[i16]) -> i32 {
         let width = us.len();

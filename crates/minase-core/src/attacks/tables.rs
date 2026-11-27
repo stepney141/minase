@@ -17,6 +17,7 @@ use super::sliding::{RayTable, build_ray_table};
 type FixedAttackTable = Box<[Bitboard]>;
 
 /// 全駒種の利き計算に使う前計算テーブル一式。
+/// 駒コードで表を引く理由は`docs/adr/decode-piece-codes-through-256-entry-tables.md`にある。
 pub(crate) struct AttackTables {
     /// 方向×升ごとの盤端までの利き線。
     rays: Box<RayTable>,
@@ -26,9 +27,10 @@ pub(crate) struct AttackTables {
     fixed_attacker_kinds: [[u32; 69]; COLOR_COUNT],
     /// 遮蔽のない盤面での固定利きと走りの和。
     reach: FixedAttackTable,
-    /// 照会した対局者×駒コードごとの走りの絶対方向マスク。照会した対局者の駒でなければ0。
+    /// 照会した対局者ごとの走りの絶対方向マスクであり、各行は`PieceCode::table_index`で引く。
+    /// 構築できない駒コードの欄は0であり、照会した対局者の駒でないコードにも0を返して所属の検査を兼ねる。
     slide_mask_by_code: [[u8; 256]; COLOR_COUNT],
-    /// 駒コードごとの駒種ビット。空升と番兵は0。
+    /// `PieceCode::table_index`で引く駒種ビットの表であり、駒を表すコードとして構築できない欄は0である。
     kind_bit_by_code: [u32; 256],
     /// 各升を中心とする5×5の近傍。固定利きの逆引きに使う。
     neighbourhoods: [Bitboard; RAW_SQUARE_COUNT],
@@ -154,13 +156,13 @@ impl AttackTables {
     }
 
     /// 照会した対局者の駒なら、駒コードに対応する走りの絶対方向マスクを返す。
-    /// 相手駒・空升・番兵なら0を返す。
+    /// 表は`PieceCode::table_index`で引き、駒として構築できないコードや相手駒のコードでは0を返すことで、所属の検査を兼ねる。
     #[inline]
     pub(crate) fn slide_mask_by_code(&self, color: Color, code: PieceCode) -> u8 {
         self.slide_mask_by_code[color.index()][code.table_index()]
     }
 
-    /// 駒コードに対応する駒種ビットを返す。空升・番兵なら0を返す。
+    /// `PieceCode::table_index`で表を引いて駒種ビットを返し、駒として構築できないコードでは0を返す。
     #[inline]
     pub(crate) fn kind_bit_by_code(&self, code: PieceCode) -> u32 {
         self.kind_bit_by_code[code.table_index()]

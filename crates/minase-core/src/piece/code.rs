@@ -30,6 +30,8 @@ impl PieceCode {
     /// 駒種番号を取り出すマスク。
     const KIND_MASK: u8 = 0x1f;
 
+    /// 空升、番兵、および駒種の番号欄が1〜29の範囲外のコードには`None`を割り当てる表である。
+    /// それ以外のコードには、番号欄の値から1を引いた添字に対応する駒種を割り当てる。
     const KIND_BY_CODE: [Option<PieceKind>; 256] = Self::build_kind_table();
 
     const fn build_kind_table() -> [Option<PieceKind>; 256] {
@@ -106,6 +108,7 @@ impl PieceCode {
 
     /// 駒種を定数表から引く。空升・番兵、または駒種番号が1〜29の範囲外なら`None`を返す。
     /// 構築子で作れないコードでも、駒種番号が範囲内なら対応する駒種を返す。
+    /// 理由は`docs/adr/decode-piece-codes-through-256-entry-tables.md`にある。
     pub const fn kind(self) -> Option<PieceKind> {
         Self::KIND_BY_CODE[self.table_index()]
     }

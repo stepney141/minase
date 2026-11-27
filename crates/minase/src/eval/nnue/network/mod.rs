@@ -466,7 +466,8 @@ fn check_biases(layer: &'static str, values: &[i32]) -> Result<(), FormatError> 
 const PAIR_INPUT_MAX: i16 = 127;
 const _: () = assert!(PAIR_INPUT_MAX as i32 * PAIR_INPUT_MAX as i32 <= i16::MAX as i32);
 
-/// 両因子を0〜127へ制限し、積を7ビット右シフトする。結果の上限は126。
+/// 両因子を0〜127へ制限し、積を7ビット右シフトして上限126の`i16`を返す。
+/// 因子の上限127の2乗が`i16`に収まることをコンパイル時の表明で保証する。
 fn pair(a: i16, b: i16) -> i16 {
     (a.clamp(0, PAIR_INPUT_MAX) * b.clamp(0, PAIR_INPUT_MAX)) >> 7
 }

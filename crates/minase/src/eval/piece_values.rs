@@ -13,6 +13,7 @@ use minase_core::{PieceCode, PieceKind};
 
 const VALUES: [i32; 47] = build_values();
 const INVALID_PIECE_VALUE: i32 = i32::MIN;
+/// `PieceCode::table_index`を添字とし、対応する固定価値または`INVALID_PIECE_VALUE`を格納する。
 const PIECE_VALUES_BY_CODE: [i32; 256] = build_piece_values_by_code();
 
 const fn build_piece_values_by_code() -> [i32; 256] {
@@ -54,10 +55,11 @@ pub const fn piece_value_of_state(state: usize) -> i32 {
 }
 
 /// 現在の駒種と成り可否に対応する固定価値を返す。
-/// 駒コードを添字として定数の表を引く。
+/// `PieceCode::table_index`を添字として定数表を引く。
+/// 理由は`docs/adr/decode-piece-codes-through-256-entry-tables.md`にある。
 ///
 /// # Panics
-/// 空升または盤外の番兵ならパニックする。
+/// 空升や盤外の番兵など、表から無効を表す`INVALID_PIECE_VALUE`を引いた場合はパニックする。
 pub fn piece_value(piece: PieceCode) -> i32 {
     let value = PIECE_VALUES_BY_CODE[piece.table_index()];
     assert!(

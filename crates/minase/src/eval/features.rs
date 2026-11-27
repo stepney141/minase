@@ -35,6 +35,7 @@ const fn build_unpromoted_states() -> [u8; PIECE_KIND_COUNT] {
 }
 
 pub(super) const INVALID_PIECE_STATE: u8 = u8::MAX;
+/// `PieceCode::table_index`を添字とし、対応する状態番号または`INVALID_PIECE_STATE`を格納する。
 pub(super) const PIECE_STATES_BY_CODE: [u8; 256] = build_piece_states_by_code();
 
 const fn build_piece_states_by_code() -> [u8; 256] {
@@ -70,15 +71,16 @@ const fn decode_piece_state(piece: PieceCode) -> u8 {
 }
 
 /// 駒コードを、駒種と現在の成り可否からなる状態番号へ写す。
-/// 駒コードを添字として定数の表を引く。
+/// `PieceCode::table_index`を添字として定数表を引く。
 /// 0〜28は駒種番号と同じ「成れない」状態であり、29〜46は王将、獅子、奔王を除く初期配置の18種の「成れる」状態を駒種番号順に割り当てる。
 /// 初期配置の獅子と麒麟が成った獅子はともに20、生の金将は44、歩兵が成った金将は17になる。
 /// 評価に必要なのは今後の成りによる動きの変化なので、成りビットそのものを区別しない。
 /// 成りビットのない成駒専用種も同じ成り可否の状態へ写り、定義域は[`Position`]が盤上に受理する全駒コードである。
 /// 歩兵、仲人、香車、反車、猛豹、盲虎、銅将、銀将、麒麟、鳳凰の「成れない」状態に写る駒コードは盤上に現れず、その特徴の重みは学習で更新されない。
+/// 理由は`docs/adr/decode-piece-codes-through-256-entry-tables.md`にある。
 ///
 /// # Panics
-/// 空升または盤外の番兵ではパニックする。
+/// 空升や盤外の番兵など、表から無効を表す`INVALID_PIECE_STATE`を引いた場合はパニックする。
 pub fn piece_state(piece: PieceCode) -> usize {
     let state = PIECE_STATES_BY_CODE[piece.table_index()];
     assert!(
