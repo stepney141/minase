@@ -34,7 +34,43 @@ const fn build_unpromoted_states() -> [u8; PIECE_KIND_COUNT] {
     table
 }
 
+pub(super) const INVALID_PIECE_STATE: u8 = u8::MAX;
+pub(super) const PIECE_STATES_BY_CODE: [u8; 256] = build_piece_states_by_code();
+
+const fn build_piece_states_by_code() -> [u8; 256] {
+    let mut states = [INVALID_PIECE_STATE; 256];
+    let mut color = 0;
+    while color < Color::ALL.len() {
+        let mut kind = 0;
+        while kind < PIECE_KIND_COUNT {
+            let side = Color::ALL[color];
+            let piece_kind = PieceKind::ALL[kind];
+            if let Some(piece) = PieceCode::new(side, piece_kind) {
+                states[piece.table_index()] = decode_piece_state(piece);
+            }
+            if let Some(piece) = PieceCode::new_promoted(side, piece_kind) {
+                states[piece.table_index()] = decode_piece_state(piece);
+            }
+            kind += 1;
+        }
+        color += 1;
+    }
+    states
+}
+
+const fn decode_piece_state(piece: PieceCode) -> u8 {
+    let Some(kind) = piece.kind() else {
+        panic!("feature piece must have a valid kind");
+    };
+    if piece.is_promoted() {
+        kind.index() as u8
+    } else {
+        UNPROMOTED_STATES[kind.index()]
+    }
+}
+
 /// 駒コードを、駒種と現在の成り可否からなる状態番号へ写す。
+/// 駒コードを添字として定数の表を引く。
 /// 0〜28は駒種番号と同じ「成れない」状態であり、29〜46は王将、獅子、奔王を除く初期配置の18種の「成れる」状態を駒種番号順に割り当てる。
 /// 初期配置の獅子と麒麟が成った獅子はともに20、生の金将は44、歩兵が成った金将は17になる。
 /// 評価に必要なのは今後の成りによる動きの変化なので、成りビットそのものを区別しない。
@@ -44,12 +80,12 @@ const fn build_unpromoted_states() -> [u8; PIECE_KIND_COUNT] {
 /// # Panics
 /// 空升または盤外の番兵ではパニックする。
 pub fn piece_state(piece: PieceCode) -> usize {
-    let kind = piece.kind().expect("feature piece must have a valid kind");
-    if piece.is_promoted() {
-        kind.index()
-    } else {
-        UNPROMOTED_STATES[kind.index()] as usize
-    }
+    let state = PIECE_STATES_BY_CODE[piece.table_index()];
+    assert!(
+        state != INVALID_PIECE_STATE,
+        "feature piece must have a valid kind"
+    );
+    state as usize
 }
 
 /// 指定視点の盤面特徴番号を`(相対陣営×47 + 駒状態)×144 + 相対段×12 + 筋`で返す。
@@ -205,17 +241,25 @@ mod tests {
         ];
         for color in Color::ALL {
             for (kind, unpromoted, promoted) in states {
-                if let Some(expected) = unpromoted {
-                    assert_eq!(piece_state(PieceCode::new(color, kind).unwrap()), expected);
-                }
-                if let Some(expected) = promoted {
-                    assert_eq!(
-                        piece_state(PieceCode::new_promoted(color, kind).unwrap()),
-                        expected
-                    );
-                }
+                assert_eq!(PieceCode::new(color, kind).map(piece_state), unpromoted);
+                assert_eq!(
+                    PieceCode::new_promoted(color, kind).map(piece_state),
+                    promoted
+                );
             }
         }
+    }
+
+    #[test]
+    #[should_panic(expected = "feature piece must have a valid kind")]
+    fn piece_state_rejects_empty() {
+        piece_state(PieceCode::EMPTY);
+    }
+
+    #[test]
+    #[should_panic(expected = "feature piece must have a valid kind")]
+    fn piece_state_rejects_wall() {
+        piece_state(PieceCode::WALL);
     }
 
     /// 段反転と陣営交換が後手視点を先手視点へ写すことを検査する。
