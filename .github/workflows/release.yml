@@ -54,8 +54,9 @@ jobs:
         if: steps.meta.outputs.crate == 'minase'
         run: |
           python3 scripts/release/release_checks.py check-package-nets
-          # minase-core may not be published to crates.io yet when both tags are pushed,
-          # so packaging skips registry resolution here and leaves `cargo publish` manual.
+          # `cargo package` resolves minase-core from crates.io even with --no-verify, so the
+          # minase-core version that minase requires must be published before the engine tag
+          # is pushed (docs/guides/release.md, step 4). `cargo publish` itself stays manual.
           cargo package -p minase --locked --no-verify
 
       - name: Extract release notes from changelog
