@@ -1,0 +1,362 @@
+From 9dd6d300dd435fb2b6bebb7ad0316404e0202add Mon Sep 17 00:00:00 2001
+From: stepney141 <stepney141andi.c.i@gmail.com>
+Date: Fri, 27 Nov 2026 17:02:20 +0900
+Subject: [PATCH] perf(movegen): skip excluded lion captures while generating
+ qsearch candidates
+
+- Add MoveGenerator::generate_qsearch_special_captures, which restricts the lion's
+  second step to enemy squares and the origin instead of filtering after generation
+  (movegen-speedup-3 stage 4).
+- The public generate_special_captures and is_legal_capture keep their contracts.
+---
+ crates/minase-core/src/movegen/generate.rs    |   4 +-
+ crates/minase-core/src/movegen/lion.rs        |  20 ++-
+ .../src/movegen/search_captures.rs            |  51 +++++--
+ .../src/movegen/tests/properties.rs           |   2 +-
+ .../src/movegen/tests/search_captures.rs      | 125 ++++++++++++++++++
+ crates/minase/src/search/alphabeta/quiesce.rs |   7 +-
+ 6 files changed, 184 insertions(+), 25 deletions(-)
+
+diff --git a/crates/minase-core/src/movegen/generate.rs b/crates/minase-core/src/movegen/generate.rs
+index cbe08e33..820f71dc 100644
+--- a/crates/minase-core/src/movegen/generate.rs
++++ b/crates/minase-core/src/movegen/generate.rs
+@@ -112,7 +112,7 @@ pub(super) fn generate_piece_moves<const CAPTURES_ONLY: bool, const QUIETS_ONLY:
+     match profile.special {
+         SpecialMovement::None => {}
+         SpecialMovement::Lion => {
+-            generate_lion_double_and_jumps::<CAPTURES_ONLY, QUIETS_ONLY>(
++            generate_lion_double_and_jumps::<CAPTURES_ONLY, QUIETS_ONLY, false>(
+                 generator.tables(),
+                 position,
+                 color,
+@@ -183,7 +183,7 @@ fn generate_piece_quiets(
+     }
+     match profile.special {
+         SpecialMovement::None => {}
+-        SpecialMovement::Lion => generate_lion_double_and_jumps::<false, true>(
++        SpecialMovement::Lion => generate_lion_double_and_jumps::<false, true, false>(
+             generator.tables(),
+             position,
+             color,
+diff --git a/crates/minase-core/src/movegen/lion.rs b/crates/minase-core/src/movegen/lion.rs
+index 0e783243..93640daf 100644
+--- a/crates/minase-core/src/movegen/lion.rs
++++ b/crates/minase-core/src/movegen/lion.rs
+@@ -13,12 +13,17 @@ use crate::position::Position;
+ /// 隣接する相手駒の升だけを経由升とし、その駒を取った仮想盤面で、
+ /// 経由升から王将の1升移動で届く自駒以外の升へ進む手を出す。
+ /// 移動元へ戻る居喰いも含む。
++/// `RESTRICT_LION_SECOND_STEP`が真なら、第2段階の到達升を着手前の相手駒の升と移動元に限る。
+ /// 直接の跳びは中間升の占有を問わず、`lion_jumps`の升へ出す
+ /// （chu-shogi.md第12条第5項から第7項）。
+ /// 隣接8升に空升があれば、じっとを全体で1手だけ出す（第12条第9項、第10項）。
+ /// 空升を経由する2段階移動は[`Move`]の正準形に従って生成しない。
+ /// この表現を採る理由は`docs/adr/represent-moves-in-canonical-form.md`にある。
+-pub(super) fn generate_lion_double_and_jumps<const CAPTURES_ONLY: bool, const QUIETS_ONLY: bool>(
++pub(super) fn generate_lion_double_and_jumps<
++    const CAPTURES_ONLY: bool,
++    const QUIETS_ONLY: bool,
++    const RESTRICT_LION_SECOND_STEP: bool,
++>(
+     tables: &AttackTables,
+     position: &Position,
+     color: Color,
+@@ -28,10 +33,19 @@ pub(super) fn generate_lion_double_and_jumps<const CAPTURES_ONLY: bool, const QU
+     let own = position.pieces_of(color);
+     let enemy = position.pieces_of(color.opposite());
+     let adjacent = tables.king_steps(from);
++    let captures_or_origin = if RESTRICT_LION_SECOND_STEP {
++        enemy | Bitboard::from_square(from)
++    } else {
++        Bitboard::EMPTY
++    };
+ 
+     for mid in adjacent & if QUIETS_ONLY { Bitboard::EMPTY } else { enemy } {
+-        let local = VirtualBoard::new(position, color, from).move_to(mid);
+-        let second = tables.king_steps(mid) & !local.own;
++        let second = tables.king_steps(mid)
++            & if RESTRICT_LION_SECOND_STEP {
++                captures_or_origin
++            } else {
++                !VirtualBoard::new(position, color, from).move_to(mid).own
++            };
+         for to in second {
+             output(Move {
+                 from,
+diff --git a/crates/minase-core/src/movegen/search_captures.rs b/crates/minase-core/src/movegen/search_captures.rs
+index fadd83a8..8a15a1c1 100644
+--- a/crates/minase-core/src/movegen/search_captures.rs
++++ b/crates/minase-core/src/movegen/search_captures.rs
+@@ -5,7 +5,7 @@
+ //! この出力は、公開の[`MoveGenerator::generate_captures`]から通常駒による対象升への手を
+ //! 抜き出した部分列と、要素、順序、および捕獲升まで一致する。
+ //! 獅子、角鷹、飛鷲は経由升でも取るので、到達升だけで選別せず、
+-//! [`MoveGenerator::generate_special_captures`]で全捕獲を別に生成する。
++//! [`MoveGenerator::generate_qsearch_special_captures`]で候補を別に生成する。
+ //! 方式を採る理由は`docs/adr/generate-qsearch-captures-by-value-group-per-piece.md`にある。
+ 
+ use super::control::{
+@@ -75,11 +75,31 @@ impl MoveGenerator {
+     /// [`Self::generate_captures`]を獅子、角鷹、飛鷲の手に絞った部分列と、
+     /// 要素、順序、および捕獲升まで一致する。
+     /// 経由升の捕獲もあるので、通常駒のように到達升の集合で選別しない。
+-    /// [`Self::is_excluded_lion_capture`]による静止探索用の除外は呼び出し側が行う。
+     pub fn generate_special_captures(
+         &self,
+         position: &Position,
+         output: &mut impl FnMut(CaptureCandidate),
++    ) {
++        self.generate_special_captures_impl::<false>(position, output);
++    }
++
++    /// 静止探索に残す特殊駒の捕獲を公開生成と同じ相対順序で追加する。
++    ///
++    /// [`Self::generate_captures`]から、獅子、角鷹、飛鷲の手であり
++    /// [`Self::is_excluded_lion_capture`]に当たらない手を抜き出した部分列と、
++    /// 要素、順序、および捕獲升まで一致する。
++    pub fn generate_qsearch_special_captures(
++        &self,
++        position: &Position,
++        output: &mut impl FnMut(CaptureCandidate),
++    ) {
++        self.generate_special_captures_impl::<true>(position, output);
++    }
++
++    fn generate_special_captures_impl<const RESTRICT_LION_SECOND_STEP: bool>(
++        &self,
++        position: &Position,
++        output: &mut impl FnMut(CaptureCandidate),
+     ) {
+         let color = position.side_to_move();
+         for kind in [
+@@ -89,13 +109,15 @@ impl MoveGenerator {
+         ] {
+             for from in position.pieces_of_kind(color, kind) {
+                 let piece = position.piece_at(from).expect("capture origin has a piece");
+-                self.generate_special_piece_captures(position, from, piece, output);
++                self.generate_special_piece_captures::<RESTRICT_LION_SECOND_STEP>(
++                    position, from, piece, output,
++                );
+             }
+         }
+     }
+ 
+     /// 特殊駒1枚の捕獲を生成し、置換表の手の検査にも使う。
+-    fn generate_special_piece_captures(
++    fn generate_special_piece_captures<const RESTRICT_LION_SECOND_STEP: bool>(
+         &self,
+         position: &Position,
+         from: Square,
+@@ -137,13 +159,11 @@ impl MoveGenerator {
+             });
+         }
+         match special {
+-            SpecialMovement::Lion => generate_lion_double_and_jumps::<true, false>(
+-                self.tables(),
+-                position,
+-                color,
+-                from,
+-                &mut emit,
+-            ),
++            SpecialMovement::Lion => generate_lion_double_and_jumps::<
++                true,
++                false,
++                RESTRICT_LION_SECOND_STEP,
++            >(self.tables(), position, color, from, &mut emit),
+             SpecialMovement::LionLike(profile) => {
+                 generate_lion_like_double_and_jumps::<true, false>(
+                     position, color, from, profile, &mut emit,
+@@ -296,9 +316,12 @@ impl MoveGenerator {
+             }
+             false
+         } else {
+-            self.generate_special_piece_captures(position, mv.from, piece, &mut |candidate| {
+-                cache.captures.push(candidate)
+-            });
++            self.generate_special_piece_captures::<false>(
++                position,
++                mv.from,
++                piece,
++                &mut |candidate| cache.captures.push(candidate),
++            );
+             cache.captures.iter().any(|candidate| candidate.mv == mv)
+         }
+     }
+diff --git a/crates/minase-core/src/movegen/tests/properties.rs b/crates/minase-core/src/movegen/tests/properties.rs
+index 2d224550..29603b81 100644
+--- a/crates/minase-core/src/movegen/tests/properties.rs
++++ b/crates/minase-core/src/movegen/tests/properties.rs
+@@ -703,7 +703,7 @@ pub(super) fn piece_generation_before<const CAPTURES_ONLY: bool, const QUIETS_ON
+     match profile.special {
+         SpecialMovement::None => {}
+         SpecialMovement::Lion => {
+-            generate_lion_double_and_jumps::<CAPTURES_ONLY, QUIETS_ONLY>(
++            generate_lion_double_and_jumps::<CAPTURES_ONLY, QUIETS_ONLY, false>(
+                 generator.tables(),
+                 position,
+                 color,
+diff --git a/crates/minase-core/src/movegen/tests/search_captures.rs b/crates/minase-core/src/movegen/tests/search_captures.rs
+index 150110a3..5d2298c5 100644
+--- a/crates/minase-core/src/movegen/tests/search_captures.rs
++++ b/crates/minase-core/src/movegen/tests/search_captures.rs
+@@ -44,6 +44,131 @@ fn split_captures_preserve_public_order_and_captured_squares() {
+     }
+ }
+ 
++/// 静止探索用の生成列は、公開捕獲の順序つき部分列と捕獲升まで一致する。
++#[test]
++fn qsearch_special_captures_match_filtered_public_order() {
++    for rules in capture_test_rules() {
++        let generator = MoveGenerator::new(rules);
++        for position in capture_test_positions() {
++            let mut public = Vec::new();
++            generator.generate_captures(&position, &mut public);
++            let expected: Vec<_> = public
++                .into_iter()
++                .filter_map(|mv| {
++                    let piece = position.piece_at(mv.from).unwrap();
++                    (matches!(
++                        piece.kind(),
++                        Some(PieceKind::Lion | PieceKind::HornedFalcon | PieceKind::SoaringEagle)
++                    ) && !MoveGenerator::is_excluded_lion_capture(&position, mv))
++                    .then(|| CaptureCandidate {
++                        mv,
++                        piece,
++                        captured: position.captured_squares(mv),
++                    })
++                })
++                .collect();
++            let mut actual = Vec::new();
++            generator.generate_qsearch_special_captures(&position, &mut |c| actual.push(c));
++            assert_eq!(actual, expected, "rules={rules:?}");
++        }
++    }
++}
++
++/// 居喰い、2枚取り、1升で止まる捕獲、直接の跳びと角鷹・飛鷲の経由升だけの捕獲は残す。
++#[test]
++fn qsearch_special_captures_keep_required_special_moves() {
++    use crate::PieceCode;
++    use crate::test_util::{position_from_codes, sq};
++
++    let lion = sq(5, 5);
++    let lion_mid = sq(5, 4);
++    let lion_victim = sq(5, 3);
++    let falcon = sq(2, 8);
++    let falcon_mid = sq(2, 9);
++    let eagle = sq(8, 8);
++    let eagle_mid = sq(9, 9);
++    let pawn = PieceCode::new(Color::White, PieceKind::Pawn).unwrap();
++    let position = position_from_codes(
++        Color::Black,
++        &[
++            (lion, PieceCode::new(Color::Black, PieceKind::Lion).unwrap()),
++            (lion_mid, pawn),
++            (lion_victim, pawn),
++            (
++                falcon,
++                PieceCode::new_promoted(Color::Black, PieceKind::HornedFalcon).unwrap(),
++            ),
++            (falcon_mid, pawn),
++            (
++                eagle,
++                PieceCode::new_promoted(Color::Black, PieceKind::SoaringEagle).unwrap(),
++            ),
++            (eagle_mid, pawn),
++        ],
++    );
++    let generator = MoveGenerator::new(crate::rules::MoveRules::standard());
++    let mut actual = Vec::new();
++    generator.generate_qsearch_special_captures(&position, &mut |c| actual.push(c.mv));
++    for (from, mid, to) in [
++        (lion, Some(lion_mid), lion),
++        (lion, Some(lion_mid), lion_victim),
++        (lion, None, lion_mid),
++        (lion, None, lion_victim),
++        (falcon, Some(falcon_mid), sq(2, 10)),
++        (eagle, Some(eagle_mid), sq(10, 10)),
++    ] {
++        let mv = Move {
++            from,
++            mid,
++            to,
++            promote: false,
++        };
++        assert!(actual.contains(&mv), "missing {mv:?}");
++    }
++    let excluded = Move {
++        from: lion,
++        mid: Some(lion_mid),
++        to: sq(4, 3),
++        promote: false,
++    };
++    let mut public = Vec::new();
++    generator.generate_captures(&position, &mut public);
++    assert!(public.contains(&excluded));
++    assert!(!actual.contains(&excluded), "included {excluded:?}");
++}
++
++/// 先獅子が発動した場合だけ、足のある相手獅子の居喰いを禁じる（第15条第1項・第9項）。
++#[test]
++fn qsearch_special_captures_respect_senjishi() {
++    use crate::test_util::{position, sq};
++
++    let from = sq(5, 5);
++    let mid = sq(5, 4);
++    let previous_capture = sq(8, 5);
++    let mut board = position(
++        Color::Black,
++        &[
++            (from, Color::Black, PieceKind::Lion),
++            (mid, Color::White, PieceKind::Lion),
++            (sq(4, 5), Color::White, PieceKind::CopperGeneral),
++            (previous_capture, Color::White, PieceKind::Rook),
++        ],
++    );
++    let igui = Move {
++        from,
++        mid: Some(mid),
++        to: from,
++        promote: false,
++    };
++    let generator = MoveGenerator::new(crate::rules::MoveRules::standard());
++    for (trigger, expected) in [(None, true), (Some(previous_capture), false)] {
++        board.set_lion_capture(trigger).unwrap();
++        let mut found = false;
++        generator.generate_qsearch_special_captures(&board, &mut |c| found |= c.mv == igui);
++        assert_eq!(found, expected, "trigger={trigger:?}");
++    }
++}
++
+ /// [`MoveGenerator::emit_ordinary_captures`]の部分列の契約を検査する。
+ #[test]
+ fn ordinary_targets_select_exactly_the_public_subsequence() {
+diff --git a/crates/minase/src/search/alphabeta/quiesce.rs b/crates/minase/src/search/alphabeta/quiesce.rs
+index 66e3b66e..7400c162 100644
+--- a/crates/minase/src/search/alphabeta/quiesce.rs
++++ b/crates/minase/src/search/alphabeta/quiesce.rs
+@@ -589,7 +589,7 @@ impl QsearchBuffers {
+ 
+     /// 特殊捕獲を生成し、通常駒が取れる相手駒だけを捕獲価値の群へ登録する。
+     /// 合法な捕獲の有無は調べず、群の候補は[`Self::next`]が必要になったときに生成する。
+-    /// 獅子が経由升で取り、移動元と異なる空升へ進む手は探索候補から除く。
++    /// 獅子が経由升で取り、移動元と異なる空升へ進む手は特殊捕獲の生成時に除く。
+     pub(super) fn initialize(
+         &mut self,
+         position: &Position,
+@@ -597,10 +597,7 @@ impl QsearchBuffers {
+         ranks: &CaptureRanks,
+     ) {
+         let opponent = position.side_to_move().opposite();
+-        generator.generate_special_captures(position, &mut |capture| {
+-            if MoveGenerator::is_excluded_lion_capture(position, capture.mv) {
+-                return;
+-            }
++        generator.generate_qsearch_special_captures(position, &mut |capture| {
+             let captured_value = capture
+                 .captured
+                 .into_iter()
+-- 
+2.56.1
+
