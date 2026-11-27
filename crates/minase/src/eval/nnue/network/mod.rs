@@ -470,13 +470,16 @@ const _: () = assert!(PAIR_INPUT_MAX as i32 * PAIR_INPUT_MAX as i32 <= i16::MAX 
 fn pair(a: i16, b: i16) -> i16 {
     (a.clamp(0, PAIR_INPUT_MAX) * b.clamp(0, PAIR_INPUT_MAX)) >> 7
 }
+
+const ACTIVATION_MAX: i32 = 127;
+
 /// i64で2乗して19ビット右シフトし、0〜127へ制限する。負の入力も2乗する。
 fn square_activation(y: i32) -> u8 {
-    ((i64::from(y) * i64::from(y)) >> 19).clamp(0, 127) as u8
+    ((i64::from(y) * i64::from(y)) >> 19).clamp(0, i64::from(ACTIVATION_MAX)) as u8
 }
 /// 6ビットの算術右シフト後に0〜127へ制限する。
 fn activation(y: i32) -> u8 {
-    (y >> 6).clamp(0, 127) as u8
+    (y >> 6).clamp(0, ACTIVATION_MAX) as u8
 }
 /// 正の除数で0方向に切り捨て、詰み値と重ならない±28,999へ制限する。
 fn score(out: i64, scale: i32) -> i32 {

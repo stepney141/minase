@@ -195,6 +195,32 @@ fn layer_stack_dense_matches_reference_at_pair_boundaries() {
 }
 
 #[test]
+fn layer_stack_dense_matches_reference_at_l2_pair_extrema() {
+    let row = [0_i16; 2];
+    let outputs = [(-128, 32_512 + 37 * 64), (127, -32_258 + 91 * 64)].map(|(weight, bias)| {
+        let mut l1_biases = vec![0; 16];
+        // 線形の活性化でL2の最後の対が (127, 127) になる。
+        l1_biases[13..15].fill(127 * 64);
+        let mut d = Dense {
+            l1_biases,
+            l1_weights: vec![0; 16 * row.len()],
+            l2_biases: vec![0; 32],
+            l2_weights: vec![0; 32 * 30],
+            output_bias: 0,
+            output_weights: vec![0; 32],
+        };
+        // 積和の両端を、L2の活性化が飽和しない出力へそれぞれ移す。
+        d.l2_biases[31] = bias;
+        d.l2_weights[31 * 30 + 28..].fill(weight);
+        d.output_weights[31] = 1;
+        let reference = reference_dense(&d, &row, &row);
+        let actual = LayerStackDense::new(d).evaluate(&row, &row);
+        (reference, actual)
+    });
+    assert_eq!(outputs, [(37, 37), (91, 91)]);
+}
+
+#[test]
 fn architecture_and_hashes_match_tatara_formula() {
     assert_eq!(
         arch(FeatureSet::A, 256, 12),

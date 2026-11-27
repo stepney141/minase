@@ -44,10 +44,11 @@ pub struct LayerStackNetwork {
     pub(super) accumulator_stats: super::super::stats::SharedStats,
 }
 
-/// ファイル表現の正本と、積和用にi16へ広げたL1の行優先の重み。
+/// ファイル表現の正本と、積和用にi16へ広げたL1の行優先、L2の入力優先の重み。
 pub(super) struct LayerStackDense {
     original: Dense,
     l1_weights: Box<[i16]>,
+    l2_weights: Box<[[i16; 32]]>,
 }
 
 /// A型の第1層と、視点ごとのPSQTの和。
@@ -239,6 +240,9 @@ impl LayerStackNetwork {
     /// L1の最後の出力はskipとし、先頭15個を`clamp(y² >> 19, 0, 127)`と
     /// `clamp(y >> 6, 0, 127)`の順に30成分へ展開する。2乗はi64で計算する。
     /// L2の32成分を6ビット右シフトして制限し、出力層の積和とskipを足す。
+    ///
+    /// 後段のループは自動ベクトル化に依存する。rustcやLLVMの版、後段の型やループ、
+    /// またはビルド設定を変えたときは、設計書「第3期の高速化」の手順で測り直す。
     fn dense(&self, acc: &LayerStackAccumulator, side: Color) -> i32 {
         let [us, them] = [side, side.opposite()]
             .map(|perspective| acc.ft.row(perspective).expect("A always has a context"));
@@ -309,13 +313,23 @@ impl LayerStackNetwork {
     }
 }
 
+const L2_PAIR: usize = 2;
+const _: () = assert!(
+    ACTIVATION_MAX * (i8::MIN as i32) * (L2_PAIR as i32) >= i16::MIN as i32
+        && ACTIVATION_MAX * (i8::MAX as i32) * (L2_PAIR as i32) <= i16::MAX as i32
+);
+
 impl LayerStackDense {
-    /// 検査済みの後段の重みからL1の積和用の配列を作る。
+    /// 検査済みの後段の重みからL1とL2の積和用の配列を作る。
     pub(super) fn new(original: Dense) -> Self {
         let l1_weights = original.l1_weights.iter().copied().map(i16::from).collect();
+        let l2_weights = (0..30)
+            .map(|i| std::array::from_fn(|o| i16::from(original.l2_weights[o * 30 + i])))
+            .collect();
         Self {
             original,
             l1_weights,
+            l2_weights,
         }
     }
 
@@ -346,20 +360,29 @@ impl LayerStackDense {
                     .map(|(&w, &x)| i32::from(w) * i32::from(x))
                     .sum::<i32>()
         };
-        let mut z = [0_u8; 30];
+        let mut z = [0_i16; 30];
         for i in 0..15 {
             let y = l1(i);
-            z[i] = square_activation(y);
-            z[15 + i] = activation(y);
+            z[i] = i16::from(square_activation(y));
+            z[15 + i] = i16::from(activation(y));
         }
         let skip = l1(15);
-        let h: [u8; 32] = std::array::from_fn(|k| {
-            activation(affine(
-                d.l2_biases[k],
-                &d.l2_weights[k * 30..(k + 1) * 30],
-                &z,
-            ))
-        });
-        affine(d.output_bias, &d.output_weights, &h) + skip
+        let mut h: [i32; 32] = d.l2_biases.as_slice().try_into().unwrap();
+        for (&[z0, z1], [w0, w1]) in z
+            .as_chunks::<L2_PAIR>()
+            .0
+            .iter()
+            .zip(self.l2_weights.as_chunks::<L2_PAIR>().0)
+        {
+            for ((sum, &w0), &w1) in h.iter_mut().zip(w0).zip(w1) {
+                *sum += i32::from(z0 * w0 + z1 * w1);
+            }
+        }
+        d.output_bias
+            + h.iter()
+                .zip(&d.output_weights)
+                .map(|(&sum, &w)| i32::from(activation(sum)) * i32::from(w))
+                .sum::<i32>()
+            + skip
     }
 }
