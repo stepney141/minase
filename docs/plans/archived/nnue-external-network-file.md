@@ -82,7 +82,7 @@ NNUEの次の2つの設計書は、本書の完了を前提とする。
 - AlphaZero型探索の[2回目の実行](../alphazero-rl-2.md)と[学習レシピを先行実装に揃える設計書](zero-recipe-precedents.md)では、強さを測る相手のαβ探索がネットを埋め込んだコミット`45d5db54`に固定されているので、その対局は本書の影響を受けない。PV-MCTSのネットの検査（`tools/train/zero/minase_zero/runner.py`）は、エンジンの版によらず`NnCpPerLogit`を送る。このオプションを宣言しない本書より前の版のminaseは、宣言していない名前の`setoption`を無視する。対局の実行器はエンジンが宣言しないオプションを送る前に拒否するので、定例の測定に固定したコミットが本書より前なら、その対局にはこのオプションを渡さない。マージの前に行うαβ探索の`bench`の一致の確認では、`RuleSet`、`EvalFile`、および`isready`の後に`bench`を送る。
 - [AlphaZero型探索の統括計画](../alphazero.md)の到達の判定は、その時点のmasterのαβ探索を相手にするので、本書の後は、比べるNNUEのネットのファイルを決めて`EvalFile`で渡し、そのSHA-256を判定の記録に書く。
 - [PV-MCTSのデバッグ道具](mcts-debugging-tools.md)は本書より先にmasterへ入り、PV-MCTSで起動したエンジンの`bench`を、ネットを使わない試験用の評価器による固定局面のPV-MCTSの探索にした。本書はこの`bench`を変えない。
-- [合法手生成の高速化（第3期）](../movegen-speedup-3.md)、[詰み探索](../mate-search.md)、および[探索の強化の段階](../strength-stages.md)のように、αβ探索の`bench`や対局で結果と速さを確かめる設計書では、本書の完了後は、`bench`の前にオプション`RuleSet`と`EvalFile`を設定して`isready`を送り、対局の実行器には`--candidate-option EvalFile=<パス>`と`--baseline-option EvalFile=<パス>`を渡す。
+- [合法手生成の高速化（第3期）](movegen-speedup-3.md)、[詰み探索](../mate-search.md)、および[探索の強化の段階](../strength-stages.md)のように、αβ探索の`bench`や対局で結果と速さを確かめる設計書では、本書の完了後は、`bench`の前にオプション`RuleSet`と`EvalFile`を設定して`isready`を送り、対局の実行器には`--candidate-option EvalFile=<パス>`と`--baseline-option EvalFile=<パス>`を渡す。
 
 開発用GUIは、いまも規則セットの指定の変更（[起動引数と診断ツールをUSIへ移す計画](cli-to-usi.md)）に追従しておらず、本書の変更の後も`EvalFile`を送るまでエンジンを起動できない。
 lishogi Botはcrates.ioのminase 2.6.0を固定しているので、本書の変更を含む版をリリースするまで影響を受けない。

@@ -168,4 +168,4 @@ worktree`data/worktrees/teacher-speedup`、ブランチ`teacher-speedup`、お�
 - [単独スレッドの測定](../../measurements/adhoc/teacher-single-thread-profile-20261104.md)
 - [3つの変更の評価](../../measurements/adhoc/teacher-nonzero-optimization-20261104.md)
 - 生成機での教師生成の速さ（ブランチ`nnue-generation-reset`の`docs/measurements/nnue-generation-reset/nnue-generation-reset-generator-speed.md`）
-- [合法手生成と利き計算の高速化（第3期）](../movegen-speedup-3.md)
+- [合法手生成と利き計算の高速化（第3期）](movegen-speedup-3.md)

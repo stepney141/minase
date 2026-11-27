@@ -46,7 +46,7 @@
 | 棋力向上段階7 | [plans/archived/strength-stage7.md](plans/archived/strength-stage7.md) | 完了（一部不採用） | 2026年9月14日 |
 | 合法手生成と利き計算の高速化 | [plans/archived/movegen-speedup.md](plans/archived/movegen-speedup.md) | 完了（一部不採用） | 2026年9月15日 |
 | 合法手生成と利き計算の高速化（第2期） | [plans/archived/movegen-speedup-2.md](plans/archived/movegen-speedup-2.md) | 完了（一部不採用） | 2026年9月17日 |
-| 合法手生成、利き計算、およびNNUEの後段の高速化（第3期） | [plans/movegen-speedup-3.md](plans/movegen-speedup-3.md) | 起案 | |
+| 合法手生成、利き計算、およびNNUEの後段の高速化（第3期） | [plans/archived/movegen-speedup-3.md](plans/archived/movegen-speedup-3.md) | 完了（一部不採用） | 2026年11月27日 |
 | 棋力向上段階8（前向き枝刈りの第3層） | [plans/archived/strength-stage8.md](plans/archived/strength-stage8.md) | 完了（一部不採用） | 2026年9月21日 |
 | 持ち時間の効率的な使用（issue #7） | [plans/archived/time-management-efficiency.md](plans/archived/time-management-efficiency.md) | 完了（一部不採用） | 2026年9月18日 |
 | USI先読み（ponder） | [plans/archived/ponder.md](plans/archived/ponder.md) | 完了（採用） | 2026年9月21日 |
@@ -240,7 +240,6 @@ NNUEの世代反復は2026年11月25日に中断して閉じたので、2回目�
 
 ### 合法手生成と対局ハーネス
 
-- [合法手生成、利き計算、およびNNUEの後段の高速化（第3期）](plans/movegen-speedup-3.md)は、探索の結果を変えずに探索の時間を減らす。NNUEの後段の計算を`unsafe`なしで自動ベクトル化が効く形へ書き直す変更と、升の駒を表す値から駒種や走りの方向を求める処理を表引きにまとめる変更が中心であり、目標は速度比（基準のCPUサイクル数を採用版のサイクル数で割った値）で1.15倍である。採用版は最終測定の後に段階ゲートにかける。起案の段階であり、着手の指示を待つ。[教師生成の高速化候補](proposals/nnue-teacher-generation-speedup.md)のうち攻撃駒の存在判定の候補は、同書が再診断の件数に基づいて見送った。
 - [早期投了の導入判定](plans/match-early-resignation.md)は待機中である。校正群とは別に、仮想投了が3,000回以上発火する検証群を確保できる記録量に達しておらず、統計契約も確定していない。
 - 規則実装の検証を強める候補は[提案](proposals/rules-formal-verification.md)にあり、利用者の判断を待っている。最初の候補は、規則書だけから書いた局面合法手の独立仕様と本番の合法手生成器を双方向に照合する検査である。前提として、条文から読みが一意に決まらない箇所のうち局面合法手に関わる2件（P2と最奥段の救済の併用、付け喰いの優先の範囲）について、規則書の読みを決める必要がある。
 - 規則書の第17版で読みが一意に決まらない4つの箇所と詰みの定義について、勧める読みは[提案](proposals/rulebook-readings.md)にあり、利用者の判断を待っている。勧めを採ると、規則書の改訂に加えて、反復のキーと詰みの判定の2つで本番の挙動が変わる。

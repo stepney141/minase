@@ -238,7 +238,7 @@ Verus、Creusot、またはAeneasで、本番のRustと仕様の対応を証明�
 勧めない理由は結論の節に書いた。
 本番のコードには、道具の制約に当たる書き方がある。
 変数を可変で捕捉するクロージャ（`movegen/generate.rs`の`generate_piece_quiets`）、多重のループの中の`return`（`game/adjudication/mate.rs`の`stalemate_or_mate`）、実行時に構築する表、および`HashMap`である。
-意味を変えない高速化でも証明が壊れ得るが、合法手生成の高速化は現在も計画されている（[第3期の計画](../plans/movegen-speedup-3.md)）。
+意味を変えない高速化でも証明が壊れ得るが、合法手生成の高速化は現在も計画されている（[第3期の計画](../plans/archived/movegen-speedup-3.md)）。
 外部の利用者への保証が必要になったとき、または局所の検査が見逃す同じ種類の不具合が繰り返されたときに、見直す価値がある。
 暗号ライブラリSymCryptの検証では、AIエージェントが証明の大半を生成しており、費用は今後下がり得る。
 
