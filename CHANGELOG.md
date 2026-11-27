@@ -1,3 +1,15 @@
+## v3.1.1 (2026-11-27)
+
+minase 3.1.1 searches faster without changing any search result at a fixed amount of work: the A-type NNUE dense stage now runs in 16-bit lanes that the compiler vectorizes, and minase-core 0.3.1 decodes piece codes through 256-entry tables.
+On the measurement machine, by CPU cycles, the same 15-position search to depth 16 runs 1.160 times as fast and two 20,000-node self-play games run 1.179 times as fast; with the standard generation 3 network under `JCSA`, the faster engine beat 3.1.0 by +38 Elo at 10+0.1 s (381 pairs) and +59 Elo at 60+0.2 s (240 pairs).
+This version requires minase-core 0.3.1.
+
+### Performance
+
+- **eval:** Compute the LayerStack pair products and L1 in 16-bit lanes
+- **eval:** Compute the LayerStack L2 from input-major 16-bit weight pairs
+- **eval:** Look up piece states and piece values by piece code
+
 ## v3.1.0 (2026-11-25)
 
 minase 3.1.0 retunes 100 of the search and time-management coefficients for the generation 3 network (`nnue/a/minase-nnue-sfnn_a_256x16x32_psqt-lishogi-20261124-41502087.nnue`), tuned by SPSA over 30,000 game pairs under the `lishogi` rule set.
