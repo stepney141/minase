@@ -19,13 +19,10 @@ use minase::harness::*;
 use minase::stats::{GSPRT_H1_ELO, GsprtDecision};
 use minase_core::Rules;
 use replay::{completed_pair_from_record, ponder_summary};
-use scheduler::{WorkerError, accept_completed_pair, run_worker_loop};
+use scheduler::{WorkerError, accept_completed_pair, run_worker_pool};
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use std::process;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::mpsc;
-use std::sync::{Arc, Mutex};
-use std::thread;
 use std::time::{Duration, Instant};
 pub(super) use storage::FORMAT_VERSION;
 use storage::{ManifestMode, RunStore};
@@ -201,7 +198,7 @@ pub(super) fn main(arguments: Arguments) {
     let mut discarded_pairs = 0;
     let mut failures = FailureCounts::default();
     let mut decision = GsprtDecision::Continue;
-    let stop = Arc::new(AtomicBool::new(false));
+    let stop = AtomicBool::new(false);
     let saved_numbers = saved_records.keys().copied().collect::<BTreeSet<_>>();
     let mut completed = BTreeMap::new();
     for (number, record) in saved_records {
@@ -240,7 +237,7 @@ pub(super) fn main(arguments: Arguments) {
             break;
         }
     }
-    let mut pending_jobs = (1..=target_pairs)
+    let pending_jobs = (1..=target_pairs)
         .filter(|number| !saved_numbers.contains(number))
         .collect::<VecDeque<_>>();
     let has_new_work = !stop.load(Ordering::Acquire) && !pending_jobs.is_empty();
@@ -249,92 +246,46 @@ pub(super) fn main(arguments: Arguments) {
         process::exit(1);
     }
     let start = Instant::now();
-    let worker_count = if stop.load(Ordering::Acquire) {
-        0
-    } else {
-        concurrency.min(pending_jobs.len())
-    };
-    let pool_result = thread::scope(|scope| {
-        let (job_sender, job_receiver) = mpsc::channel::<u64>();
-        let job_receiver = Arc::new(Mutex::new(job_receiver));
-        let (result_sender, result_receiver) =
-            mpsc::channel::<Result<CompletedPair, WorkerError>>();
-        let mut workers = Vec::with_capacity(worker_count);
-        for _ in 0..worker_count {
-            let result_sender = result_sender.clone();
-            let job_receiver = Arc::clone(&job_receiver);
-            let stop = Arc::clone(&stop);
-            let candidate = &candidate;
-            let baseline = &baseline;
-            let rules_text = &rules_text;
-            let store = &store;
-            workers.push(scope.spawn(move || {
-                let worker_result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                    run_worker_loop(&job_receiver, &result_sender, &stop, |pair_number, stop| {
-                        let pair = run_pair(
-                            rules,
-                            rules_text,
-                            base_seed,
-                            pair_number,
-                            max_ply,
-                            candidate,
-                            baseline,
-                            response_timeout,
-                            ponder,
-                            stop,
-                        )
-                        .map_err(WorkerError::Match)?;
-                        let Some(pair) = pair else {
-                            return Ok(None);
-                        };
-                        store
-                            .save_pair(&pair.record)
-                            .map_err(|source| WorkerError::SavePair {
-                                number: pair_number,
-                                source,
-                            })?;
-                        Ok(Some(pair))
-                    });
-                }));
-                if worker_result.is_err() {
-                    stop.store(true, Ordering::Release);
-                    let _ = result_sender.send(Err(WorkerError::Panicked));
-                }
-            }));
-        }
-        drop(result_sender);
-
-        for _ in 0..worker_count {
-            let pair_number = pending_jobs
-                .pop_front()
-                .expect("worker count is bounded by pending jobs");
-            job_sender
-                .send(pair_number)
-                .expect("workers must be waiting for initial jobs");
-        }
-        let mut pool_error = None;
-
-        while next_to_integrate <= target_pairs
-            && (!use_gsprt || decision == GsprtDecision::Continue)
-        {
-            let pair = match result_receiver.recv() {
-                Ok(Ok(pair)) => pair,
-                Ok(Err(error)) => {
-                    pool_error = Some(error);
-                    break;
-                }
-                Err(error) => {
-                    pool_error = Some(WorkerError::Results(error));
-                    break;
-                }
+    let pool_result = run_worker_pool(
+        concurrency,
+        pending_jobs,
+        &stop,
+        (next_to_integrate, &mut decision),
+        |pair_number, stop| {
+            let pair = run_pair(
+                rules,
+                &rules_text,
+                base_seed,
+                pair_number,
+                max_ply,
+                &candidate,
+                &baseline,
+                response_timeout,
+                ponder,
+                stop,
+            )
+            .map_err(WorkerError::Match)?;
+            let Some(pair) = pair else {
+                return Ok(None);
             };
-            // 完了ペアを一旦バッファし、ペア番号順に出力とLLR取り込みを行う。
-            // 補充は受信1件につき1件なので、若い番号の完了を待つ間も枠が空かない。
-            let replacement = accept_completed_pair(
+            store
+                .save_pair(&pair.record)
+                .map_err(|source| WorkerError::SavePair {
+                    number: pair_number,
+                    source,
+                })?;
+            Ok(Some(pair))
+        },
+        |(next_to_integrate, decision)| {
+            *next_to_integrate <= target_pairs
+                && (!use_gsprt || **decision == GsprtDecision::Continue)
+        },
+        |pair, (next_to_integrate, decision), pending_jobs| {
+            accept_completed_pair(
                 pair,
                 &mut completed,
-                &mut next_to_integrate,
-                &mut pending_jobs,
+                next_to_integrate,
+                pending_jobs,
                 |pair| {
                     integrate_pair_statistics(
                         pair,
@@ -342,57 +293,20 @@ pub(super) fn main(arguments: Arguments) {
                         &mut valid_pairs,
                         &mut discarded_pairs,
                         &mut failures,
-                        &mut decision,
+                        decision,
                         &manifest.mode,
                         &stop,
                     )
                 },
-            );
-            if let Some(job) = replacement
-                && !stop.load(Ordering::Acquire)
-                && let Err(error) = job_sender.send(job)
-            {
-                pool_error = Some(WorkerError::Jobs(error));
-            }
-            if pool_error.is_none()
-                && let Err(error) = store.checkpoint(start.elapsed())
-            {
-                pool_error = Some(WorkerError::Checkpoint(error));
-            }
-            if pool_error.is_some() {
-                break;
-            }
+            )
+        },
+        || store.checkpoint(start.elapsed()),
+    );
+    if let Err(errors) = pool_result {
+        for error in errors.later {
+            eprintln!("match execution failed: {error}");
         }
-
-        stop.store(true, Ordering::Release);
-        drop(job_sender);
-        let mut worker_panicked = false;
-        for worker in workers {
-            worker_panicked |= worker.join().is_err();
-        }
-        for result in result_receiver.try_iter() {
-            if let Err(error) = result {
-                if pool_error.is_none() {
-                    pool_error = Some(error);
-                } else {
-                    eprintln!("match execution failed: {error}");
-                }
-            }
-        }
-        if worker_panicked {
-            if pool_error.is_some() {
-                eprintln!("match execution failed: {}", WorkerError::Panicked);
-            } else {
-                pool_error = Some(WorkerError::Panicked);
-            }
-        }
-        match pool_error {
-            Some(error) => Err(error),
-            None => Ok(()),
-        }
-    });
-    if let Err(error) = pool_result {
-        eprintln!("match execution failed: {error}");
+        eprintln!("match execution failed: {}", errors.first);
         process::exit(1);
     }
     if has_new_work && let Err(error) = store.finish_invocation(start.elapsed()) {

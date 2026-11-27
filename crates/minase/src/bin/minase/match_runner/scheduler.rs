@@ -6,6 +6,7 @@ use std::collections::{BTreeMap, VecDeque};
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{self, Receiver};
+use std::thread;
 
 /// ワーカーの原因を、標準エラーへの出力まで型のまま保持する。
 #[derive(Debug)]
@@ -43,6 +44,110 @@ impl std::error::Error for WorkerError {
             Self::Panicked => None,
         }
     }
+}
+
+/// 最初に検知した失敗と、その後に回収した失敗を回収順に保持する。
+#[derive(Debug)]
+pub(super) struct WorkerPoolErrors {
+    pub(super) first: WorkerError,
+    pub(super) later: Vec<WorkerError>,
+}
+
+struct StopWorkersOnDrop<'a>(&'a AtomicBool);
+
+impl Drop for StopWorkersOnDrop<'_> {
+    fn drop(&mut self) {
+        self.0.store(true, Ordering::Release);
+    }
+}
+
+/// 対局ペアを配布し、完了1件につき次のジョブを補充してチェックポイントを記録する。
+///
+/// 継続判定と完了処理は進捗 `state` を共有する。失敗や打ち切りの後はワーカー
+/// 全員を停止・回収し、結果の通信路に残った失敗だけを拾う。
+#[allow(clippy::too_many_arguments)]
+pub(super) fn run_worker_pool<S>(
+    concurrency: usize,
+    mut pending_jobs: VecDeque<u64>,
+    stop: &AtomicBool,
+    mut state: S,
+    run: impl Fn(u64, &AtomicBool) -> Result<Option<CompletedPair>, WorkerError> + Sync,
+    should_continue: impl Fn(&S) -> bool,
+    mut accept: impl FnMut(CompletedPair, &mut S, &mut VecDeque<u64>) -> Option<u64>,
+    mut checkpoint: impl FnMut() -> std::io::Result<()>,
+) -> Result<(), WorkerPoolErrors> {
+    let worker_count = if stop.load(Ordering::Acquire) {
+        0
+    } else {
+        concurrency.min(pending_jobs.len())
+    };
+    let (job_sender, job_receiver) = mpsc::channel();
+    let job_receiver = Mutex::new(job_receiver);
+    thread::scope(|scope| {
+        let stop_workers = StopWorkersOnDrop(stop);
+        let (result_sender, result_receiver) = mpsc::channel();
+        let mut workers = Vec::with_capacity(worker_count);
+        for _ in 0..worker_count {
+            let result_sender = result_sender.clone();
+            let job_receiver = &job_receiver;
+            let run = &run;
+            workers.push(scope.spawn(move || {
+                let worker_result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                    run_worker_loop(job_receiver, &result_sender, stop, run);
+                }));
+                if worker_result.is_err() {
+                    stop.store(true, Ordering::Release);
+                    let _ = result_sender.send(Err(WorkerError::Panicked));
+                }
+            }));
+        }
+        drop(result_sender);
+
+        for _ in 0..worker_count {
+            let pair_number = pending_jobs
+                .pop_front()
+                .expect("worker count is bounded by pending jobs");
+            job_sender
+                .send(pair_number)
+                .expect("workers must be waiting for initial jobs");
+        }
+        let mut first = (|| {
+            while should_continue(&state) {
+                let pair = result_receiver.recv().map_err(WorkerError::Results)??;
+                if let Some(job) = accept(pair, &mut state, &mut pending_jobs)
+                    && !stop.load(Ordering::Acquire)
+                {
+                    job_sender.send(job).map_err(WorkerError::Jobs)?;
+                }
+                checkpoint().map_err(WorkerError::Checkpoint)?;
+            }
+            Ok::<(), WorkerError>(())
+        })()
+        .err();
+
+        drop(stop_workers);
+        drop(job_sender);
+        let mut worker_panicked = false;
+        for worker in workers {
+            worker_panicked |= worker.join().is_err();
+        }
+        let mut later = Vec::new();
+        for error in result_receiver
+            .try_iter()
+            .filter_map(Result::err)
+            .chain(worker_panicked.then_some(WorkerError::Panicked))
+        {
+            if first.is_none() {
+                first = Some(error);
+            } else {
+                later.push(error);
+            }
+        }
+        match first {
+            Some(first) => Err(WorkerPoolErrors { first, later }),
+            None => Ok(()),
+        }
+    })
 }
 
 /// 完了したペアを番号順に取り込み、実験を続ける場合は次の1件を返す。
@@ -89,7 +194,7 @@ pub(super) fn continue_after_decision(
 }
 
 /// ジョブを受信してペアを実行し、停止で打ち切られなかった結果だけを送る。
-pub(super) fn run_worker_loop(
+fn run_worker_loop(
     job_receiver: &Mutex<Receiver<u64>>,
     result_sender: &mpsc::Sender<Result<CompletedPair, WorkerError>>,
     stop: &AtomicBool,
@@ -122,7 +227,8 @@ pub(super) fn run_worker_loop(
 mod tests {
     use super::*;
     use minase::harness::*;
-    use std::{sync::Arc, thread, time::Duration};
+    use std::sync::{Arc, Barrier};
+    use std::time::Duration;
 
     fn completed_pair(number: u64, category: usize) -> CompletedPair {
         let game = GameRecord {
@@ -163,6 +269,70 @@ mod tests {
         fn drop(&mut self) {
             self.0.store(true, Ordering::Release);
         }
+    }
+
+    #[test]
+    fn worker_pool_keeps_both_concurrent_errors_and_stops() {
+        let both_started = Barrier::new(2);
+        let stop = AtomicBool::new(false);
+        let third_started = AtomicBool::new(false);
+        let errors = run_worker_pool(
+            2,
+            VecDeque::from([1, 2, 3]),
+            &stop,
+            (),
+            |number, _| {
+                if number == 3 {
+                    third_started.store(true, Ordering::Relaxed);
+                    return Ok(None);
+                }
+                both_started.wait();
+                Err(WorkerError::SavePair {
+                    number,
+                    source: std::io::ErrorKind::PermissionDenied.into(),
+                })
+            },
+            |()| true,
+            |_, (), _| unreachable!("failed jobs cannot produce completed pairs"),
+            || unreachable!("failed jobs cannot trigger a checkpoint"),
+        )
+        .unwrap_err();
+
+        assert!(
+            matches!(
+                (&errors.first, errors.later.as_slice()),
+                (
+                    WorkerError::SavePair { number: 1, .. },
+                    [WorkerError::SavePair { number: 2, .. }],
+                ) | (
+                    WorkerError::SavePair { number: 2, .. },
+                    [WorkerError::SavePair { number: 1, .. }],
+                )
+            ),
+            "{errors:?}"
+        );
+        assert!(!third_started.load(Ordering::Relaxed));
+        assert!(stop.load(Ordering::Acquire));
+    }
+
+    #[test]
+    fn worker_pool_returns_panicked_error_and_stops() {
+        let stop = AtomicBool::new(false);
+        let errors = run_worker_pool(
+            1,
+            VecDeque::from([1]),
+            &stop,
+            (),
+            |_, _| panic!("test worker panic"),
+            |()| true,
+            |_, (), _| unreachable!("panicked jobs cannot produce completed pairs"),
+            || unreachable!("panicked jobs cannot trigger a checkpoint"),
+        )
+        .unwrap_err();
+
+        assert!(matches!(errors.first, WorkerError::Panicked), "{errors:?}");
+        assert!(errors.later.is_empty(), "{errors:?}");
+        assert!(stop.load(Ordering::Acquire));
     }
 
     // [`accept_completed_pair`]は遅い先頭ペアを待つ間も、完了1件につき並列枠を1件補充する。
