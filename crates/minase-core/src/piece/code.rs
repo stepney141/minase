@@ -15,12 +15,38 @@ impl PieceCode {
     /// 盤外の番兵を表すコード。
     pub const WALL: Self = Self(0xff);
 
+    /// 駒コードを表の添字（0〜255）として返す。
+    ///
+    /// 添字の値やビットの割り当ては安定した契約ではない。
+    #[inline]
+    pub const fn table_index(self) -> usize {
+        self.0 as usize
+    }
+
     /// 後手の駒を示すビット。
     const WHITE_BIT: u8 = 0x40;
     /// 成駒を示すビット。
     const PROMOTED_BIT: u8 = 0x20;
     /// 駒種番号を取り出すマスク。
     const KIND_MASK: u8 = 0x1f;
+
+    /// 空升、番兵、および駒種の番号欄が1〜29の範囲外のコードには`None`を割り当てる表である。
+    /// それ以外のコードには、番号欄の値から1を引いた添字に対応する駒種を割り当てる。
+    const KIND_BY_CODE: [Option<PieceKind>; 256] = Self::build_kind_table();
+
+    const fn build_kind_table() -> [Option<PieceKind>; 256] {
+        let mut table = [None; 256];
+        let mut index = 0;
+        while index < table.len() {
+            let code = Self(index as u8);
+            let number = code.0 & Self::KIND_MASK;
+            if !code.is_empty() && !code.is_wall() && number != 0 {
+                table[index] = PieceKind::from_index(number - 1);
+            }
+            index += 1;
+        }
+        table
+    }
 
     /// 所有者と駒種から成っていない駒のコードを作る。
     ///
@@ -80,13 +106,11 @@ impl PieceCode {
         }
     }
 
-    /// 駒種を返す。空升・番兵なら`None`を返す。
+    /// 駒種を定数表から引く。空升・番兵、または駒種番号が1〜29の範囲外なら`None`を返す。
+    /// 構築子で作れないコードでも、駒種番号が範囲内なら対応する駒種を返す。
+    /// 理由は`docs/adr/decode-piece-codes-through-256-entry-tables.md`にある。
     pub const fn kind(self) -> Option<PieceKind> {
-        if self.is_empty() || self.is_wall() {
-            None
-        } else {
-            PieceKind::from_index((self.0 & Self::KIND_MASK) - 1)
-        }
+        Self::KIND_BY_CODE[self.table_index()]
     }
 
     /// 成った後の駒コードを返す。成れない駒なら`None`を返す(第17条)。
@@ -104,5 +128,38 @@ impl PieceCode {
             return None;
         };
         Self::new_promoted(color, promoted_kind)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn kind_decodes_every_byte() {
+        for byte in 0..=u8::MAX {
+            let expected = match (byte, byte & 0x1f) {
+                (0x00 | 0xff, _) => None,
+                (_, number @ 1..=29) => Some(PieceKind::ALL[usize::from(number) - 1]),
+                _ => None,
+            };
+            assert_eq!(PieceCode(byte).kind(), expected, "code {byte:#04x}");
+        }
+    }
+
+    #[test]
+    fn kind_round_trips_constructible_codes() {
+        assert_eq!(PieceCode::EMPTY.kind(), None);
+        assert_eq!(PieceCode::WALL.kind(), None);
+        for color in Color::ALL {
+            for kind in PieceKind::ALL {
+                if let Some(code) = PieceCode::new(color, kind) {
+                    assert_eq!(code.kind(), Some(kind), "{color:?} {kind:?}");
+                }
+                if let Some(code) = PieceCode::new_promoted(color, kind) {
+                    assert_eq!(code.kind(), Some(kind), "{color:?} promoted {kind:?}");
+                }
+            }
+        }
     }
 }

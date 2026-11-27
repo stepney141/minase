@@ -463,17 +463,24 @@ fn check_biases(layer: &'static str, values: &[i32]) -> Result<(), FormatError> 
     Ok(())
 }
 
-/// 両因子を0〜127へ制限し、積を7ビット右シフトする。結果の上限は126。
-fn pair(a: i16, b: i16) -> u8 {
-    ((i32::from(a).clamp(0, 127) * i32::from(b).clamp(0, 127)) >> 7) as u8
+const PAIR_INPUT_MAX: i16 = 127;
+const _: () = assert!(PAIR_INPUT_MAX as i32 * PAIR_INPUT_MAX as i32 <= i16::MAX as i32);
+
+/// 両因子を0〜127へ制限し、積を7ビット右シフトして上限126の`i16`を返す。
+/// 因子の上限127の2乗が`i16`に収まることをコンパイル時の表明で保証する。
+fn pair(a: i16, b: i16) -> i16 {
+    (a.clamp(0, PAIR_INPUT_MAX) * b.clamp(0, PAIR_INPUT_MAX)) >> 7
 }
+
+const ACTIVATION_MAX: i32 = 127;
+
 /// i64で2乗して19ビット右シフトし、0〜127へ制限する。負の入力も2乗する。
 fn square_activation(y: i32) -> u8 {
-    ((i64::from(y) * i64::from(y)) >> 19).clamp(0, 127) as u8
+    ((i64::from(y) * i64::from(y)) >> 19).clamp(0, i64::from(ACTIVATION_MAX)) as u8
 }
 /// 6ビットの算術右シフト後に0〜127へ制限する。
 fn activation(y: i32) -> u8 {
-    (y >> 6).clamp(0, 127) as u8
+    (y >> 6).clamp(0, ACTIVATION_MAX) as u8
 }
 /// 正の除数で0方向に切り捨て、詰み値と重ならない±28,999へ制限する。
 fn score(out: i64, scale: i32) -> i32 {

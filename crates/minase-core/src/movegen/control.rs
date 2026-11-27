@@ -90,31 +90,24 @@ fn ordinary_attackers_to(
     let own = position.pieces_of(color) & occupied;
     for from in tables.neighbourhood(square) & own {
         let kinds = tables.fixed_attacker_kinds(color, square, from);
-        if kinds == 0 {
-            continue;
-        }
-        let kind = position
-            .piece_at(from)
-            .and_then(|piece| piece.kind())
-            .expect("own square must contain a piece");
-        if kinds & (1 << kind.index()) != 0 {
+        if kinds & tables.kind_bit_by_code(position.code_at(from)) != 0 {
             attackers.set(from);
         }
     }
     attackers
-        | sliding_attackers_to::<true>(tables, position, color, square, occupied, own)
-        | sliding_attackers_to::<false>(tables, position, color, square, occupied, own)
+        | sliding_attackers_to::<true>(tables, position, color, square, occupied)
+        | sliding_attackers_to::<false>(tables, position, color, square, occupied)
 }
 
 /// 生値が増える方向と減る方向を別々に走査し、最初の遮蔽駒の逆方向の走りを調べる。
-/// 全占有から遮蔽を選び、指定側の駒だけを残すので、仮想占有や相手駒も飛び越さない。
+/// 遮蔽升は引数の占有から選び、駒コードは実際の盤面から読むため、占有から除いた駒は遮蔽駒にならない。
+/// 呼び出し元が仮の占有に加える升は実際の盤面では空升、相手駒の升、または移動元であり、表引きの結果は同じ駒コードから所属を調べて駒種を復号する方式と一致する。
 fn sliding_attackers_to<const INCREASING: bool>(
     tables: &AttackTables,
     position: &Position,
     color: Color,
     square: Square,
     occupied: Bitboard,
-    own: Bitboard,
 ) -> Bitboard {
     let directions = if INCREASING {
         [
@@ -142,14 +135,7 @@ fn sliding_attackers_to<const INCREASING: bool>(
         let Some(blocker) = blocker else {
             continue;
         };
-        if !own.contains(blocker) {
-            continue;
-        }
-        let kind = position
-            .piece_at(blocker)
-            .and_then(|piece| piece.kind())
-            .expect("blocker must be a piece");
-        let mask = tables.slide_directions(color, movement_profile(kind));
+        let mask = tables.slide_mask_by_code(color, position.code_at(blocker));
         if (mask >> direction.opposite().index()) & 1 != 0 {
             attackers.set(blocker);
         }

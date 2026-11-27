@@ -2,7 +2,7 @@
 
 ## 目的
 
-第2期の最終の採用版を対象に、[最終の残存負荷](../movegen-speedup-2/movegen-speedup-2-final-profile-depth5.md)の上位5項目（静止探索の本体、通常駒の捕獲可能升の計算、SEEの逆引き、置換表の照合、主探索の本体）について、削減できる処理の件数を数え、[第3期の設計書](../../plans/movegen-speedup-3.md)の段階の選定と見込みの根拠にする。
+第2期の最終の採用版を対象に、[最終の残存負荷](../movegen-speedup-2/movegen-speedup-2-final-profile-depth5.md)の上位5項目（静止探索の本体、通常駒の捕獲可能升の計算、SEEの逆引き、置換表の照合、主探索の本体）について、削減できる処理の件数を数え、[第3期の設計書](../../plans/archived/movegen-speedup-3.md)の段階の選定と見込みの根拠にする。
 
 ## コマンドライン
 

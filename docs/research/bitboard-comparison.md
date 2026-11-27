@@ -1,7 +1,7 @@
 # 既存エンジンとminaseのビットボードの比較
 
 本書のminaseに関する記述は、2026年10月1日の時点のものである。
-本書が測定していない案として挙げた「方向ごとの走り駒集合」は、2026年11月24日の[試作](../measurements/movegen-speedup-3/movegen-speedup-3-prototypes.md)で、探索に費やすCPUのサイクル数の減少が約1%にとどまった。[第3期の設計書](../plans/movegen-speedup-3.md)は、升の駒を表す値から走りの方向を表で引く方式を採り、走り駒集合を採らないと判断している。
+本書が測定していない案として挙げた「方向ごとの走り駒集合」は、2026年11月24日の[試作](../measurements/movegen-speedup-3/movegen-speedup-3-prototypes.md)で、探索に費やすCPUのサイクル数の減少が約1%にとどまった。[第3期の設計書](../plans/archived/movegen-speedup-3.md)は、升の駒を表す値から走りの方向を表で引く方式を採り、走り駒集合を採らないと判断している。
 
 ## 結論
 
@@ -94,7 +94,7 @@ Stockfishとやねうら王は、飛車と角の両方向を一括して計算�
 Stockfishの`attackers_to`は`rookAttacks & pieces(ROOK, QUEEN)`の形で書かれ（[position.cpp 643行から648行](https://github.com/official-stockfish/Stockfish/blob/17a6c8f1eb0da45c2ca405321919519bf4e211ba/src/position.cpp#L643-L648)）、やねうら王も`GOLDS`、`HDK`、`BISHOP_HORSE`、および`ROOK_DRAGON`などの合成駒種を持つ（[types.h 563行から568行](https://github.com/yaneurao/YaneuraOu/blob/c1b80eaa09fe13d5f12b1599d1ae4d53c224de30/source/types.h#L563-L568)）。
 中将棋では走りの方向の組合せが28通りの動きの定義に分かれるため、このような小さな合成駒種へまとめられない。
 そこでminaseは、1方向ずつ利きを計算し、最初の遮蔽駒の動きの定義を8ビットの方向マスクで照合する（[control.rs](../../crates/minase-core/src/movegen/control.rs)の`ordinary_attackers_to`、[tables.rs](../../crates/minase-core/src/attacks/tables.rs)の`slide_directions`）。
-[第3期の設計書](../plans/movegen-speedup-3.md)が起案した「方向ごとの走り駒集合」は、Stockfishの合成集合を方向単位へ一般化したものである。
+[第3期の設計書](../plans/archived/movegen-speedup-3.md)が起案した「方向ごとの走り駒集合」は、Stockfishの合成集合を方向単位へ一般化したものである。
 同書は、逆引きの走り計算の90%が該当する走り駒を1枚も見つけないことを根拠に挙げるが、まだ起案の段階にある。
 
 ### 表の容量と測定済みの比較
@@ -140,7 +140,7 @@ Stockfishの`attackers_to`も占有を引数に取り、静的交換評価で遮
 
 既存エンジンから取り入れる余地は、測定していない次の3案に残る。
 
-1. 方向ごとの走り駒集合。Stockfishの合成駒集合を方向単位へ一般化し、逆引きで該当する走り駒のいない方向の計算を省く。[第3期の設計書](../plans/movegen-speedup-3.md)が起案している。
+1. 方向ごとの走り駒集合。Stockfishの合成駒集合を方向単位へ一般化し、逆引きで該当する走り駒のいない方向の計算を省く。[第3期の設計書](../plans/archived/movegen-speedup-3.md)が起案している。
 2. 占有の反転による逆方向の処理。やねうら王のQugiy方式と同じく、減る方向を増える方向へ変えて2回目の表引きをなくす。段階4で不採用になった`leading_zeros`の案とは別の方式であり、効果は測っていない。
 3. 筋優先の語配置。縦にだけ走る駒種が多いことを利用する。影響がビットボードを使う全処理に及ぶので、試すとしても最後になる。
 

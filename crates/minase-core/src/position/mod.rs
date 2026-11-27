@@ -55,8 +55,14 @@ impl Position {
     /// 指定升の駒を返す。空升なら`None`を返す。
     #[inline]
     pub fn piece_at(&self, square: Square) -> Option<PieceCode> {
-        let piece = self.board[square.raw_index()];
+        let piece = self.code_at(square);
         (!piece.is_empty()).then_some(piece)
+    }
+
+    /// 指定升の駒コードを空升も含めて返す。
+    #[inline]
+    pub(crate) fn code_at(&self, square: Square) -> PieceCode {
+        self.board[square.raw_index()]
     }
 
     /// 駒がある升の集合を返す。

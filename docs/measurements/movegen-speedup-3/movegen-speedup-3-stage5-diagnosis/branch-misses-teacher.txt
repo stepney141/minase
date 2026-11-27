@@ -1,0 +1,62 @@
+total samples 29470
+  incl%   self%  function
+ 100.00    0.41  [libc.so.6]
+  99.94    0.00  team::run_worker_team::<(&mut alloc::boxed::Box<[[[i32; 144]; 144]; 2]>, &mut capture_history::CaptureHistory,
+  99.94    0.00  team::run_search_team::{closure#5}
+  99.94    0.01  deepening::run_main_worker_with_iteration_hook::<deepening::run_main_worker::{closure#0}>
+  99.94    0.00  deepening::run_main_worker
+  99.94    0.00  team::run_worker_team::<(&mut alloc::boxed::Box<[[[i32; 144]; 144]; 2]>, &mut capture_history::CaptureHistory,
+  99.94    0.00  team::run_worker_guarded::<team::WorkerOutcome, team::run_worker_team<(&mut alloc::boxed::Box<[[[i32; 144]; 14
+  99.81    0.00  <searcher::Searcher>::search_iteration
+  99.81    0.43  <searcher::Searcher>::search_root
+  93.97    0.67  <searcher::Searcher>::search_move
+  93.82    5.26  <searcher::Searcher>::negamax
+  35.22   12.69  <ordering::MovePicker>::next
+  29.23    2.21  <searcher::Searcher>::quiesce
+  17.63    1.83  see::see_prunes
+  14.92    0.45  <mc:position::Position>::attackers_to_by
+  13.20    1.36  mc:movegen::control::ordinary_attackers_to
+   6.97    0.58  <quiesce::QsearchBuffers>::initialize
+   6.35    0.01  <searcher::Searcher>::search_null_move
+   5.77    5.07  <mc:board::bitboard::Bitboard>::pop_lsb
+   5.77    0.00  <mc:board::bitboard::SquareIter as core::iter::traits::iterator::Iterator>::next
+   4.99    0.51  ordering::quiet_move_ordering_value
+   4.96    2.21  mc:movegen::control::sliding_attackers_to::<true>
+   4.78    0.47  <quiesce::QsearchBuffers>::next
+   4.67    2.08  <mc:mv::Move as core::cmp::PartialEq>::eq
+   4.64    0.19  <searcher::Searcher>::order_root_moves
+   4.28    1.85  <quiesce::QsearchBuffers>::generate_group
+   4.27    1.59  <mc:movegen::gives_check::CheckContext>::gives_check
+   3.95    1.44  <searcher::Searcher>::order_root_moves::{closure#3}
+   3.51    2.37  mc:movegen::control::sliding_attackers_to::<false>
+   3.49    0.34  <mc:movegen::MoveGenerator>::collect_ordinary_capturers
+   3.06    0.19  mc:movegen::generate::generate_moves::<true, false>
+   3.06    0.00  <mc:movegen::MoveGenerator>::generate_captures_with_scratch
+   2.98    2.98  <mc:board::square::Square as core::cmp::PartialEq>::eq
+   2.98    0.48  mc:movegen::control::capture_targets_without_special
+   2.89    0.18  mc:movegen::generate::generate_moves::<false, true>
+   2.89    0.00  <mc:movegen::MoveGenerator>::generate_quiets
+   2.85    0.30  mc:movegen::control::piece_control_without_special
+   2.78    2.78  <mc:board::bitboard::Bitboard as core::ops::bit::BitAnd>::bitand
+   2.74    0.15  ordering::qualifies_for_check_bonus
+   2.71    0.21  mc:movegen::control::piece_control_with_occupancy
+   2.65    0.53  <mc:movegen::MoveGenerator>::ordinary_capturer
+   2.60    0.11  <mc:movegen::MoveGenerator>::is_legal_move
+   2.52    0.47  mc:movegen::generate::generate_piece_moves::<true, false>
+   2.51    0.00  <searcher::Searcher>::order_root_moves::{closure#3}::{closure#0}
+   2.50    0.09  mc:movegen::control::piece_control_with_tables
+   2.10    0.01  mc:movegen::generate::generate_piece_moves::<false, true>
+   2.09    0.19  mc:movegen::generate::generate_piece_quiets
+   2.07    0.45  <ordering::DirectCheckSquares>::contains
+   1.93    0.06  <mc:movegen::MoveGenerator>::generate_special_captures::<<quiesce::QsearchBuffers>::initialize::{closure#0}>
+   1.80    0.06  <mc:movegen::MoveGenerator>::generate_from::<false>
+   1.80    0.00  <mc:movegen::MoveGenerator>::generate_moves_from
+   1.75    0.13  mc:movegen::generate::generate_piece_moves::<false, false>
+   1.73    0.75  <mc:movegen::MoveGenerator>::emit_ordinary_captures::<<quiesce::QsearchBuffers>::generate_group::{closure#3}>
+   1.72    0.00  <<(core::cmp::Reverse<i64>, core::cmp::Reverse<i64>, usize) as core::cmp::PartialOrd>::lt as core::ops::functi
+   1.72    1.72  <(core::cmp::Reverse<i64>, core::cmp::Reverse<i64>, usize) as core::cmp::PartialOrd>::lt
+   1.71    0.19  mc:movegen::expand::push_with_promotion
+   1.65    0.38  <ordering::QuietPiece>::new
+   1.64    0.06  <mc:movegen::MoveGenerator>::generate_special_piece_captures::<<quiesce::QsearchBuffers>::initialize::{closure
+   1.64    0.27  <mc:rules::set::MoveRules>::special_move_is_legal
+   1.62    0.01  <mc:position::Position>::piece_control_with_occupancy

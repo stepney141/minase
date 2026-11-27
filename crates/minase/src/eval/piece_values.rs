@@ -5,10 +5,29 @@
 //! ネットのファイルには含めない。A型とHalfKP_vmの世代反復をv0から始めるので、
 //! 第1世代から後の世代まで探索用の値を固定するためにv0の駒割を出どころとする。
 
-use super::{features::piece_state, handcrafted};
+use super::{
+    features::{INVALID_PIECE_STATE, PIECE_STATES_BY_CODE},
+    handcrafted,
+};
 use minase_core::{PieceCode, PieceKind};
 
 const VALUES: [i32; 47] = build_values();
+const INVALID_PIECE_VALUE: i32 = i32::MIN;
+/// `PieceCode::table_index`を添字とし、対応する固定価値または`INVALID_PIECE_VALUE`を格納する。
+const PIECE_VALUES_BY_CODE: [i32; 256] = build_piece_values_by_code();
+
+const fn build_piece_values_by_code() -> [i32; 256] {
+    let mut values = [INVALID_PIECE_VALUE; 256];
+    let mut code = 0;
+    while code < values.len() {
+        let state = PIECE_STATES_BY_CODE[code];
+        if state != INVALID_PIECE_STATE {
+            values[code] = piece_value_of_state(state as usize);
+        }
+        code += 1;
+    }
+    values
+}
 
 const fn build_values() -> [i32; 47] {
     let mut values = [0; 47];
@@ -36,11 +55,18 @@ pub const fn piece_value_of_state(state: usize) -> i32 {
 }
 
 /// 現在の駒種と成り可否に対応する固定価値を返す。
+/// `PieceCode::table_index`を添字として定数表を引く。
+/// 理由は`docs/adr/decode-piece-codes-through-256-entry-tables.md`にある。
 ///
 /// # Panics
-/// 空升または盤外の番兵ならパニックする。
+/// 空升や盤外の番兵など、表から無効を表す`INVALID_PIECE_VALUE`を引いた場合はパニックする。
 pub fn piece_value(piece: PieceCode) -> i32 {
-    piece_value_of_state(piece_state(piece))
+    let value = PIECE_VALUES_BY_CODE[piece.table_index()];
+    assert!(
+        value != INVALID_PIECE_VALUE,
+        "feature piece must have a valid kind"
+    );
+    value
 }
 
 /// 成っていない歩兵の価値100を返す。
@@ -102,18 +128,44 @@ mod tests {
         assert!(nonroyal.iter().all(|&v| v > 0));
         assert_eq!(nonroyal.iter().max().unwrap() + pawn_value(), 2600);
         assert_eq!(max_promotion_gain(), 2115);
+    }
+
+    #[test]
+    fn every_piece_code_has_the_value_of_its_reference_state() {
         for color in Color::ALL {
             for kind in PieceKind::ALL {
-                if let Some(piece) = PieceCode::new(color, kind) {
-                    assert_eq!(piece_value(piece), handcrafted::piece_value(kind));
-                    if let Some(promoted) = piece.promote() {
-                        assert_eq!(
-                            piece_value(promoted),
-                            handcrafted::piece_value(promoted.kind().unwrap())
-                        );
-                    }
+                for piece in [
+                    PieceCode::new(color, kind),
+                    PieceCode::new_promoted(color, kind),
+                ]
+                .into_iter()
+                .flatten()
+                {
+                    let kind = piece.kind().unwrap();
+                    let state = if piece.is_promoted() || !kind.can_promote() {
+                        kind.index()
+                    } else {
+                        PieceKind::ALL.len()
+                            + PieceKind::ALL[..kind.index()]
+                                .iter()
+                                .filter(|kind| kind.can_promote())
+                                .count()
+                    };
+                    assert_eq!(piece_value(piece), piece_value_of_state(state), "{piece:?}");
                 }
             }
         }
+    }
+
+    #[test]
+    #[should_panic(expected = "feature piece must have a valid kind")]
+    fn piece_value_rejects_empty() {
+        piece_value(PieceCode::EMPTY);
+    }
+
+    #[test]
+    #[should_panic(expected = "feature piece must have a valid kind")]
+    fn piece_value_rejects_wall() {
+        piece_value(PieceCode::WALL);
     }
 }

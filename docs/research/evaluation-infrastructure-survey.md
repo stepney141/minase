@@ -145,7 +145,7 @@ Cが持つのは升ごとの利きの数であり、利いている駒の識別�
 | `attackers_to_by` 1回 | 約22 nsから33 ns | [strength-stage9-cost-bench](../measurements/strength-stage9/strength-stage9-cost-bench.md) |
 | 1ノードの時間 | 約0.47 μs | 同上 |
 | 静的評価1回（追加特徴なし） | ノードの時間の0.24% | [strength-stage6-eval-cost-bench](../measurements/strength-stage6/strength-stage6-eval-cost-bench.md) |
-| 静的交換評価の逆引きの空振り | 8方向の90.1%に該当する走り駒がいない | [movegen-speedup-3](../plans/movegen-speedup-3.md) |
+| 静的交換評価の逆引きの空振り | 8方向の90.1%に該当する走り駒がいない | [movegen-speedup-3](../plans/archived/movegen-speedup-3.md) |
 | 置換表の照合 | 約58 ns | [movegen-speedup-2-diagnostics-depth5](../measurements/movegen-speedup-2/movegen-speedup-2-diagnostics-depth5.md) |
 
 マジックビットボードの試作は、横の利きで現行比−11.26%、斜めの利きで−9.26%であり、関数が大きくなってインライン展開が失われたことが原因だった（masterの調査メモ magic-bitboard-feasibility）。

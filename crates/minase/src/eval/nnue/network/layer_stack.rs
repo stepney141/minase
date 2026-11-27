@@ -40,8 +40,18 @@ pub struct LayerStackNetwork {
     ft: FeatureTransformer<A>,
     fv_scale: i32,
     psqt: Box<[i32]>,
-    dense: Dense,
+    dense: LayerStackDense,
     pub(super) accumulator_stats: super::super::stats::SharedStats,
+}
+
+/// 後段の重みをファイル表現と積和用の配置で保持する。
+/// 元の`Dense`がネットのファイル表現の正本である。
+/// L1の複製は出力ごとに入力幅H個の重みを並べた行優先の`i16`配列であり、L2の複製は入力ごとに32出力の重みを並べた`i16`配列である。
+/// 複製は検査を通った値から`LayerStackDense::new`でのみ作る。
+pub(super) struct LayerStackDense {
+    original: Dense,
+    l1_weights: Box<[i16]>,
+    l2_weights: Box<[[i16; 32]]>,
 }
 
 /// A型の第1層と、視点ごとのPSQTの和。
@@ -114,7 +124,7 @@ impl LayerStackNetwork {
             ft: transformer(p.width, p.ft_biases, p.ft_weights),
             fv_scale: p.fv_scale,
             psqt: p.psqt_weights.into_boxed_slice(),
-            dense,
+            dense: LayerStackDense::new(dense),
             accumulator_stats: Default::default(),
         })
     }
@@ -136,7 +146,7 @@ impl LayerStackNetwork {
         write_i32(&mut bytes, &[0]);
         write_i32(&mut bytes, &self.psqt);
         bytes.extend(fc_hash(FeatureSet::A, self.width()).to_le_bytes());
-        self.dense.encode(&mut bytes, self.width(), 30);
+        self.dense.original.encode(&mut bytes, self.width(), 30);
         bytes
     }
     /// tataraのLayerStack形式を読み、`new`と同じ値域・鏡映共有条件を検査する。
@@ -230,43 +240,17 @@ impl LayerStackNetwork {
         }
     }
     /// 各視点の前後半を0〜127へ制限し、その積を7ビット右シフトして連結する。
-    /// L1の15番目はskipとし、残りは`clamp(y² >> 19, 0, 127)`と
+    /// L1の最後の出力はskipとし、先頭15個を`clamp(y² >> 19, 0, 127)`と
     /// `clamp(y >> 6, 0, 127)`の順に30成分へ展開する。2乗はi64で計算する。
     /// L2の32成分を6ビット右シフトして制限し、出力層の積和とskipを足す。
+    ///
+    /// 後段の各ループは、LLVMの自動ベクトル化によって複数の要素を一度に処理するSIMD命令になることを前提とする。
+    /// rustcまたはLLVMの版が変わったとき、および後段の型、ループ、またはビルド設定を変えたときは、サイクル数の対比較で速さを確かめ直す。
+    /// 理由と手順は`docs/adr/compute-the-layerstack-dense-stage-in-16-bit-lanes-through-autovectorization.md`にある。
     fn dense(&self, acc: &LayerStackAccumulator, side: Color) -> i32 {
-        let width = self.width();
-        let mut storage = [0; 1024];
-        let input = &mut storage[..width];
-        for (part, perspective) in [side, side.opposite()].into_iter().enumerate() {
-            let row = acc.ft.row(perspective).expect("A always has a context");
-            for i in 0..width / 2 {
-                input[part * width / 2 + i] = pair(row[i], row[i + width / 2]);
-            }
-        }
-        let d = &self.dense;
-        let mut z = [0; 30];
-        for i in 0..15 {
-            let y = affine(
-                d.l1_biases[i],
-                &d.l1_weights[i * width..(i + 1) * width],
-                input,
-            );
-            z[i] = square_activation(y);
-            z[15 + i] = activation(y);
-        }
-        let skip = affine(
-            d.l1_biases[15],
-            &d.l1_weights[15 * width..16 * width],
-            input,
-        );
-        let h: [u8; 32] = std::array::from_fn(|k| {
-            activation(affine(
-                d.l2_biases[k],
-                &d.l2_weights[k * 30..(k + 1) * 30],
-                &z,
-            ))
-        });
-        affine(d.output_bias, &d.output_weights, &h) + skip
+        let [us, them] = [side, side.opposite()]
+            .map(|perspective| acc.ft.row(perspective).expect("A always has a context"));
+        self.dense.evaluate(us, them)
     }
     /// PSQTの両視点の差を0方向に2で割り、後段に足してから`fv_scale`で割る。
     /// 最後の加算と除算はi64とし、評価値を±28,999に制限する。
@@ -330,5 +314,82 @@ impl LayerStackNetwork {
             squares,
             lion,
         }
+    }
+}
+
+const L2_PAIR: usize = 2;
+const _: () = assert!(
+    ACTIVATION_MAX * (i8::MIN as i32) * (L2_PAIR as i32) >= i16::MIN as i32
+        && ACTIVATION_MAX * (i8::MAX as i32) * (L2_PAIR as i32) <= i16::MAX as i32
+);
+
+impl LayerStackDense {
+    /// 検査済みの後段の重みからL1とL2の積和用の配列を作る。
+    pub(super) fn new(original: Dense) -> Self {
+        let l1_weights = original.l1_weights.iter().copied().map(i16::from).collect();
+        let l2_weights = (0..30)
+            .map(|i| std::array::from_fn(|o| i16::from(original.l2_weights[o * 30 + i])))
+            .collect();
+        Self {
+            original,
+            l1_weights,
+            l2_weights,
+        }
+    }
+
+    /// 同じ幅Hの手番側と相手側の累算値を受け取り、前後半を0〜127へ制限して
+    /// 掛け、7ビット右シフトした要素積を手番側から順に連結する。
+    /// 要素積は上限126の`i16`であり、入力用に最大幅1,024の`i16`配列を0で初期化して使う。
+    /// L1の最後の出力はskipとし、先頭15個を`clamp(y² >> 19, 0, 127)`と
+    /// `clamp(y >> 6, 0, 127)`の順に30成分へ展開する。2乗はi64で計算する。
+    /// L2は入力2つ分の積の和を`i16`のまま求め、`i32`の累算値へ足す。
+    /// 2つの積の和の範囲は−32,512〜32,258であり、`i16`に収まることをコンパイル時の表明で保証する。
+    /// L2の32成分を6ビット右シフトして制限し、出力層の積和とskipを足す。
+    pub(super) fn evaluate(&self, us: &[i16], them: &[i16]) -> i32 {
+        let width = us.len();
+        let half = width / 2;
+        let mut storage = [0_i16; 1024];
+        let input = &mut storage[..width];
+        let (us_input, them_input) = input.split_at_mut(half);
+        for (row, product) in [(us, us_input), (them, them_input)] {
+            let (lo, hi) = row.split_at(half);
+            for (x, (&a, &b)) in product.iter_mut().zip(lo.iter().zip(hi)) {
+                *x = pair(a, b);
+            }
+        }
+
+        let d = &self.original;
+        let l1 = |i: usize| {
+            d.l1_biases[i]
+                + self.l1_weights[i * width..(i + 1) * width]
+                    .iter()
+                    .zip(input.iter())
+                    .map(|(&w, &x)| i32::from(w) * i32::from(x))
+                    .sum::<i32>()
+        };
+        let mut z = [0_i16; 30];
+        for i in 0..15 {
+            let y = l1(i);
+            z[i] = i16::from(square_activation(y));
+            z[15 + i] = i16::from(activation(y));
+        }
+        let skip = l1(15);
+        let mut h: [i32; 32] = d.l2_biases.as_slice().try_into().unwrap();
+        for (&[z0, z1], [w0, w1]) in z
+            .as_chunks::<L2_PAIR>()
+            .0
+            .iter()
+            .zip(self.l2_weights.as_chunks::<L2_PAIR>().0)
+        {
+            for ((sum, &w0), &w1) in h.iter_mut().zip(w0).zip(w1) {
+                *sum += i32::from(z0 * w0 + z1 * w1);
+            }
+        }
+        d.output_bias
+            + h.iter()
+                .zip(&d.output_weights)
+                .map(|(&sum, &w)| i32::from(activation(sum)) * i32::from(w))
+                .sum::<i32>()
+            + skip
     }
 }

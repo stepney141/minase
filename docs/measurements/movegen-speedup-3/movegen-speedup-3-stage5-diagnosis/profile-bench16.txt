@@ -1,0 +1,62 @@
+total samples 37932
+  incl%   self%  function
+ 100.00    2.10  [libc.so.6]
+  91.89    0.00  deepening::run_main_worker
+  91.89    0.00  team::run_worker_team::<(&mut alloc::boxed::Box<[[[i32; 144]; 144]; 2]>, &mut capture_history::CaptureHistory,
+  91.89    0.00  team::run_worker_guarded::<team::WorkerOutcome, team::run_worker_team<(&mut alloc::boxed::Box<[[[i32; 144]; 14
+  91.89    0.00  team::run_worker_team::<(&mut alloc::boxed::Box<[[[i32; 144]; 144]; 2]>, &mut capture_history::CaptureHistory,
+  91.89    0.00  deepening::run_main_worker_with_iteration_hook::<deepening::run_main_worker::{closure#0}>
+  91.89    0.00  team::run_search_team::{closure#5}
+  91.84    0.02  <searcher::Searcher>::search_root
+  91.84    0.00  <searcher::Searcher>::search_iteration
+  91.50    0.67  <searcher::Searcher>::search_move
+  91.39    2.85  <searcher::Searcher>::negamax
+  35.57    1.23  <searcher::Searcher>::quiesce
+  27.75    7.36  <ordering::MovePicker>::next
+  12.46    0.01  <searcher::Searcher>::evaluate_at
+   9.93    0.05  <tt::TranspositionTable>::probe
+   9.83    9.83  tt::unpack_critical
+   9.78    0.38  <eval::nnue::network::evaluator::SearchEvaluator>::evaluate
+   9.40    0.02  <eval::nnue::network::layer_stack::LayerStackNetwork>::evaluate_accumulator
+   9.21    0.02  <eval::nnue::network::layer_stack::LayerStackNetwork>::dense
+   9.15    2.18  <eval::nnue::network::layer_stack::LayerStackDense>::evaluate
+   8.10    0.00  <fn() -> std::process::ExitCode as core::ops::function::FnOnce<()>>::call_once
+   8.10    0.00  _start
+   8.10    0.00  main
+   8.10    0.00  engine::main
+   8.10    0.00  engine::run
+   8.00    0.00  <protocol::usi::UsiProtocol>::run_channel
+   8.00    0.00  <protocol::usi::UsiProtocol>::handle_idle_line
+   7.88    0.02  <searcher::Searcher>::search_null_move
+   7.51    0.86  see::see_prunes
+   7.36    0.00  diagnostics::bench::run
+   7.36    0.00  <protocol::usi::UsiProtocol>::handle_bench
+   7.20    0.69  <mc:position::Position>::attackers_to_by
+   6.78    0.46  <quiesce::QsearchBuffers>::initialize
+   6.22    0.00  <history::HistoryTables>::clear
+   5.93    0.00  diagnostics::bench::run_bench
+   5.12    0.66  ordering::quiet_move_ordering_value
+   4.79    0.51  mc:movegen::control::ordinary_attackers_to
+   4.74    3.91  <eval::nnue::network::layer_stack::LayerStackDense>::evaluate::{closure#0}
+   4.70    4.70  <history::ContinuationHistory>::clear
+   4.47    0.00  <mc:movegen::MoveGenerator>::generate_captures_with_scratch
+   4.47    0.15  mc:movegen::generate::generate_moves::<true, false>
+   4.36    1.29  <mc:movegen::gives_check::CheckContext>::gives_check
+   4.11    0.41  <mc:movegen::MoveGenerator>::collect_ordinary_capturers
+   3.94    0.56  mc:movegen::control::capture_targets_without_special
+   3.74    0.69  mc:movegen::generate::generate_piece_moves::<true, false>
+   3.69    3.50  <mc:board::bitboard::Bitboard>::pop_lsb
+   3.69    0.00  <mc:board::bitboard::SquareIter as core::iter::traits::iterator::Iterator>::next
+   3.03    0.11  <searcher::Searcher>::ensure_accumulator
+   3.02    0.00  <mc:movegen::MoveGenerator>::generate_quiets
+   3.02    0.09  mc:movegen::generate::generate_moves::<false, true>
+   3.01    0.30  <quiesce::QsearchBuffers>::next
+   2.92    0.06  <eval::nnue::network::evaluator::SearchEvaluator>::update_after_move
+   2.87    0.33  <mc:movegen::MoveGenerator>::ordinary_capturer
+   2.85    0.16  <eval::nnue::network::layer_stack::LayerStackNetwork>::update_after_move
+   2.70    0.56  <quiesce::QsearchBuffers>::generate_group
+   2.60    0.01  mc:movegen::generate::generate_piece_moves::<false, true>
+   2.59    0.30  mc:movegen::generate::generate_piece_quiets
+   2.32    0.31  mc:movegen::control::piece_control_without_special
+   2.22    0.13  <eval::nnue::transformer::FeatureTransformer<eval::nnue::input::a::A>>::update_after_move
+   2.13    0.13  <searcher::Searcher>::correction_weighted_sum_at

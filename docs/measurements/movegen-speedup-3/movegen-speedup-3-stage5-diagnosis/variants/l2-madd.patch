@@ -1,0 +1,24 @@
+diff --git a/crates/minase/src/eval/nnue/network/layer_stack.rs b/crates/minase/src/eval/nnue/network/layer_stack.rs
+index 6bb6565a..d9116d6d 100644
+--- a/crates/minase/src/eval/nnue/network/layer_stack.rs
++++ b/crates/minase/src/eval/nnue/network/layer_stack.rs
+@@ -314,10 +314,6 @@ impl LayerStackNetwork {
+ }
+ 
+ const L2_PAIR: usize = 2;
+-const _: () = assert!(
+-    ACTIVATION_MAX * (i8::MIN as i32) * (L2_PAIR as i32) >= i16::MIN as i32
+-        && ACTIVATION_MAX * (i8::MAX as i32) * (L2_PAIR as i32) <= i16::MAX as i32
+-);
+ 
+ impl LayerStackDense {
+     /// 検査済みの後段の重みからL1とL2の積和用の配列を作る。
+@@ -375,7 +371,7 @@ impl LayerStackDense {
+             .zip(self.l2_weights.as_chunks::<L2_PAIR>().0)
+         {
+             for ((sum, &w0), &w1) in h.iter_mut().zip(w0).zip(w1) {
+-                *sum += i32::from(z0 * w0 + z1 * w1);
++                *sum += i32::from(z0) * i32::from(w0) + i32::from(z1) * i32::from(w1);
+             }
+         }
+         d.output_bias
