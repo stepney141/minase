@@ -15,6 +15,14 @@ impl PieceCode {
     /// 盤外の番兵を表すコード。
     pub const WALL: Self = Self(0xff);
 
+    /// 駒コードを表の添字（0〜255）として返す。
+    ///
+    /// 添字の値やビットの割り当ては安定した契約ではない。
+    #[inline]
+    pub const fn table_index(self) -> usize {
+        self.0 as usize
+    }
+
     /// 後手の駒を示すビット。
     const WHITE_BIT: u8 = 0x40;
     /// 成駒を示すビット。

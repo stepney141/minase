@@ -70,6 +70,44 @@ fn attackers_to_by_matches_piece_control_on_reference_positions() {
     }
 }
 
+/// 走りは仮想占有で遮られても、その升に実際の自駒がなければ攻撃駒に含めない。
+/// 固定利きと獅子の跳びは、その遮蔽の影響を受けない。
+#[test]
+fn attackers_to_by_respects_real_and_virtual_blockers() {
+    let target = msq(6, 5);
+    let rook = msq(6, 10);
+    let enemy = msq(6, 7);
+    let gold = msq(5, 5);
+    let lion = msq(4, 6);
+    let board = position(
+        Color::Black,
+        &[
+            (rook, Color::Black, PieceKind::Rook),
+            (enemy, Color::White, PieceKind::Rook),
+            (gold, Color::Black, PieceKind::GoldGeneral),
+            (lion, Color::Black, PieceKind::Lion),
+        ],
+    );
+    let mut occupied = board.occupied();
+    let fixed_and_special = Bitboard::from_squares([gold, lion]);
+    assert_eq!(
+        board.attackers_to_by(Color::Black, target, occupied),
+        fixed_and_special
+    );
+
+    occupied.clear(enemy);
+    assert_eq!(
+        board.attackers_to_by(Color::Black, target, occupied),
+        fixed_and_special | Bitboard::from_square(rook)
+    );
+
+    occupied.set(msq(6, 8));
+    assert_eq!(
+        board.attackers_to_by(Color::Black, target, occupied),
+        fixed_and_special
+    );
+}
+
 /// 公開の駒別疑似利きは、現在の占有状態を使う既存の利きの定義と一致する。
 #[test]
 fn piece_control_covers_fixed_sliding_and_two_stage_destinations() {
@@ -174,9 +212,12 @@ fn ordinary_attackers_before(
             .piece_at(blocker)
             .and_then(|piece| piece.kind())
             .expect("blocker must be a piece");
-        let mask = tables.slide_directions(color, movement_profile(kind));
         let reverse = direction.opposite();
-        if (mask >> reverse.index()) & 1 != 0 {
+        if movement_profile_data(movement_profile(kind))
+            .slides
+            .iter()
+            .any(|slide| slide.direction.for_color(color) == reverse)
+        {
             attackers.set(blocker);
         }
     }

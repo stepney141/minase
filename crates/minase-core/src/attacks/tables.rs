@@ -5,10 +5,11 @@ use std::sync::OnceLock;
 use crate::board::Bitboard;
 use crate::board::Direction;
 use crate::board::{RAW_SQUARE_COUNT, Square};
-use crate::piece::{COLOR_COUNT, Color, PieceKind};
+use crate::piece::{COLOR_COUNT, Color, PieceCode, PieceKind};
 
 use super::fixed::{
-    MOVEMENT_PROFILE_COUNT, MovementProfileId, all_profiles, movement_profile_data,
+    MOVEMENT_PROFILE_COUNT, MovementProfileId, all_profiles, movement_profile,
+    movement_profile_data,
 };
 use super::sliding::{RayTable, build_ray_table};
 
@@ -25,8 +26,10 @@ pub(crate) struct AttackTables {
     fixed_attacker_kinds: [[u32; 69]; COLOR_COUNT],
     /// 遮蔽のない盤面での固定利きと走りの和。
     reach: FixedAttackTable,
-    /// 色×プロファイルごとの走りの絶対方向マスク。
-    slide_directions: [[u8; MOVEMENT_PROFILE_COUNT]; COLOR_COUNT],
+    /// 照会した対局者×駒コードごとの走りの絶対方向マスク。照会した対局者の駒でなければ0。
+    slide_mask_by_code: [[u8; 256]; COLOR_COUNT],
+    /// 駒コードごとの駒種ビット。空升と番兵は0。
+    kind_bit_by_code: [u32; 256],
     /// 各升を中心とする5×5の近傍。固定利きの逆引きに使う。
     neighbourhoods: [Bitboard; RAW_SQUARE_COUNT],
     /// 対象升への利きが依存する8方向の利き線と5×5近傍の和集合。
@@ -44,23 +47,14 @@ impl AttackTables {
                 .into_boxed_slice();
 
         let mut fixed_attacker_kinds = [[0; 69]; COLOR_COUNT];
+        let mut slide_mask_by_code = [[0; 256]; COLOR_COUNT];
+        let mut kind_bit_by_code = [0; 256];
         for color in Color::ALL {
-            for kind in PieceKind::ALL {
-                for delta in
-                    movement_profile_data(super::fixed::movement_profile(kind)).fixed_deltas
-                {
-                    let (file, rank) = delta.for_color(color);
-                    let index = (i16::from(rank) * 16 + i16::from(file) + 34) as usize;
-                    fixed_attacker_kinds[color.index()][index] |= 1 << kind.index();
-                }
-            }
-        }
-        let mut slide_directions = [[0; MOVEMENT_PROFILE_COUNT]; COLOR_COUNT];
-        for color in Color::ALL {
+            let mut profile_slide_masks = [0; MOVEMENT_PROFILE_COUNT];
             for profile_id in all_profiles() {
                 let profile = movement_profile_data(profile_id);
                 for slide in profile.slides {
-                    slide_directions[color.index()][profile_id.index()] |=
+                    profile_slide_masks[profile_id.index()] |=
                         1 << slide.direction.for_color(color).index();
                 }
                 // neighbourhoodによる逆引きの前提として、固定利きが5×5近傍に収まることを検査する。
@@ -77,6 +71,27 @@ impl AttackTables {
                         }
                     }
                     fixed[Self::fixed_index(color, profile_id, from)] = mask;
+                }
+            }
+            for kind in PieceKind::ALL {
+                let profile_id = movement_profile(kind);
+                let kind_bit = 1 << kind.index();
+                for delta in movement_profile_data(profile_id).fixed_deltas {
+                    let (file, rank) = delta.for_color(color);
+                    let index = (i16::from(rank) * 16 + i16::from(file) + 34) as usize;
+                    fixed_attacker_kinds[color.index()][index] |= kind_bit;
+                }
+                for code in [
+                    PieceCode::new(color, kind),
+                    PieceCode::new_promoted(color, kind),
+                ]
+                .into_iter()
+                .flatten()
+                {
+                    let index = code.table_index();
+                    slide_mask_by_code[color.index()][index] =
+                        profile_slide_masks[profile_id.index()];
+                    kind_bit_by_code[index] = kind_bit;
                 }
             }
         }
@@ -108,7 +123,8 @@ impl AttackTables {
             rays,
             fixed,
             fixed_attacker_kinds,
-            slide_directions,
+            slide_mask_by_code,
+            kind_bit_by_code,
             lion_jumps,
             neighbourhoods,
             attack_dependencies,
@@ -137,11 +153,17 @@ impl AttackTables {
             + from.raw_index()
     }
 
-    /// 対局者と動きの定義ごとの走りの絶対方向を8ビットのマスクで返す。
-    /// 利きの逆引きで、遮蔽駒が逆方向へ走れるかを表引きで判定するために使う。
+    /// 照会した対局者の駒なら、駒コードに対応する走りの絶対方向マスクを返す。
+    /// 相手駒・空升・番兵なら0を返す。
     #[inline]
-    pub(crate) fn slide_directions(&self, color: Color, profile: MovementProfileId) -> u8 {
-        self.slide_directions[color.index()][profile.index()]
+    pub(crate) fn slide_mask_by_code(&self, color: Color, code: PieceCode) -> u8 {
+        self.slide_mask_by_code[color.index()][code.table_index()]
+    }
+
+    /// 駒コードに対応する駒種ビットを返す。空升・番兵なら0を返す。
+    #[inline]
+    pub(crate) fn kind_bit_by_code(&self, code: PieceCode) -> u32 {
+        self.kind_bit_by_code[code.table_index()]
     }
 
     /// 指定した色・プロファイル・升の固定利きを返す。
@@ -262,6 +284,67 @@ pub(crate) fn attack_tables() -> &'static AttackTables {
 mod tests {
     use super::*;
     use crate::board::step_square;
+
+    #[test]
+    fn piece_code_tables_match_decoded_movements() {
+        let tables = attack_tables();
+        let pieces = Color::ALL.into_iter().flat_map(|color| {
+            PieceKind::ALL.into_iter().flat_map(move |kind| {
+                [
+                    PieceCode::new(color, kind),
+                    PieceCode::new_promoted(color, kind),
+                ]
+                .into_iter()
+                .flatten()
+            })
+        });
+        let mut seen = [false; 256];
+        for code in [PieceCode::EMPTY, PieceCode::WALL]
+            .into_iter()
+            .chain(pieces)
+        {
+            let index = code.table_index();
+            assert!(!seen[index], "duplicate table index {index} for {code:?}");
+            seen[index] = true;
+
+            let kind = code.kind();
+            let owner = code.color();
+            assert_eq!(
+                tables.kind_bit_by_code(code),
+                kind.map_or(0, |kind| 1 << kind.index()),
+                "{code:?}"
+            );
+            for color in Color::ALL {
+                let expected = match (kind, owner) {
+                    (Some(kind), Some(owner)) if owner == color => {
+                        let profile = movement_profile_data(movement_profile(kind));
+                        profile.slides.iter().fold(0, |mask, slide| {
+                            mask | (1 << slide.direction.for_color(color).index())
+                        })
+                    }
+                    _ => 0,
+                };
+                assert_eq!(
+                    tables.slide_mask_by_code(color, code),
+                    expected,
+                    "{color:?} {code:?}"
+                );
+            }
+        }
+
+        for (index, used) in seen.into_iter().enumerate() {
+            if !used {
+                assert_eq!(tables.kind_bit_by_code[index], 0, "unused index {index}");
+                for color in Color::ALL {
+                    assert_eq!(
+                        tables.slide_mask_by_code[color.index()][index],
+                        0,
+                        "{color:?} unused index {index}"
+                    );
+                }
+            }
+        }
+    }
 
     // 実装契約(第7条4項・5項の走りの定義に接地): 走りの利きは、方向へ1升ずつ進む
     // 逐次歩行と一致する。盤端までの升を進行順に含み、最初の駒がある升を含んだ
