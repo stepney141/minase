@@ -37,7 +37,7 @@ tuning = []
 test-util = []
 
 [dependencies]
-minase-core = { version = "0.3.0", path = "../minase-core" }
+minase-core = { version = "0.3.1", path = "../minase-core" }
 clap = { version = "4.6.4", features = ["derive"] }
 fs2 = "0.4.3"
 half = { version = "2.1", default-features = false }
@@ -59,4 +59,4 @@ flate2 = "1"
 # Cargoは開発依存のフィーチャをテストなど開発依存を使うビルドにだけ統合するので、
 # `cargo build`と`cargo run`のバイナリには検査が入らない。
 minase = { path = ".", features = ["invariants", "test-util"] }
-minase-core = { version = "0.3.0", path = "../minase-core", features = ["test-util", "invariants"] }
+minase-core = { version = "0.3.1", path = "../minase-core", features = ["test-util", "invariants"] }

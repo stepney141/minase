@@ -1,3 +1,13 @@
+## minase-core-v0.3.1 (2026-11-27)
+
+minase-core 0.3.1 speeds up the reverse attack lookup (`Position::attackers_to_by`) and `PieceCode::kind` by reading 256-entry tables indexed by the piece code; every result is unchanged.
+It adds `PieceCode::table_index`, which returns the piece code as an index for such tables; the index values are not a stable contract.
+
+### Performance
+
+- **movegen:** Look up attacker slide masks and kind bits by piece code
+- **core:** Decode PieceCode::kind with a 256-entry table
+
 ## minase-core-v0.3.0 (2026-11-20)
 
 ### Features
