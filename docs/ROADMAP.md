@@ -153,6 +153,9 @@
 | NNUEをtataraに倣った枠組みへ載せ替え、HalfKP_vm（256x2-32-32）を加える | [plans/archived/nnue-tatara-framework-and-halfkp-vm.md](plans/archived/nnue-tatara-framework-and-halfkp-vm.md) | 完了（採用） | 2026年11月19日 |
 | PV-MCTSのデバッグ道具（根の統計の表示、探索木の不変条件の検査、PV-MCTSのbench） | [plans/archived/mcts-debugging-tools.md](plans/archived/mcts-debugging-tools.md) | 完了（採用） | 2026年11月17日 |
 | ブラウザ内で動く対局アプリ（minase-chushogi-wasm） | [plans/browser-wasm-app.md](plans/browser-wasm-app.md) | 起案 | |
+| NNUE学習器のGPU高速化 | [plans/nnue-trainer-gpu-speedup.md](plans/nnue-trainer-gpu-speedup.md) | 起案 | |
+| AlphaZero型探索の学習器と自己対局生成のGPU実行の高速化 | [plans/alphazero-rl-gpu-speedup.md](plans/alphazero-rl-gpu-speedup.md) | 起案 | |
+| 対局用PV-MCTSの葉収集、バッチ推論、およびNNキャッシュの高速化 | [plans/mcts-search-gpu-speedup.md](plans/mcts-search-gpu-speedup.md) | 起案 | |
 
 ## 現在地
 
@@ -183,6 +186,7 @@ A型はtataraのLayerStackに載っており、HalfKP_vmもエンジン、学習
 | [先読みなしの教師での間引きの比較](plans/nnue-subsample-no-lookahead.md) | 同じ局面数を少数の対局から採る学習と多数の対局から採る学習を比べ、対局数が多いほど良いという効果が、後続の局面の探索値を混ぜない現行の教師でも残るかを確かめる。 | 起案の段階である。2026年11月20日に、記録する局面の間引きの着手の前提から外した。世代反復は第3世代で中断して閉じたので、その結果を見て、続けるかを利用者が決める。 | なし |
 | [記録する局面の間引き](plans/sparse-teacher-recording.md) | 4分の1の手だけを2万ノードで探索して記録し、残りの手を少ないノード数で指して、同じ計算量で対局数を増やす。世代反復で最後に強いと判定された世代の教師と同じネットを使い、生成の計算量をそろえて教師を生成し、学んだネットをその世代のネットと段階ゲートで比べる。 | 起案の段階である。本文は世代反復の完了を前提に書かれているが、世代反復は第3世代で中断して閉じた。着手の前に、比べる相手を第3世代の教師とネットとして前提の記述を見直し、計算機を借りるので、利用者の着手の指示を待つ。 | 世代反復の第3世代の教師とネット（基準に使い、標準レシピが固定した教師の作り方を変えるため） |
 | [3処理を外した教師のNNUE](plans/nnue-teacher-without-adjudication.md) | 第3世代の教師と同じ第2世代のネットとシードで、王手の除外、開始局面の選別、および評価値による打ち切りを外した教師を生成し、学んだネットを第3世代のネットと、`lishogi`の段階ゲートの強さと、HaChuとの対局で優勢から勝ち切るまでの手数（[調査報告](audits/mating-speed-against-hachu-2026-11-25.md)）で比べる。 | 起案の段階である。レビューの後に利用者の着手の指示を待つ。生成機を借りるかryzen0で生成するかは、フェーズ0の貸出なしの測定の後に利用者が決める。 | 世代反復の第2世代のネット、第3世代の教師とネット、および反復のコミット |
+| [NNUE学習器のGPU高速化](plans/nnue-trainer-gpu-speedup.md) | [GPU計算ボトルネック調査](audits/gpu-computation-bottlenecks-2026-11-28.md)に基づき、`Simple`の未観測行スキップによるAdamWと勾配ゼロクリアの削減、`simple_sparse_reduce`と`ls_sparse_partials`などの内側ループFP64廃止とアクティブ行単位起動を兄弟構造へ対称適用し、学習スループットを引き上げる。 | 起案の段階である。レビュー後に着手の指示を待つ。 | なし（独立に開発でき、変更後にCPU参照一致と必要に応じて対局ゲートで確かめる） |
 
 世代反復の最終候補は、[NNUEの構成の見直し](plans/archived/nnue-architecture-revision.md)をmasterへ統合する前のネットと比べる。
 見直した構成は、統合前のネットより強いと判定されないまま、世代反復で使う構成として統合された。
@@ -222,12 +226,14 @@ PV-MCTSには、勝率尺度をオプション`NnCpPerLogit`で渡す。
 
 2回目の実行と並行して進められる作業は、PUCTの係数の調整である。
 [対局用MCTSのPUCTの係数と方策の温度のSPSAによる調整](plans/mcts-puct-spsa.md)は起案の段階で利用者の承認を待っており、本番の調整には、2回目の実行のネットのうち利用者が指定するものを使う。
+また2回目の実行がサイクル100へ到達した状況を受け、3回目の強化学習の計算費削減と対局性能改善に向けた事前準備として、[GPU計算ボトルネック調査](audits/gpu-computation-bottlenecks-2026-11-28.md)に基づく[学習器と自己対局生成のGPU実行高速化](plans/alphazero-rl-gpu-speedup.md)および[対局用PV-MCTSの葉収集、バッチ推論、およびNNキャッシュの高速化](plans/mcts-search-gpu-speedup.md)の2設計書を起案した。
+いずれも起案段階であり、レビュー後に利用者の着手の指示を待つ。
 自己対局の探索はPUCTの係数を使わず、定例の測定はサイクル1を始めたときのバイナリに固定するので、調整しても2回目の学習の途中で条件は変わらない。
 NNUEの世代反復は2026年11月25日に中断して閉じたので、2回目の実行と借りる計算機を取り合う作業はなく、作業機での対局の測定だけを、ほかの測定と重ならないように順番を調整する。
 強さを測る相手のαβ探索はネットを埋め込んだコミット`45d5db54`に固定されているので、2回目の実行の測定はNNUEの変更の影響を受けない。
 
 設計書のない候補のうち、Leela Chess Zeroから移せる工夫は[提案](proposals/lc0-transfer-candidates.md)にあり、利用者の判断を待っている。
-1件ごとの効果が小さくても移せる調整を積み上げる方針で、対局用の探索、自己対局と教師データ、およびネットと学習器の42候補を挙げ、採否を決めるための6件の測定を、GPUを借りずに先に行うよう勧める。
+1件ごとの効果が小さくても移せる調整を積み上げる方針で、対局用の探索、自己対局と教師データ、およびネットと学習器の未決候補を挙げ、採否を決めるための事前測定をGPUを借りずに先に行うよう勧める。
 このうち、反復の近似による勝敗の扱いと、大域情報を扱う層の選び方は、3回目の強化学習を始める前に決める事項である。
 
 統括計画の完了の後には、AlphaZero型のネットの評価値でNNUEの教師値を付け直す設計書を起案する（[提案](proposals/nnue-teacher-content-candidates.md)の最初の候補）。
