@@ -1,0 +1,207 @@
+{
+  "recorded_at": "2026-11-28",
+  "base_commit": "394b5583",
+  "environment": {
+    "cpu": "Intel Core Ultra 7 265KF",
+    "physical_cores": 20,
+    "logical_cores": 20,
+    "ram_gib": 30,
+    "gpu": "NVIDIA GeForce RTX 3060 Ti",
+    "vram_mib": 8192,
+    "l2_cache_mb": 3.0,
+    "gddr6_bandwidth_gb_s": 448,
+    "fp32_tflops": 16.2,
+    "fp64_tflops": 0.253,
+    "fp16_tensor_core_tflops": 64.8,
+    "driver_version": "620.73.04",
+    "cuda_version": "13.5",
+    "onnxruntime_version": "1.31.1",
+    "co_resident_load": "stopped"
+  },
+  "nnue_bench_step_profile": {
+    "dataset": "data/nnue-generation-iteration/gen-1/teacher/book-0.mnsd",
+    "batch_size": 16384,
+    "seed": 1,
+    "k_t": 733.1159421542734,
+    "lambda": 1.0,
+    "layerstack": {
+      "steps": 50,
+      "input_transfer_bytes": 38492408,
+      "allocated_rows": 6841,
+      "active_rows": 6840,
+      "hidden": 256,
+      "threads": {
+        "1": {"compute_ms": 11.917, "fwd_ms": 4.954, "bwd_ms": 6.065, "opt_ms": 0.898, "transfer_ms": 1.587, "worker_pos_per_sec": 191878},
+        "4": {"compute_ms": 11.548, "fwd_ms": 4.767, "bwd_ms": 5.935, "opt_ms": 0.846, "transfer_ms": 1.569, "worker_pos_per_sec": 720242},
+        "8": {"compute_ms": 11.511, "fwd_ms": 4.749, "bwd_ms": 5.922, "opt_ms": 0.840, "transfer_ms": 1.568, "worker_pos_per_sec": 1228281},
+        "16": {"compute_ms": 11.576, "fwd_ms": 4.785, "bwd_ms": 5.942, "opt_ms": 0.850, "transfer_ms": 1.568, "worker_pos_per_sec": 2037044}
+      }
+    },
+    "simple": {
+      "feature_set": "HalfKP_vm",
+      "steps": 20,
+      "input_transfer_bytes": 46121556,
+      "hidden": 256,
+      "total_real_rows": 964224,
+      "king_buckets": 72,
+      "base_features_per_king_bucket": 13392,
+      "parameters": 250287457,
+      "training_device_bytes": 4228545268,
+      "threads": {
+        "1": {"compute_ms": 46.755, "fwd_ms": 5.056, "bwd_ms": 24.817, "opt_ms": 16.881, "transfer_ms": 1.871, "worker_pos_per_sec": 221495},
+        "4": {"compute_ms": 46.532, "fwd_ms": 5.068, "bwd_ms": 24.563, "opt_ms": 16.900, "transfer_ms": 1.881, "worker_pos_per_sec": 831814},
+        "8": {"compute_ms": 46.697, "fwd_ms": 5.075, "bwd_ms": 24.723, "opt_ms": 16.899, "transfer_ms": 1.881, "worker_pos_per_sec": 1321901},
+        "16": {"compute_ms": 46.795, "fwd_ms": 5.071, "bwd_ms": 24.826, "opt_ms": 16.897, "transfer_ms": 1.889, "worker_pos_per_sec": 1941516}
+      }
+    }
+  },
+  "nnue_train_short_runs": {
+    "dataset": "data/nnue-generation-iteration/gen-1/teacher/book-0.mnsd",
+    "rules": "lishogi",
+    "validation_samples": 117493,
+    "superbatches": 1,
+    "layerstack": {
+      "steps": 128,
+      "t4": {"sb0_val": 0.7596, "sb1_val": 0.7594, "training_seconds": 3.0543, "training_pos_per_sec": 686613, "update_seconds": 0.01170},
+      "t16": {"sb0_val": 0.7683, "sb1_val": 0.7792, "training_seconds": 2.0605, "training_pos_per_sec": 1017791, "update_seconds": 0.01149}
+    },
+    "simple": {
+      "steps": 48,
+      "t16": {"sb0_val": 0.4379, "sb1_val": 0.4495, "training_seconds": 2.4794, "training_pos_per_sec": 317181, "update_seconds": 0.04795}
+    }
+  },
+  "nnue_kernel_events": {
+    "batch_size": 16384,
+    "seed": 1,
+    "arch": "sm_86",
+    "nvrtc_flags": ["--fmad=false", "--prec-div=true", "--prec-sqrt=true", "--ftz=false"],
+    "sparsity": {
+      "feature_set_a": {
+        "entries": 1788710,
+        "entries_per_view": 54.6,
+        "sentinel_ratio": 0.623,
+        "nonempty_rows": 3972,
+        "allocated_rows": 6841,
+        "active_rows": 6840,
+        "segments": 17044
+      },
+      "halfkp_vm": {
+        "entries": 1723372,
+        "entries_per_view": 52.6,
+        "nonempty_rows": 42973,
+        "total_real_rows": 964224,
+        "nonempty_ratio": 0.0446,
+        "unobserved_ratio": 0.9554,
+        "segments": 53884,
+        "median_occurrences_per_active_row": 2.0,
+        "le_4_occurrences_ratio": 0.754
+      }
+    },
+    "layerstack_ms": {
+      "ls_forward": 3.838,
+      "ls_statistics": 1.189,
+      "ls_statistics_reduce": 0.006,
+      "forward_total": 5.033,
+      "ls_backward": 0.362,
+      "ls_head_partials": 1.549,
+      "ls_head_reduce": 0.052,
+      "ls_sparse_partials": 3.761,
+      "ls_sparse_reduce": 0.168,
+      "backward_total": 5.893,
+      "ls_adamw": 0.925,
+      "event_total": 11.851
+    },
+    "simple_ms": {
+      "simple_forward": 4.368,
+      "simple_statistics": 0.860,
+      "simple_statistics_reduce": 0.006,
+      "forward_total": 5.234,
+      "simple_backward": 0.784,
+      "simple_head_partials": 4.876,
+      "simple_head_reduce": 0.048,
+      "memset_zeros": 2.338,
+      "simple_sparse_reduce": 12.606,
+      "simple_virtual_reduce": 3.968,
+      "backward_total": 24.619,
+      "simple_adamw": 16.881,
+      "event_total": 46.734
+    }
+  },
+  "pv_mcts_probes": {
+    "zero_net": {
+      "architecture": "20b256c",
+      "parameters": 25182204,
+      "seed": 20261116,
+      "sha256": "4b430a4414d250f96094c475dc489efbc865afa20e1c9bfc5b2a958cae4abf07",
+      "gflops_per_position": 7.24
+    },
+    "nn_eval_288_positions": {
+      "cuda_fp32": {
+        "1": {"seconds": 0.761175, "calls": 288, "pos_per_sec": 378.4, "mean_ms_per_call": 2.64, "full_batch_equiv_ms": 2.64},
+        "16": {"seconds": 0.166874, "calls": 18, "pos_per_sec": 1725.9, "mean_ms_per_call": 9.27, "full_batch_equiv_ms": 9.27},
+        "128": {"seconds": 0.171912, "calls": 3, "pos_per_sec": 1675.3, "mean_ms_per_call": 57.30, "full_batch_equiv_ms": 76.41},
+        "256": {"seconds": 0.165461, "calls": 2, "pos_per_sec": 1740.6, "mean_ms_per_call": 82.73, "full_batch_equiv_ms": 147.08}
+      },
+      "tensorrt_fp16": {
+        "1": {"seconds": 0.154970, "calls": 288, "pos_per_sec": 1858.4, "mean_ms_per_call": 0.54, "full_batch_equiv_ms": 0.54},
+        "16": {"seconds": 0.040053, "calls": 18, "pos_per_sec": 7190.5, "mean_ms_per_call": 2.23, "full_batch_equiv_ms": 2.23},
+        "128": {"seconds": 0.037267, "calls": 3, "pos_per_sec": 7728.0, "mean_ms_per_call": 12.42, "full_batch_equiv_ms": 16.56}
+      }
+    },
+    "cpu_only_mcts_bench_800": {
+      "positions": 15,
+      "total_simulations": 12000,
+      "batches": {
+        "16": {"ms": 257, "sps": 46580},
+        "128": {"ms": 225, "sps": 53154},
+        "256": {"ms": 230, "sps": 52136}
+      }
+    },
+    "match_play_5_midgame_positions_tensorrt": {
+      "batch_1": {
+        "nodes_800": {"ms_per_move": 428.0, "sps": 1869.1},
+        "nodes_3200": {"ms_per_move": 1639.2, "sps": 1952.2}
+      },
+      "batch_16": {
+        "nodes_800": {"ms_per_move": 130.2, "sps": 6143.2},
+        "nodes_3200": {"ms_per_move": 507.6, "sps": 6304.1}
+      },
+      "batch_128": {
+        "nodes_800": {"ms_per_move": 118.2, "sps": 6769.8},
+        "nodes_3200": {"ms_per_move": 444.6, "sps": 7197.1}
+      }
+    },
+    "match_play_8_fixtures_batch_16_nodes_800": {
+      "total_simulations": 4946,
+      "cuda_fp32": {"ms_per_move": 652.8, "sps": 947.1},
+      "tensorrt_fp16": {"ms_per_move": 95.6, "sps": 6468.8}
+    },
+    "zero_selfplay_shuffled_setup_sim4": {
+      "seed": 9100000000,
+      "games_per_thread": 128,
+      "simulations": 4,
+      "threads_1": {
+        "games": 128,
+        "positions": 21270,
+        "seconds": 19.96,
+        "pos_per_sec": 1065.8,
+        "evals_per_sec_upper_bound_est": 5329,
+        "gpu_util_avg_pct": 90.7,
+        "gpu_util_max_pct": 97,
+        "mem_controller_util_avg_pct": 15.8,
+        "peak_vram_mib": 1855
+      },
+      "threads_4": {
+        "games": 512,
+        "positions": 77535,
+        "seconds": 52.03,
+        "pos_per_sec": 1490.1,
+        "evals_per_sec_upper_bound_est": 7451,
+        "gpu_util_avg_pct": 98.0,
+        "gpu_util_max_pct": 100,
+        "mem_controller_util_avg_pct": 24.0,
+        "peak_vram_mib": 2157
+      }
+    }
+  }
+}
