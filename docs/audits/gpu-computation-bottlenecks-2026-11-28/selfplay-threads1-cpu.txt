@@ -1,0 +1,9 @@
+zero-selfplay-0    threads=  1 total=  1.00 cores  top=[1.0]
+minase             threads= 22 total=  0.00 cores  top=[0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+cuda00001800007    threads=  1 total=  0.00 cores  top=[0.0]
+cuda-EvtHandlr     threads=  1 total=  0.00 cores  top=[0.0]
+wchan minase futex_do_wait 21
+wchan cuda00001800007 poll_schedule_timeout.constprop.0 1
+wchan cuda-EvtHandlr poll_schedule_timeout.constprop.0 1
+wchan minase poll_schedule_timeout.constprop.0 1
+wchan zero-selfplay-0 0 1

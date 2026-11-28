@@ -40,7 +40,7 @@ USI対局探索の条件は`RuleSet`を`lishogi`、`NnCpPerLogit`を`1072.65`と
 規則セットには`lishogi`を用い、Efficiently Updatable Neural Networkを表すNNUE学習器とPolicy-Value Monte Carlo Tree Searchを表すPV-MCTSを含む`minase`本体の双方を`--release`ビルドで実行した。
 
 評価対象のPV-MCTS用ネットワークは20ブロック256チャンネルの残差ネットワーク`ZeroNet`である。
-パラメータ数は25,182,204、推論計算量は1局面あたり7.24 GFLOPs（毎秒ギガ浮動小数点演算数の単位で示す総演算量）、初期化シードは`20261116`である。
+パラメータ数は25,182,204、推論の演算量は1局面あたり7.24 GFLOP（10⁹回の浮動小数点演算）、初期化シードは`20261116`である。
 モデルのSHA-256（Secure Hash Algorithm 256-bit）ハッシュ値は`4b430a4414d250f96094c475dc489efbc865afa20e1c9bfc5b2a958cae4abf07`である。
 
 ## 環境
@@ -49,7 +49,10 @@ USI対局探索の条件は`RuleSet`を`lishogi`、`NnCpPerLogit`を`1072.65`と
 RTX 3060 Tiの仕様はL2キャッシュ3.0 MB、メモリ帯域448 GB/s、単精度演算性能FP32が16.2 TFLOPS（テラ浮動小数点演算毎秒）、倍精度演算性能FP64が0.253 TFLOPS、および半精度FP16 Tensor Core演算性能が64.8 TFLOPSである。
 
 ソフトウェア基盤はNVIDIAドライバ`620.73.04`、CUDA `13.5`、およびONNX Runtime `1.31.1`である。
-測定中は`lishogi`のBotおよび他対局プロセスを停止して単独実行し、対局比較専用の`USI_Hash`、同時対局数、勝敗記録のペンタノミアル度数、対数尤度比LLR（Log-Likelihood Ratio）、および時間切れ数`time_forfeits`は本非対局ベンチマークの対象外とした。
+lishogiのBotのコンテナは測定中も止めていなかった（2026年11月28日の`docker events`に停止の記録がない）。
+Botは通信対局を10分ごとに確かめ、そのたびに数秒間エンジンのプロセスを使っていた（Botのログの`Process Used`と`free_process`）。
+BotのエンジンはCPUで動くαβ探索なので、GPUのカーネルの時間への影響は小さいとみられるが、CPUで組む教師のバッチの供給速度には影響した可能性がある。
+対局比較専用の`USI_Hash`、同時対局数、勝敗記録のペンタノミアル度数、対数尤度比LLR（Log-Likelihood Ratio）、および時間切れ数`time_forfeits`は本非対局ベンチマークの対象外とした。
 
 ## 結果
 

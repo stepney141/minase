@@ -1,0 +1,11 @@
+data/nnue-generation-iteration/gen-1/train	NVIDIA GeForce RTX 4080 SUPER	threads=16	effective=13.82ms	gpu=3.05ms	idle=77.9%	positions/s=1,185,421
+data/nnue-generation-iteration/gen-2/train	NVIDIA GeForce RTX 5080	threads=16	effective=11.81ms	gpu=3.47ms	idle=70.6%	positions/s=1,387,427
+data/nnue-generation-iteration/gen-3/train	NVIDIA GeForce RTX 5080	threads=16	effective=12.43ms	gpu=3.47ms	idle=72.1%	positions/s=1,318,072
+data/nnue-epoch-length-analysis-20261124/ep1-seed1	NVIDIA GeForce RTX 3060 Ti	threads=16	effective=16.45ms	gpu=11.40ms	idle=30.7%	positions/s=995,978
+data/nnue-epoch-length-analysis-20261124/ep1-seed2	NVIDIA GeForce RTX 3060 Ti	threads=16	effective=17.71ms	gpu=11.43ms	idle=35.5%	positions/s=926,050
+data/nnue-epoch-length-analysis-20261124/ep2-seed1	NVIDIA GeForce RTX 3060 Ti	threads=16	effective=16.11ms	gpu=11.41ms	idle=29.2%	positions/s=1,017,291
+data/nnue-epoch-length-analysis-20261124/ep2-seed2	NVIDIA GeForce RTX 3060 Ti	threads=16	effective=16.04ms	gpu=11.39ms	idle=29.0%	positions/s=1,021,241
+data/nnue-epoch-length-analysis-20261124/ep3-seed1	NVIDIA GeForce RTX 3060 Ti	threads=16	effective=17.14ms	gpu=11.40ms	idle=33.5%	positions/s=955,982
+data/nnue-epoch-length-analysis-20261124/ep4-seed2	NVIDIA GeForce RTX 3060 Ti	threads=16	effective=16.12ms	gpu=11.41ms	idle=29.2%	positions/s=1,016,426
+data/nnue-epoch-length-analysis-20261124/ep6-seed1	NVIDIA GeForce RTX 3060 Ti	threads=16	effective=16.05ms	gpu=11.38ms	idle=29.1%	positions/s=1,020,878
+data/nnue-epoch-length-analysis-20261124/ep8-seed1	NVIDIA GeForce RTX 3060 Ti	threads=16	effective=16.05ms	gpu=11.36ms	idle=29.2%	positions/s=1,020,957

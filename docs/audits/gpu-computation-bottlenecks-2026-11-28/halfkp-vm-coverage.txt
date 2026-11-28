@@ -1,0 +1,7 @@
+positions=   16384 ever_observed=  42780 fraction=0.0444 (1s)
+positions=  163840 ever_observed= 130025 fraction=0.1348 (5s)
+positions=  491520 ever_observed= 204241 fraction=0.2118 (16s)
+positions=  983040 ever_observed= 260454 fraction=0.2701 (32s)
+positions= 1966080 ever_observed= 320719 fraction=0.3326 (63s)
+positions= 3932160 ever_observed= 378290 fraction=0.3923 (126s)
+positions= 5898240 ever_observed= 408907 fraction=0.4241 (189s)

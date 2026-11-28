@@ -16,7 +16,7 @@
     "driver_version": "620.73.04",
     "cuda_version": "13.5",
     "onnxruntime_version": "1.31.1",
-    "co_resident_load": "stopped"
+    "co_resident_load": "lishogi bot container running; engine process used for a few seconds every 10 minutes"
   },
   "nnue_bench_step_profile": {
     "dataset": "data/nnue-generation-iteration/gen-1/teacher/book-0.mnsd",
